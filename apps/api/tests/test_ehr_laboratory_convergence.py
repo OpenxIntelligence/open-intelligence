@@ -92,7 +92,7 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
         previous = "0021_lab_citation_freshness"
         migrate(self.admin, "upgrade", previous)
         # Exercise the changing citation guard with both sibling schemas present.
-        migrate(self.admin, "upgrade", "0019_composer_runs")
+        migrate(self.admin, "upgrade", "0020_source_event_delivery")
         # Ordinary reviewed bytes and user selections are outside this saved
         # laboratory question's canonical structured-source snapshot. Import
         # them after the question, while the published guard is still present.
@@ -346,12 +346,30 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
                 patient, "CASE-ALPHA", question, **evidence.OPTIONS, **task_intent)
         note = self.seed_encounter(patient)
         tables, _ = self.snapshot()
-        snapshot = self.snapshot([*tables, *EHR_TABLES])
+        names = [*tables, *EHR_TABLES]
+        snapshot = self.snapshot(names)
         self.readiness(False)
+        clinical = "0024_clinical_execution_join"
+        migrate(self.admin, "upgrade", clinical)
+        self.assertEqual(self.heads(), {clinical})
+        laboratory.LabManualPopulatedMigrationTests.assert_existing_history_preserved(self, snapshot)
+        self.readiness(False)
+        with self.engine.connect() as db:
+            journal = db.execute(text(
+                "SELECT id,patient_id,metadata_json->>'source_id',metadata_json->>'version',occurred_at "
+                "FROM identity.identity_domain_events WHERE event_type='source.original.imported' ORDER BY id"
+            )).all()
+        self.assertGreaterEqual(len(journal), 2)
         migrate(self.admin, "upgrade", "head")
         migrate(self.admin, "upgrade", "head")
         self.assertEqual(self.heads(), {SCHEMA_REVISION})
         laboratory.LabManualPopulatedMigrationTests.assert_existing_history_preserved(self, snapshot)
+        with self.engine.connect() as db:
+            envelopes = db.execute(text(
+                "SELECT event_id,patient_id,source_id,source_version::text,occurred_at "
+                "FROM coordination.source_event_outbox ORDER BY event_id"
+            )).all()
+        self.assertEqual(envelopes, journal)
         with running_server(create_app(self.settings)) as base:
             self.check_citation(base, url, citation_command, citation)
             self.check_note(base, *note)

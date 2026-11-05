@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_REVISION = "0024_clinical_execution_join"
+SCHEMA_REVISION = "0025_clinical_source_events"
 POSTGRES_MAJOR = 16
 
 

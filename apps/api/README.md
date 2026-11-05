@@ -4,12 +4,12 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. This revision requires `0024_clinical_execution_join`.
-Run `python -m oi_api.migrate upgrade head` from either published predecessor
-(`0023_lab_question_followthrough` or `0019_composer_runs`). The join retains
+records the original integration. This revision requires `0025_clinical_source_events`.
+Run `python -m oi_api.migrate upgrade head` from either predecessor
+(`0024_clinical_execution_join` or `0020_source_event_delivery`). The join retains
 [encounters and note drafts](#connected-encounter-and-note-service), laboratory
 citation and follow-up history, and [durable execution](../../docs/engineering/H1_DURABLE_EXECUTION.md).
-See
+The [source-event worker](../../docs/engineering/H1_SOURCE_EVENT_DELIVERY.md) reconciles changed context. See
 [the laboratory question contract](../../docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md)
 for save, retry and history behavior.
 The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)
@@ -721,7 +721,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0023_lab_question_followthrough; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0025_clinical_source_events; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |

@@ -131,7 +131,10 @@ class HTTPContractTests(unittest.TestCase):
                 missing_status, _, _ = get_json(base, path)
                 self.assertEqual(missing_status, 404)
         self.assertEqual(status, 200)
+        evidence_return = ("/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/"
+                           "evidence-reports/{report_id}/runs/{run_id}/return-for-verification")
         self.assertEqual(set(schema["paths"]), {
+            evidence_return,
             "/v1/patients/{patient_id}/encounters",
             "/v1/patients/{patient_id}/encounters/events",
             "/v1/patients/{patient_id}/encounters/{encounter_id}/transitions",
@@ -200,6 +203,10 @@ class HTTPContractTests(unittest.TestCase):
         self.assertEqual(schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/world-model"]["get"]["security"], [{"SyntheticFixture": []}])
         queue = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/review-queue"]["get"]
         returning = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/return-for-verification"]["post"]
+        governed = schema["paths"][evidence_return]["post"]
+        self.assertEqual(governed["operationId"], "return_evidence_run_for_verification_v1")
+        self.assertEqual(governed["security"], [{"SyntheticFixture": []}])
+        self.assertTrue({"200", "201", "404", "409", "503"}.issubset(governed["responses"]))
         self.assertEqual(queue["operationId"], "list_source_question_review_queue_v1")
         self.assertEqual(returning["operationId"], "return_source_question_for_verification_v1")
         self.assertEqual(queue["security"], [{"SyntheticFixture": []}])

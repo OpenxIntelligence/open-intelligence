@@ -39,7 +39,7 @@ class ComposerMigrationGraphTests(unittest.TestCase):
         # Missing/sibling migration or a stale readiness literal must fail here.
         script = ScriptDirectory.from_config(Config(str(API_ROOT / "alembic.ini")))
         self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
-        self.assertEqual(set(script.get_revision(SCHEMA_REVISION).down_revision),
+        self.assertEqual(set(script.get_revision("0024_clinical_execution_join").down_revision),
                          {"0023_lab_question_followthrough", REVISION})
         self.assertEqual(script.get_revision(REVISION).down_revision, PARENT)
         self.assertEqual(SCHEMA_REVISION, script.get_current_head())
@@ -162,9 +162,12 @@ class ComposerRunMigrationTests(SourceVersionFixture):
         self.upgrade_preserving(before)
         for table in TABLES:
             self.assertEqual(self.snapshot()[0][table], [])
-        migrate(self.admin, "downgrade", PARENT)
-        self.assertEqual(self.snapshot(), before)
-        migrate(self.admin, "upgrade", "head")
+        # The successor backfills immutable source-event history. Refuse to
+        # discard it, while preserving every inherited table and sequence.
+        after = self.snapshot()
+        with self.assertRaises(CommandError):
+            migrate(self.admin, "downgrade", PARENT)
+        self.assertEqual(self.snapshot(), after)
         run = self.queue(question)
         self.assertEqual((self.row(run)["state"], self.row(run)["attempt_count"]), ("queued", 0))
 
@@ -396,7 +399,7 @@ class ComposerRunMigrationTests(SourceVersionFixture):
         self.assertEqual(self.row(run)["state"], "completed")
 
     def test_populated_execution_history_refuses_downgrade_without_data_loss(self):
-        _, question = self.seed()
+        _, question, _ = self.start_at(REVISION)
         run = self.queue(question)
         self.claim(run)
         self.complete(run)
@@ -405,7 +408,8 @@ class ComposerRunMigrationTests(SourceVersionFixture):
             migrate(self.admin, "downgrade", PARENT)
         self.assertEqual(self.snapshot(), before)
         with self.engine.connect() as conn:
-            self.assertEqual(conn.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), SCHEMA_REVISION)
+            self.assertEqual(conn.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), REVISION)
+        self.upgrade_preserving(before)
 
     def test_published_execution_queue_survives_join_and_runs_with_fresh_authority(self):
         from http_support import running_server

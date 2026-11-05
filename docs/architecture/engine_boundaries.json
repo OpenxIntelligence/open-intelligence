@@ -8,7 +8,7 @@
   "owners": [
     {
       "id": "platform",
-      "responsibility": "Existing H1 configuration, shared wire-contract base, authentication port, database connection infrastructure, migration entrypoint and request limits; no additional policy authority.",
+      "responsibility": "Existing H1 configuration, shared wire-contract base, authentication port, database connection infrastructure, migration entrypoint and request limits; no additional policy authority. Owns bounded source-event transport with domain commands supplied through explicit callbacks; grants and consumer state remain with existing owners.",
       "modules": [
         "oi_api",
         "oi_api.access",
@@ -18,7 +18,8 @@
         "oi_api.migrate",
         "oi_api.request_limits",
         "oi_api.registry_context",
-        "oi_api.encounter_event_contract"
+        "oi_api.encounter_event_contract",
+        "oi_api.source_event_delivery"
       ],
       "exports": {
         "oi_api": [
@@ -57,6 +58,10 @@
         ],
         "oi_api.encounter_event_contract": [
           "EncounterEvents"
+        ],
+        "oi_api.source_event_delivery": [
+          "EventLeaseLost",
+          "PostgresSourceEventDelivery"
         ]
       },
       "depends_on": []
@@ -151,7 +156,7 @@
     },
     {
       "id": "questions-review",
-      "responsibility": "Existing durable source questions, source briefs, review-return packets, exact document passages and manual context. The bounded Composer execution adapter owns synthetic brief runs, leases, results and worker entry; it does not execute a model or change clinical review.",
+      "responsibility": "Existing durable source questions, source briefs, review-return packets, exact document passages and manual context. The bounded Composer execution adapter owns synthetic brief runs, leases, results and worker entry; it does not execute a model or change clinical review. Owns source-context reconciliation, immutable consumer receipts and the independently authorized event worker.",
       "modules": [
         "oi_api.source_questions",
         "oi_api.source_brief",
@@ -164,7 +169,8 @@
         "oi_api.composer_run_contracts",
         "oi_api.composer_runs",
         "oi_api.composer_run_routes",
-        "oi_api.worker"
+        "oi_api.worker",
+        "oi_api.event_worker"
       ],
       "exports": {
         "oi_api.question_passage_contracts": [
