@@ -487,8 +487,10 @@ class FollowthroughPostgresTests(SourceVersionFixture):
         with self.engine.begin() as db:
             db.execute(statement,values)
         with self.engine.connect() as db:
-            row=db.execute(text("SELECT revision_id,references_sha256 FROM "+table),
-                           {}).one()
+            # Merged tree: HEAD's bound-task row already occupies the table,
+            # so scope the read to the scope-test row this block inserted.
+            row=db.execute(text("SELECT revision_id,references_sha256 FROM "+table+" WHERE task_id=:task"),
+                           {"task":task["task_id"]}).one()
             self.assertEqual(row[0],saved["revision_id"])
             self.assertEqual(row[1],fingerprint([ref]))
         # Scope fixtures: a revision with no references, and a revision owned
