@@ -65,7 +65,8 @@ def main():
         env = dict(os.environ, OI_API_ACCESS_DIRECTORY=directory)
         token = secrets.token_urlsafe(32)
         actions = ["patient_create", "patient_read", "case_binding_create", "case_binding_read",
-                   "case_binding_revoke", "source_import", "source_read", "source_original_read"]
+                   "case_binding_revoke", "source_import", "source_read", "source_original_read",
+                   "composer_context_read", "question_create", "question_read"]
         credential = {
             "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
             "actor": "ACTOR-FHIR-LAB-PROOF", "organization": "ORG-FHIR-LAB-PROOF",
@@ -128,7 +129,12 @@ def main():
               'observations',(SELECT COALESCE(json_agg(x ORDER BY x.source_id,x.position),'[]'::json)
                 FROM (SELECT * FROM clinical_source.fhir_laboratory_observations) x),
               'commands',(SELECT COALESCE(json_agg(x ORDER BY x.request_key),'[]'::json)
-                FROM (SELECT * FROM clinical_source.fhir_laboratory_commands) x)
+                FROM (SELECT * FROM clinical_source.fhir_laboratory_commands) x),
+              'questions',(SELECT COALESCE(json_agg(x ORDER BY x.question_id),'[]'::json)
+                FROM (SELECT question_id,patient_id,case_id,request_key,question,source_id,source_line,
+                             source_sha256,source_version,source_snapshot_sha256,preflight_sha256,
+                             source_snapshot_contract,anchor_kind,observation_reference
+                        FROM investigation.source_questions WHERE case_id='CASE-FHIR-LAB') x)
             )""", database)
 
         def body(raw, key, previous=None):
@@ -157,6 +163,46 @@ def main():
                 source_id,version,state)
             assert original["original_text"] == raw
             assert original["sha256"] == hashlib.sha256(raw.encode()).hexdigest()
+
+        question_text = "What should I ask my care team about this source-reported result?"
+
+        def prepare_question(patient_path, source_id):
+            status, world = request(patient_path + "/cases/" + CASE + "/world-model")
+            assert status == 200
+            status, prepared = request(
+                patient_path + "/cases/" + CASE + "/composer/laboratory-preflight",
+                {"synthetic": True, "source_id": source_id,
+                 "observation_reference": "Observation/FICTIONAL-OBS-A",
+                 "question": question_text,
+                 "expected_source_snapshot_sha256": world["snapshot_fingerprint"]})
+            assert status == 200
+            assert prepared["selected_source"]["source_id"] == source_id
+            assert prepared["selected_source"]["observation_reference"] == "Observation/FICTIONAL-OBS-A"
+            assert prepared["selected_source"]["source_line"] is None
+            return world, prepared
+
+        def question_body(source_id, world, prepared):
+            return {"synthetic": True, "request_key": "FHIR-LAB-QUESTION-1",
+                    "source_id": source_id,
+                    "observation_reference": "Observation/FICTIONAL-OBS-A",
+                    "question": question_text,
+                    "expected_source_snapshot_sha256": world["snapshot_fingerprint"],
+                    "expected_preflight_sha256": prepared["preflight_sha256"]}
+
+        def verify_question(patient_path, question_id, expected_state):
+            status, listing = request(
+                patient_path + "/cases/" + CASE + "/questions/laboratory")
+            assert status == 200 and listing["contract"] == "oi.synthetic-laboratory-questions/1"
+            row = next(item for item in listing["questions"] if item["question_id"] == question_id)
+            assert row["anchor_kind"] == "fhir_observation"
+            assert row["observation_reference"] == "Observation/FICTIONAL-OBS-A"
+            assert row["source_context_state"] == expected_state
+            assert row["clinical_review_connected"] is False
+            assert row["evidence_workflow_connected"] is False
+            assert row["followthrough_connected"] is False
+            assert row["clinical_approval"] is False and row["model_executed"] is False
+            assert "source_line" not in row
+            return row
 
         def serve_database(database):
             override = access / "restore.compose.json"
@@ -201,6 +247,21 @@ def main():
             verify_original(patient_path,first_id,FHIR_V1,1,"current")
             verify_world(patient_path,first_id,"4.20",0)
 
+            question_world, question_preflight = prepare_question(patient_path, first_id)
+            q_body = question_body(first_id, question_world, question_preflight)
+            q_endpoint = patient_path + "/cases/" + CASE + "/questions/laboratory"
+            status, saved_question = request(q_endpoint, q_body)
+            assert status == 201 and saved_question["duplicate"] is False
+            question_id = saved_question["question_id"]
+            current_question = verify_question(
+                patient_path, question_id, "current_unreviewed_question")
+            assert current_question["source_id"] == first_id
+            assert request(q_endpoint, q_body) == (
+                200, {**saved_question, "duplicate": True})
+            status, legacy_questions = request(
+                patient_path + "/cases/" + CASE + "/questions")
+            assert status == 200 and legacy_questions["questions"] == []
+
             assert request(endpoint,body(FHIR_V2,"FHIR-LAB-AMEND-WRONG"))[0] == 409
             status, second = request(endpoint,body(FHIR_V2,"FHIR-LAB-AMEND-1",first_id))
             assert status == 201 and second["version"] == 2
@@ -208,12 +269,23 @@ def main():
             verify_original(patient_path,first_id,FHIR_V1,1,"superseded")
             verify_original(patient_path,second_id,FHIR_V2,2,"current")
             verify_world(patient_path,second_id,"5.00",1)
+            stale_question = verify_question(
+                patient_path, question_id, "source_reassessment_required")
+            assert stale_question["source_id"] == first_id
+            assert request(q_endpoint, q_body) == (
+                200, {**saved_question, "duplicate": True})
             assert request(endpoint,body(FHIR_V1,"FHIR-LAB-STALE-REPLAY"))[0] == 409
 
             state=snapshot()
             assert state["revision"] == SCHEMA_REVISION
             assert len(state["sources"])==2 and len(state["fhir_sources"])==2
             assert len(state["observations"])==2 and len(state["commands"])==2
+            assert len(state["questions"])==1
+            persisted_question, = state["questions"]
+            assert persisted_question["question_id"] == question_id
+            assert persisted_question["anchor_kind"] == "fhir_observation"
+            assert persisted_question["source_line"] is None
+            assert persisted_question["observation_reference"] == "Observation/FICTIONAL-OBS-A"
             for row,raw in zip(state["sources"],(FHIR_V1,FHIR_V2)):
                 digest=hashlib.sha256(raw.encode()).hexdigest()
                 assert row["sha256"] == row["raw_sha256"] == digest
@@ -224,15 +296,23 @@ def main():
                 verify_original(patient_path,first_id,FHIR_V1,1,"superseded")
                 verify_original(patient_path,second_id,FHIR_V2,2,"current")
                 verify_world(patient_path,second_id,"5.00",1)
+                verify_question(patient_path, question_id, "source_reassessment_required")
+                assert request(q_endpoint, q_body) == (
+                    200, {**saved_question, "duplicate": True})
 
             before_restore=restore("oi_api_synthetic",RESTORED)
             verify_original(patient_path,first_id,FHIR_V1,1,"superseded")
             verify_original(patient_path,second_id,FHIR_V2,2,"current")
             verify_world(patient_path,second_id,"5.00",1)
+            restored_question = verify_question(
+                patient_path, question_id, "source_reassessment_required")
+            assert restored_question["source_id"] == first_id
+            assert request(q_endpoint, q_body) == (
+                200, {**saved_question, "duplicate": True})
             assert request(endpoint,body(FHIR_V2,"FHIR-LAB-AMEND-1",first_id)) == (
                 200,{**second,"duplicate":True})
             after=snapshot(RESTORED)
-            for key in ("sources","fhir_sources","observations","commands"):
+            for key in ("sources","fhir_sources","observations","commands","questions"):
                 assert after[key] == before_restore[key]
 
             status, revoked = request(patient_path+"/case-bindings/"+CASE+"/revoke",{
@@ -241,12 +321,15 @@ def main():
             for path,payload in (
                 (patient_path+"/cases/"+CASE+"/world-model",None),
                 (patient_path+"/cases/"+CASE+"/sources/"+second_id,None),
+                (q_endpoint,None),
+                (q_endpoint,q_body),
                 (endpoint,body(FHIR_V2,"FHIR-LAB-AFTER-REVOKE",second_id)),
             ):
                 assert request(path,payload)[0] == 404
             print("PASS FHIR LABORATORY RECOVERY: exact JSON source versions, typed observations, "
-                  "explicit amendment, API/DB restart, pg_dump/pg_restore, exact retry and restored "
-                  "binding revocation; source-reported only, no clinical interpretation.")
+                  "durable Observation-anchored question, amendment reassessment, exact question/source "
+                  "retries, API/DB restart, pg_dump/pg_restore and restored binding revocation; "
+                  "source-reported only, no clinical interpretation or downstream review/action.")
         finally:
             command(["down","--volumes","--remove-orphans"],check=False,
                     stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
