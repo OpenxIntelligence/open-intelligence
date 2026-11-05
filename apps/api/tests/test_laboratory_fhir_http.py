@@ -161,6 +161,24 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
                                      body={"synthetic": True, "reason": "Fictional case revoked"})[0], 200)
             self.assertEqual(self.preview(base, patient)[0], 404)
 
+    def test_uuid_references_cannot_bind_another_subject_or_write_a_dangling_result(self):
+        with running_server(self.app) as base:
+            patient = self.make_patient(base)
+            before = self.lab_counts(), self.source_counts()
+            for error in ("wrong patient", "missing observation"):
+                with self.subTest(error=error):
+                    b = example()
+                    if error == "wrong patient":
+                        b["entry"][0]["resource"]["id"] = "FICTIONAL-OTHER"
+                        for entry in b["entry"][1:]:
+                            entry["resource"]["subject"] = {"reference": b["entry"][0]["fullUrl"]}
+                    else:
+                        resource(b, "DiagnosticReport")["result"] = [
+                            {"reference": "urn:uuid:00000000-0000-4000-8000-000000000099"}]
+                    self.assertEqual(self.preview(base, patient, b)[0], 422)
+                    self.assertEqual(self.import_source(base, patient, b)[0], 422)
+                    self.assertEqual((self.lab_counts(), self.source_counts()), before)
+
     def test_mid_preparation_revocation_blocks_response_and_all_writes(self):
         with running_server(self.app) as base:
             patient = self.make_patient(base)

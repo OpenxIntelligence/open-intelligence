@@ -62,10 +62,14 @@ def _identifier(value: Any) -> str:
     return value
 
 
-def _reference(value: Any, kind: str) -> str:
+def _reference(value: Any, kind: str, bundle_ids: dict[str, str] | None = None) -> str:
     _shape(value, {"reference"})
     reference = value["reference"]
-    if type(reference) is not str or not reference.startswith(kind + "/"):
+    if type(reference) is not str:
+        _reject("Invalid FHIR reference")
+    if bundle_ids is not None:
+        reference = bundle_ids.get(reference, reference)
+    if not reference.startswith(kind + "/"):
         _reject("External, ambiguous or incorrect FHIR reference")
     _identifier(reference[len(kind) + 1:])
     return reference
@@ -161,23 +165,23 @@ def prepare_laboratory_bundle(raw: bytes, *, expected_subject_reference: str) ->
     if type(entries) is not list or not 3 <= len(entries) <= MAX_OBSERVATIONS + 3:
         _reject("Invalid bundle entry count")
     resources = {}
-    full_urls = set()
+    bundle_ids: dict[str, str] = {}
     for entry in entries:
         _shape(entry, {"fullUrl", "resource"})
         url = _full_url(entry["fullUrl"])
-        if url in full_urls:
+        if url in bundle_ids:
             _reject("Duplicate bundle identity")
-        full_urls.add(url)
         resource = entry["resource"]
         if type(resource) is not dict:
             _reject("Invalid resource")
         kind = resource.get("resourceType")
-        if kind not in {"Patient", "Specimen", "Observation", "DiagnosticReport"}:
+        if type(kind) is not str or kind not in {"Patient", "Specimen", "Observation", "DiagnosticReport"}:
             _reject("Unsupported FHIR resource")
         identity = kind + "/" + _identifier(resource.get("id"))
         if identity in resources:
             _reject("Conflicting resource identity")
         resources[identity] = resource
+        bundle_ids[url] = identity
     patients = {k: v for k, v in resources.items() if k.startswith("Patient/")}
     specimens = {k: v for k, v in resources.items() if k.startswith("Specimen/")}
     observations = {k: v for k, v in resources.items() if k.startswith("Observation/")}
@@ -188,7 +192,7 @@ def prepare_laboratory_bundle(raw: bytes, *, expected_subject_reference: str) ->
     _shape(patients[subject], {"resourceType", "id"})
     specimen_ref, specimen = next(iter(specimens.items()))
     _shape(specimen, {"resourceType", "id", "subject", "type", "collection"})
-    if _reference(specimen["subject"], "Patient") != subject:
+    if _reference(specimen["subject"], "Patient", bundle_ids) != subject:
         _reject("Specimen belongs to another patient")
     _shape(specimen["type"], {"text"})
     spec_type = specimen["type"]["text"]
@@ -207,8 +211,8 @@ def prepare_laboratory_bundle(raw: bytes, *, expected_subject_reference: str) ->
         code = _concept(observation["code"], "http://loinc.org")
         if not _LOINC.fullmatch(code["code"]):
             _reject("Invalid LOINC code syntax")
-        if (_reference(observation["subject"], "Patient") != subject
-                or _reference(observation["specimen"], "Specimen") != specimen_ref):
+        if (_reference(observation["subject"], "Patient", bundle_ids) != subject
+                or _reference(observation["specimen"], "Specimen", bundle_ids) != specimen_ref):
             _reject("Observation patient or specimen mismatch")
         effective = _instant(observation["effectiveDateTime"])
         issued = _instant(observation["issued"])
@@ -252,13 +256,13 @@ def prepare_laboratory_bundle(raw: bytes, *, expected_subject_reference: str) ->
             _reject("Non-final diagnostic report requires review")
         _lab_category(report["category"])
         _concept(report["code"], "http://loinc.org")
-        if _reference(report["subject"], "Patient") != subject:
+        if _reference(report["subject"], "Patient", bundle_ids) != subject:
             _reject("Report patient mismatch")
         if (type(report["specimen"]) is not list or len(report["specimen"]) != 1
-                or _reference(report["specimen"][0], "Specimen") != specimen_ref):
+                or _reference(report["specimen"][0], "Specimen", bundle_ids) != specimen_ref):
             _reject("Report specimen mismatch")
         if (type(report["result"]) is not list or len(report["result"]) != len(observations)
-                or {_reference(x, "Observation") for x in report["result"]} != set(observations)):
+                or {_reference(x, "Observation", bundle_ids) for x in report["result"]} != set(observations)):
             _reject("Report result references incomplete, duplicated or external")
         report_effective = _instant(report["effectiveDateTime"])
         report_issued = _instant(report["issued"])
