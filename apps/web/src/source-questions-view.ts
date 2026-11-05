@@ -13,6 +13,13 @@ export type SourceQuestionHistory = Readonly<{
   questions:readonly SourceQuestion[];
 }>;
 
+export function questionSaveBlocksSourceChange(state: {
+  readonly questionSavePhase: string;
+  readonly questionSaveMessage: string;
+}): boolean {
+  return state.questionSavePhase === 'saving' || state.questionSaveMessage.startsWith('Save outcome unknown.');
+}
+
 const QID=/^QUESTION-[0-9A-F]{32}$/;
 const SID=/^SRC-[0-9A-F]{32}$/;
 const HEX=/^[0-9a-f]{64}$/;

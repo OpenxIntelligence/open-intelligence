@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {QuestionPassageClient,decodeManualContext,decodeSelection} from '../.test-dist/question-passages.js';
+import {QuestionPassageClient,decodeManualContext,decodeSelection,decodeChosenPassage} from '../.test-dist/question-passages.js';
 import * as manualModule from '../.test-dist/question-passages.js';
 import {decodeEvidenceReport} from '../.test-dist/authored-evidence.js';
 import {RegistrySession} from '../.test-dist/registry-client.js';
@@ -21,6 +21,24 @@ function context(empty=false){
 }
 const ref=()=>{const p=context().passages[0],a=p.anchor;return {source_id:a.source_id,annotation_revision_id:a.annotation_revision_id,selection_key:a.selection_key,anchor_sha256:p.anchor_sha256};};
 
+test('a valid selection receipt must still match the passage displayed for the question',async()=>{
+ const packet=context(),passage=packet.passages[0],a=passage.anchor;
+ const finding={key:a.selection_key,state:a.selected_state,quote:a.quote,line:a.line};
+ const document={source_id:a.source_id,document_id:a.document_id,version:a.source_version,sha256:a.original_sha256,state:'current',
+  preview:{media_type:'application/pdf',extraction_sha256:a.extraction_sha256,lines:[{line:1,page:1,text:'Fictional cover'},{line:2,page:2,page_line:1,text:a.quote}]},
+  revisions:[{revision:1,revision_id:a.annotation_revision_id,actor:a.selected_by,created_at:a.selected_at,review_sha256:a.review_sha256,findings:[finding]}]};
+ const receipt={...passage,contract:'oi.reviewed-document-selection/1',synthetic:true,clinical_approval:false,model_execution:false,access_receipt_id:packet.access_receipt_id};
+ assert.equal((await decodeChosenPassage(receipt,scope,document,finding)).anchor_sha256,passage.anchor_sha256);
+ for(const change of [{quote:'Fictional substitute'},{selected_state:'negative'},{line:1},{page:1},
+     {document_id:'DOC-OTHER'},{source_version:2},{original_sha256:'d'.repeat(64)},
+     {annotation_revision:2},{selected_by:'OTHER-ACTOR'},{selected_at:'2026-11-03T12:00:00Z'},{review_sha256:'e'.repeat(64)},{extraction_sha256:'e'.repeat(64)},{extraction_method:'utf8-plain-text-v1',extraction_sha256:null,page:null}]){
+  const anchor={...a,...change},substitute={...receipt,anchor,anchor_sha256:hash(anchor)};
+  // The receipt is internally consistent and still names the requested selection.
+  await decodeSelection(substitute,scope,ref());
+  await assert.rejects(decodeChosenPassage(substitute,scope,document,finding),/differs from the one displayed/);
+ }
+});
+
 test('exact manual PDF context and frozen report retain physical page, attribution and separate classification',async()=>{
  const value=context(),got=await decodeManualContext(value,scope,true);
  assert.equal(got.passages[0].anchor.page,2);assert.equal(got.passages[0].anchor.selected_by,'FIXTURE-ACTOR');
@@ -31,6 +49,17 @@ test('exact manual PDF context and frozen report retain physical page, attributi
  assert.deepEqual((await decodeEvidenceReport(r,question(),reportId)).snapshot.manual_passages,frozen);
  r.snapshot.manual_passages.question_id='QUESTION-'+'F'.repeat(32);r.snapshot.manual_passages=sign(r.snapshot.manual_passages);r.snapshot_sha256=hash(r.snapshot);
  await assert.rejects(()=>decodeEvidenceReport(r,question(),reportId));
+});
+
+test('choosing the same saved key twice cannot introduce a conflicting anchor',async()=>{
+ const client=new QuestionPassageClient(scope,async()=>({status:200,body:context(true)}));
+ await client.load();
+ const original=context().passages[0];
+ assert.equal(client.choose(original),true);
+ assert.equal(client.choose(original),true);
+ const anchor={...original.anchor,selected_by:'OTHER-ACTOR'};
+ assert.equal(client.choose({...original,anchor,anchor_sha256:hash(anchor)}),false);
+ assert.deepEqual(client.snapshot().chosen,[original]);
 });
 
 test('false provenance, forged freshness, foreign scope and duplicate anchors fail closed after rehashing',async()=>{

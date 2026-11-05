@@ -21,6 +21,7 @@ from sqlalchemy import event, text
 from sqlalchemy.engine import make_url
 
 from oi_api.app import create_app
+from oi_api.access import AccessUnavailable, SyntheticFileAuthentication
 from oi_api.config import Settings
 from oi_api.database import Database, make_engine
 from oi_api.migrate import migrate
@@ -57,6 +58,26 @@ def credential(token, *, organization="ORG-ALPHA", actor="ACTOR-ALPHA", patients
 
 
 class PatientBoundaryWithoutDatabaseTests(unittest.TestCase):
+    def test_ambiguous_access_policy_is_private_and_denied_before_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            access_file = Path(directory) / "access.json"
+            raw = json.dumps({"version": "oi.synthetic-access/1",
+                              "credentials": [credential(TOKEN_A)]})
+            raw = raw.replace('"actor": "ACTOR-ALPHA"',
+                              '"actor": "private-policy-canary", "actor": "ACTOR-ALPHA"')
+            access_file.write_text(raw)
+            settings = Settings.from_env({"OI_API_ACCESS_FILE": str(access_file)})
+            with patch.object(Database, "registry_connection") as connection:
+                with running_server(create_app(settings)) as base:
+                    status, body, headers = request(
+                        base, "/v1/patients", token=TOKEN_A,
+                        body={"synthetic": True, "request_key": "REQ-AMBIGUOUS"})
+                connection.assert_not_called()
+            self.assertEqual((status, body), (503, {"detail": "Access service unavailable"}))
+            self.assertEqual(headers["Cache-Control"], "no-store")
+            self.assertNotIn("private-policy-canary", json.dumps(body))
+            self.assertNotIn(TOKEN_A, json.dumps(body))
+
     def test_missing_trusted_identity_is_denied_before_any_database_operation(self):
         with running_server(create_app(Settings.from_env({}))) as base:
             for token in (None, "unrecognized-token"):
@@ -65,6 +86,73 @@ class PatientBoundaryWithoutDatabaseTests(unittest.TestCase):
                 self.assertEqual(status, 401)
                 self.assertEqual(body, {"detail": "Authentication required"})
                 self.assertEqual(headers["Cache-Control"], "no-store")
+
+
+class SyntheticAccessDocumentTests(unittest.TestCase):
+    """Operator configuration must have one meaning before scope is granted."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.path = Path(directory.name) / "access.json"
+        self.authentication = SyntheticFileAuthentication(str(self.path))
+        self.item = credential(TOKEN_A, patients=("PAT-ALPHA",))
+
+    def document(self, item=None):
+        return json.dumps({"version": "oi.synthetic-access/1",
+                           "credentials": [self.item if item is None else item]})
+
+    def reject(self, raw):
+        self.path.write_text(raw, encoding="utf-8")
+        with self.assertRaises(AccessUnavailable):
+            self.authentication.authenticate(TOKEN_A)
+
+    def test_every_duplicate_authority_member_is_rejected_in_both_orders(self):
+        alternatives = {"actor": "ACTOR-OTHER", "organization": "ORG-OTHER",
+                        "purpose": "research", "actions": [], "patient_ids": [],
+                        "expires_at": "2000-01-01T00:00:00+00:00",
+                        "token_sha256": hashlib.sha256(TOKEN_B.encode()).hexdigest()}
+        for key, other in alternatives.items():
+            existing = json.dumps(key) + ": " + json.dumps(self.item[key])
+            alternate = json.dumps(key) + ": " + json.dumps(other)
+            for pair in (alternate + ", " + existing, existing + ", " + alternate):
+                with self.subTest(key=key, pair_order=pair == alternate + ", " + existing):
+                    self.reject(self.document().replace(existing, pair))
+
+    def test_duplicate_top_level_credentials_and_version_are_rejected(self):
+        for raw in (
+            '{"version":"oi.synthetic-access/1", "credentials":[], "credentials":' + json.dumps([self.item]) + '}',
+            '{"version":"oi.synthetic-access/1", "credentials":' + json.dumps([self.item]) + ', "credentials":[]}',
+            self.document().replace('"version": "oi.synthetic-access/1"',
+                                    '"version": "oi.synthetic-access/1", "version": "oi.synthetic-access/1"'),
+        ):
+            with self.subTest(raw=raw[:50]):
+                self.reject(raw)
+
+    def test_escaped_and_identical_duplicate_members_are_rejected(self):
+        existing = '"actions": ["patient_create", "patient_read"]'
+        for alternate in ('"acti\\u006fns": []', existing):
+            with self.subTest(alternate=alternate):
+                self.reject(self.document().replace(existing, alternate + ", " + existing))
+
+    def test_nonfinite_numbers_do_not_define_an_expiry(self):
+        existing = '"expires_at": ' + json.dumps(self.item["expires_at"])
+        for value in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(value=value):
+                self.reject(self.document().replace(existing, '"expires_at": ' + value))
+
+    def test_valid_policy_is_reread_after_denial_and_revocation(self):
+        self.path.write_text(self.document())
+        first = self.authentication.authenticate(TOKEN_A)
+        self.assertEqual(first.patient_ids, frozenset({"PAT-ALPHA"}))
+        self.assertNotIn("token_sha256", first.model_dump())
+        self.reject(self.document().replace('"purpose": "operations"',
+                                            '"purpose": "research", "purpose": "operations"'))
+        self.path.write_text(self.document({**self.item, "patient_ids": [], "actions": []}))
+        revoked = self.authentication.authenticate(TOKEN_A)
+        self.assertEqual((revoked.patient_ids, revoked.actions), (frozenset(), frozenset()))
+        self.path.write_text('{"version":"oi.synthetic-access/1","credentials":[]}')
+        self.assertIsNone(self.authentication.authenticate(TOKEN_A))
 
 
 @unittest.skipUnless(os.environ.get("OI_API_RUN_DATABASE_TESTS") == "1",

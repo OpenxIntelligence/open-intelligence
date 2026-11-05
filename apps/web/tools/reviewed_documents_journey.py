@@ -81,6 +81,17 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     assert cd.evaluate("!document.querySelector('[data-testid=reviewed-document-disclosure]').open && !document.querySelector('[data-testid=reviewed-file]').checkVisibility()"), 'Reviewed intake starts closed'
     toggle(True)
     assert cd.evaluate("document.querySelector('[data-testid=reviewed-file]').checkVisibility()"), 'Reviewed file input is actually visible'
+    pasted = 'Fictional pasted record — α\nSecond line  '
+    cd.evaluate("""(()=>{window.__pasteFetch=window.fetch;window.__pasteRequests=0;window.fetch=(...args)=>{window.__pasteRequests++;return window.__pasteFetch(...args)};
+      const field=document.querySelector('[data-testid=reviewed-paste]');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(field,"""+json.dumps(pasted)+""");
+      field.dispatchEvent(new Event('input',{bubbles:true}));})()""")
+    assert cd.evaluate('window.__pasteRequests')==0
+    cd.evaluate("document.querySelector('[data-testid=preview-pasted]').click()")
+    cd.wait("document.querySelector('[data-testid=reviewed-preview]')?.textContent.includes("+json.dumps(hashlib.sha256(pasted.encode()).hexdigest())+")", 'exact pasted UTF-8 original preview')
+    assert cd.evaluate('window.__pasteRequests')==1
+    assert cd.evaluate("!document.querySelector('[data-testid=document-confirm]').checked")
+    cd.evaluate('window.fetch=window.__pasteFetch;delete window.__pasteFetch;delete window.__pasteRequests')
     def click(label):
         cd.evaluate("(()=>{const button=[...document.querySelectorAll('[data-testid=reviewed-documents] button')].find(e=>e.textContent==="+json.dumps(label)+");if(!button?.checkVisibility())throw new Error('Reviewed action is hidden');button.click()})()")
     def value(selector,text):
@@ -91,13 +102,50 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
         cd.command('DOM.setFileInputFiles',{'nodeId':node['nodeId'],'files':[str(path)]})
         cd.wait("!document.querySelector('[data-testid=preview-reviewed]').disabled",'local file selected')
         before=operator(prefix)['documents']
+        # Replace one identity field after a real authorized preview response.
+        # No mismatched text or save control may appear before an explicit retry.
+        cd.evaluate("""(() => {
+          const fetchOriginal=window.fetch;
+          window.fetch=async(input,init)=>{
+            const path=new URL(typeof input==='string'?input:input.url,location.href).pathname;
+            if(!path.endsWith('/documents/preview'))return fetchOriginal(input,init);
+            window.fetch=fetchOriginal;
+            const response=await fetchOriginal(input,init);
+            const body=await response.json();
+            if(response.status!==200||body.filename!=='fictional-reviewed.pdf')throw Error('Expected real preview');
+            return new Response(JSON.stringify({...body,sha256:'0'.repeat(64)}),{
+              status:response.status,headers:{'Content-Type':'application/json'}});
+          };
+        })()""")
+        cd.evaluate("document.querySelector('[data-testid=preview-reviewed]').click()")
+        cd.wait("document.querySelector('[data-testid=reviewed-status]').textContent.includes('does not match')",
+                'mismatched PDF response withheld from review')
+        assert cd.evaluate("!document.querySelector('[data-testid=reviewed-preview]') && !document.querySelector('[data-testid=save-reviewed]')")
+        assert operator(prefix)['documents']==before
         cd.evaluate("document.querySelector('[data-testid=preview-reviewed]').click()")
         cd.wait("Boolean(document.querySelector('[data-testid=reviewed-preview]'))",'server frozen preview')
         assert operator(prefix)['documents']==before,'Preview persisted a source'
         value('[data-testid=document-id]','WEB-PDF');value('[data-testid=document-event]','2026-01-01');value('[data-testid=document-issued]','2026-01-02')
+    assert operator(prefix)['documents']==[], 'Preview leaves the case document list empty'
+    value('[data-testid=document-id]','WEB-PASTE');value('[data-testid=document-event]','2026-01-01');value('[data-testid=document-issued]','2026-01-02')
+    click('Select line 1');click('Add exact passage')
+    cd.evaluate("document.querySelector('[data-testid=document-confirm]').click()" )
+    cd.evaluate("document.querySelector('[data-testid=save-reviewed]').click()")
+    cd.wait("Boolean(document.querySelector('[data-testid=reviewed-receipt]'))",'confirmed paste saved')
+    pasted_doc,=operator(prefix)['documents']
+    with urlopen(Request('http://127.0.0.1:8000'+root+prefix+'/'+pasted_doc['source_id']+'/original',
+                         headers={'Authorization':'Bearer '+token}),timeout=10) as original_response:
+        assert original_response.read()==pasted.encode()
     raw=text_pdf([['Independently fictional page one'],['Marker pending.','Second selected passage.']])
     upload(raw)
     click('Select line 2 · page 2');click('Add exact passage')
+    assert cd.evaluate("""document.querySelector('[data-testid=reviewed-preview] fieldset li')
+        .textContent.includes('Page 2, page line 1 (extraction line 2)')""")
+    cd.evaluate("document.querySelector('[data-testid=document-confirm]').click()")
+    value('[data-testid=document-issued]','2026-01-03')
+    assert cd.evaluate("""!document.querySelector('[data-testid=document-confirm]').checked
+        && document.querySelector('[data-testid=save-reviewed]').disabled"""), 'Edited metadata requires a fresh confirmation'
+    value('[data-testid=document-issued]','2026-01-02')
     cd.evaluate("document.querySelector('[data-testid=document-confirm]').click()")
     before_toggle=operator(prefix)['documents']
     cd.evaluate("window.__reviewedFile=document.querySelector('[data-testid=reviewed-file]').files[0];window.__reviewedPreview=document.querySelector('[data-testid=reviewed-preview]');window.__reviewedFetch=window.fetch;window.__reviewedRequests=0;window.fetch=(...args)=>{window.__reviewedRequests++;return window.__reviewedFetch(...args)}")
@@ -114,12 +162,18 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
         cd.evaluate("window.fetch=window.__reviewedFetch;delete window.__reviewedFetch;delete window.__reviewedRequests;delete window.__reviewedFile;delete window.__reviewedPreview")
     cd.evaluate("document.querySelector('[data-testid=save-reviewed]').click()")
     cd.wait("Boolean(document.querySelector('[data-testid=reviewed-receipt]'))",'durable original receipt')
-    listing=operator(prefix)['documents'];assert len(listing)==1;first=listing[0]['source_id']
+    listing=operator(prefix)['documents'];assert len(listing)==2;first=next(row['source_id'] for row in listing if row['document_id']=='WEB-PDF')
     click('Inspect saved original and selection history')
     cd.wait("document.querySelector('[data-testid=reviewed-preview]')?.textContent.includes('Preserved selection history (1)')",'initial review')
     initial_document=operator(prefix+'/'+first)
     initial_revision=initial_document['revisions'][0]
     initial_key=initial_revision['findings'][0]['key']
+    cd.evaluate("""document.querySelector('section[aria-label="Draft a passage question"] button').click()""")
+    cd.wait("Boolean(document.querySelector('[data-testid=passage-question-draft]'))",'fresh saved PDF passage opens question draft')
+    value('[data-testid=passage-question-draft]','What would resolve this pending fictional result?')
+    assert cd.evaluate("""document.querySelector('section[aria-label="Draft a passage question"] blockquote').textContent""")==initial_revision['findings'][0]['quote']
+    click('Discard question draft')
+    assert not cd.evaluate("Boolean(document.querySelector('[data-testid=passage-question-draft]'))")
     selection_path=prefix+'/'+first+'/selections/'+initial_revision['revision_id']+'/'+initial_key
     initial_selection=operator(selection_path)
     assert initial_selection['anchor']['quote']=='Marker pending.'
@@ -130,10 +184,15 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     assert initial_selection['selection_state']=='current_unreviewed_selection'
     click('Remove finding-one');click('Select line 3 · page 2');click('Add exact passage')
     value('[data-testid=document-reason]','Correct the selected fictional passage')
+    cd.evaluate("document.querySelector('[data-testid=document-confirm]').click()")
+    value('[data-testid=document-reason]','Correct the second fictional passage on page two')
+    assert cd.evaluate("document.querySelector('[data-testid=save-reviewed]').disabled"), 'Editing the correction reason invalidates confirmation'
     cd.evaluate("document.querySelector('[data-testid=document-confirm]').click();document.querySelector('[data-testid=save-reviewed]').click()")
     cd.wait("Boolean(document.querySelector('[data-testid=reviewed-receipt]'))",'correction receipt')
     click('Inspect saved original and selection history')
     cd.wait("document.querySelector('[data-testid=reviewed-preview]')?.textContent.includes('Preserved selection history (2)')",'preserved correction history')
+    history=cd.evaluate("document.querySelector('[data-testid=reviewed-preview] details').textContent")
+    assert 'Page 2, page line 1 (extraction line 2)' in history and 'Page 2, page line 2 (extraction line 3)' in history
     assert operator(source_path)['sources']==structured_sources, 'Manual selections must not enter the structured source index'
     saved=operator(prefix+'/'+first);assert saved['revisions'][0]['findings'][0]['line']==2
     assert saved['revisions'][1]['findings'][0]['line']==3
@@ -268,6 +327,7 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     receipt=dict(patient_id=patient_id,case_id=CASE,source_id=first,original_sha256=hashlib.sha256(raw).hexdigest(),
         extraction_sha256=saved['preview']['extraction_sha256'],revision_ids=[r['revision_id'] for r in saved['revisions']],
         physical_page=2,selected_lines=[2,3],actual_download_equal=True,preview_did_not_persist=True,
+        substituted_preview_withheld=True,physical_locations_in_history=True,edit_requires_reconfirmation=True,
         keyboard_disclosure=True,collapsed_state_preserved=True,disclosure_requests=0,structured_intake_coexists=True,manual_selections_excluded_from_structured_index=True,
         restart_preserved_revisions=True,revocation_created_no_download=True,denial_cleared_shared_records=True,
         reauthorization_did_not_restore_local_file=True,document_list_denial_cleared_source_text=True,
