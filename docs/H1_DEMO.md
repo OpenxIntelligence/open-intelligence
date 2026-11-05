@@ -35,7 +35,9 @@ The first start downloads/builds the pinned backend. Package rights checks must 
 
 Overview shows up to three record-preparation prompts for the checked case. Under “Review unresolved source statements”, choose “Inspect source statements” to see the pending assay in Journey. The saved-question agenda links back to the report and follow-up task.
 
-The supplied laboratory file `examples/synthetic/fictional-fhir-r4-lab-bundle.json` can also be deliberately imported in Records for this case. Its patient reference matches the fictional case binding. Original JSON and typed values stay source-reported; no reference-range interpretation or laboratory-to-question creation is added.
+The supplied laboratory file `examples/synthetic/fictional-fhir-r4-lab-bundle.json` can also be deliberately imported in Records for this case. Its patient reference matches the fictional case binding. Original JSON and typed values stay source-reported. Importing does not interpret reference ranges or automatically create questions.
+Use the saved-laboratory-question steps below for the subsequent explicit question
+workflow; importing a report does not itself create a question.
 
 ## Stop, resume and inspect
 
@@ -65,6 +67,14 @@ The stored question keeps its original source when a report is amended.
 Reopen the history after an amendment to see which questions need reassessment.
 Question history requires an active patient/case binding and current source and
 question read grants. Text-based investigations use their existing source-line history.
+
+After reopening saved laboratory questions, return to Overview. Laboratory and
+text-source counts have separate permission checks. An unchecked laboratory
+history remains unavailable instead of showing zero. Use “Reopen laboratory
+questions in Journey” to return to the same case and inspect its saved questions.
+After a report amendment, reopen the laboratory history to see the preserved
+original question counted as needing reassessment. An earlier read is not reused
+as a current count.
 
 ## Inspect citations for a laboratory question
 

@@ -1,4 +1,52 @@
-# One runnable H1 candidate — 4 November 2026
+# H1 application convergence and acceptance
+
+## Laboratory workflow candidate — 5 November 2026
+
+Current accepted baseline was checked directly at main
+`086f31e78240f8c70118c467406e89fdd89a92a2`, including #512's durable laboratory
+questions and #520's source-reported cancer episodes. The complete first-party
+ecosystem remains the destination; this increment connects the existing patient
+intelligence experience without selecting a new architecture or dependency.
+
+The isolated candidate preserves the ancestry and ownership of:
+
+| Contribution | Frozen head | Combined responsibility |
+| --- | --- | --- |
+| [#518](https://github.com/OpenxIntelligence/open-intelligence/pull/518) | `d9d288079400b55eafb76526b14bc51098645635` | Exact laboratory question citations, rights checks, original-result inspection and 0019 migration |
+| [#519](https://github.com/OpenxIntelligence/open-intelligence/pull/519) | `a643b16936afb7fa54ed7d755f8fd12e5ef56ef3` | Separate authorized laboratory counts in Overview and preparation |
+| [#521](https://github.com/OpenxIntelligence/open-intelligence/pull/521) | `b7cd25bc769514f0e896f1aa578e6fe2b93e26d8` | Unfinished wording tied to its selected result and fresh preparation on return |
+
+Three new decoder-to-Overview regressions first failed on the accepted baseline:
+saved laboratory history was omitted, amendment scope was not represented in
+Overview, and an independently unavailable laboratory read had no count state.
+The composed client passes all 657 tests, including these regressions and the
+existing episode tests. All 13 installed dependency checks pass, with 18 packages
+inspected and two absent optional packages still explicitly uninspected. The
+production build succeeds. No runtime dependency or new ledger is introduced.
+
+The shared test-file conflict retained both citation-lifecycle and scoped-history
+tests. The backlog conflict involved different adjacent rows; both owner changes
+were retained. The merged real browser journey preserves draft switching,
+explicit save, exact retry, original citations, amendments and rights withdrawal,
+and adds Overview navigation during uncertain citation recovery and after source
+change. Its `laboratory-workflow-convergence.json` receipt must be inspected in
+hosted acceptance; authoring or compiling that scenario is not a browser pass.
+
+The local API baseline ran 785 tests with 477 PostgreSQL-dependent skips and 75
+socket `PermissionError` records. This is preserved negative evidence, not API
+acceptance. The candidate requires fresh exact-revision API/PostgreSQL,
+migration, browser, restart and backup/restore checks plus independent review.
+The candidate's PR is the live verification record; donor results alone do not
+qualify it. This section does not claim merge, deployment or clinical validation.
+
+The full scope, source choices and verification tasks are in the
+[bounded integration plan](../superpowers/plans/2026-11-05-laboratory-workflow-convergence.md).
+Advanced EHR/LIS operations, production identity/consent, qualified external
+biomedical retrieval, models and professional clinical review remain separate
+qualification work. The laboratory inspection view is not a preserved signed
+clinical report and does not establish therapeutic benefit.
+
+## Accepted application checkpoint — 4 November 2026
 
 Implementation scope and source resolutions are recorded here. The exact tested
 revision, verification receipts and landing status are maintained in

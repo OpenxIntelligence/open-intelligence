@@ -278,6 +278,30 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     def submit_question():
         cd.evaluate("document.querySelector('[data-testid=lab-question-prepare]').click()")
 
+    overview_reads = []
+    def inspect_overview_laboratory(current_count, reassessment_count):
+        """Inspect the independently read lab history, then return without a write."""
+        before = cd.evaluate('window.__oiLabQuestionPosts.length')
+        navigate('Overview')
+        cd.wait('Boolean(document.querySelector("[data-testid=continuity-lab-questions]"))',
+                'Overview exposes the laboratory read separately')
+        counts = cd.evaluate('''({
+            current:document.querySelector('[data-testid=continuity-lab-current]')?.textContent??null,
+            reassessment:document.querySelector('[data-testid=continuity-lab-reassessment]')?.textContent??null
+        })''')
+        expected = {'current':None if current_count is None else str(current_count),
+                    'reassessment':None if reassessment_count is None else str(reassessment_count)}
+        assert counts == expected, (counts, expected)
+        overview_reads.append(counts)
+        if current_count is None:
+            assert 'not been checked' in cd.evaluate('document.querySelector("[data-testid=continuity-lab-questions]").textContent')
+        else:
+            assert cd.evaluate('document.querySelector("[data-testid=second-opinion-lab-questions]").textContent').startswith('Saved laboratory questions')
+        cd.evaluate('document.querySelector("[data-testid=continuity-open-lab-questions]").click()')
+        cd.wait('Boolean(document.querySelector("[data-testid=lab-questions-reopen]"))',
+                'Overview returns to the same saved laboratory question workspace')
+        assert cd.evaluate('window.__oiLabQuestionPosts.length') == before
+
     question = 'What does this report say about my fictional specimen?'
     questions_path = '/cases/' + CASE + '/questions'
     journey('0')
@@ -345,6 +369,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert operator(laboratory_history)['questions'] == [committed]
     cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
     cd.wait("document.querySelector('[data-testid=lab-saved-question]')?.textContent.includes(" + json.dumps(question) + ")", 'reopen saved laboratory question')
+    inspect_overview_laboratory(1, 0)
     # Use the same seeded, original fictional catalog as the text workflow.
     # Inspect actual response bodies; only suppress delivery of its first write.
     from question_metadata_journey import CITATION, QuestionEvidenceChecks
@@ -374,6 +399,8 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.evaluate('document.querySelector(' + json.dumps(control('evidence-result')) + ').open=true')
     click(cd, control('evidence-save'))
     cd.wait(exists('evidence-retry'), 'unknown citation outcome offers exact recovery')
+    inspect_overview_laboratory(1, 0)
+    cd.wait(exists('evidence-retry'), 'Overview return preserves the exact uncertain citation save')
     click(cd, control('evidence-retry'))
     cd.wait(exists('evidence-saved-link'), 'current citation reopened from PostgreSQL')
     writes = cd.evaluate("window.__oiLabCatalog.filter(r=>r.path.endsWith('/evidence-links')&&r.method==='POST')")
@@ -409,10 +436,12 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))")
     reopened, = operator(laboratory_history)['questions']
     assert reopened == {**committed, 'source_context_state': 'source_reassessment_required'}
+    inspect_overview_laboratory(None, None)
     cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
     cd.wait("document.querySelector('[data-testid=lab-saved-question]')?.textContent.toLowerCase().includes('needs reassessment')", 'amendment flags the historical question')
     row = cd.evaluate("document.querySelector('[data-testid=lab-saved-question]').textContent")
     assert all(v in row for v in (question, first['source_id'], first['sha256'], 'Observation/FICT-WEB-ZERO'))
+    inspect_overview_laboratory(0, 1)
     click(cd, control('metadata-evidence-open'))
     cd.wait(exists('evidence-stale')+' && '+exists('evidence-saved-link'), 'historical question reopens its original citation')
     assert not cd.evaluate(exists('evidence-query')) and not cd.evaluate(exists('evidence-save'))
@@ -446,6 +475,20 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     credentials[0]['actions'].remove('question_read');write_grants()
     cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
     cd.wait("window.__oiLabHistoryCodes.at(-1)===404 && Boolean(document.querySelector('[data-testid=world-no-patient]')) && !document.querySelector('[data-testid=lab-saved-question]')", 'denied question read removes prior history')
+    navigate('Overview')
+    assert not cd.evaluate('Boolean(document.querySelector("[data-testid=continuity-lab-current]"))')
+    assert not cd.evaluate('Boolean(document.querySelector("[data-testid=second-opinion-lab-questions]"))')
+    assert question not in cd.evaluate('document.body.innerText')
+    (artifacts / 'laboratory-workflow-convergence.json').write_text(json.dumps({
+        'synthetic':True, 'patient_id':patient_id, 'case_id':CASE,
+        'question_id':question_id, 'original_source_id':first['source_id'],
+        'original_sha256':first['sha256'], 'observation_reference':committed['observation_reference'],
+        'overview_reads':overview_reads, 'navigation_created_no_question':True,
+        'overview_return_preserved_uncertain_citation':True, 'citation_link_id':saved_link['link_id'],
+        'citation_retry_statuses':[x['status'] for x in writes], 'revoked_overview_withheld':True,
+        'clinical_approval':False, 'model_executed':False,
+    },indent=2)+'\n')
+    print('PASS LABORATORY CONVERGENCE: independently checked Overview counts, same-question return, uncertain citation recovery, amended history and revoked overview withholding.')
     credentials[0]['actions'].append('question_read');write_grants()
     reopen_patient()
     journey('1')
