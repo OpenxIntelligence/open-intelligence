@@ -49,6 +49,20 @@ export function PatientContinuity({state,onNavigate,onRefreshFollowthrough,busy}
     <button type="button" data-testid="continuity-open-records" onClick={()=>onNavigate('Records')}>Open records</button>
    </div>
   </div>
+  {view.caseId&&<section className="continuity-item continuity-preparation" data-testid="continuity-preparation" aria-labelledby="continuity-preparation-heading">
+   <h3 id="continuity-preparation-heading">What to look at next</h3>
+   <p>Reviewable preparation prompts from the last authorized case reads, not AI treatment advice.</p>
+   {view.preparation.length>0?<ol className="continuity-preparation-list" aria-label="Case preparation prompts">
+    {view.preparation.map(item=><li key={item.key} data-testid="continuity-preparation-item" data-kind={item.key}>
+     <h4>{item.title}</h4><p>{item.detail}</p>
+     <button type="button" disabled={busy} onClick={()=>onNavigate(item.destination)}>{item.action}</button>
+    </li>)}
+   </ol>:<p data-testid="continuity-no-preparation-prompts">No supported prompts from the currently checked context. Other records or needs may still be unknown.</p>}
+   {view.preparationTotal>view.preparation.length&&<p className="small" data-testid="continuity-preparation-coverage">
+    Showing {view.preparation.length} of {view.preparationTotal} record-preparation prompts; inspect the source and investigation views for full context.
+   </p>}
+   <p className="muted small">Not ranked by medical urgency. Source-only counts exclude separately reviewed documents and providers that are not connected. Each destination rechecks its own authorization.</p>
+  </section>}
   <section className="continuity-item continuity-followthrough" data-testid="continuity-followthrough" aria-labelledby="continuity-followthrough-heading">
    <h3 id="continuity-followthrough-heading">Follow-up work</h3>
    <p>Recorded next steps across your saved questions. Owners and revisit dates describe coordination, not clinical urgency.</p>
