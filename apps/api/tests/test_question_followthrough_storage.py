@@ -472,6 +472,64 @@ class FollowthroughPostgresTests(SourceVersionFixture):
         hidden=self.listing()["tasks"]
         self.assertNotIn("Marker pending.",str(hidden))
         self.assertTrue(next(t for t in hidden if t["task_id"]==manual_task["task_id"])["needs_recheck"])
+        # Resolution note: HEAD revoked source_original_read above; restore it
+        # for the scope-test question setup below (base ran it with full creds).
+        self.creds[0]["actions"].append("source_original_read");self.write()
+        with running_server(create_app(self.settings)) as fresh:
+            second_question,_=create_question(self,fresh,self.patient,self.source_id,
+                request_key="TASK-MANUAL-DEPENDENCY-QUESTION-2")
+        values=dict(task_id=task["task_id"],question_id=self.question,
+                    revision_id=saved["revision_id"],patient_id=self.patient,
+                    case_id=CASE,origin_org="ORG-ALPHA",
+                    references_sha256=fingerprint([ref]))
+        statement=text("INSERT INTO "+table+" ("+",".join(values)+") VALUES ("+
+                       ",".join(":"+key for key in values)+")")
+        with self.engine.begin() as db:
+            db.execute(statement,values)
+        with self.engine.connect() as db:
+            row=db.execute(text("SELECT revision_id,references_sha256 FROM "+table),
+                           {}).one()
+            self.assertEqual(row[0],saved["revision_id"])
+            self.assertEqual(row[1],fingerprint([ref]))
+        # Scope fixtures: a revision with no references, and a revision owned
+        # by a second question, each copied from the saved revision so every
+        # other scope conjunct still holds; only the probed conjunct fails.
+        # (UPDATE on revisions is immutable, so new rows are inserted.)
+        empty_revision="PASSAGES-"+"E"*32
+        other_revision="PASSAGES-"+"F"*32
+        revision_columns=("revision_id,revision,patient_id,case_id,origin_org,"
+            "question_id,request_key,intent_sha256,references_json,command_json,"
+            "actor,purpose")
+        with self.engine.begin() as db:
+            db.execute(text(
+                "INSERT INTO investigation.question_passage_revisions ("
+                +revision_columns+") SELECT :empty_id,(SELECT coalesce(max(revision),0)+1 FROM "
+                "investigation.question_passage_revisions WHERE question_id=:question),"
+                "patient_id,case_id,origin_org,question_id,'TASK-MANUAL-DEPENDENCY-EMPTY',"
+                "intent_sha256,'[]'::jsonb,command_json,actor,purpose FROM "
+                "investigation.question_passage_revisions WHERE revision_id=:saved"),
+                {"empty_id":empty_revision,"question":self.question,
+                 "saved":saved["revision_id"]})
+            db.execute(text(
+                "INSERT INTO investigation.question_passage_revisions ("
+                +revision_columns+") SELECT :other_id,(SELECT coalesce(max(revision),0)+1 FROM "
+                "investigation.question_passage_revisions WHERE question_id=:other),"
+                "patient_id,case_id,origin_org,:other,'TASK-MANUAL-DEPENDENCY-OTHER',"
+                "intent_sha256,references_json,command_json,actor,purpose FROM "
+                "investigation.question_passage_revisions WHERE revision_id=:saved"),
+                {"other_id":other_revision,"other":second_question,
+                 "saved":saved["revision_id"]})
+        for label,change in (
+            ("wrong case",dict(case_id="CASE-WRONG")),
+            ("wrong patient",dict(patient_id="PATIENT-WRONG")),
+            ("wrong origin",dict(origin_org="ORG-BETA")),
+            ("empty references",dict(revision_id=empty_revision)),
+            ("other question revision",dict(revision_id=other_revision)),
+        ):
+            with self.subTest(label=label),self.assertRaises(DBAPIError) as caught:
+                with self.engine.begin() as db:
+                    db.execute(statement,{**values,**change})
+            self.assertIn("OI-MANUAL-TASK-DEPENDENCY-SCOPE",str(caught.exception))
         for statement in (
             "UPDATE "+table+" SET references_sha256='"+("f"*64)+"'",
             "DELETE FROM "+table,
@@ -482,7 +540,9 @@ class FollowthroughPostgresTests(SourceVersionFixture):
         with self.assertRaises(CommandError):
             migrate(self.admin,"downgrade","0015_manual_report_context")
         with self.engine.connect() as db:
-            self.assertEqual(db.execute(text("SELECT count(*) FROM "+table)).scalar_one(),1)
+            # Merged tree holds two dependency rows (the bound manual task above plus
+            # the scope-test row for the source-only task), so the count is 2.
+            self.assertEqual(db.execute(text("SELECT count(*) FROM "+table)).scalar_one(),2)
 
     def test_stale_revision_and_changed_request_intent_cannot_write(self):
         created = self.create_task()
