@@ -290,6 +290,88 @@ stub-driven test suite; a live run proving the real model catches the
 planted misstatement is pending that billing fix, and no substitute
 model was used. No spend was incurred on the Meta budget.
 
+## Evaluation harness: planted-defect suites + M-metrics (Slice 5) — 5 November 2026
+
+Branch `program/c5-evaluation`, from main `cc713bd`. Implements
+program-plan C5 (Notion OI-09 §9): the evaluation primitive —
+verification quality is measured by code, not asserted in prose.
+
+New `src/open_intelligence/evaluation.py` is a deterministic,
+offline harness (no live model call anywhere; every report carries
+`model_calls: 0`). It runs the planted-defect fixtures from C2/C4
+through the real pipeline code — structural validation, the
+deterministic K-checks, the Skeptic wiring, T6 grouping, and the
+replay check — and computes the M-metrics of OI-09 §9.2 that are
+measurable offline: M5 planted temporal-defect recall (five planted
+defects: cite-after-snapshot, specimen-after-report,
+report-after-received, range-start-after-end, partial-date violation
+at coarser precision); M6 contradiction recall/precision (two
+planted same-specimen contradictions plus five negative controls —
+different specimens, different assays, supersession,
+non-overlapping valid time, same value); M7 staleness recall
+(superseded citation, out-of-snapshot version, changed snapshot
+hash, changed ruleset); M8 advice-language leakage (eight planted
+scope violations, target 0 kept); M10 hypothesis support (six
+hypothesis probes: invented number, invented registry id, invented
+substance, low tier with and without the limits phrase, supported
+number); M16 replay determinism (one intact run replayed three
+times, identical, plus three tamper probes — missing route, amended
+source, tampered assertion — that must each fail replay with a typed
+reason); M27 routing record completeness (exactly one
+`route.decided` before the run's agent events); M28 hypothesis
+citation recall (a deterministic prose-attribution check over
+numbers, named substances, temporal words, relation verbs, and
+hyphenated entities — it catches what K7 cannot, such as an
+unsupported relation verb on a supported number: "The lesion
+increased to 31 mm" passes K7 and fails M28). Each metric is
+reported with value, n, target, and pass/fail against the Proposed
+targets; failures are listed as limits, never hidden. The Skeptic
+wiring probe drives `run_verification` with injected stub verdicts
+(the planted "31 cm" misstatement held with AB-CONFLICT origin
+`skeptic_challenge`; "31 mm" kept on a supported verdict) — it
+proves the wiring, not the model. The human spot-check (≥30 items)
+remains a manual protocol: the harness records the spot-check set
+built from its own probe items (51 items, complete, labels pending)
+and does not perform it. Model-dependent metrics (M25 model-judged
+entailment, M26 Skeptic challenge precision, M29 citation
+precision) are listed under `not_measured` with their reason. The
+harness measures; it never gates — nothing in it decides whether a
+run, claim, or hypothesis is accepted.
+
+Two mappings are documented in the module because the Notion
+labels and the codebase differ: `SOURCES_DISAGREE` has no literal
+in the codebase, and is surfaced as a T6 contradiction group plus
+AB-CONFLICT with origin `agent_divergence`; and the §9.2 metric
+definitions are written for live runs, so the harness scores the
+same check as judgment accuracy over planted supported/unsupported
+probes — the planted-defect reading M5/M6 already use. The
+fixture context mirrors the C2/C4 fixture shapes (same version ids,
+dates, quotes, and slot values), and the vertical wiring (synonyms,
+scope patterns, condition terms, substance names) arrives as
+parameters to `fixture_context` — the check logic holds no vertical
+knowledge, and the parameters are the seam the V1 vertical
+interface will use. A `main()` runner prints the JSON report and
+exits 0 only when every metric meets its target.
+
+New `tests/test_evaluation_harness.py` (25 tests): every metric at
+its target on healthy code; the sensitivity tests (a weakened K3
+fails M5 and the suite; a weakened K4 fails M6; a weakened K7 fails
+M10 — the harness is proved able to fail); M28 catching the
+relation verb, temporal word, and unknown entity K7 misses; the
+spot-check threshold (30 complete, 29 incomplete); the report shape
+and the live-model gap recorded as a note.
+
+Local suite on the slice branch: 972 tests (947 on the C4 branch
+head plus 25 new), FAILED with 9 failures and 8 errors — the same
+17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: the live-model half of the metrics. M25, M26, and M29
+need live runs (and, for M25, human labels); the Skeptic's live
+proof is pending the same Meta billing fix as slice C4 (HTTP 402).
+No live call was attempted here and no substitute model was used.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)

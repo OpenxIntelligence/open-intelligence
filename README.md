@@ -175,6 +175,29 @@ stub-driven test suite; a live run is pending that billing fix.
 Not yet a clinical claim: the parallel role agents are a later slice;
 the single existing model call writes as A1 until the roster is wired.
 
+**Evaluation harness (Slice 5, 5 November 2026):** verification
+quality is measured by code, not asserted in prose — a deterministic,
+offline harness (`src/open_intelligence/evaluation.py`, no live model
+call) runs the planted-defect fixtures from C2/C4 through the real
+checks and computes the M-metrics of OI-09 §9.2 that are measurable
+offline: M5 temporal-defect recall, M6 contradiction recall and
+precision (surfaced as a T6 group plus `AB-CONFLICT`), M7 staleness
+recall, M8 advice-language leakage (target 0), M10 hypothesis
+support, M16 replay determinism (one intact run replayed three times,
+identical, plus tamper probes that must fail replay), M27 routing
+record completeness, and M28 hypothesis citation recall (a prose-
+attribution check over numbers, substances, temporal words, relation
+verbs, and entities — it catches what K7 cannot, such as an
+unsupported relation verb on a supported number). Each metric is
+reported with value, n, target, and pass/fail; the human spot-check
+(≥30 items) is recorded, not performed; model-dependent metrics
+(M25, M26, M29) are listed as not measured. The harness measures; it
+never gates. Local suite at the slice branch: 972 tests, with the
+same 17 pre-existing `test_pdf_intake` failures as the branch
+baseline (947 tests) and zero new failures. Unproven: the live-model
+half of the metrics (M25/M26/M29 need live runs; the Skeptic's live
+proof is pending the same Meta billing fix).
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.
