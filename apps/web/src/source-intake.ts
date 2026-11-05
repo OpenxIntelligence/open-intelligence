@@ -18,6 +18,7 @@ export function prepareSource(bytes:Uint8Array,name:string):PreparedSource{
   let text:string;
   try{text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);}catch(_){throw Error('Invalid UTF-8. No content was normalized or uploaded.');}
   if(!/^OI-SYNTHETIC-REPORT\/[12]\n/.test(text)||text.includes('\r')||text.includes('\0'))throw Error('Use the authored synthetic report format with LF line endings, no BOM or NUL. Nothing was rewritten.');
+  if(text.startsWith('OI-SYNTHETIC-REPORT/2\n')&&/[\u000b\u000c\u001c-\u001e\u0085\u2028\u2029]/.test(text))throw Error('Version 2 reports require LF line separators.');
   const encoded=new TextEncoder().encode(text);
   if(encoded.length!==bytes.length||encoded.some((v,i)=>v!==bytes[i]))throw Error('Source bytes did not round-trip unchanged.');
   const headers=text.split('\n').filter(line=>line.startsWith('Patient:'));

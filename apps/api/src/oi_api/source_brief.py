@@ -13,6 +13,7 @@ import json
 from open_intelligence.patient_registry import PatientRegistryError
 
 from .composer_preflight import SOURCE_SNAPSHOT_CONTRACT
+from .source_anchor import oncology_lines, selected_observation_anchor
 
 MAX_ENVELOPE_BYTES = 65_536
 
@@ -51,15 +52,7 @@ def render_source_brief(world: dict, question: dict, selected_source: dict, *,
                 and item["source_line"] == question["source_line"]]
     if len(matching) != 1:
         raise PatientRegistryError("Question source anchor is unavailable")
-    anchor = matching[0]
-    if selected_source != {
-        "source_id": anchor["source_id"], "document_id": anchor["document_id"],
-        "version": anchor["document_version"], "sha256": anchor["source_sha256"],
-        "line": anchor["source_line"], "finding_key": anchor["finding_key"],
-        "reported_state": anchor["reported_state"], "statement": anchor["source_statement"],
-        "kind": anchor["source_kind"], "event_date": anchor["event_date"],
-        "issued_at": anchor["issued_at"], "specimen_id": anchor["specimen_id"],
-    }:
+    if selected_source != selected_observation_anchor(matching[0]):
         raise PatientRegistryError("Brief source statement does not match canonical context")
     try:
         when = (datetime.fromisoformat(prepared_at.replace("Z", "+00:00"))
@@ -96,6 +89,7 @@ def render_source_brief(world: dict, question: dict, selected_source: dict, *,
         f'Finding key: {selected_source["finding_key"]}',
         f'Source-reported state: {selected_source["reported_state"]}',
         "Exact source statement (literal text):", selected_source["statement"],
+        *oncology_lines(selected_source),
         "", "CURRENT SOURCE-REPORTED OBSERVATIONS",
     ]
     for source in world["current_sources"]:
@@ -111,10 +105,7 @@ def render_source_brief(world: dict, question: dict, selected_source: dict, *,
                           f'Source-reported state: {finding["reported_state"]}',
                           f'Original line: {finding["source_line"]}',
                           "Exact source statement (literal text):", finding["source_statement"]]
-                if "oncology" in finding:
-                    context = finding["oncology"]
-                    lines.append(f'Source oncology role: {context["role"]}. '
-                                 f'episode: {context["episode_id"] or "unassigned"}')
+                lines.extend(oncology_lines(finding))
     by_anchor = {(item["source_id"], item["source_line"]): item
                  for item in world["observations"]}
     lines += ["", "UNRESOLVED SOURCE STATEMENTS"]
@@ -128,7 +119,10 @@ def render_source_brief(world: dict, question: dict, selected_source: dict, *,
     if not world["conflicts"]:
         lines.append("None detected by the limited same-specimen/date/key rule; not independent adjudication.")
     for conflict in world["conflicts"]:
+        first_ref = conflict["source_refs"][0]
+        finding = by_anchor[(first_ref["source_id"], first_ref["source_line"])]
         lines += [f'{conflict["finding_key"]} / {conflict["specimen_id"]} / {conflict["event_date"]}',
+                  *oncology_lines(finding),
                   "Source labels: " + " / ".join(conflict["reported_states"]),
                   "Clinical interpretation: not performed."]
         lines.extend(f'{ref["source_id"]} line {ref["source_line"]}'

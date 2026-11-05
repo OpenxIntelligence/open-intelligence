@@ -1,0 +1,11 @@
+OI-SYNTHETIC-REPORT/2
+Patient: CASE-WEB-EPISODES
+Document: DOC-ALPHA
+Type: pathology
+Event-Date: 2026-05-03
+Issued-At: 2026-05-05
+Specimen: BIOPSY-ALPHA
+Oncology-Finding: breast|primary|EP-A|reported|Fictional breast primary.
+Oncology-Finding: colon|primary|EP-B|reported|Fictional colon primary.
+Oncology-Finding: nodule|metastasis|?|indeterminate|Fictional nodule; origin unclear.
+Finding: generic|pending|Awaiting a fictional report.

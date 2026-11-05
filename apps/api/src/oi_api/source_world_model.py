@@ -19,6 +19,16 @@ UNRESOLVED = frozenset((
 ))
 
 
+def source_comparison_key(observation: dict) -> tuple[str, str, str, str, str] | None:
+    """Return the source-declared scope shared by comparable findings."""
+    specimen = observation["specimen_id"]
+    context = observation.get("oncology")
+    if specimen is None or (context is not None and context["episode_id"] is None):
+        return None
+    return (specimen, observation["event_date"], observation["finding_key"],
+            context["episode_id"] if context else "", context["role"] if context else "")
+
+
 def project_source_world_model(index: dict, laboratory_observations: list[dict] | tuple = ()) -> dict:
     """Project a single transactionally read source index without a second ledger.
 
@@ -150,14 +160,9 @@ def project_source_world_model(index: dict, laboratory_observations: list[dict] 
         o["observation_reference"], o["source_id"]))
     grouped: dict[tuple[str, str, str, str, str], list[dict]] = defaultdict(list)
     for item in observations:
-        context = item.get("oncology")
-        if item["specimen_id"] is None or (context and context["episode_id"] is None):
-            continue
-        # Generic findings retain the legacy rule. Compare attributed findings
-        # only within the same source-declared tumor and role.
-        key = (item["specimen_id"], item["event_date"], item["finding_key"],
-               context["episode_id"] if context else "", context["role"] if context else "")
-        grouped[key].append(item)
+        key = source_comparison_key(item)
+        if key is not None:
+            grouped[key].append(item)
     conflicts = []
     for (specimen, event_date, finding_key, _, _), items in sorted(grouped.items()):
         states = {item["reported_state"] for item in items}

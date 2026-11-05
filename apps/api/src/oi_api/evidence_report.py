@@ -12,6 +12,8 @@ import unicodedata
 from open_intelligence.patient_registry import PatientRegistryError
 from open_intelligence.rights import permitted, validate_content_item
 
+from .source_anchor import oncology_lines
+
 MAX_RESPONSE_BYTES = 524288
 MAX_BODY_BYTES = 131072
 
@@ -94,6 +96,7 @@ def render_evidence_report(snapshot: dict, *, renderer: str = "oi.h1-evidence-te
         f"Event: {source['event_date']} | Issued: {source['issued_at']} | Specimen: {_quoted(source['specimen_id'] or 'not specified')}",
         f"Source-reported state: {source['reported_state']}",
         f"Literal source statement: {_quoted(source['statement'])}",
+        *oncology_lines(source),
     ]
     if renderer == 'oi.h1-evidence-text/3':
         context=value['manual_passages']

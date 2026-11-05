@@ -130,8 +130,10 @@ def parse_report(raw: bytes, *, allow_oncology: bool = False) -> ParsedReport:
         raise InvalidInput("Report must be UTF-8") from None
     if "\x00" in text or "\r" in text:
         raise InvalidInput("NUL and CR characters are not supported in this report format")
+    oncology_format = allow_oncology and text.partition("\n")[0] == "OI-SYNTHETIC-REPORT/2"
+    if oncology_format and re.search(r"[\v\f\x1c-\x1e\x85\u2028\u2029]", text):
+        raise InvalidInput("Version 2 reports require LF line separators")
     lines = text.splitlines()
-    oncology_format = allow_oncology and bool(lines) and lines[0] == "OI-SYNTHETIC-REPORT/2"
     if not oncology_format and (not lines or lines[0] != "OI-SYNTHETIC-REPORT/1"):
         raise InvalidInput("Unsupported synthetic report format" if allow_oncology else "Only OI-SYNTHETIC-REPORT/1 is supported")
     fields: dict[str, str] = {}

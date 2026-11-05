@@ -78,6 +78,12 @@ class OncologyFindingTests(unittest.TestCase):
         self.assertEqual(len(world["conflicts"]), 1)
         self.assertEqual(world["conflicts"][0]["clinical_interpretation"], "not_performed")
 
+    def test_non_lf_separator_cannot_create_a_second_attribution_on_one_source_line(self):
+        for separator in ("\v", "\f", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"):
+            raw = (HEADER + LINES.replace("primary.\nOncology-Finding:", "primary." + separator + "Oncology-Finding:", 1)).encode()
+            with self.subTest(separator=repr(separator)), self.assertRaises(InvalidInput):
+                parse_report(raw, allow_oncology=True)
+
     def test_invalid_attribution_is_rejected_without_guessing(self):
         for bad in (LINES.replace("EP-A", ""), LINES.replace("EP-B", "EP-A/EP-B"),
                     LINES.replace("EP-A", "UNKNOWN"),

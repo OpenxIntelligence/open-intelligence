@@ -273,6 +273,8 @@ class PostgresQuestionEvidence:
                   "sha256": m["sha256"], "line": f.line, "finding_key": f.key,
                   "reported_state": f.state, "statement": f.quote, "kind": m["kind"],
                   "event_date": m["event_date"], "issued_at": m["issued_at"], "specimen_id": m["specimen_id"]}
+        if f.oncology is not None:
+            actual["oncology"] = {"role": f.oncology.role, "episode_id": f.oncology.episode_id}
         if actual != source:
             raise ValueError()
 

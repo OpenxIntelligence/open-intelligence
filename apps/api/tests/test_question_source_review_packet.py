@@ -10,7 +10,6 @@ import unittest
 from sqlalchemy import text
 from http_support import running_server
 from oi_api.app import create_app
-from oi_api.source_world_model import project_source_world_model
 from test_patients import TOKEN_A, TOKEN_B, request
 from test_source_questions import SourceQuestionHTTPTests as QuestionFixture, QUESTION
 from test_source_versions import AMENDED
@@ -138,6 +137,47 @@ class SourceQuoteReviewPacketHTTPTests(QuestionFixture):
             self.assertFalse(packet["related_statements_truncated"])
             self.assertFalse(packet["medical_interpretation_performed"])
             self.assertFalse(packet["clinical_approval"])
+
+    def test_packet_keeps_only_explicitly_compatible_oncology_quotes(self):
+        # The key, specimen and dates agree across every source. Only the
+        # authored oncology role and episode distinguish their attributions.
+        primary = {"role": "primary", "episode_id": "EP-A"}
+        unassigned = {"role": "metastasis", "episode_id": None}
+        contexts = {
+            "PRIMARY": primary, "MATCH": primary, "OTHER": dict(primary, episode_id="EP-B"),
+            "DEPOSIT": dict(primary, role="metastasis"),
+            "UNKNOWN": unassigned, "UNKNOWN-TWO": unassigned,
+            "GENERIC": None, "GENERIC-TWO": None,
+        }
+        with running_server(create_app(self.settings)) as base:
+            pid = self.setup_case(base)
+            sources = {}
+            for label, context in contexts.items():
+                finding = "Finding: marker|reported|"
+                if context is not None:
+                    finding = ("Oncology-Finding: marker|" + context["role"] + "|"
+                               + (context["episode_id"] or "?") + "|reported|")
+                raw = ("OI-SYNTHETIC-REPORT/2\nPatient: CASE-ALPHA\nDocument: DOC-" + label
+                       + "\nType: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-11\n"
+                       + "Specimen: SPECIMEN-ONE\n" + finding + "Authored fictional statement.\n")
+                code, result, _ = self.ingest(base, pid, raw)
+                self.assertEqual(code, 201, result)
+                sources[label] = result["source_id"]
+            for label, expected in (("PRIMARY", ["MATCH"]), ("UNKNOWN", []),
+                                    ("GENERIC", ["GENERIC-TWO"])):
+                with self.subTest(label=label):
+                    qid, _ = self.saved(base, pid, source=sources[label], key="Q-" + label)
+                    status, packet, _ = self.packet(base, pid, qid)
+                    self.assertEqual(status, 200, packet)
+                    selected, related = packet["selected_statement"], packet["related_statements"]
+                    self.assertEqual(selected["source_id"], sources[label])
+                    self.assertEqual(packet["related_statement_count_total"], len(expected))
+                    self.assertEqual([q["source_id"] for q in related], [sources[x] for x in expected])
+                    for quote in [selected, *related]:
+                        if contexts[label] is None:
+                            self.assertNotIn("oncology", quote)
+                        else:
+                            self.assertEqual(quote["oncology"], contexts[label])
 
     def test_independent_packet_permission_and_patient_case_scope_fail_closed(self):
         with running_server(create_app(self.settings)) as base:

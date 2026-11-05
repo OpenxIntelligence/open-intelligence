@@ -90,7 +90,7 @@ function connected(options={}){
  const s=new RegistrySession(async(url,init)=>{
   calls.push([url,init]);
   if(url.endsWith('/case-bindings'))return response(bindings());
-  if(url===path+'/world-model')return response(world());
+  if(url===path+'/world-model')return response(options.world??world());
   if(url===path+'/composer/source-preflight'){
    const question=JSON.parse(init.body).question;
    return response(prepared(question,question===QUESTION?'c'.repeat(64):'b'.repeat(64)));
@@ -123,16 +123,78 @@ test('legacy snapshot provenance cannot be promoted by matching hashes but remai
   source_context_state:'source_reassessment_required'};
  // Every anchor and content hash matches, but this is not the canonical contract.
  const promoted=packet(legacy);
- await assert.rejects(decodeQuestionSourcePacket(promoted,legacy,CASE,PID,'a'.repeat(64)));
+ await assert.rejects(decodeQuestionSourcePacket(promoted,legacy,CASE,PID,world()));
  const historical={...promoted,source_context_state:'source_reassessment_required',
   selected_statement:null,review_next_step:'refresh_source_and_create_new_question'};
  const stableFields={...historical};
  delete stableFields.packet_sha256;delete stableFields.source_access_receipt_id;
  historical.packet_sha256=hash(stable(stableFields));
- const decoded=await decodeQuestionSourcePacket(historical,legacy,CASE,PID,'a'.repeat(64));
+ const decoded=await decodeQuestionSourcePacket(historical,legacy,CASE,PID,world());
  assert.equal(decoded.original_anchor.source_snapshot_contract,legacy.source_snapshot_contract);
  assert.equal(decoded.selected_statement,null);
  assert.equal(decoded.source_context_state,'source_reassessment_required');
+});
+
+const primary={role:'primary',episode_id:'EP-A'};
+const metastasis={role:'metastasis',episode_id:'EP-A'};
+const unassigned={role:'metastasis',episode_id:null};
+function quoteWorld(left,right){
+ const w=world(),secondId='SRC-'+'B'.repeat(32);
+ const first={...w.observations[0],reported_state:'reported',...(left?{oncology:left}:{})};
+ const second={...w.observations[0],source_id:secondId,document_id:'DOC-TWO',source_sha256:'e'.repeat(64),
+  reported_state:'reported',...(right?{oncology:right}:{})};
+ return {...w,observations:[first,second],unresolved_refs:[],
+  current_sources:[...w.current_sources,{...w.current_sources[0],source_id:secondId,
+   document_id:second.document_id,sha256:second.source_sha256}],
+  summary:{...w.summary,current_sources:2,current_observations:2,unresolved_observations:0}};
+}
+function quotedPacket(w,mutate=()=>{}){
+ const p=packet(item());
+ p.selected_statement=structuredClone(w.observations[0]);
+ p.related_statements=[structuredClone(w.observations[1])];
+ p.related_statement_count_total=1;p.current_source_count=2;p.current_observation_count=2;
+ mutate(p);
+ const {packet_sha256,source_access_receipt_id,...fields}=p;
+ return {...p,packet_sha256:hash(stable(fields))};
+}
+test('source packet accepts attributed matches and rejects forged episode associations without a loaded world',async()=>{
+ for(const [left,right,compatible] of [
+  [primary,primary,true],[metastasis,metastasis,true],[null,null,true],
+  [primary,{...primary,episode_id:'EP-B'},false],[primary,metastasis,false],
+  [unassigned,unassigned,false],[unassigned,metastasis,false],[metastasis,unassigned,false],
+  [null,primary,false],[primary,null,false],
+ ]){
+  const p=quotedPacket(quoteWorld(left,right)),decoding=decodeQuestionSourcePacket(p,item(),CASE,PID);
+  if(!compatible){await assert.rejects(decoding);continue;}
+  const read=await decoding;
+  assert.deepEqual(read.selected_statement.oncology,left??undefined);
+  assert.deepEqual(read.related_statements[0].oncology,right??undefined);
+ }
+ const standalone=quotedPacket(quoteWorld(unassigned,unassigned),p=>{
+  p.related_statement_count_total=0;p.related_statements=[];
+ });
+ assert.deepEqual((await decodeQuestionSourcePacket(standalone,item(),CASE,PID)).selected_statement.oncology,unassigned);
+ for(const invalid of [{role:'primary'},null,{...primary,episode_id:'?'},{...primary,origin:'inferred'}]){
+  const malformed=quotedPacket(quoteWorld(primary,primary),p=>{p.selected_statement.oncology=invalid;});
+  await assert.rejects(decodeQuestionSourcePacket(malformed,item(),CASE,PID));
+ }
+});
+test('loaded source observations bind packet attributions even when the packet digest was recomputed',async()=>{
+ const w=quoteWorld(primary,primary);
+ for(const change of [
+  null,
+  p=>{delete p.selected_statement.oncology;delete p.related_statements[0].oncology;},
+  p=>{for(const q of [p.selected_statement,...p.related_statements])q.oncology={...primary,episode_id:'EP-B'};},
+  p=>{for(const q of [p.selected_statement,...p.related_statements])q.oncology=metastasis;},
+  p=>{p.related_statements[0].source_statement='An altered fictional quotation.';},
+  p=>{p.related_statement_count_total=0;p.related_statements=[];},
+ ]){
+  const {s}=await ready({world:w,packet:()=>response(quotedPacket(w,change??undefined))});
+  await s.loadQuestionSourcePacket(QID);
+  assert.equal(s.snapshot().sourceQuotePhase,change?'error':'ready');
+  if(change)assert.equal(s.snapshot().sourceQuotePacket,null);
+  else assert.deepEqual(s.snapshot().sourceQuotePacket.selected_statement.oncology,primary);
+ }
 });
 
 test('authored question reaches exact source inspection and brief without being rewritten or approved',async()=>{

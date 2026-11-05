@@ -146,3 +146,10 @@ test('Records opens an exact-byte version 2 original and retains explicit unknow
  assert.throws(()=>parseSourceIndex({...index,source_reported_assertions:[{...finding,
    oncology:{role:'metastasis',episode_id:'UNKNOWN'}}]},PID,CID));
 });
+
+test('version 2 preview rejects ambiguous line separators inside a finding',()=>{
+ const typed=RAW.replace('/1\n','/2\n').replace('Finding: marker|','Oncology-Finding: marker|primary|EP-A|');
+ for(const separator of ['\u000b','\u000c','\u001c','\u001d','\u001e','\u0085','\u2028','\u2029']){
+  assert.throws(()=>prepareSource(bytes(typed.trimEnd()+separator+'Oncology-Finding: other|primary|EP-B|reported|Fictional.\n'),'report.txt'),/LF line separators/);
+ }
+});

@@ -1,3 +1,4 @@
+import {SourceOncologyLabel} from './source-oncology-label';
 import type {WorldObservation} from './source-world-model';
 import {LaboratoryQuestionPanel,SavedLaboratoryQuestions} from './laboratory-question-panel';
 import {questionSaveBlocksSourceChange} from './source-questions-view.js';
@@ -24,6 +25,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
   const loading=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
   const model=state.worldModel;
   const laboratoryByRef=new Map(model?.laboratory_observations.map(item=>[item.source_id+':'+item.observation_reference,item])??[]);
+  const contextsByLine=new Map(model?.observations.map(item=>[item.source_id+':'+item.source_line,item.oncology])??[]);
   const episodes=new Map<string|null,WorldObservation[]>();
   const ordinary:WorldObservation[]=[];
   for(const item of model?.observations??[]){
@@ -36,7 +38,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
   const statementList=(items:readonly WorldObservation[])=>
     <ul className="world-observations">{items.map(item=><li key={item.source_id+':'+item.source_line} data-testid="world-observation">
       <p><strong>{item.finding_key}</strong> · <span data-testid="world-reported-state">{item.reported_state}</span> · {item.event_date}</p>
-      {item.oncology&&<p>Source-reported role · {item.oncology.role}</p>}
+      <SourceOncologyLabel context={item.oncology} state={item.reported_state}/>
       <blockquote data-testid="world-statement">{item.source_statement}</blockquote>
       <small>Not clinically established · {item.document_id} v{item.document_version} · <code>{item.source_id}</code> · line {item.source_line}</small>
       <div className="source-context-action"><button type="button" data-testid="composer-preflight"
@@ -133,6 +135,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
           <h3 id="source-disagreements">Unresolved source disagreements</h3>
           <p>Conflicting source-reported states for the same documented specimen, date and finding; no clinical adjudication is performed.</p>
           <ul>{model.conflicts.map(item=><li key={item.source_refs[0].source_id+':'+item.source_refs[0].source_line} data-testid="world-conflict">
+            <SourceOncologyLabel context={contextsByLine.get(item.source_refs[0].source_id+':'+item.source_refs[0].source_line)}/>
             <strong>{item.finding_key}</strong> · specimen {item.specimen_id} · {item.event_date} · reported states {item.reported_states.join(' / ')}
             <p>{item.source_refs.map(ref=><code key={ref.source_id+':'+ref.source_line}>{ref.source_id} line {ref.source_line}; </code>)}</p>
           </li>)}</ul>

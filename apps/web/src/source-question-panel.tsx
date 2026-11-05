@@ -1,3 +1,4 @@
+import {SourceOncologyLabel} from './source-oncology-label';
 import type {RegistrySession,ViewState} from './registry-client';
 import {canPrepareSourceBrief,downloadSourceBrief} from './source-brief';
 import {FollowthroughCreate,FollowthroughPanel} from './followthrough-panel';
@@ -46,6 +47,7 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
      <h3 id="composer-context-heading">Prepared source context</h3>
      <p><strong>Source-linked question:</strong>{' '}
        {state.composerPreview.question}</p>
+     <SourceOncologyLabel context={state.composerPreview.selected_source.oncology} state={state.composerPreview.selected_source.reported_state}/>
      <blockquote>{state.composerPreview.selected_source.statement}</blockquote>
      <p><strong>Exact original:</strong>{' '}
        <code>{state.composerPreview.selected_source.source_id}</code>,
@@ -140,7 +142,8 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
         aria-labelledby="source-brief-heading">
       <h3 id="source-brief-heading">Source-linked question brief</h3>
       <p><strong>Saved question:</strong> {brief.question.question}</p>
-      <blockquote>{brief.selected_source.statement}</blockquote>
+      <SourceOncologyLabel context={brief.selected_source.oncology} state={brief.selected_source.reported_state}/>
+     <blockquote>{brief.selected_source.statement}</blockquote>
       <p><strong>Source-reported state:</strong> {brief.selected_source.reported_state} ·
         {brief.selected_source.event_date} · issued {brief.selected_source.issued_at}</p>
       <p>Fictional source context only. Biomedical evidence, AI analysis and clinical review are not included.</p>
@@ -178,6 +181,7 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
     <p><strong>Question record:</strong> <code>{state.sourceQuotePacket.question_id}</code></p>
     {state.sourceQuotePacket.selected_statement?<div>
      <p><strong>Source-reported statement, exactly quoted:</strong></p>
+     <SourceOncologyLabel context={state.sourceQuotePacket.selected_statement.oncology} state={state.sourceQuotePacket.selected_statement.reported_state}/>
      <blockquote data-testid="source-quote-literal">{state.sourceQuotePacket.selected_statement.source_statement}</blockquote>
      <p>Reported state: <strong>{state.sourceQuotePacket.selected_statement.reported_state}</strong>
        {' '}· Document <code>{state.sourceQuotePacket.selected_statement.document_id}</code>
@@ -190,7 +194,8 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
        <p>No other current same-specimen/date/finding statements were returned. This is not an exhaustive evidence search.</p>:
        <ul data-testid="source-quote-related">{state.sourceQuotePacket.related_statements.map(q=>
         <li key={q.source_id+':'+q.source_line}>
-         <blockquote>{q.source_statement}</blockquote>
+         <SourceOncologyLabel context={q.oncology} state={q.reported_state}/>
+     <blockquote>{q.source_statement}</blockquote>
          <p>{q.reported_state} · <code>{q.source_id}</code> line {q.source_line}</p>
         </li>)}</ul>}
      {state.sourceQuotePacket.related_statements_truncated&&

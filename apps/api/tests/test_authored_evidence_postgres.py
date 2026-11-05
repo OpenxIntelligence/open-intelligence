@@ -17,7 +17,7 @@ from oi_api.app import create_app
 from oi_api.config import Settings
 from test_canonical_review_flow import create_question
 from test_patients import TOKEN_A, TOKEN_B, request
-from test_source_versions import AMENDED, DIFFERENT, SourceVersionFixture
+from test_source_versions import AMENDED, DIFFERENT, ORIGINAL, SourceVersionFixture
 
 
 PREFIX = "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}"
@@ -103,11 +103,11 @@ class EvidenceFixture(SourceVersionFixture):
     def prefix(patient, question, case="CASE-ALPHA"):
         return f"/v1/patients/{patient}/cases/{case}/questions/{question}"
 
-    def start(self, base):
+    def start(self, base, *, raw=ORIGINAL, line=8):
         patient = self.setup_case(base)
-        status, source, _ = self.ingest(base, patient)
+        status, source, _ = self.ingest(base, patient, raw)
         self.assertEqual(status, 201, source)
-        question, _ = create_question(self, base, patient, source["source_id"])
+        question, _ = create_question(self, base, patient, source["source_id"], line=line)
         return patient, question, source["source_id"]
 
     def packet(self, base, patient, question, *, case="CASE-ALPHA"):
@@ -167,8 +167,8 @@ class EvidenceFixture(SourceVersionFixture):
                        token=TOKEN_A, body={"synthetic": True, "request_key": key,
                                            "reason": WITHDRAW_REASON})
 
-    def support_report(self, base):
-        patient, question, source = self.start(base)
+    def support_report(self, base, *, raw=ORIGINAL, line=8):
+        patient, question, source = self.start(base, raw=raw, line=line)
         status, imported, _ = self.imported(base, patient, question)
         self.assertEqual(status, 201, imported)
         evidence_id = imported["evidence_id"]
@@ -345,6 +345,35 @@ class QuestionEvidenceLifecycleTests(EvidenceFixture):
             self.assertNotEqual(new_report["report_id"], state["report_id"])
             self.assertIn("leaves the invented Aster marker indeterminate",
                           self.read_report(base, p, q, new_report["report_id"])[1]["body"])
+
+    def test_amended_episode_is_not_substituted_in_saved_brief_or_preserved_report(self):
+        from test_oncology_findings import HEADER, LINES
+
+        self.creds[0]["actions"].append("source_brief_export")
+        self.write()
+        with running_server(create_app(self.settings)) as base:
+            state = self.support_report(base, raw=HEADER + LINES, line=10)
+            p, q, original = state["patient"], state["question"], state["prepared"]
+            source = original["snapshot"]["selected_source"]
+            self.assertEqual(source["oncology"], {"role": "metastasis", "episode_id": None})
+            self.assertEqual((source["source_id"], source["version"], source["line"]), (state["source"], 1, 10))
+            saved = original["snapshot"]["question"]
+            intent = dict(synthetic=True, source_snapshot_contract=saved["source_snapshot_contract"],
+                          expected_source_snapshot_sha256=saved["source_snapshot_sha256"],
+                          expected_preflight_sha256=saved["preflight_sha256"])
+            path = self.prefix(p, q) + "/brief"
+            status, brief, _ = request(base, path, token=TOKEN_A, body=intent)
+            self.assertEqual(status, 200, brief)
+            self.assertEqual(brief["selected_source"], source)
+            self.assertIn("Source oncology role: metastasis. episode: unassigned", original["body"])
+            amended = HEADER + "Amends: DOC-ALPHA@1\n" + LINES.replace("metastasis|?", "metastasis|EP-B")
+            self.assertEqual(self.ingest(base, p, amended)[0], 201)
+            self.assertEqual(request(base, path, token=TOKEN_A, body=intent)[0], 409)
+            status, historical, _ = self.read_report(base, p, q, state["report_id"])
+            self.assertEqual(status, 200, historical)
+            self.assertEqual(historical["state"], "historical_reassessment_required")
+            for key in ("body", "snapshot", "body_sha256", "snapshot_sha256"):
+                self.assertEqual(historical[key], original[key])
 
     def test_source_amendment_keeps_old_report_historical_and_new_question_can_reuse_case_evidence(self):
         with running_server(create_app(self.settings)) as base:

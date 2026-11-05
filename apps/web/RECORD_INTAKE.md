@@ -41,6 +41,10 @@ Oncology-Finding: nodule|metastasis|?|indeterminate|The fictional report describ
 
 Use the same episode identifier across documents only when the author explicitly attributes those findings to the same episode in this case. Ordinary `Finding` lines also work in version 2 and have no episode attribution. Journey groups current typed findings and shows their original status, quote, document version and line. An amendment can change attribution while the previous original remains available in Records. The role is an authored label. This workflow does not extract diagnoses from prose, establish a clinical diagnosis, or reconcile identifiers from external systems.
 
+To exercise the amendment, import [the first fictional report](../../examples/synthetic/oncology-episodes-v1.txt) and then [its amendment](../../examples/synthetic/oncology-episodes-v2.txt) in an authorized binding for `CASE-WEB-EPISODES`. In Journey, the two primaries stay under EP-A and EP-B. The nodule moves from “Episode unassigned” to EP-B and stays indeterminate. Open the nodule’s source-only question context to inspect its attribution. Records can reopen both original versions.
+
+Question review compares findings across sources only when their specimen, date, finding key, episode and role agree. Findings with an unassigned episode are excluded from these comparisons. Source briefs and evidence reports carry the selected line’s role, episode and reported state.
+
 ## Limits and evidence
 
 Inputs are strict UTF-8/LF, no BOM/NUL, 1–65536 original bytes; escaped JSON must also fit the unchanged 72000-byte API envelope. Unsupported PDFs/scans require separately qualified integration. A wrong-case original goes to the existing quarantine, not to clinical assertions. Source statements and review remain `not_established`; user acknowledgments are not professional signatures or permission proof. Current data is as checked, not continuous pushed authorization.
