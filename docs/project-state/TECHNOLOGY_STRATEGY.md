@@ -237,3 +237,45 @@ approve automatic acquisition/adoption. Keep proposed experiments explicitly
 unexecuted until the relevant capability and artifact gates are met. No new
 service, model, package, outreach, real-person data acquisition or schedule was
 created by this research.
+
+
+## Six-candidate evidence follow-up — 5 November 2026
+
+This bounded update extends the existing candidate records for OI-004/006/007/009/013.
+The repository baseline is main `57b8fd9f2b201ab46d338743aaab9f3f980b8a59`;
+previous dated checkpoints above keep their historical scope. Official page contents
+were read directly on 5 November, with the older OHIF 3.12.18 observation available
+only through the earlier indexed release evidence. This review does not change H1
+software, dependencies, adoption decisions or runtime acceptance.
+
+The [existing rights-evidence record](../research/agentic_infrastructure_license_evidence_2026-11-04.json)
+retains its 16 original license snapshots, adds five candidate observations and
+extends the existing Docling entry. Its original input counts, review date and main
+revision remain historical. No new full source SHA or artifact digest was established;
+short commits below are observed labels, not immutable acceptance pins. Moving
+branch license/manifest contents do not prove the contents of a released artifact.
+
+| Candidate / observed target | New primary-source evidence | Research use and specific HOLD |
+| --- | --- | --- |
+| UCUM-LHC **8.0.1** | [Changelog](https://github.com/lhncbc/ucum-lhc/blob/master/CHANGELOG.md): 8.0.0 adds structured failure codes; 8.0.1 corrects slope conversion through a local definition change. [Notice](https://github.com/lhncbc/ucum-lhc/blob/master/LICENSE.md) retains BSD-based and applicable UCUM/LOINC conditions. | Fictional unit mapping with original value/unit/version preserved. HOLD package/digest, definition files, dependencies and content terms; refuse missing substance context. |
+| HL7 FHIR Validator **7.0.4**, short `26ac536` | [Release page](https://github.com/hapifhir/org.hl7.fhir.core/releases), 2 November, supersedes the earlier indexed 7.0.1 observation. Changes affect extension selection and terminology routing. [Upstream license](https://github.com/hapifhir/org.hl7.fhir.core/blob/master/LICENSE.txt): Apache-2.0. | Independent selected-profile fictional R4 harness. HOLD JAR/digest, dependencies, profile/terminology rights, network/cache behavior and evaluation. Existing first-party patient/source ownership remains authoritative. |
+| PDF.js **6.5.438**, short `0a41533` | [Release page](https://github.com/mozilla/pdf.js/releases), 1 November, confirms the prior screened version. [Code license](https://github.com/mozilla/pdf.js/blob/master/LICENSE): Apache-2.0. | Fictional original/amendment viewing with stable page locators. HOLD `pdfjs-dist`/worker, fonts/CMaps/WebAssembly, dependency/notice closure, content rights and access/context-change evaluation. |
+| Docling **2.148.0 observed on moving main** | [Manifest](https://github.com/docling-project/docling/blob/main/packages/docling/pyproject.toml) identifies MIT and `docling-slim[standard]==2.148.0`; `docling-slim` supplies the module. [README](https://github.com/docling-project/docling/blob/main/README.md) separates model licenses. This is not a verified release pin. | Compare fictional extraction proposals against the existing path, retaining hash/page/box/span anchors. HOLD selected packages/extras, native parsers, weights/tokenizers, downloads and content rights. |
+| highdicom **0.28.2**, short `847fea5` | [Release page](https://github.com/ImagingDataCommons/highdicom/releases), 6 October; [manifest](https://github.com/ImagingDataCommons/highdicom/blob/master/pyproject.toml) declares MIT and requires `pyjpegls>=1.0.0` alongside pydicom, NumPy and Pillow. | Fictional DICOM structured-report/segmentation foundations. HOLD wheel/digest and required native-codec/optional-extra closure plus geometry/UID/provenance evaluation. Existing pydicom core-wheel evidence does not cover highdicom. |
+| OHIF **3.13.14**, short `e4cd861` | [Release page](https://github.com/OHIF/Viewers/releases), 3 November, identifies a security-focused stable release separately from 3.14 betas. [Moving upstream license](https://github.com/OHIF/Viewers/blob/master/LICENSE): MIT. Earlier 3.12.15 and indexed 3.12.18/adm-zip-fix observations remain historical. | Fictional viewer through existing patient/source authority. HOLD exact release license/build, extensions/assets/dependencies, security and DICOMweb access/recovery evaluation. No PACS adoption or clinical qualification. |
+
+**Decision semantics:** all six remain **Research**, with the named artifacts or
+uses on **Hold**. **Integrate** requires a separately accepted adapter and exact
+artifact/evaluation evidence; **Adopt** and **Fork** are not selected. An unresolved
+pin alone does not **Reject** the whole project. **Extend/Build** applies to a
+first-party capability proposal, not to automatic upstream acquisition.
+
+A bounded first-party computation proposal is a comparison-eligibility receipt on
+the existing laboratory/source/question contracts: bind two observation IDs and
+exact source versions; preserve original decimal strings and units; require
+source-established analyte, specimen/assay, numeric and time context; record why
+missingness, unit mismatch, changed context or superseded sources prevent the
+specified computation. An amendment must invalidate the affected receipt. This
+proposal requires separate implementation review by the existing OI-007/OI-009
+owners, with no implicit unit conversion or claim of clinical comparability.
+No new ledger or dependency is selected by this research.
