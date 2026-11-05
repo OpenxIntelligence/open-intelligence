@@ -172,8 +172,24 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     cd.wait("Boolean(document.querySelector('[data-testid=passage-question-draft]'))",'fresh saved PDF passage opens question draft')
     value('[data-testid=passage-question-draft]','What would resolve this pending fictional result?')
     assert cd.evaluate("""document.querySelector('section[aria-label="Draft a passage question"] blockquote').textContent""")==initial_revision['findings'][0]['quote']
+    cd.evaluate("""(()=>{const original=window.fetch;window.__manualQuestionWrites=[];window.fetch=async(input,init)=>{
+      const tracked=String(input).endsWith('/questions')&&init?.method==='POST';
+      if(tracked)window.__manualQuestionWrites.push(init.body);
+      const response=await original(input,init);
+      if(tracked&&window.__manualQuestionWrites.length===1&&response.ok)throw Error('Fictional lost response');
+      return response;};window.__restoreQuestionFetch=()=>{window.fetch=original};})()""")
     click('Save passage question')
-    cd.wait("!document.querySelector('[data-testid=passage-question-draft]')",'question write confirmed')
+    cd.wait("document.querySelector('[data-testid=save-passage-question]')?.textContent==='Retry exact save'&&!document.querySelector('[data-testid=save-passage-question]').disabled",'question save recovery offered')
+    click('Refresh reviewed documents')
+    cd.wait("!document.querySelector('[data-testid=passage-question-draft]')",'question panel unmounted')
+    cd.wait("""[...document.querySelectorAll('button')].some(b=>b.textContent==='WEB-PDF · v1 · current'&&!b.disabled)""",'refreshed document list ready')
+    click('WEB-PDF · v1 · current')
+    cd.wait("""[...document.querySelectorAll('button')].some(b=>b.textContent==='Retry exact save'&&!b.disabled)""",'recovery after reopening original')
+    click('Retry exact save')
+    cd.wait("""document.querySelector('section[aria-label="Draft a passage question"]')?.textContent.includes('Question saved.')""",'question write recovered')
+    attempts=cd.evaluate('window.__manualQuestionWrites')
+    assert len(attempts)==2 and attempts[0]==attempts[1]
+    cd.evaluate('window.__restoreQuestionFetch()')
     click('Open saved passage questions')
     cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('What would resolve this pending fictional result?')",'saved question reopened')
     original_question,=operator(prefix+'/'+first+'/questions')['questions']

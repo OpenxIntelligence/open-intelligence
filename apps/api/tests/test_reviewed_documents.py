@@ -177,3 +177,48 @@ class ReviewedDocumentTests(SourceVersionFixture):
             self.assertEqual(caught.exception.code,404)
             self.assertNotIn(b'Marker',caught.exception.read());caught.exception.close()
             self.assertEqual(self.counts(),before)
+
+    def test_reviewed_question_requires_separate_grants_and_preserves_historical_anchor(self):
+        from alembic.util.exc import CommandError
+        from oi_api.migrate import migrate
+        with running_server(create_app(self.settings)) as base:
+            patient=self.setup_case(base)
+            saved=request(base,self.basepath(patient),token=TOKEN_A,body=self.prepared(base,patient))[1]
+            path=self.basepath(patient)+'/'+saved['source_id']
+            rev=saved['annotation_revision_id']
+            selected=request(base,path+'/selections/'+rev+'/marker',token=TOKEN_A)[1]
+            command=dict(synthetic=True,request_key='MANUAL-QUESTION-ONE',revision_id=rev,
+                         selection_key='marker',anchor_sha256=selected['anchor_sha256'],
+                         question='Which fictional report describes the pending marker?')
+            endpoint=path+'/questions'
+            self.assertEqual(request(base,endpoint,token=TOKEN_A,body=command)[0],404)
+            self.creds[0]['actions'].append('question_create');self.write()
+            status,receipt,_=request(base,endpoint,token=TOKEN_A,body=command)
+            self.assertEqual(status,201,receipt)
+            self.assertEqual(request(base,endpoint,token=TOKEN_A)[0],404)
+            self.creds[0]['actions'].append('question_read');self.write()
+            self.assertEqual(request(base,endpoint,token=TOKEN_B)[0],404)
+            with self.assertRaises(CommandError):
+                migrate(self.admin,'downgrade','0018_laboratory_questions')
+            with self.assertRaisesRegex(DBAPIError,'OI-LAB-QUESTION-ANCHOR-CONTRACT'), self.engine.begin() as conn:
+                conn.execute(text("INSERT INTO investigation.laboratory_question_anchors(question_id,source_id,observation_reference) VALUES (:qid,:sid,'Observation/OTHER')"),
+                             dict(qid=receipt['question_id'],sid=saved['source_id']))
+            for statement in ('DELETE FROM investigation.reviewed_question_anchors',
+                              'UPDATE investigation.reviewed_question_anchors SET manual_key=manual_key'):
+                with self.assertRaises(DBAPIError), self.engine.begin() as conn:
+                    conn.execute(text(statement))
+            correct=dict(synthetic=True,request_key='MANUAL-CORRECTION',expected_revision_id=rev,
+                         confirmed_case_id='CASE-ALPHA',expected_sha256=selected['anchor']['original_sha256'],
+                         reason='Select a different fictional passage',
+                         findings=[dict(key='next',state='reported',quote='Second passage.',line=3)])
+            self.assertEqual(request(base,path+'/annotations',token=TOKEN_A,body=correct)[0],201)
+            self.assertEqual(request(base,endpoint,token=TOKEN_A,body=command)[1],dict(question_id=receipt['question_id'],duplicate=True))
+            self.assertEqual(request(base,endpoint,token=TOKEN_A,body={**command,'request_key':'STALE-NEW'})[0],409)
+            status,packet,_=request(base,endpoint,token=TOKEN_A)
+            self.assertEqual(status,200)
+            question,=packet['questions']
+            self.assertEqual(question['selection']['anchor'],selected['anchor'])
+            self.assertEqual(question['selection']['selection_state'],'selection_reassessment_required')
+            self.creds[0]['actions'].remove('source_original_read');self.write()
+            self.assertEqual(request(base,endpoint,token=TOKEN_A)[0],404)
+            self.assertEqual(request(base,endpoint,token=TOKEN_A,body=command)[0],404)

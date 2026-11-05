@@ -35,17 +35,23 @@ def passage_questions(owner, patient, case, source, payload, *, organization, ac
         where = (" FROM investigation.source_questions LEFT JOIN investigation.reviewed_question_anchors USING(question_id) WHERE patient_id=%s AND case_id=%s"
                  " AND origin_org=%s AND purpose=%s AND source_id=%s AND source_snapshot_contract='oi.reviewed-document-selection/1'")
         rows = reg._fetchall("SELECT question_id,question,manual_revision,manual_key,source_snapshot_sha256,"
-                            "source_version,source_sha256" + where + " ORDER BY created_at,question_id LIMIT 251", scope)
+                            "source_version,source_sha256,actor,request_key,intent_sha256,preflight_sha256" + where + " ORDER BY created_at,question_id LIMIT 251", scope)
         if len(rows)>250:
             raise PatientRegistryError("Question history exceeds its bound")
         recheck_authority()
+        def checked(row):
+            qid,text,rev,key,digest,version,sha,author,req,stored_intent,preflight = row
+            selection = selection_reference(doc, patient, case, rev, key)
+            if (digest,version,sha)!=(selection["anchor_sha256"],doc["version"],doc["sha256"]):
+                raise PatientRegistryError("Inconsistent reviewed question provenance")
+            reconstructed = PassageQuestionWrite(synthetic=True,request_key=req,revision_id=rev,
+                selection_key=key,anchor_sha256=digest,question=text)
+            if stored_intent != fingerprint([CONTRACT,*scope,author,reconstructed.model_dump()]) or preflight != fingerprint([digest,text]):
+                raise PatientRegistryError("Stored question intent differs")
+            return dict(question_id=qid,question=text,selection=selection)
+
         if payload is None:
-            questions = []
-            for qid,text,rev,key,digest,version,sha in rows:
-                selection = selection_reference(doc, patient, case, rev, key)
-                if (digest,version,sha)!=(selection["anchor_sha256"],doc["version"],doc["sha256"]):
-                    raise PatientRegistryError("Inconsistent reviewed question provenance")
-                questions.append(dict(question_id=qid,question=text,selection=selection))
+            questions = [checked(row) for row in rows]
             result = dict(patient_id=patient,case_id=case,source_id=source,questions=questions)
             status = 200
         else:
@@ -56,15 +62,20 @@ def passage_questions(owner, patient, case, source, payload, *, organization, ac
                 if prior[1]!=intent:
                     raise PatientRegistryConflict("Request key belongs to a different question")
                 qid=prior[0]
+                matching = next((row for row in rows if row[0] == qid), None)
+                if matching is None or checked(matching)["selection"]["anchor_sha256"] != payload.anchor_sha256:
+                    raise PatientRegistryError("Invalid reviewed question retry provenance")
             else:
                 if len(rows)>=250 or selection["selection_state"]!="current_unreviewed_selection" or selection["anchor_sha256"]!=payload.anchor_sha256:
                     raise PatientRegistryConflict("Recheck this document selection before saving")
                 qid="QUESTION-"+uuid.uuid4().hex.upper()
-                reg._execute("""INSERT INTO investigation.source_questions
+                inserted=reg._fetchone("""INSERT INTO investigation.source_questions
                     (question_id,patient_id,case_id,origin_org,purpose,source_id,actor,request_key,intent_sha256,
-                     question,source_version,source_sha256,source_snapshot_contract,source_snapshot_sha256,preflight_sha256) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                     question,source_version,source_sha256,source_snapshot_contract,source_snapshot_sha256,preflight_sha256) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (patient_id,request_key) DO NOTHING RETURNING question_id""",
                     (qid,*scope,actor,payload.request_key,intent,payload.question,doc["version"],doc["sha256"],CONTRACT,
                      payload.anchor_sha256,fingerprint([payload.anchor_sha256,payload.question])))
+                if inserted is None:
+                    raise PatientRegistryConflict("Question request key belongs to a concurrent write")
                 reg._execute("INSERT INTO investigation.reviewed_question_anchors(question_id,manual_revision,manual_key) VALUES (%s,%s,%s)",(qid,payload.revision_id,payload.selection_key))
                 reg.append_event(patient,"investigation.question.created",case_id=case,source_id=source,question_id=qid,actor=actor,anchor_sha256=payload.anchor_sha256)
             result=dict(question_id=qid,duplicate=bool(prior))

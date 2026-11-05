@@ -32,6 +32,15 @@ def upgrade():
     conn = op.get_bind()
     snapshot_contract(conn, True)
     conn.exec_driver_sql("""
+      CREATE FUNCTION investigation.require_lab_question_contract() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF EXISTS(SELECT 1 FROM investigation.source_questions WHERE question_id=NEW.question_id
+                  AND source_snapshot_contract='oi.reviewed-document-selection/1')
+        THEN RAISE EXCEPTION 'OI-LAB-QUESTION-ANCHOR-CONTRACT'; END IF;
+        RETURN NEW;
+      END; $$;
+      CREATE TRIGGER oi_lab_anchor_contract BEFORE INSERT ON investigation.laboratory_question_anchors
+        FOR EACH ROW EXECUTE FUNCTION investigation.require_lab_question_contract();
       CREATE TABLE investigation.reviewed_question_anchors(
         question_id text PRIMARY KEY REFERENCES investigation.source_questions(question_id),
         manual_revision text NOT NULL REFERENCES clinical_source.annotation_revisions(revision_id),
@@ -76,7 +85,9 @@ def downgrade():
     if conn.exec_driver_sql("SELECT 1 FROM investigation.reviewed_question_anchors LIMIT 1").first():
         raise CommandError("Reviewed questions require preservation before downgrade")
     guards(conn, False)
-    conn.exec_driver_sql("""DROP TRIGGER oi_manual_question_requires_child ON investigation.source_questions;
+    conn.exec_driver_sql("""DROP TRIGGER oi_lab_anchor_contract ON investigation.laboratory_question_anchors;
+      DROP FUNCTION investigation.require_lab_question_contract();
+      DROP TRIGGER oi_manual_question_requires_child ON investigation.source_questions;
       DROP FUNCTION investigation.require_manual_question_child();
       DROP TABLE investigation.reviewed_question_anchors;
       DROP FUNCTION investigation.guard_manual_question();
