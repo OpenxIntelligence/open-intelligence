@@ -150,9 +150,30 @@ predicates arrive as parameters — and a test scans it for vertical
 literals. Failures go to `dropped` with a typed reason, never silently
 repaired. Local suite at the slice branch: 889 tests, with the same 17
 pre-existing `test_pdf_intake` failures as main (823 tests) and zero
-new failures. Not yet a clinical claim: the Skeptic and parallel role
-agents are later slices; the single existing model call writes as A1
-until the roster is wired.
+new failures.
+
+**Skeptic (A6) + one repair round + T6 reconciliation (Slice 4,
+5 November 2026):** every kept claim gets an independent machine
+second opinion from the Skeptic (same `muse-spark-1.3`, separate
+prompt `skeptic:1`, no shared context beyond the claim and its cited
+evidence — it catches a planted misstatement the K-checks miss, such
+as "31 cm" against evidence "31 mm"); a failing claim gets exactly
+one repair round (only content failures a restatement can fix;
+contradictions, scope, and tainted content are never repaired);
+contradictions and gaps are grouped deterministically (T6) with both
+sides listed and the resolving evidence named, never merged or voted
+on; conflicts surface as typed `AB-CONFLICT` codes with an origin,
+alongside `AB-STALE` (which leaves the question open), `AB-BUDGET`,
+`AB-MODEL`, and `AB-ALL-DROPPED`. The verification record (Skeptic
+verdicts, repair record, T6 groups, abstention codes) is stored with
+each run and returned in the response. Local suite at the slice
+branch: 947 tests, with the same 17 pre-existing `test_pdf_intake`
+failures as main (916 tests) and zero new failures. Unproven: the live
+Skeptic run — the Meta Model API returned HTTP 402 (billing issue on
+the key's team), so the prompt is verified only through the
+stub-driven test suite; a live run is pending that billing fix.
+Not yet a clinical claim: the parallel role agents are a later slice;
+the single existing model call writes as A1 until the roster is wired.
 
 ## Development boundaries
 

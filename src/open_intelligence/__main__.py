@@ -36,6 +36,7 @@ from .investigation import (
 )
 from .kchecks import build_kcheck_context
 from .orchestrator import decide_route
+from .skeptic import run_verification
 from .clinician_overview import build_clinician_overview
 from .mission import build_patient_mission
 from .patient_attention import case_patient_attention
@@ -1054,6 +1055,19 @@ class Handler(BaseHTTPRequestHandler):
                         payload = call_meta_api(prompt, meta_api_key())
                         validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"],
                                                     kcheck_context)
+                    # Slice 4 verification (program plan C4): one repair
+                    # round, the Skeptic's independent second opinion,
+                    # T6 grouping, and the typed abstention codes. The
+                    # model passes run in live mode only; replay skips
+                    # them and records the skip, while the deterministic
+                    # half still runs. The verification record is stored
+                    # with the run and returned, like the K-check
+                    # findings. A failed Skeptic or repair call records
+                    # AB-MODEL and the run proceeds with its K-checked
+                    # claims; it never fails the run.
+                    verification = run_verification(
+                        validated, kcheck_context, facts, mode=mode,
+                        store=store, case_id=case_id)
                     # Slice 1 write contract (program plan section 5.4):
                     # the run is stored only with its complete, validated
                     # contract attached; a missing or mismatched contract
@@ -1063,7 +1077,8 @@ class Handler(BaseHTTPRequestHandler):
                         facts=facts)
                     investigation_id = store.save_investigation(
                         case_id, question_id, template, validated, mode,
-                        write_contract=contract)
+                        write_contract=contract,
+                        verification_record=verification)
                     stored = store.get_investigation(case_id, investigation_id)
                     # K-check findings are returned, not persisted (slice
                     # C2 follow-up: persisting them is a schema change).
