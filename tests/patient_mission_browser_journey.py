@@ -14,6 +14,8 @@ import tempfile
 from browser_journey import (
     ChromeSession,
     free_port,
+    set_demo_account_password,
+    sign_in_demo,
     urlopen,
     wait_for,
     wait_for_browser,
@@ -60,6 +62,7 @@ def main() -> None:
             check=True,
             stdout=subprocess.DEVNULL,
         )
+        set_demo_account_password(db)
         app_port, debug_port = free_port(), free_port()
         server = subprocess.Popen(
             [
@@ -110,6 +113,7 @@ def main() -> None:
             session.command("Runtime.enable")
             session.command("Page.navigate", {"url": url})
 
+            sign_in_demo(session)
             session.wait(
                 "document.querySelector('#mission-status')?.textContent === 'Ready to define question'",
                 "Alpha mission status",
