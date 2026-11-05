@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
+import {secondOpinionPreparation} from '../.test-dist/second-opinion-preparation.js';
 import {caseId,cases,deferred,digest,history,patient,patientId,questionId,response,selectedSource,sourceId,token,world} from './authored-evidence-fixtures.mjs';
 
 const episode={role:'primary',episode_id:'EP-ALPHA'};
@@ -29,7 +30,8 @@ async function inspected({recordsContext=episode,journeyContext=episode,ambiguou
  const session=new RegistrySession(async (url,init)=>{
   calls.push(url);
   const action=url.endsWith('/source-preflight')?'preflight':url.endsWith('/brief')?'brief':
-   url.endsWith('/source-review-packet')?'packet':url.endsWith('/questions')?(init.method==='POST'?'save':'history'):null;
+   url.endsWith('/source-review-packet')?'packet':url.endsWith('/questions')?(init.method==='POST'?'save':'history'):
+   url.endsWith('/sources')?'sources':url.endsWith('/followthrough')?'followthrough':null;
   if(action==='save')writes.push(init.body);
   if(replies.has(action))return replies.get(action)();
   if(action==='save')return response({question_id:questionId,duplicate:true});
@@ -157,15 +159,15 @@ for(const [action,request] of Object.entries(questionOperations)){
 }
 
 test('a denied retry withholds all source text and recovers the exact original save after reauthorization',async()=>{
- const {session:s,replies,writes}=await preparedWorkflow();
+ const {session:s,replies,writes,changeWorld}=await preparedWorkflow();
  const {question}=s.snapshot().composerPreview;
  replies.set('save',()=>response({},503));await s.savePreparedQuestion();
  assert.match(s.snapshot().questionSaveMessage,/outcome unknown/);
- replies.set('save',()=>response({},404));await s.savePreparedQuestion();
+ changeWorld(()=>response({},404));replies.set('save',()=>response({},404));await s.savePreparedQuestion();
  assert.doesNotMatch(JSON.stringify(s.snapshot()),/Which fictional episode|EP-ALPHA/);
  const count=writes.length;
  await s.savePreparedQuestion();assert.equal(writes.length,count);
- replies.delete('save');
+ replies.delete('save');changeWorld();
  await s.loadCases();await s.loadWorldModel(caseId);
  s.chooseQuestionDraft(sourceId,8);s.changeQuestionDraft(question);
  await s.prepareDraftQuestion();await s.savePreparedQuestion();
@@ -194,8 +196,48 @@ test('a question-only denial permits source inspection after fresh verification 
  const old=s.snapshot().worldModel;
  replies.set('history',()=>response({},403));const count=calls.length;
  await s.loadSavedQuestions(caseId);
- assert.deepEqual(calls.slice(count).map(url=>url.split('/').at(-1)),['questions','world-model','case-bindings']);
+ assert.deepEqual(calls.slice(count).map(url=>url.split('/').at(-1)),['questions','world-model','case-bindings','sources']);
  assert.notEqual(s.snapshot().worldModel,old);assert.deepEqual(s.snapshot().worldModel,old);
  assert.equal(s.snapshot().questionListPhase,'error');assert.equal(s.snapshot().questions,null);
  assert.equal(s.snapshot().original,null);
+});
+
+test('Overview shows reassessment after independent question access returns and Records has a fresh source receipt',async()=>{
+ const {session:s,replies}=await preparedWorkflow(),earlier=s.snapshot().sourceIndex;
+ const nextReceipt='ACCESS-'+'E'.repeat(32);
+ replies.set('sources',()=>response({...earlier,access_receipt_id:nextReceipt}));
+ replies.set('history',()=>response({},404));await s.loadSavedQuestions(caseId);
+ assert.equal(s.snapshot().sourceIndex?.access_receipt_id,nextReceipt);
+ assert.equal(s.snapshot().original,null);
+ assert.equal(secondOpinionPreparation(s.snapshot()).state,'needs_check');
+ const items=history();items.questions[0].source_sha256=earlier.sources[0].sha256;
+ items.questions.push({...items.questions[0],question_id:'QUESTION-'+'B'.repeat(32),
+  source_snapshot_sha256:'f'.repeat(64),source_context_state:'source_reassessment_required'});
+ replies.set('history',()=>response(items));
+ replies.set('followthrough',()=>response({contract:'oi.pg-question-followthrough/1',patient_id:patientId,case_id:caseId,
+  access_receipt_id:'ACCESS-'+'F'.repeat(32),evaluated_on:'2026-11-05',tasks:[],synthetic:true,
+  clinical_approval:false,external_notification_sent:false}));
+ await s.loadSavedQuestions(caseId);await s.loadFollowthrough(caseId);
+ const view=secondOpinionPreparation(s.snapshot());
+ assert.equal(view.state,'needs_reassessment');
+ assert.deepEqual(view.questions,{current:1,reassessment:1});assert.deepEqual(view.records,{current:1,historical:0});
+ assert.equal(view.coordination.open,0);
+});
+
+test('a denied source-index recheck clears Records even when the other independent reads succeeded',async()=>{
+ const {session:s,replies}=await preparedWorkflow();
+ replies.set('history',()=>response({},403));replies.set('sources',()=>response({},404));
+ await s.loadSavedQuestions(caseId);
+ for(const field of ['original','sourceIndex','worldModel','cases','questions'])assert.equal(s.snapshot()[field],null,field);
+ assert.equal(secondOpinionPreparation(s.snapshot()),null);
+});
+
+test('a late source index cannot restore Records after switching credentials during the recheck',async()=>{
+ const {session:s,replies}=await preparedWorkflow(),index=s.snapshot().sourceIndex;
+ const started=deferred(),held=deferred();
+ replies.set('history',()=>response({},403));replies.set('sources',()=>{started.resolve();return held.promise;});
+ const waiting=s.loadSavedQuestions(caseId);await started.promise;
+ assert.equal(s.snapshot().original,null);assert.equal(s.snapshot().sourceIndex,null);
+ s.connect(token+'2');held.resolve(response(index));await waiting;
+ for(const field of ['patient','cases','sourceIndex','original','worldModel'])assert.equal(s.snapshot()[field],null,field);
 });

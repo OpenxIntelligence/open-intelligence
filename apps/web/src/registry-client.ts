@@ -378,6 +378,7 @@ export class RegistrySession {
   async #recheckQuestionDenial(caseId:string,control:AbortController,restore:'case'|'world'|'questions',failure:Partial<ViewState>){
     const patientId=this.#state.patient?.patient_id;
     const hadWorld=this.#state.worldModel?.case_id===caseId;
+    const hadIndex=this.#state.sourceIndex?.case_id===caseId&&this.#state.sourceIndex.patient_id===patientId;
     const reset=this.#resetDeniedCaseSources();
     const scope=this.#scope,records=this.#records,questions=this.#questionRead,quotes=this.#quoteRead,brief=this.#briefRead;
     const current=()=>scope===this.#scope&&records===this.#records&&questions===this.#questionRead&&
@@ -402,7 +403,9 @@ export class RegistrySession {
       const model=parseSourceWorldModel(await read(casePath+'/world-model',1048576),patientId,caseId);
       const cases=parseCaseBindingList(await read(patientPath+'/case-bindings',65536),patientId);
       if(!cases.some(item=>item.case_id===caseId&&item.status==='active'))throw Error('case unavailable');
-      const patch:Partial<ViewState>={cases,recordsPhase:'ready',recordMessage:'Case access rechecked. Select the case to reopen Records.'};
+      const sourceIndex=hadIndex?parseSourceIndex(await read(casePath+'/sources',65536),patientId,caseId):null;
+      const patch:Partial<ViewState>={cases,sourceIndex,recordsPhase:'ready',recordMessage:sourceIndex?
+        'Original source metadata rechecked. Open an original to inspect its bytes.':'Case access rechecked. Select the case to reopen Records.'};
       const world=hadWorld&&restore!=='case'?{worldModel:model,worldPhase:'ready' as const,
         worldMessage:'Source-derived snapshot verified at last read.'}:{};
       if(restore==='questions'){
