@@ -35,13 +35,23 @@ export function PatientContinuity({state,onNavigate,onRefreshFollowthrough,busy}
    </div>}
    <div className="continuity-item" data-testid="continuity-questions">
     <h3>Questions and changed records</h3>
+    <p className="small">Text-anchored and laboratory questions have separate source and access checks. These are not clinical approvals.</p>
     {view.questions?<>
      <p><strong data-testid="continuity-reassessment">{view.questions.reassessment}</strong> {view.questions.reassessment===1?'question needs':'questions need'} source reassessment.</p>
      <p><strong data-testid="continuity-current">{view.questions.current}</strong> {view.questions.current===1?'question has':'questions have'} current source context, without clinical review.</p>
      {view.questions.reassessment>0&&<p>A supporting record changed. Inspect the question and its sources before using an earlier brief.</p>}
-     {view.questions.current+view.questions.reassessment===0&&<p>No saved questions were returned for this case and grant. This does not mean there are no care needs.</p>}
+     {view.questions.current+view.questions.reassessment===0&&<p>No saved text-source questions were returned for this case and grant. Laboratory questions are checked separately; this does not mean there are no care needs.</p>}
     </>:<p>Question status has not been checked for the current case, or is unavailable. Open Questions to load the authorized history.</p>}
-    <button type="button" data-testid="continuity-open-questions" onClick={()=>onNavigate('Investigations')}>Open questions</button>
+    <button type="button" data-testid="continuity-open-questions" onClick={()=>onNavigate('Investigations')}>Open text-source questions</button>
+    {view.laboratoryAvailable&&<section className="continuity-laboratory-questions" data-testid="continuity-lab-questions" aria-label="Saved laboratory questions">
+     <h4>Laboratory questions</h4>
+     {view.laboratoryQuestions? <>
+      <p><strong data-testid="continuity-lab-current">{view.laboratoryQuestions.current}</strong> with current source context, unreviewed.</p>
+      <p><strong data-testid="continuity-lab-reassessment">{view.laboratoryQuestions.reassessment}</strong> needing reassessment after a source change.</p>
+      {view.laboratoryQuestions.current+view.laboratoryQuestions.reassessment===0&&<p>No laboratory questions were returned in the last independently authorized read.</p>}
+     </>:<p role="status">Laboratory question history has not been checked for this case or is unavailable. A missing check is not zero.</p>}
+     <button type="button" disabled={busy} data-testid="continuity-open-lab-questions" onClick={()=>onNavigate('Journey')}>Reopen laboratory questions in Journey</button>
+    </section>}
    </div>
    <div className="continuity-item">
     <h3>Your original records</h3>

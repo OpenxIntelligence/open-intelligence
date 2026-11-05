@@ -51,3 +51,31 @@ test('organized inputs remain preparation only and coordination is descriptive',
  assert.equal(view.state,'inputs_prepared');assert.deepEqual(view.records,{current:1,historical:1});
  assert.deepEqual(view.coordination,{open:0,assigned:0,sourceChanged:0});
 });
+
+const labModel=()=>({...base().worldModel,current_sources:[{source_id:'SRC-LAB',version:1,
+ sha256:'a'.repeat(64),kind:'laboratory',state:'current'}],history:[],
+ laboratory_observations:[{source_id:'SRC-LAB',observation_reference:'Observation/ROW-1'}]});
+const labHistory=(status='current_unreviewed_question')=>({
+ patient_id:'PAT-ONE',case_id:'CASE-ONE',checked_source_snapshot_sha256:'v1',
+ access_receipt_id:'ACCESS-'+'D'.repeat(32),questions:[{
+ question_id:'QUESTION-'+'F'.repeat(32),source_id:'SRC-LAB',source_version:1,
+ source_sha256:'a'.repeat(64),observation_reference:'Observation/ROW-1',
+ source_context_state:status}],
+});
+
+test('second-opinion agenda does not claim no saved questions when only laboratory questions exist',()=>{
+ const view=secondOpinionPreparation({...base(),worldModel:labModel(),recordsPhase:'ready',
+  sourceIndex:sourceIndex([source()]),labQuestionListPhase:'ready',labQuestionHistory:labHistory()});
+ assert.deepEqual(view.questions,{current:0,reassessment:0});
+ assert.deepEqual(view.laboratoryQuestions,{current:1,reassessment:0});
+ assert.equal(view.state,'needs_laboratory_review');
+ assert.equal(view.agenda.total,0,'a text-only agenda must not fabricate a source line');
+});
+
+test('source-amended laboratory question blocks an all-current second-opinion status',()=>{
+ const view=secondOpinionPreparation({...base(),worldModel:labModel(),recordsPhase:'ready',
+  sourceIndex:sourceIndex([source()]),questions:[question('current_unreviewed_question')],
+  labQuestionListPhase:'ready',labQuestionHistory:labHistory('source_reassessment_required')});
+ assert.equal(view.state,'needs_reassessment');
+ assert.deepEqual(view.laboratoryQuestions,{current:0,reassessment:1});
+});

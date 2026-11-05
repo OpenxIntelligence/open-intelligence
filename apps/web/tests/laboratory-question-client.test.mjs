@@ -259,3 +259,10 @@ test('denied laboratory preparation, save or history clears patient, sources, Wo
   await f.session.loadLabQuestions(f.session.snapshot().worldModel);assert.equal(f.session.snapshot().labQuestionHistory.questions.length,1);
  }
 });
+
+test('an authenticated laboratory question history retains its source case and read snapshot for the overview',()=>{
+ const w=projection(),raw=history(),parsed=readLabQuestionList(raw,w);
+ assert.equal(parsed.patient_id,patient);
+ assert.equal(parsed.case_id,caseId);
+ assert.equal(parsed.checked_source_snapshot_sha256,w.snapshot_fingerprint);
+});
