@@ -257,3 +257,15 @@ footer a { color: #285b49; min-height: 44px; display: inline-flex; align-items: 
 
 .review-case-entry .case-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
 .review-case-entry .case-row span { min-width: 0; overflow-wrap: anywhere; }
+/* Bounded synthetic CT preview; never presented as a diagnostic viewer. */
+.source-image-preview{margin:14px 0 0;padding:14px;border:1px solid #d8c7a5;border-radius:8px;background:#fffaf0;min-width:0}
+.source-image-preview h6{font-size:1rem;margin:0}.source-image-preview .warning-note{margin:10px 0;padding:10px;border-left:3px solid #b28b52;background:#f8f3e9;color:#5e4728}
+.source-image-preview img{display:block;max-width:100%;height:auto;margin:12px auto;border:1px solid #c8c8c8;background:#111;image-rendering:auto}
+.source-image-preview figcaption{overflow-wrap:anywhere}.source-image-preview code{word-break:break-all}
+
+.diagnostic-nav { display: grid; gap: 4px; margin-top: 12px; padding-top: 14px; border-top: 1px solid #43655a; }
+.diagnostic-nav > span { font-size: 12px; font-weight: 650; color: #c4d7cf; padding-inline: 12px; }
+@media (max-width: 600px) {
+  .diagnostic-nav { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; gap: 2px; padding-top: 6px; }
+  .diagnostic-nav > span { grid-column: 1 / -1; padding-inline: 8px; }
+}

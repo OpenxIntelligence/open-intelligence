@@ -5,6 +5,8 @@ export const imageId='IMG-'+'C'.repeat(32),accessId='ACCESS-'+'C'.repeat(32);
 // Byte-integrity fixture only. Actual DICOM parsing is covered by the existing
 // API/real-browser fixture; this deliberately does not claim a medical image.
 export const original=Buffer.alloc(160);original.write('DICM',128);original.write('fictional',132);
+// 2 × 2 grayscale output of the synthetic CT preview renderer.
+export const previewPng=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAAAAABX3VL4AAAADklEQVR4nGNgCGVY9R8AA60B/2f7ygkAAAAASUVORK5CYII=','base64');
 export const image=()=>({image_id:imageId,source_id:sourceId,case_id:caseId,sha256:digest(original),
  byte_count:original.length,study_uid:'2.25.101',series_uid:'2.25.102',sop_uid:'2.25.103',
  modality:'CT',study_date:'2026-01-10'});
@@ -33,6 +35,11 @@ export function binary(bytes=original,headers={}){
  return new Response(bytes,{headers:{'Content-Type':'application/dicom',
   'Content-Length':String(bytes.length),'X-OI-Access-Receipt':accessId,...headers}});
 }
+export function previewBinary(bytes=previewPng,headers={}){
+ return new Response(bytes,{headers:{'Content-Type':'image/png','Content-Length':String(bytes.length),
+  'X-OI-Access-Receipt':accessId,'X-OI-Original-SHA256':digest(original),
+  'X-OI-Preview-Mode':'synthetic-ct-minmax-8bit-nondiagnostic',...headers}});
+}
 export function transportForImages(handler=()=>undefined,source=sourceIndex){
  return (url,init)=>{
   const handled=handler(url,init);if(handled!==undefined)return handled;
@@ -47,6 +54,7 @@ export function transportForImages(handler=()=>undefined,source=sourceIndex){
   if(url.includes('/evidence-reports/'))return response(imageReport());
   if(url.endsWith('/evidence'))return response(evidencePacket());
   if(url.endsWith('/images'))return response(images());
+  if(url.endsWith('/images/'+imageId+'/preview'))return previewBinary();
   if(url.endsWith('/images/'+imageId))return binary();
   return response(patient(url.endsWith('PAT-EXAMPLE-002')?'PAT-EXAMPLE-002':patientId));
  };

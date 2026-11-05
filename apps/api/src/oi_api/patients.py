@@ -30,6 +30,7 @@ from .question_review_returns import PostgresQuestionReviewReturns
 from .source_brief import MAX_ENVELOPE_BYTES, check_brief_size
 from .question_source_review_packet import PostgresQuestionSourcePacket
 from .images import PostgresSourceImages
+from .dicom_integrity import render_dicom_preview
 
 
 class CreatePatient(Contract):
@@ -1330,6 +1331,39 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                         headers={"Cache-Control": "no-store"}),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "image_read"))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Image unavailable") from None
+
+    @router.get("/{patient_id}/cases/{case_id}/sources/{source_id}/images/{image_id}/preview",
+                response_class=Response,
+                responses={200: {"content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}}, **errors},
+                operation_id="preview_source_image_v1")
+    def preview_source_image(request: Request, patient_id: str, case_id: str, source_id: str,
+                             image_id: str, context: Principal = Depends(principal)):
+        if request.query_params:
+            raise HTTPException(422, "Invalid request")
+        try:
+            with registry(context) as patients:
+                # A preview discloses the same pixel content as the original.
+                # Keep the stronger original-read permission instead of adding
+                # an alternate authorization path.
+                records_authorized(patients, context, patient_id, "image_original_read")
+                return PostgresSourceImages(patients, archive=image_archive).original(
+                    patient_id, case_id, source_id, image_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda raw, receipt: Response(
+                        render_dicom_preview(raw), media_type="image/png", headers={
+                            "Content-Disposition": 'inline; filename="non-diagnostic-preview.png"',
+                            "X-OI-Access-Receipt": receipt,
+                            "X-OI-Original-SHA256": hashlib.sha256(raw).hexdigest(),
+                            "X-OI-Preview-Mode": "synthetic-ct-minmax-8bit-nondiagnostic",
+                            "X-Content-Type-Options": "nosniff",
+                            "Content-Security-Policy": "default-src 'none'",
+                            "Cache-Control": "no-store",
+                        }),
+                    access_event="image.preview_read_authorized",
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "image_original_read"))
         except PatientRegistryDenied:
             raise HTTPException(404, "Image unavailable") from None
 

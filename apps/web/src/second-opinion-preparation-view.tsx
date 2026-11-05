@@ -6,7 +6,7 @@ const summary={
  needs_check:'Check the case inputs before preparing a second-opinion discussion.',
  needs_records:'No current original source version is loaded for this case.',
  needs_question:'Original records are available, but no current text-anchored question is loaded in this agenda. Laboratory questions are checked separately.',
- needs_laboratory_review:'Open saved laboratory questions in Journey to inspect the original result and any citations you have permission to view.',
+ needs_laboratory_review:'Open saved laboratory questions in Labs to inspect the original result and any citations you have permission to view.',
  needs_reassessment:'A source changed. Reassess affected questions before relying on earlier preparation.',
  inputs_prepared:'The currently loaded records and questions are organized for preparation.',
 } as const;
@@ -133,6 +133,7 @@ export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion,onCh
   {view.state==='needs_reassessment'&&<p className="second-opinion-note" data-testid="second-opinion-reassessment"><strong>Do not treat the earlier preparation as current.</strong> Inspect the changed source and affected question first.</p>}
   <div className="actions">
    <button type="button" data-testid="second-opinion-open-records" onClick={()=>onNavigate('Records')}>Inspect records</button>
+   {view.state==='needs_laboratory_review'&&<button type="button" onClick={()=>onNavigate('Labs')}>Open lab questions</button>}
    <button type="button" data-testid="second-opinion-open-questions" onClick={()=>onNavigate('Investigations')}>Prepare questions</button>
    <button type="button" data-testid="second-opinion-open-review" onClick={()=>onNavigate('Review')}>Inspect verification returns</button>
   </div>

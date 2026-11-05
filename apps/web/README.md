@@ -15,6 +15,16 @@ and visit operation still checks its own grant. Overview also supports creating
 a fictional identity. Visits requires an active identity. In Review, check the
 case list and select an active case to open its independently authorized inbox.
 
+### Diagnostic records in the patient workspace
+
+| Destination | Work supported with synthetic records | Boundary |
+| --- | --- | --- |
+| Labs | Open a case, filter current FHIR laboratory observations by test, original report/specimen, or result state, and inspect exact source references. Open a result-linked question or return to the case records for import. | A missing value retains its reported absence reason. Order entry, instrument worklists and result sign-off are separate LIS functions. |
+| Imaging | Read structured report versions and their source statements. On a current report, check linked DICOM metadata, separately request a bounded CT preview, or download the exact original. | The preview supports the existing single-frame monochrome synthetic CT profile. PACS integration, diagnostic display and MR ingestion have separate owners. |
+| Pathology and Molecular | Browse structured reports by recorded type, inspect exact originals and versions, or ask a source-linked question. Open Records for separately scoped text/PDF originals. | These are report readers. Slide review, variant interpretation and specimen processing require domain workflows of their own. |
+
+The diagnostic destinations reuse the existing registry, case bindings, source index, World Model and independent original-read grants. Imaging preview uses the bounded renderer from #514 and lab result filters reuse #546. No migration or dependency is added.
+
 This is the first **React + Vite + TypeScript** entry connected to the existing
 **FastAPI/PostgreSQL 16** patient registry (#172, #162). It does not replace the
 canonical identity owner, existing source-ledger application (#166), or accepted
