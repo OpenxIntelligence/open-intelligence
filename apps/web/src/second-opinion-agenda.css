@@ -1,0 +1,13 @@
+.second-opinion-agenda{padding-top:12px;border-top:1px solid #d5e1d9}
+.second-opinion-agenda-list{padding-left:1.5rem;margin:10px 0 14px;display:grid;gap:10px}
+.second-opinion-agenda-list>li{padding:10px 12px;border:1px solid #d5e1d9;border-radius:6px;min-width:0;background:#f9fcf7}
+.second-opinion-agenda-question{margin:0 0 8px;overflow-wrap:anywhere;white-space:pre-wrap}
+.second-opinion-agenda-list .small{margin:0;overflow-wrap:anywhere}
+.second-opinion-agenda-list [data-source-context=source_reassessment_required]{border-left:3px solid #a07b43}
+
+.second-opinion-question-work{margin-top:12px;padding-top:12px;border-top:1px solid #dce7e0}
+.second-opinion-question-work h4{font-size:13px;margin:0 0 7px}
+.second-opinion-question-work-list{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:8px}
+.second-opinion-question-work-list>li{border-left:2px solid #718b79;padding:6px 10px;background:#fff;min-width:0;overflow-wrap:anywhere}
+.second-opinion-question-work-list p{margin:4px 0 0}
+.second-opinion-question-work-summary{font-variant-numeric:tabular-nums}

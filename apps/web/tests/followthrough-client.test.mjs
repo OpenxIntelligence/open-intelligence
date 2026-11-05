@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {projectFollowthroughAttention} from '../.test-dist/followthrough-view.js';
+import {secondOpinionPreparation} from '../.test-dist/second-opinion-preparation.js';
 
 // Independently authored fictional task and source context; transport is the only mock.
 const token='fictional_test_credential_000000000001';
@@ -58,6 +59,80 @@ async function open(s){s.connect(token);await s.read(pid);await s.loadCases();}
 async function ready(s){await open(s);await s.loadWorldModel(cid);await s.loadSavedQuestions(cid);}
 const basic=(url)=>response(url.endsWith('/world-model')?world(url.includes(otherCase)?otherCase:cid):
  url.endsWith('/questions')?questions():projection());
+
+test('manual passage denial clears preparation drafts while withholding recoverable reference-only intent',async()=>{
+ let writes=0;
+ const s=session(async(url,init)=>{if(init.method==='POST')writes++;
+  return url.endsWith('/manual-passages')?response({},403):basic(url);});
+ await ready(s);await s.loadFollowthrough(cid);
+ const scope={patient_id:pid,case_id:cid,question_id:qid};
+ const intent=JSON.stringify({synthetic:true,request_key:'FICTIONAL-MANUAL-RETRY',
+  expected_context_sha256:'e'.repeat(64),references:[]});
+ const store=s.manualPassageIntentStore(scope);store.write(intent);
+ s.editFollowthroughDraft(qid,fields());
+ s.editFollowthroughTransitionDraft(tid,{owner_label:'Unsent owner',reason:'Unsent reason'});
+ assert.equal(secondOpinionPreparation(s.snapshot()).agenda.preview[0].work.recordedCount,1);
+ await s.loadFollowthrough(cid);
+ assert.equal(store.read(),intent);
+ assert.deepEqual(s.snapshot().followthroughDrafts[qid].fields,fields());
+ await s.questionPassageRequest(cid,qid);
+ assert.equal(secondOpinionPreparation(s.snapshot()),null);
+ assert.deepEqual(s.snapshot().followthroughDrafts,{});
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});
+ assert.equal(store.read(),null);
+ await s.loadCases();await s.loadWorldModel(cid);await s.loadSavedQuestions(cid);
+ assert.equal(store.read(),intent);
+ assert.deepEqual(s.snapshot().followthroughDrafts,{});
+ assert.equal(secondOpinionPreparation(s.snapshot()).agenda.preview[0].work,null);
+ s.disconnect();assert.equal(store.read(),null);assert.equal(writes,0);
+});
+
+test('preparation uses recorded work while unsent creation and owner drafts survive a matching refresh',async()=>{
+ let writes=0;const s=session(async(url,init)=>{if(init.method==='POST')writes++;return basic(url);});
+ await ready(s);await s.loadFollowthrough(cid);
+ const creation={...fields(),title:'Unsent preparation task'};
+ const transition={owner_label:'Unsent proposed owner',reason:'Check the source before assignment.'};
+ s.editFollowthroughDraft(qid,creation);s.editFollowthroughTransitionDraft(tid,transition);
+ for(let i=0;i<2;i++){
+  const view=secondOpinionPreparation(s.snapshot()),work=view.agenda.preview[0].work;
+  assert.equal(work.recordedCount,1);assert.equal(work.openCount,1);
+  assert.equal(work.preview[0].title,fields().title);
+  assert.equal(work.preview[0].ownerLabel,fields().owner_label);
+  assert.equal(work.preview[0].status,'created');
+  assert.equal(JSON.stringify(view).includes(creation.title),false);
+  assert.equal(JSON.stringify(view).includes(transition.owner_label),false);
+  await s.loadFollowthrough(cid);
+ }
+ assert.deepEqual(s.snapshot().followthroughDrafts[qid].fields,creation);
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts[tid].fields,transition);
+ assert.equal(writes,0);
+});
+
+test('preparation refresh hides unchecked work and task denial clears drafts without losing authorized questions',async()=>{
+ const held=deferred();let pending=false,writes=0;
+ const s=session(async(url,init)=>{if(init.method==='POST')writes++;
+  return pending&&url.endsWith('/followthrough')?held.promise:basic(url);});
+ await ready(s);await s.loadFollowthrough(cid);
+ s.editFollowthroughDraft(qid,fields());
+ s.editFollowthroughTransitionDraft(tid,{owner_label:'Proposed fictional owner',reason:'Unsent reassignment.'});
+ pending=true;const refresh=s.loadFollowthrough(cid);
+ const loading=secondOpinionPreparation(s.snapshot());
+ assert.equal(loading.agenda.preview[0].questionId,qid);
+ assert.equal(loading.agenda.preview[0].work,null);
+ assert.equal(loading.coordination,null);
+ assert.deepEqual(s.snapshot().followthroughDrafts[qid].fields,fields());
+ held.resolve(response({},403));await refresh;
+ const denied=secondOpinionPreparation(s.snapshot());
+ assert.equal(denied.agenda.preview[0].text,question().question);
+ assert.equal(denied.agenda.preview[0].work,null);
+ assert.deepEqual(s.snapshot().followthroughDrafts,{});
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});
+ pending=false;await s.loadFollowthrough(cid);
+ assert.equal(secondOpinionPreparation(s.snapshot()).agenda.preview[0].work.recordedCount,1);
+ assert.deepEqual(s.snapshot().followthroughDrafts,{});
+ assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});
+ assert.equal(writes,0);
+});
 
 test('unsent follow-up fields survive same-case source and question refresh without writes',async()=>{
  let writes=0;const s=session(async(url,init)=>{if(init.method==='POST')writes++;return basic(url);});
