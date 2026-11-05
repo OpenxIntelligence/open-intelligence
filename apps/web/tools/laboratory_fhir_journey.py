@@ -499,7 +499,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
 
     open_recorded_task()
     picker = '[data-testid=preparation-lab-select]'
-    row = '[data-testid=preparation-lab-question]'
+    preparation_row_selector = '[data-testid=preparation-lab-question]'
     work_panel = '[data-testid=preparation-lab-followup]'
     task_summary = '[data-testid=preparation-lab-task]'
     recheck = '[data-testid=preparation-lab-task-recheck]'
@@ -510,7 +510,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         requests = cd.evaluate('window.__oiLabRequests')
         cd.evaluate("(()=>{const e=document.querySelector("+json.dumps(picker)+");e.value="+json.dumps(target)+
                     ";e.dispatchEvent(new Event('change',{bubbles:true}));})()")
-        cd.wait('document.querySelector('+json.dumps(row)+')?.dataset.questionId==='+json.dumps(target),
+        cd.wait('document.querySelector('+json.dumps(preparation_row_selector)+')?.dataset.questionId==='+json.dumps(target),
                 'selected laboratory question identified by its saved ID')
         assert cd.evaluate('window.__oiLabRequests') == requests
 
@@ -621,8 +621,8 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         cd.wait('window.__oiLabHistoryCodes.length>'+str(prior_history_reads),
                 'fresh laboratory history request from preparation')
         assert cd.evaluate('window.__oiLabHistoryCodes.slice('+str(prior_history_reads)+')') == [200]
-        action = row + ' [data-testid=lab-citation-report-open]'
-        report = row + ' [data-testid=lab-citation-report]'
+        action = preparation_row_selector + ' [data-testid=lab-citation-report-open]'
+        report = preparation_row_selector + ' [data-testid=lab-citation-report]'
         cd.wait("document.querySelectorAll('[data-testid=preparation-lab-select] option').length===3",
                 'both authorized questions offered for preparation')
         assert not cd.evaluate('Boolean(document.querySelector('+json.dumps(report)+'))')
