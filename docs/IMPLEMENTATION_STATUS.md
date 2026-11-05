@@ -468,6 +468,89 @@ billing fix (HTTP 402) is still pending, so the cardiology
 end-to-end uses stub verdicts and proves wiring, not the model. No
 live call was attempted here and no substitute model was used.
 
+## Data-integration dimension: A1 Intake & Extraction + T3 specimen chain (Slice D1) — 5 November 2026
+
+Branch `program/d1-data-integration`, from main `97e2be7`. Implements
+program-plan D1: the data-integration dimension as its own modules
+with its own tests and acceptance bar, against the vertical interface
+V1 defined. Domain rules come through the interface, never hard-coded
+in the core: the A1 certainty set and finding-key pattern are the
+ledger's own (domain-free), and the T3 chain rules are the ledger's
+asset rules; no vertical module is imported by either new module.
+
+New `src/open_intelligence/extraction.py` is A1, the deterministic
+anchor checker (Notion OI-09 section 5: "one anchor checker").
+`validate_extraction_proposal` takes a proposal — a list of fields,
+each naming a finding key, a certainty, a verbatim quote, and the
+exact source line — and returns kept/dropped with typed reasons in
+the same shape as the structural validator. The source version is
+proposal-level: it must exist, belong to the case, and be `current`,
+or every field drops with `unknown_source_version`,
+`wrong_case_source_version`, or `superseded_source_version`. Each
+field is then checked on its own: `invalid_finding_key`,
+`invalid_certainty`, `missing_quote`, `quote_too_long`,
+`invalid_source_line`, `malformed_field`, `duplicate_finding_key`,
+`finding_already_asserted`. `record_extraction_proposal` validates
+and stores the kept fields as assertions, joining the caller's
+transaction when one is open and opening its own otherwise. The
+report-import path (`store._import_report_in_transaction`) routes its
+parsed findings through the checker, so the checker is on the live
+arrival path; a drop there fails the import instead of silently
+dropping a finding (unreachable while `parse_report` holds the same
+rules). PDF, C-CDA, and FHIR arrivals route through it as their
+import paths land.
+
+New `src/open_intelligence/specimen_chain.py` is T3, the deterministic
+specimen chain (Notion OI-09 section 5: "SpecimenChain links with
+basis"). `validate_specimen_chain` walks the parent-linked lineage of
+one biological asset from the queried asset back to its original and
+returns the links root-first, each carrying its assay/specimen
+context (kind, episode, specimen id and state, observed date, and the
+anchor source version with its document, version, and state), plus
+every break as a typed record — never silent, never a raised
+exception for a broken chain: `missing_asset`, `missing_parent`,
+`cycle`, `unknown_specimen`, `specimen_mismatch`,
+`anchor_missing` / `anchor_superseded`, `episode_mismatch`, and
+`kind_violation`. Creation-time invariants (same-episode parents,
+allowed parent kinds, current anchors) are enforced by
+`add_biological_asset`; the validator also checks them on read, so a
+break introduced after creation — a superseded anchor, a specimen
+recorded under a different id — is caught here. No route or write
+gate is added: chain breaks are typed records, not rejections, per
+the D1 acceptance. The first live caller is D3's comparison
+toolsets, which consult the validator before comparing across
+specimens; the bio-assay observation path already enforces specimen
+matching for a single block at write time.
+
+Orthogonality: the import-graph tripwire in
+`tests/test_vertical_boundary.py` now lists the two D1 modules in
+`DIMENSION_MODULES`, and the tripwire is green. One correction was
+needed to make the rule mean what it says: as written, the checker
+flagged *any* module importing a dimension module, which would have
+made the dimension unusable — the shared core must be able to call
+it (that is how the A1 checker reaches the live import path). The
+checker now constrains only dimension modules themselves: it flags
+a dimension module importing another dimension module, which is what
+the orthogonality rule forbids. The fake-graph proof still passes
+unchanged.
+
+What did not move, and why: no vertical predicates were moved or
+added (the certainty set and key pattern are domain-free ledger
+rules); modality schema packs are out of scope (they arrive with
+D2); the K-checks, route, Skeptic, and evaluation harness are
+untouched; no live model call exists anywhere in the slice.
+
+Local suite on the slice branch: 1006 tests (986 on the post-V1 main
+baseline plus 20 new), FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: the live-model half is unchanged from C4/C5 — the Meta
+billing fix (HTTP 402) is still pending, so no live call was
+attempted here and no substitute model was used. The dimension is
+deterministic code; nothing in it needs a model call.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)

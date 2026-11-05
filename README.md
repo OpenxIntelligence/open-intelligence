@@ -218,6 +218,31 @@ baseline (972 tests) and zero new failures. Unproven: the live-model
 half is unchanged (Meta billing fix still pending); the cardiology
 run uses stub verdicts.
 
+**Data-integration dimension (Slice D1, 5 November 2026):** arriving
+records become anchored, checkable evidence. A1 Intake & Extraction
+(`src/open_intelligence/extraction.py`) is the one deterministic
+anchor checker every extraction proposal passes before its fields
+become stored assertions: the source version must exist, belong to
+the case, and be current, and each field must name a valid finding
+key, a known certainty, a verbatim quote, and an exact source line —
+anything else drops with a typed reason, never stored. The
+report-import path routes its parsed findings through the checker.
+T3 specimen chain (`src/open_intelligence/specimen_chain.py`) is the
+deterministic chain-of-custody walker: it walks a biological asset's
+parent lineage root-first, each link carrying its assay/specimen
+context and anchor basis, and reports every break as a typed record
+(missing asset/parent, cycle, unknown specimen, specimen mismatch,
+superseded anchor, episode mismatch, kind violation) — never silent,
+never a crash. Dimension modules never import each other
+(cross-dimension interaction happens only through the ledger and
+`route.decided`); the import-graph tripwire now lists the two D1
+modules and stays green. Local suite at the slice branch: 1006
+tests, with the same 17 pre-existing `test_pdf_intake` failures as
+the branch baseline (986 tests) and zero new failures. Unproven:
+nothing in the slice needs a live model call (Meta billing fix
+still pending); the first live caller of the chain validator is
+D3's comparison toolsets.
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.

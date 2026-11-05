@@ -44,10 +44,12 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "open_intelligence"
 
 # Dimension modules (program plan slices D1-D9) must not import each
 # other; cross-dimension interaction happens only through the ledger
-# and `route.decided`. No dimension module exists yet — the first
-# dimension slice populates this list. The checker is proved below
-# against a fake graph so the rule is live before the list is.
-DIMENSION_MODULES: tuple[str, ...] = ()
+# and `route.decided`. D1 populates the list with the data-integration
+# dimension modules; each later dimension slice appends its own.
+DIMENSION_MODULES: tuple[str, ...] = (
+    "open_intelligence.extraction",
+    "open_intelligence.specimen_chain",
+)
 
 
 def _module_imports(path):
@@ -71,11 +73,24 @@ def _module_imports(path):
 
 
 def _cross_dimension_violations(modules_to_imports, dimension_modules):
-    """Pairs where one dimension module imports another."""
+    """Pairs where one dimension module imports another.
+
+    Only dimension modules are constrained: the shared core (the
+    ledger, the import path) must be able to call a dimension module --
+    that is how the A1 checker reaches the live arrival path. What the
+    orthogonality rule forbids is one dimension module importing
+    another; cross-dimension interaction happens only through the
+    ledger and `route.decided`.
+    """
     violations = []
+    dimension_by_stem = {name.rsplit(".", 1)[-1]: name
+                         for name in dimension_modules}
     for module, imports in modules_to_imports.items():
+        own = dimension_by_stem.get(module)
+        if own is None:
+            continue
         for other in dimension_modules:
-            if other == module:
+            if other == own:
                 continue
             if any(imp == other or imp.startswith(other + ".")
                    for imp in imports):
@@ -175,8 +190,8 @@ class ImportGraphTests(unittest.TestCase):
             [])
 
     def test_dimension_checker_catches_a_fake_violation(self):
-        # The rule above is vacuous until the first dimension slice
-        # lands, so prove the checker itself works on a fake graph.
+        # The checker is proved on a fake graph as well as on the real
+        # one, so a regression in the checker itself is caught.
         fake = {"dim_a": {"dim_b"}, "dim_b": set()}
         self.assertEqual(
             _cross_dimension_violations(fake, ("dim_a", "dim_b")),
