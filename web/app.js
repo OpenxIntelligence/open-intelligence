@@ -5,10 +5,11 @@ let active = null;
 let refreshSequence = 0;
 let boardSequence = 0;
 let renderedCaseId = null;
-// B-01 fictional actor: workflow governance only — not identity verification,
-// not a login, not credentialed review. Sent on every API call; the server
-// gates case routes on a live grant for this actor and ignores it elsewhere.
-let fictionalActor = 'FICTIONAL-NAVIGATOR-A';
+// Slice 1 auth: the browser signs in as a local demo account and the
+// session cookie identifies the account on every API call. Accounts are
+// local demo labels, not verified identities; the server gates case routes
+// on a live grant for the signed-in account plus its role.
+let sessionAccount = null;
 let caseCatalog = [];
 let incomingBoardSequence = 0;
 let draftQuestionFilter = null;
@@ -27,10 +28,30 @@ function notice(message, error = false) {
   item.className = error ? 'notice error' : 'notice';
   item.hidden = false;
 }
+// Begin per-field error association (A11Y-031). The global notice bar stays as
+// the summary; an invalid field also gets its own error element referenced by
+// aria-describedby, following the "<field id>-error" naming convention.
+function setFieldError(fieldId, message) {
+  const error = el(fieldId + '-error');
+  if (!error) return;
+  error.textContent = message;
+  error.hidden = false;
+  el(fieldId).setAttribute('aria-invalid', 'true');
+  el(fieldId).setAttribute('aria-describedby', error.id);
+}
+function clearFieldError(fieldId) {
+  const error = el(fieldId + '-error');
+  if (!error) return;
+  error.textContent = '';
+  error.hidden = true;
+  el(fieldId).removeAttribute('aria-invalid');
+  el(fieldId).removeAttribute('aria-describedby');
+}
+// End per-field error association (A11Y-031).
 async function api(path, payload) {
-  const actorHeaders = { 'X-Fictional-Actor': fictionalActor };
-  const response = await fetch(path, payload === undefined ? { headers: actorHeaders } : {
-    method: 'POST', headers: { ...actorHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  // No auth header: the session cookie is sent automatically by the browser.
+  const response = await fetch(path, payload === undefined ? {} : {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   const type = response.headers.get('content-type') || '';
   const data = type.includes('json') ? await response.json() : await response.text();
@@ -48,6 +69,12 @@ function metric(number, label) {
   wrap.append(node('span', number, 'number'), node('span', label, 'name'));
   return wrap;
 }
+// A11Y-004 decision (2026-11-03): this Tab reroute is KEPT, not removed. It is
+// pinned by the "keyboard Tab reaches first workspace navigation link" check in
+// tests/browser_journey.py (Tab from the case picker must land on #overview),
+// whose comment records the reason: Tab must reach the navigation without
+// disappearing into a dead control. Removing the reroute needs that journey
+// contract updated first as an explicit lead decision.
 function focusOverviewFromCasePicker(event) {
   if (event.key !== 'Tab' || event.shiftKey || event.defaultPrevented) return;
   if (document.activeElement !== el('case-picker')) return;
@@ -62,13 +89,58 @@ function unfinishedDraftPresent() {
     'synthesis-note-author', 'owner-label-input', 'note-text',
     'scoped-decision-note', 'scoped-dissent-rationale'].some(id => el(id).value.trim());
 }
-function renderActorIndicator() {
-  // The Patient Mission renderer (mission.js) reads this dataset value so
-  // both scripts send the same fictional actor without sharing state.
-  document.body.dataset.fictionalActor = fictionalActor;
-  el('actor-input').value = fictionalActor;
-  el('actor-status').textContent = 'Acting as ' + fictionalActor +
-    ' (fictional grant only — not identity verification).';
+function renderSessionIndicator(account) {
+  sessionAccount = account;
+  el('signin-view').hidden = account !== null;
+  el('session-view').hidden = account === null;
+  if (account === null) {
+    el('session-status').textContent = '';
+    return;
+  }
+  el('session-status').textContent = 'Signed in as ' + account.account_id +
+    ' (' + account.role + '). Local demo account — not a verified identity.';
+}
+async function applySignIn() {
+  const accountId = el('signin-account').value.trim();
+  const password = el('signin-password').value;
+  el('signin-status').textContent = '';
+  if (!accountId || !password) {
+    el('signin-status').textContent = 'Enter an account and password.';
+    return;
+  }
+  try {
+    const account = await api('/api/auth/sign-in', { account_id: accountId, password });
+    el('signin-password').value = '';
+    renderSessionIndicator(account);
+    await startWorkspace();
+  } catch (err) { el('signin-status').textContent = err.message; }
+}
+async function applySignOut() {
+  // An unfinished narrative must never silently become attached to another
+  // account's view.
+  if (unfinishedDraftPresent()) {
+    notice('Save or explicitly clear the unfinished investigation draft before signing out.', true);
+    return;
+  }
+  try { await api('/api/auth/sign-out', {}); } catch (err) { notice(err.message, true); }
+  renderSessionIndicator(null);
+  caseId = null;
+  active = null;
+  clear('case-picker');
+  clearCaseViews('Sign in to view case data.');
+  el('case-heading').textContent = 'Sign in to view the demo cases';
+  el('signin-account').value = '';
+}
+async function startWorkspace() {
+  const cases = await loadCaseList();
+  if (!cases.length) {
+    el('case-heading').textContent = 'No synthetic cases found';
+    notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
+    return;
+  }
+  await renderIncomingBoard(cases);
+  caseId = cases[0].case_id;
+  await refresh();
 }
 async function loadCaseList() {
   const cases = await api('/api/cases');
@@ -81,44 +153,18 @@ async function loadCaseList() {
   }
   return cases;
 }
-async function applyActor() {
-  const next = el('actor-input').value.trim();
-  if (!/^[A-Z][A-Z0-9-]{1,39}$/.test(next)) {
-    el('actor-input').value = fictionalActor;
-    notice('Fictional actor ids use uppercase A–Z, numbers and hyphens.', true);
-    return;
-  }
-  if (next === fictionalActor) return;
-  // An unfinished narrative must never silently become attached to another actor's view.
-  if (unfinishedDraftPresent()) {
-    el('actor-input').value = fictionalActor;
-    notice('Save or explicitly clear the unfinished investigation draft before switching actors.', true);
-    return;
-  }
-  fictionalActor = next;
-  renderActorIndicator();
-  cancelSourceRead();
-  caseId = null;
-  active = null; // Reject writes while the next case list is loading.
-  if (el('source-dialog').open) el('source-dialog').close();
-  if (el('compare-dialog').open) el('compare-dialog').close();
+async function loadAccessLog() {
+  if (!caseId) { el('access-log-status').textContent = 'No case selected.'; return; }
   try {
-    const cases = await loadCaseList();
-    caseCatalog = cases;
-    await renderIncomingBoard(cases);
-    if (!cases.length) {
-      el('case-heading').textContent = 'No granted cases for this fictional actor';
-      renderedCaseId = null;
-      clear('metrics');
-      clearCaseViews('No case data shown: this fictional actor holds no active grant.');
-      el('changes-anchor').textContent = 'Changes unavailable: this fictional actor holds no active grant.';
-      el('changes-disclaimer').textContent = '';
-      notice('This fictional actor holds no active grant on any case in this demo. Apply a granted fictional actor.', true);
-      return;
+    const data = await api('/api/cases/' + caseId + '/access-log');
+    clear('access-log-list');
+    const rows = data.access_log || [];
+    el('access-log-status').textContent = rows.length ? '' : 'No access entries recorded for this case yet.';
+    for (const row of rows) {
+      el('access-log-list').append(node('p',
+        row.occurred_at + ' — ' + row.actor + ' — ' + row.route + ' — ' + row.result));
     }
-    caseId = cases[0].case_id;
-    await refresh();
-  } catch (err) { notice(err.message, true); }
+  } catch (err) { el('access-log-status').textContent = err.message; }
 }
 function clearCaseViews(denied) {
   for (const id of ['assertion-list', 'question-list', 'snapshot-list', 'source-list',
@@ -130,7 +176,7 @@ function clearCaseViews(denied) {
       // M-3: the mission projection renders case quotes (mission.js
       // renderKnown); it must clear under denial like every other view.
       'mission-summary', 'mission-known', 'mission-unresolved',
-      'mission-changes', 'mission-actions']) {
+      'mission-changes', 'mission-actions', 'access-log-list']) {
     clear(id);
     empty(el(id), denied);
   }
@@ -160,24 +206,28 @@ function renderAccessDenied(requestedCase) {
   // clear every case-bound view and block writes until a granted case loads.
   active = null;
   renderedCaseId = null;
-  el('case-heading').textContent = 'Access denied for this fictional actor';
+  el('case-heading').textContent = 'Access denied for this account';
   el('review-attention-heading').textContent = 'Investigation review status';
-  el('review-attention-summary').textContent = 'Review state unavailable: access denied for this fictional actor.';
+  el('review-attention-summary').textContent = 'Review state unavailable: access denied for this account.';
   el('review-attention').dataset.state = 'no-open-review';
   clear('metrics');
-  clearCaseViews('No case data shown: this fictional actor holds no active grant.');
-  el('changes-anchor').textContent = 'Changes unavailable: access denied for this fictional actor.';
+  clearCaseViews('No case data shown: this account holds no active grant.');
+  el('changes-anchor').textContent = 'Changes unavailable: access denied for this account.';
   el('changes-disclaimer').textContent = '';
-  notice('Fictional actor ' + fictionalActor + ' holds no active grant for ' + requestedCase +
-    '. Switch to a granted case or apply a granted fictional actor.', true);
+  notice('This account holds no active grant for ' + requestedCase +
+    '. Switch to a granted case or sign in with a granted account.', true);
 }
 async function initialize() {
   try {
-    renderActorIndicator();
-    el('actor-apply').addEventListener('click', applyActor);
+    el('signin-apply').addEventListener('click', applySignIn);
+    el('signout-apply').addEventListener('click', applySignOut);
+    el('access-log-apply').addEventListener('click', loadAccessLog);
     const picker = el('case-picker');
     picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {
+      // A repeated selection is not a new case. Keep loaded authority and drafts
+      // intact rather than making a valid same-case action race a redundant read.
+      if (picker.value === caseId) return;
       if (documentIntake.hasDraft()) {
         picker.value = caseId;
         notice('Add the record or discard its intake before switching cases.', true);
@@ -196,6 +246,8 @@ async function initialize() {
             'workspace-question-text', 'workspace-status-reason', 'workspace-status-answer',
             'visit-date', 'visit-type', 'visit-notes', 'visit-anchor',
             'visit-amend-date', 'visit-amend-type', 'visit-amend-notes', 'visit-amend-anchor',
+            'option-label', 'dependency-anchor', 'task-label', 'task-owner',
+            'threat-description', 'threat-anchor', 'reviewer-label', 'review-scope',
             'counterevidence-reason', 'safety-detail',
             'flag-reason', 'dimension-note',
             'synthesis-note-text', 'synthesis-note-author',
@@ -211,12 +263,16 @@ async function initialize() {
       active = null; // Reject writes while the next case is loading.
       draftQuestionFilter = null;
       draftFilterCaseId = null;
-      for (const id of ['question-text', 'question-owner', 'owner-label-input', 'note-text',
+      for (const id of ['option-label', 'dependency-anchor', 'task-label', 'task-owner',
+        'threat-description', 'threat-anchor', 'reviewer-label', 'review-scope',
+        'question-text', 'question-owner', 'owner-label-input', 'note-text',
         'report-text', 'evidence-rationale', 'draft-observations',
         'draft-summary', 'draft-assumptions', 'synthesis-note-text', 'synthesis-note-author',
         'counterevidence-reason', 'safety-detail',
         'bio-mechanism', 'bio-result-note',
         'flag-reason', 'dimension-note',
+        'scoped-decision-note', 'scoped-dissent-rationale',
+        'ft-title', 'ft-detail', 'ft-reason', 'ft-update-reason',
         'goal-statement', 'goal-review-trigger',
         'amend-goal-statement', 'amend-goal-review-trigger', 'goal-status-reason',
         'amend-note-text', 'so-question-text', 'so-responder', 'so-response-text',
@@ -227,19 +283,23 @@ async function initialize() {
         'workspace-status-answer', 'visit-date', 'visit-type', 'visit-notes',
         'visit-anchor', 'visit-amend-date', 'visit-amend-type', 'visit-amend-notes',
         'visit-amend-anchor']) el(id).value = '';
-      if (el('source-dialog').open) el('source-dialog').close();
-      if (el('compare-dialog').open) el('compare-dialog').close();
+      clearFieldError('draft-observations');
+      closeSourceViewsWithoutFocusReturn();
       refresh();
     });
-    const cases = await loadCaseList();
-    if (!cases.length) {
-      el('case-heading').textContent = 'No synthetic cases found';
-      notice('Run PYTHONPATH=src python -m open_intelligence seed before opening the demo.', true);
+    // The workspace loads only after sign-in: the session cookie gates
+    // every case route, so an unsigned-in page shows no case data.
+    let account = null;
+    try { account = await api('/api/auth/session'); } catch (err) {
+      if (err.status !== 401) throw err;
+    }
+    renderSessionIndicator(account);
+    if (account === null) {
+      el('case-heading').textContent = 'Sign in to view the demo cases';
+      notice('Sign in with a local demo account to view the synthetic cases.', true);
       return;
     }
-    await renderIncomingBoard(cases);
-    caseId = cases[0].case_id;
-    await refresh();
+    await startWorkspace();
   } catch (err) { notice(err.message, true); }
 }
 async function renderIncomingBoard(cases) {
@@ -414,6 +474,9 @@ async function refresh() {
     active = response;
     el('case-heading').textContent = active.case.label;
     render();
+    // A newly loaded case invalidates the on-demand access-log view.
+    clear('access-log-list');
+    el('access-log-status').textContent = '';
     // The incoming board shows per-case counts for every case, so it goes
     // stale after any write. Refresh it alongside the workspace panels.
     api('/api/cases').then(cases => {
@@ -1172,8 +1235,38 @@ function showSourceView(dialogId) {
   for (const id of ['source-dialog', 'compare-dialog']) {
     if (id !== dialogId && el(id).open) el(id).close();
   }
-  if (!el(dialogId).open) el(dialogId).showModal();
+  if (!el(dialogId).open) {
+    rememberDialogOpener(dialogId);
+    el(dialogId).showModal();
+  }
 }
+// Begin dialog focus return (A11Y-002). Every dialog close returns focus to
+// the element that opened it. The close handler below only restores focus; it
+// never touches the source-read intent (see the cancel-listener note with the
+// dialog listeners), so queued closes cannot cancel a newer read.
+const dialogOpeners = new Map();
+function rememberDialogOpener(dialogId) {
+  const opener = (typeof HTMLElement !== 'undefined' &&
+    document.activeElement instanceof HTMLElement) ? document.activeElement : null;
+  dialogOpeners.set(dialogId, opener);
+}
+function restoreDialogFocus(dialogId) {
+  const opener = dialogOpeners.has(dialogId) ? dialogOpeners.get(dialogId) : null;
+  dialogOpeners.delete(dialogId);
+  if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
+}
+function closeSourceViewsWithoutFocusReturn() {
+  // Case switches close dialogs while focus already sits on the case picker;
+  // restoring focus to a stale opener would yank it away from the picker.
+  dialogOpeners.delete('source-dialog');
+  dialogOpeners.delete('compare-dialog');
+  for (const id of ['source-dialog', 'compare-dialog']) if (el(id).open) el(id).close();
+}
+function watchDialogFocusReturn() {
+  for (const id of ['source-dialog', 'compare-dialog'])
+    el(id).addEventListener('close', () => restoreDialogFocus(id));
+}
+// End dialog focus return (A11Y-002).
 function originalText(response) {
   if (!response || typeof response.text !== 'string')
     throw Error('Original source text is unavailable. No comparison was produced.');
@@ -1333,8 +1426,10 @@ el('packet-print').addEventListener('click', () => {
 });
 el('dialog-close').addEventListener('click', () => { cancelSourceRead(); el('source-dialog').close(); });
 el('compare-close').addEventListener('click', () => { cancelSourceRead(); el('compare-dialog').close(); });
-// Native Escape dispatches cancel before closing. Avoid a close-event handler:
-// queued programmatic close events must not cancel a newer read intent.
+// Native Escape dispatches cancel before closing. Avoid a close-event handler
+// for read intents: queued programmatic close events must not cancel a newer
+// read intent. (The focus-return close handler registered below never touches
+// the read intent, so it is exempt from that rule.)
 function renderQuestionRollup(data) {
   // Read-only ledger facts only: unresolved items with anchors, bound
   // snapshots, versioned notes, owner history, and case coverage context.
@@ -1381,6 +1476,7 @@ function renderQuestionRollup(data) {
 }
 for (const id of ['source-dialog', 'compare-dialog'])
   el(id).addEventListener('cancel', cancelSourceRead);
+watchDialogFocusReturn();
 el('question-form').addEventListener('submit', async event => {
   event.preventDefault(); try {
     const requestedCase = readyCase();
@@ -1438,10 +1534,12 @@ el('draft-form').addEventListener('submit', async event => {
   event.preventDefault();
   const observations = el('draft-observations').value.trim();
   if (!observations) {
+    setFieldError('draft-observations', 'Add reported observations before saving.');
     el('draft-observations').focus();
     notice('Add reported observations before saving.', true);
     return;
   }
+  clearFieldError('draft-observations');
   try {
     const requestedCase = readyCase();
     const sources = [...el('source-choice').querySelectorAll('input:checked')].map(x => Number(x.value));
@@ -1600,6 +1698,7 @@ el('option-dependency-form').addEventListener('submit', async event => {
       deadline_basis: el('dependency-basis').value, anchor: el('dependency-anchor').value,
     });
     if (requestedCase !== caseId) return;
+    el('dependency-anchor').value = '';
     notice('Dependency #' + created.dependency_id + ' added.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });
@@ -1677,7 +1776,7 @@ el('option-review-form').addEventListener('submit', async event => {
       snapshot_id: el('review-snapshot-choice').value === '' ? null : Number(el('review-snapshot-choice').value),
     });
     if (requestedCase !== caseId) return;
-    el('review-scope').value = '';
+    el('reviewer-label').value = ''; el('review-scope').value = '';
     notice('Reviewer action recorded: ' + outcome.result + '.'); await refresh();
   } catch (err) { notice(err.message, true); }
 });

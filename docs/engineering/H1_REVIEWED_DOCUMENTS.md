@@ -1,0 +1,114 @@
+# H1 reviewed ordinary documents
+
+Draft [#323](https://github.com/OpenxIntelligence/open-intelligence/pull/323) extends
+#315's converged H1 workspace. This is fictional engineering, unmerged and undeployed.
+
+Records now previews ordinary UTF-8 text and text-bearing PDFs without saving a
+source. Explicit case, metadata, hash and manual-transcription confirmation saves
+exact original bytes in the existing canonical source ledger. The frozen rendition
+retains numbered lines and physical PDF pages. Selections are attributed manual
+classifications, never source-authored assertions or clinical approval. A correction
+appends an immutable revision with a reason; exact retries recover one receipt.
+Amendments retain earlier originals and histories. The browser downloads fresh,
+authorized bytes and checks their hash before creating the download.
+
+Apply `0012_reviewed_documents` explicitly. The new immutable source-owned children
+are `clinical_source.document_intakes` and `annotation_revisions`; no parallel
+patient/source store is introduced. The bounded parser comes from reference #249
+at `af72cd6ad5d4e934aa3168334b1592bfdce35e51`, using hash-locked pypdf 6.21.4 and its
+recorded BSD-3-Clause notice. Extraction runs outside write locks in a constrained
+worker after initial authorization. Response encoding and final authority checks
+remain inside the authoritative transaction.
+
+## API and limits
+
+Prefix: `/v1/patients/{patient_id}/cases/{case_id}/documents`.
+
+| Operation | Additional grants |
+| --- | --- |
+| POST `/preview` or collection import | `source_import` |
+| GET collection | `source_read` |
+| GET `/{source_id}` rendition/history | `source_read`, `source_original_read` |
+| GET `/{source_id}/original` | `source_original_read` |
+| POST `/{source_id}/annotations` | `source_import`, `source_original_read` |
+
+All operations also require existing patient, organization, case and purpose
+checks. Maximum original/extracted UTF-8 size is 64 KiB, with 20 PDF pages, 512
+lines, 30 selections of at most 1,200 characters, and 64 revisions. Ingress is
+262,144 bytes. Client reads stream within a 32 MiB history bound (including worst
+case escaped Unicode), with a separate 64 KiB original bound. No OCR is provided.
+
+## Verification and remaining work
+
+### Checking a passage against the selected original
+
+Before showing a new preview, the web client hashes the bytes it sent and checks
+the returned filename, byte count, digest, media type and extraction and
+annotation methods. A mismatch withholds the preview and the save form. If
+the reviewer discards the file while hashing is in progress, the completed
+hash cannot bring its preview back.
+
+PDF passage selections and saved revision history show the physical page,
+line within that page's extraction and document-wide extraction line. The
+reviewer checks the visible specimen label, value and unit on the original
+page. The [paired PDF experiment](https://github.com/OpenxIntelligence/open-intelligence/pull/466)
+shows how drawing order can separate those words. Editing document metadata
+or a correction reason clears the confirmation and requires a new one to save.
+This confirmation applies to manual transcription. Clinical review has its own
+workflow.
+
+The connected browser journey exercises a substituted hash on one real preview
+response, retries the selected file, corrects a selection on page two and
+checks the page locations on both saved revisions.
+
+When a reviewer chooses a saved passage in Investigations, the picker shows the
+physical page and document-wide extraction line that its selection receipt carries. A fresh selection receipt must match the
+displayed document version, original and extraction hashes, selection revision,
+reviewer label, review time, review digest, quotation, classification, extraction
+line and physical page. A second digest for the same saved selection is refused. A difference asks
+the reviewer to reopen the record before choosing the passage. The browser
+journey exercises this using a shortened, valid substring while the selection
+endpoint returns the original quotation. It then reopens the document and
+follows the exact wording and physical page into the preserved report.
+
+The draft PR records final commit-specific hosted results. Local verification
+covers strict wire contracts, isolated parser tests, client state and production
+build. The independent whole-change review found a too-small history response
+limit; regressions reproduce the Unicode history failure and verify bounded
+stream cancellation after its correction.
+
+Hosted acceptance runs real PostgreSQL migrations, immutable history and rollback
+checks, the built React PDF journey (page-two correction, exact binary download,
+restart, denied original access and 390px layout), and container recovery probes.
+Parent #349 compared reviewed-document rows through dump/restore and checked
+history/retry after API/database restart; it did not serve document HTTP from the
+restored copy. The dependent recovery continuation extends the existing source
+probe to recreate the API on an active restored database, confirm its configured
+engine target, and read both UTF-8/CRLF text and a two-page fictional PDF. It checks
+exact binary bytes/hashes, frozen page/line anchors, complete correction history,
+collection identity, and exact intake/correction retries across API/database restarts.
+
+Independent source-read, original-read, import and patient grants, changed patient
+scope/purpose, absent credentials and a wrong case exercise fail-closed behavior.
+A revoked binding is backed up from the restored copy and restored again with all
+grants enabled; reads, preview, import and correction retries must remain denied.
+Complete application rows and sequence states are compared. Returned access events
+must match their exact patient/case/source/hash/actor scopes in the serving copy;
+original and intermediate copies must remain unchanged. No runtime, schema,
+migration, permission or dependency changes are part of this increment.
+
+Local negative controls exercise the actual recovery assertion against changed
+originals/history, wrong or missing receipts and sequence drift. The recovery
+owner [#362](https://github.com/OpenxIntelligence/open-intelligence/pull/362)
+completed [API run 41695634359, attempt 2](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41695634359/attempts/2)
+at `c7fd1bd865f4a8f42da1e515a2599431d14f0a8d`; its earlier Chrome-startup failure
+remains historical evidence. The current [document convergence candidate](H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md)
+includes that existing recovery implementation and still requires its own
+commit-specific run and retained `source-document-recovery.json`. The five
+recovery gates and seven-day artifact retention remain in place.
+
+Manual document selections are deliberately excluded from the existing structured
+source World Model and question snapshots. Propagating their explicitly manual
+provenance into investigation questions and reports is the next dependent stage;
+this draft does not establish that integration, professional review, real patient
+identity, live retrieval, model execution or clinical validity.

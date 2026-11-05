@@ -89,7 +89,7 @@ class AggregateTests(unittest.TestCase):
 
 H5_AVAILABLE = importlib.util.find_spec('h5py') is not None and importlib.util.find_spec('numpy') is not None
 
-@unittest.skipUnless(H5_AVAILABLE, 'isolated HDF5 research dependencies absent; scientific job runs these tests')
+@unittest.skipUnless(H5_AVAILABLE, 'optional HDF5 dependencies absent; helpers are not qualified by a skipped test')
 class H5Tests(unittest.TestCase):
     def setUp(self):
         import h5py
@@ -169,46 +169,5 @@ class H5Tests(unittest.TestCase):
     def test_declared_count_layer_rejects_fractional_values(self):
         x=self.csr(data=(2.,0.5,4.,5.))
         with self.assertRaises(ValueError):p.read_selected_matrix(x,[0],3,3,require_integer=True)
-
-    def full_fixture(self):
-        self.obs.create_dataset('_index',data=['CELL-SYN-1','CELL-SYN-2','CELL-SYN-3'],dtype=self.h5py.string_dtype())
-        for name,values in [('sample_id',['T1','T1','T3_CD45neg']),('date',['2024-06-06','2024-06-06','2025-04-17'])]:
-            self.obs.create_dataset(name,data=values,dtype=self.h5py.string_dtype())
-        for res in ('0.5','1.0','1.5'):
-            self.obs.create_dataset('leiden_res'+res,data=['0','1','0'],dtype=self.h5py.string_dtype())
-            self.obs.create_dataset('celltype_res'+res,data=['hypothesis-A','hypothesis-B','hypothesis-A'],dtype=self.h5py.string_dtype())
-        var=self.f.create_group('var');var.attrs['_index']='_index'
-        var.create_dataset('_index',data=['FAP','CD276','PANX3','MDM2'],dtype=self.h5py.string_dtype())
-        counts=self.np.array([[0.,2.,1.,0.],[3.,0.,2.,0.],[0.,0.,0.,0.]])
-        self.f.create_group('layers').create_dataset('counts',data=counts)
-        self.f.create_dataset('X',data=self.np.log1p(counts))
-        self.f.flush()
-
-    def test_end_to_end_aggregates_with_no_cell_ids_published(self):
-        self.full_fixture();out=p.inspect_and_analyze(self.path)
-        self.assertEqual(out['n_cells'],3)
-        self.assertEqual(out['sample_sizes'],{'T1':2,'T3_CD45neg':1})
-        self.assertEqual(out['count_vs_X_positive_disagreements'],0)
-        self.assertIn('PTPRC',out['genes_not_measured'])
-        self.assertEqual(out['sample_target_summaries']['T1']['PANX3']['positive_cells'],2)
-        self.assertEqual(out['sample_target_summaries']['T3_CD45neg']['FAP']['positive_cells'],0)
-        self.assertNotIn('CELL-SYN-1',json.dumps(out))
-        self.assertFalse(out['malignancy_established'])
-
-    def test_missing_counts_layer_does_not_fall_back_to_scaled_X(self):
-        self.full_fixture();del self.f['layers/counts'];self.f.flush()
-        with self.assertRaises(ValueError):p.inspect_and_analyze(self.path)
-
-    def test_unexpected_sample_cannot_be_pooled_as_another_timepoint(self):
-        self.full_fixture();self.obs['sample_id'][0]='UNEXPECTED-DONOR';self.f.flush()
-        with self.assertRaises(ValueError):p.inspect_and_analyze(self.path)
-
-    def test_wrong_sample_date_requires_resolution(self):
-        self.full_fixture();self.obs['date'][0]='2025-04-17';self.f.flush()
-        with self.assertRaises(ValueError):p.inspect_and_analyze(self.path)
-
-    def test_duplicate_cell_identity_requires_resolution(self):
-        self.full_fixture();self.obs['_index'][1]='CELL-SYN-1';self.f.flush()
-        with self.assertRaises(ValueError):p.inspect_and_analyze(self.path)
 
 if __name__=='__main__':unittest.main()

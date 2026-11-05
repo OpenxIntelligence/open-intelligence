@@ -1,38 +1,24 @@
-"""Actual processed-RNA research, not clinical interpretation or a model call.
+"""Offline RNA format and descriptive-statistics helpers for synthetic fixtures.
 
-Question: are four previously nominated genes represented across the selected
-bulk-RNA libraries, and how sensitive is that view to sample composition?
-No raw reads, full matrices, genotypes or treatment recommendations are emitted.
-Five fixed libraries, one subject, four specimens spanning three timepoint labels;
-not biological replicates. No differential-expression p-values or causal claims.
+No patient endpoints, sample identifiers or data download workflow are included.
+Calculations are engineering helpers, not qualified clinical interpretations.
 """
 from __future__ import annotations
-import argparse
-import csv
 import gzip
 import hashlib
 import io
-import json
 import math
-import platform
-import subprocess
-import time
-from datetime import datetime, timezone
-from pathlib import Path
-from urllib.request import HTTPRedirectHandler, Request, build_opener
-from public_case_intake import build_manifest, CATALOG_URL
+if __package__:
+    from .data_policy import deny_personal_data_use, disabled_cli
+else:
+    from data_policy import deny_personal_data_use, disabled_cli
 
-BASE='https://sid-sijbrandij-osteosarc-dataset.s3.us-west-2.amazonaws.com/'
-SAMPLES=('BG003082','P116686_3','BG009368','SARC0277_T1','SARC0277')
-TARGETS=('FAP','CD276','PANX3','MDM2')  # Nominated before reading quantitative values.
-CONTEXT=('PTPRC','CD3D','CD3E','COL1A1','COL1A2','ALPL','SPARC')
-MAX_EXPANDED=16_000_000
+MAX_EXPANDED = 16_000_000
 
 
 def validate_key(sample: str, suffix: str) -> str:
-    if sample not in SAMPLES or suffix not in ('.gene_tpm.gct.gz','.metrics.tsv'):
-        raise ValueError('Only fixed processed RNA/QC assets are permitted')
-    return f'rna-seq/reprocessed/{sample}/{sample}{suffix}'
+    """Legacy remote-asset keys no longer authorize any retrieval."""
+    deny_personal_data_use()
 
 
 def parse_gct(raw: bytes, expected_sample: str) -> dict:
@@ -111,97 +97,17 @@ def compare_profiles(left: dict, right: dict) -> dict:
             'spearman':corr,'population_or_clinical_inference':False}
 
 
-class NoRedirect(HTTPRedirectHandler):
-    def redirect_request(self,*args,**kwargs):raise ValueError('Redirect forbidden')
-
-
-def fetch(url: str, limit: int) -> tuple[bytes,dict]:
-    allowed={CATALOG_URL,BASE+'rna-seq/reprocessed/README.md'}|{
-        BASE+validate_key(s,x) for s in SAMPLES for x in ('.gene_tpm.gct.gz','.metrics.tsv')}
-    if url not in allowed:raise ValueError('URL outside fixed read scope')
-    for attempt in range(2):
-        try:
-            with build_opener(NoRedirect()).open(Request(url,headers={'User-Agent':'OpenIntelligence-RNA-research/1'}),timeout=45) as r:
-                raw=r.read(limit+1)
-                if len(raw)>limit:raise ValueError('Download cap')
-                receipt={'url':url,'sha256':hashlib.sha256(raw).hexdigest(),'bytes':len(raw),
-                         'retrieved_at':datetime.now(timezone.utc).isoformat(),
-                         'etag':r.headers.get('ETag'),'last_modified':r.headers.get('Last-Modified')}
-                return raw,receipt
-        except (OSError,TimeoutError):
-            if attempt:raise
-            time.sleep(1)
-    raise RuntimeError('Unreachable')
+def fetch(url: str, limit: int) -> tuple[bytes, dict]:
+    deny_personal_data_use()
 
 
 def run() -> dict:
-    started=datetime.now(timezone.utc).isoformat()
-    raw,receipt=fetch(CATALOG_URL,2_000_000)
-    manifest=build_manifest(raw,started)
-    method,method_receipt=fetch(BASE+'rna-seq/reprocessed/README.md',30000)
-    if not all(x in method.decode() for x in ('GTEx V11','GENCODE v47','gene_tpm.gct.gz')):
-        raise ValueError('Method declaration changed; re-review required')
-    matrices=[];profiles=[]
-    for s in SAMPLES:
-        prefix=f'rna-seq/reprocessed/{s}'
-        matches=[e for e in manifest['entries'] if e['source_record']['path'].rstrip('/')==prefix]
-        if len(matches)!=1:raise ValueError('Nonunique or missing catalog binding')
-        e=matches[0];r=e['source_record']
-        if r['status'] not in ('ok','caution') or r.get('other_donors','').strip().lower() not in ('','no'):
-            raise ValueError('Source scope not suitable')
-        if len(r['specimen_id'])!=1 or len(r['collection_date'])!=1 or r['reference']!='GRCh38':
-            raise ValueError('Unresolved specimen/date/reference')
-        b,br=fetch(BASE+validate_key(s,'.gene_tpm.gct.gz'),2_000_000)
-        m=parse_gct(b,s);matrices.append(m)
-        qc,qr=fetch(BASE+validate_key(s,'.metrics.tsv'),30000)
-        qrows=list(csv.reader(io.StringIO(qc.decode()),delimiter='\t'))
-        if not qrows or qrows[0]!=['Sample',s]:raise ValueError('QC sample mismatch')
-        qdict={line[0]:line[1] for line in qrows[1:] if len(line)==2}
-        profiles.append({'sample':s,'catalog_pointer':e['source_pointer'],
-            'catalog_row_sha256':e['record_sha256'],'specimen_ids':r['specimen_id'],
-            'collection_dates':r['collection_date'],'provider':r['provider'],
-            'source_caveat':r.get('caveat',''),'reference':r['reference'],
-            'expression_receipt':br,'qc_receipt':qr,'matrix_metrics':m['metrics'],
-            'qc_selected':{k:qdict.get(k) for k in ('Mapping Rate','Exonic Rate','Intronic Rate','Duplicate Rate of Mapped','Mapped Unique Reads')},
-            'targets':[gene_summary(m,g) for g in TARGETS],
-            'context_markers':[gene_summary(m,g) for g in CONTEXT]})
-    pairs=[compare_profiles(a,b) for i,a in enumerate(matrices) for b in matrices[i+1:]]
-    summary={g:{'quantified_libraries':sum(gene_summary(m,g)['status']=='quantified' for m in matrices),
-                'library_count':len(matrices)} for g in TARGETS}
-    return {'status':'analyzed','question':'Do previously nominated target-gene RNA signals recur across five selected libraries, and what limits comparison?',
-            'started_at':started,'completed_at':datetime.now(timezone.utc).isoformat(),
-            'catalog_receipt':receipt,'method_receipt':method_receipt,'library_count':len(profiles),
-            'specimen_count':len({v for p in profiles for v in p['specimen_ids']}),
-            'collection_date_count':len({v for p in profiles for v in p['collection_dates']}),
-            'profiles':profiles,'pairwise_profiles':pairs,'target_recurrence':summary,
-            'scope':{'method':'RNA-SeQC gene TPM; supplied GTEx V11 reprocessing, GRCh38/GENCODE v47',
-                     'analysis_executed':True,'ml_model_executed':False,'raw_read_alignment_executed':False,
-                     'clinical_interpretation_authorized':False,'historical_replay':False,
-                     'targets_selected_from_prior_case_narrative_not_discovered':True},
-            'limits':['One person; five libraries are not five independent patients or biological replicates.',
-                      'Rank percentile is within positive genes in this library, not a normal-tissue or cancer-population percentile.',
-                      'TPM is compositional. Common reprocessing does not remove library, sampling or cell-composition differences.',
-                      'Bulk RNA does not localize expression to malignant cells or establish surface protein, safety, efficacy, or treatment response.',
-                      'No normal-tissue comparison, differential-expression testing, causal attribution or therapy ranking was performed.',
-                      'Current reprocessing cannot establish what was known at the historical collection date.'],
-            'reviewable_followup':['Check cell-type-resolved expression and orthogonal protein evidence for any proposed target.',
-                                   'Use appropriately processed normal-tissue references before any specificity claim.',
-                                   'Separate sampling/library effects from genuine biological change.']}
+    deny_personal_data_use()
 
 
 def main() -> None:
-    parser=argparse.ArgumentParser();parser.add_argument('--output',required=True);args=parser.parse_args()
-    out=Path(args.output);out.parent.mkdir(parents=True,exist_ok=True)
-    try:
-        result=run()
-    except Exception as exc:
-        result={'status':'failed','error_type':type(exc).__name__,'error':str(exc),
-                'analysis_complete':False,'clinical_interpretation_authorized':False}
-    result['python']=platform.python_version()
-    result['source_sha256']={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (Path(__file__),Path(__file__).with_name('test_rna_expression_probe.py'))}
-    result['checkout']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-    out.write_text(json.dumps(result,indent=2,allow_nan=False))
-    print(json.dumps({'status':result['status'],'libraries':result.get('library_count')}))
-    if result['status']!='analyzed':raise SystemExit(1)
+    disabled_cli()
 
-if __name__=='__main__':main()
+
+if __name__ == '__main__':
+    main()

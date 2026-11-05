@@ -1,10 +1,12 @@
-"""Run with PYTHONPATH=src python -m open_intelligence serve/seed."""
+"""Run with PYTHONPATH=src python -m open_intelligence serve/seed/set-password."""
 
 from __future__ import annotations
 
 import argparse
 import base64
 import binascii
+import getpass
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import re
@@ -15,6 +17,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
+from .agent_writes import build_investigation_contract
 from .case_search import list_cases
 from .changes import changes_since_review
 from .packet import build_case_packet, render_packet_text
@@ -34,7 +37,7 @@ from .patient_attention import case_patient_attention
 from .provenance import case_provenance
 from .patient_report import build_patient_report, render_text
 from .owned_questions import question_gap_rollup
-from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES
+from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES, SESSION_TTL_SECONDS
 from .synthetic_metrics import fixture_run
 from .timeline import case_timeline
 
@@ -50,14 +53,24 @@ DOCUMENT_BODY_BYTES = 131072
 # production-security control. Every case route requires purpose
 # "individual-access" (the only purpose patient_access.py accepts); grants
 # with any other stated purpose authorize no case route in this slice.
+# Slice 1: a signed-in account is the actor; the account id doubles as the
+# B-01 actor id. The header remains only as a transitional path for the
+# seeded demo account, and the browser no longer sends it. Header support
+# for the demo account is flagged for removal in the next slice.
 FICTIONAL_ACTOR_HEADER = "X-Fictional-Actor"
 FICTIONAL_ACTOR_PURPOSE = "individual-access"
 DEMO_ACTOR = "FICTIONAL-NAVIGATOR-A"
+DEMO_OPERATOR = "FICTIONAL-OPERATOR-A"
 GRANT_DENIAL_MESSAGE = "Access denied: no active fictional-actor grant for this case"
+ROLE_DENIAL_MESSAGE = "Access denied: this account role does not permit this action"
+AUTH_REQUIRED_MESSAGE = "Sign-in required"
+SESSION_COOKIE = "oi_session"
+SESSION_HEADER = "X-OI-Session"
 
 
 class Handler(BaseHTTPRequestHandler):
-    # Purely local synthetic demonstration, with no authenticated user concept.
+    # Purely local synthetic demonstration. Accounts are local demo labels,
+    # not verified identities; the server is loopback-only.
     db_path: str
     allow_crossref_live = False
     crossref_contact: str | None = None
@@ -69,7 +82,7 @@ class Handler(BaseHTTPRequestHandler):
         print("[local demo]", fmt % args)
 
     def _headers(self, status: int, kind: str, size: int, *,
-                 filename: str | None = None) -> None:
+                 filename: str | None = None, set_cookie: str | None = None) -> None:
         self.send_response(status)
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(size))
@@ -81,15 +94,18 @@ class Handler(BaseHTTPRequestHandler):
             # The source owner returns a validated ASCII basename, never a
             # client-supplied path or an untrusted Content-Disposition value.
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        if set_cookie is not None:
+            self.send_header("Set-Cookie", set_cookie)
         self.end_headers()
 
     def _send(self, status: int, body: bytes, kind: str, *,
-              filename: str | None = None) -> None:
-        self._headers(status, kind, len(body), filename=filename)
+              filename: str | None = None, set_cookie: str | None = None) -> None:
+        self._headers(status, kind, len(body), filename=filename, set_cookie=set_cookie)
         self.wfile.write(body)
 
-    def _json(self, status: int, payload: dict | list) -> None:
-        self._send(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+    def _json(self, status: int, payload: dict | list, *,
+              set_cookie: str | None = None) -> None:
+        self._send(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8", set_cookie=set_cookie)
 
     def _static(self, name: str, mime: str) -> None:
         self._send(200, (WEB / name).read_bytes(), mime)
@@ -179,12 +195,93 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return actor
 
-    def _actor_label(self) -> str:
-        """Access-log actor field: the presented value, or "missing"."""
+    def _session_token(self) -> str | None:
+        """Session bearer token from the cookie, or the test header."""
+        raw_cookie = self.headers.get("Cookie")
+        if raw_cookie:
+            cookie = SimpleCookie()
+            try:
+                cookie.load(raw_cookie)
+            except Exception:
+                cookie = SimpleCookie()
+            morsel = cookie.get(SESSION_COOKIE)
+            if morsel is not None and morsel.value:
+                return morsel.value
+        header_token = self.headers.get(SESSION_HEADER)
+        if header_token and header_token.strip():
+            return header_token.strip()
+        return None
+
+    def _session_account(self, store: CaseStore) -> dict | None:
+        """Signed-in account for a live session, or None."""
+        token = self._session_token()
+        if token is None:
+            return None
+        return store.validate_session(token)
+
+    def _current_actor(self, store: CaseStore) -> tuple[dict | None, str | None]:
+        """(account, actor id) for this request.
+
+        A valid session wins. Otherwise, during the transition, the header
+        still identifies the seeded demo account only — any other header
+        value is not an identity. Returns (None, None) when unauthenticated.
+        """
+        account = self._session_account(store)
+        if account is not None:
+            return account, account["account_id"]
+        actor = self._fictional_actor()
+        if actor == DEMO_ACTOR:
+            demo = store.get_account(DEMO_ACTOR)
+            if demo is None:
+                demo = {"account_id": DEMO_ACTOR, "display_name": "Fictional demo navigator",
+                        "role": "clinician", "status": "active", "own_case_id": None}
+            return demo, DEMO_ACTOR
+        return None, None
+
+    def _actor_label(self, store: CaseStore) -> str:
+        """Access-log actor field: the signed-in account, the presented
+        header value, or "missing"."""
+        account = self._session_account(store)
+        if account is not None:
+            return account["account_id"]
         raw = self.headers.get(FICTIONAL_ACTOR_HEADER)
         if raw is None or not raw.strip():
             return "missing"
         return raw.strip()[:128]
+
+    @staticmethod
+    def _session_cookie(token: str, expires_at: str | None) -> str:
+        """HttpOnly, SameSite=Lax session cookie; Max-Age=0 clears it."""
+        if expires_at is None:
+            return f"{SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"
+        return (f"{SESSION_COOKIE}={token}; HttpOnly; SameSite=Lax; Path=/; "
+                f"Max-Age={SESSION_TTL_SECONDS}")
+
+    @staticmethod
+    def _role_may_use_case(account: dict, case_id: str, method: str) -> bool:
+        """Role permission on a case, in addition to the grant. Operator and
+        clinician work within grants; a patient reads only their own bound
+        case; an auditor works no case route."""
+        role = account["role"]
+        if role in ("operator", "clinician"):
+            return True
+        if role == "patient":
+            return method == "GET" and account.get("own_case_id") == case_id
+        return False
+
+    def _require_role(self, store: CaseStore, *roles: str) -> dict | None:
+        """Current session account holding one of the roles, or None after
+        sending 401/403. Operator/auditor routes require a session: the
+        transitional header identifies the demo clinician only, which
+        holds neither role."""
+        account = self._session_account(store)
+        if account is None:
+            self._json(401, {"error": AUTH_REQUIRED_MESSAGE})
+            return None
+        if account["role"] not in roles:
+            self._json(403, {"error": ROLE_DENIAL_MESSAGE})
+            return None
+        return account
 
     @staticmethod
     def _case_route_id(path: str) -> str | None:
@@ -205,24 +302,32 @@ class Handler(BaseHTTPRequestHandler):
         # or wrong-purpose grants.
         return self._json(403, {"error": GRANT_DENIAL_MESSAGE})
 
-    def _require_case_grant(self, store: CaseStore, case_id: str, path: str) -> bool:
+    def _require_case_grant(self, store: CaseStore, case_id: str, path: str,
+                            method: str = "GET") -> bool:
         """Gate one case-scoped route. Returns True when allowed (and the
         decision is logged); otherwise sends the denial and returns False.
 
         Unknown case ids raise InvalidInput (422 "Unknown case") BEFORE the
         grant check, preserving the existing contract with no new existence
-        oracle beyond what /api/cases already lists on this demo."""
-        label = self._actor_label()
+        oracle beyond what /api/cases already lists on this demo. A case
+        route requires BOTH an active grant for the signed-in account AND
+        role permission — both, not either — so B-01 semantics survive
+        intact and the header can no longer impersonate anyone."""
+        label = self._actor_label(store)
         route = path[:256]
         try:
             store.require_case(case_id)
         except InvalidInput:
             store.record_access(label, case_id, route, "denied")
             raise
-        actor = self._fictional_actor()
+        account, actor = self._current_actor(store)
         if actor is None or not store.has_active_grant(actor, case_id, FICTIONAL_ACTOR_PURPOSE):
             store.record_access(label, case_id, route, "denied")
             self._grant_denial()
+            return False
+        if not self._role_may_use_case(account, case_id, method):
+            store.record_access(actor, case_id, route, "denied")
+            self._json(403, {"error": ROLE_DENIAL_MESSAGE})
             return False
         store.record_access(actor, case_id, route, "allowed")
         return True
@@ -274,19 +379,44 @@ class Handler(BaseHTTPRequestHandler):
         # connection between ThreadingHTTPServer's request threads.
         store = CaseStore(self.db_path)
         try:
+            if path == "/api/auth/session":
+                account = self._session_account(store)
+                if account is None:
+                    return self._json(401, {"error": AUTH_REQUIRED_MESSAGE})
+                return self._json(200, account)
+            if path == "/api/auth/accounts":
+                operator = self._require_role(store, "operator")
+                if operator is None:
+                    return None
+                return self._json(200, {"accounts": store.list_accounts()})
             if path == "/api/cases":
-                actor = self._fictional_actor()
+                account, actor = self._current_actor(store)
                 if actor is None:
                     return self._grant_denial()
                 query = parse_qs(urlsplit(self.path).query)
-                if "search" not in query and "sort" not in query:
-                    return self._json(200, store.granted_cases(actor, FICTIONAL_ACTOR_PURPOSE))
                 granted = store.granted_cases(actor, FICTIONAL_ACTOR_PURPOSE)
+                if account["role"] == "patient":
+                    granted = [c for c in granted
+                               if c["case_id"] == account.get("own_case_id")]
+                if "search" not in query and "sort" not in query:
+                    return self._json(200, granted)
                 search = query.get("search", [""])[0]
                 sort = query.get("sort", ["id"])[0]
                 return self._json(200, list_cases(
                     store, search=search, sort=sort,
                     allowed_ids={c["case_id"] for c in granted}))
+            access_log_route = re.fullmatch(rf"/api/cases/{ID_PART}/access-log", path)
+            if access_log_route:
+                # Operator/auditor only, by role — no grant is required:
+                # auditors hold no case grants by design. A session is
+                # required; the transitional header identifies the demo
+                # clinician, which holds neither role.
+                account = self._session_account(store)
+                if account is None:
+                    return self._json(401, {"error": AUTH_REQUIRED_MESSAGE})
+                if account["role"] not in ("operator", "auditor"):
+                    return self._json(403, {"error": ROLE_DENIAL_MESSAGE})
+                return self._json(200, {"access_log": store.access_log(access_log_route[1])})
             gated_case = self._case_route_id(path)
             if gated_case is not None and not self._require_case_grant(store, gated_case, path):
                 return None
@@ -456,13 +586,52 @@ class Handler(BaseHTTPRequestHandler):
             # unknown actor on a case route is denied (403) even when the
             # body is malformed, and unknown cases stay 422 either way.
             gated_case = self._case_route_id(path)
-            if gated_case is not None and not self._require_case_grant(store, gated_case, path):
+            if gated_case is not None and not self._require_case_grant(store, gated_case, path, "POST"):
                 return None
             document_upload = re.fullmatch(rf"/api/cases/{ID_PART}/documents(/preview)?", path)
             # Base64 plus bounded annotations needs a larger envelope. All
             # other routes keep their existing request-body limit unchanged.
             data = (self._body(DOCUMENT_BODY_BYTES, strict=True)
                     if document_upload else self._body())
+            if path == "/api/auth/sign-in":
+                account_id = data.get("account_id")
+                password = data.get("password")
+                if not isinstance(account_id, str) or not isinstance(password, str) \
+                        or not store.verify_password(account_id, password):
+                    return self._json(401, {"error": "Invalid account or password"})
+                token, session = store.issue_session(account_id)
+                account = store.get_account(account_id)
+                return self._json(200, {"account_id": account["account_id"],
+                                        "display_name": account["display_name"],
+                                        "role": account["role"],
+                                        "expires_at": session["expires_at"]},
+                                  set_cookie=self._session_cookie(token, session["expires_at"]))
+            if path == "/api/auth/sign-out":
+                token = self._session_token()
+                if token is not None:
+                    store.revoke_session(token)
+                return self._json(200, {"result": "signed_out"},
+                                  set_cookie=self._session_cookie("", None))
+            if path == "/api/auth/accounts":
+                operator = self._require_role(store, "operator")
+                if operator is None:
+                    return None
+                account = store.create_account(
+                    data.get("account_id"), data.get("display_name"), data.get("role"),
+                    data.get("password"), data.get("own_case_id"))
+                return self._json(201, account)
+            account_route = re.fullmatch(
+                rf"/api/auth/accounts/{ID_PART}/(disable|enable|set-password)", path)
+            if account_route:
+                operator = self._require_role(store, "operator")
+                if operator is None:
+                    return None
+                target, action = account_route[1], account_route[2]
+                if action == "disable":
+                    return self._json(200, store.set_account_status(target, "disabled"))
+                if action == "enable":
+                    return self._json(200, store.set_account_status(target, "active"))
+                return self._json(200, store.set_account_password(target, data.get("password")))
             if path == "/api/bibliography/lookup":
                 if not self.allow_crossref_live:
                     return self._json(403, {"error": "Live Crossref lookup disabled by default; use explicit local server option"})
@@ -853,8 +1022,16 @@ class Handler(BaseHTTPRequestHandler):
                                               facts["assertions"], facts["assessments"])
                         payload = call_meta_api(prompt, meta_api_key())
                         validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"])
+                    # Slice 1 write contract (program plan section 5.4):
+                    # the run is stored only with its complete, validated
+                    # contract attached; a missing or mismatched contract
+                    # is rejected by save_investigation below.
+                    contract = build_investigation_contract(
+                        store, case_id, question_id, template, validated.model,
+                        facts=facts)
                     investigation_id = store.save_investigation(
-                        case_id, question_id, template, validated, mode)
+                        case_id, question_id, template, validated, mode,
+                        write_contract=contract)
                     return self._json(201, store.get_investigation(case_id, investigation_id))
                 visits_record = re.fullmatch(rf"/api/cases/{ID_PART}/visits", path)
                 if visits_record:
@@ -960,15 +1137,26 @@ def seed(db_path: str) -> None:
             if not store.has_active_grant(DEMO_ACTOR, case_id, FICTIONAL_ACTOR_PURPOSE):
                 store.create_grant(DEMO_ACTOR, case_id, FICTIONAL_ACTOR_PURPOSE,
                                    "2020-01-01", "2999-12-31")
+        # Slice 1: the demo actor is a seeded clinician account, so the seeded
+        # grants keep working unchanged; a seeded operator account makes the
+        # operator-only routes usable. Neither account has a password until an
+        # operator sets one (see `set-password`); neither can sign in before
+        # that, by design. Re-seeding never duplicates an account.
+        if store.get_account(DEMO_ACTOR) is None:
+            store.create_account(DEMO_ACTOR, "Fictional demo navigator", "clinician")
+        if store.get_account(DEMO_OPERATOR) is None:
+            store.create_account(DEMO_OPERATOR, "Fictional demo operator", "operator")
     finally:
         store.close()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Open Intelligence synthetic-only workflow")
-    parser.add_argument("operation", choices=["seed", "serve"])
+    parser.add_argument("operation", choices=["seed", "serve", "set-password"])
     parser.add_argument("--db", default=".local/open-intelligence.sqlite")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--account", default=None,
+                        help="Account id for set-password")
     parser.add_argument("--enable-crossref-live", action="store_true",
                         help="Allow explicit public DOI-only metadata requests; disabled by default")
     parser.add_argument("--crossref-contact", default=None,
@@ -977,8 +1165,25 @@ def main() -> None:
     if args.operation == "seed":
         seed(args.db)
         return
+    if args.operation == "set-password":
+        # Operator-set credential on first run: no password is ever
+        # hardcoded or shipped; the operator sets it here, interactively.
+        if not args.account:
+            parser.error("set-password requires --account")
+        password = getpass.getpass(f"New password for {args.account}: ")
+        store = CaseStore(args.db)
+        try:
+            store.set_account_password(args.account, password)
+        except InvalidInput as error:
+            print(f"Cannot set password: {error}")
+            raise SystemExit(1) from None
+        finally:
+            store.close()
+        print(f"Password set for {args.account}.")
+        return
     print(f"Synthetic-only Open Intelligence demo: http://127.0.0.1:{args.port}")
-    print("No authentication; localhost only. Do not import real patient data.")
+    print("Local demo accounts enabled; localhost only. Sign in with an operator-set account password.")
+    print("Do not import real patient data.")
     print("Crossref DOI-only live lookup:", "ENABLED (explicit)" if args.enable_crossref_live else "DISABLED (default)")
     server_type = type("LocalOIHTTPServer", (ThreadingHTTPServer,), {"allow_reuse_address": True})
     bound_handler = type("BoundHandler", (Handler,), {

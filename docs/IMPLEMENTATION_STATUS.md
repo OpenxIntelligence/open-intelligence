@@ -1,6 +1,189 @@
 # Implementation slice 01 — source and investigation ledger
 
+**Current connected application:** use the [persistent fictional demo](H1_DEMO.md)
+and [consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
+for the current revision, verification receipts and landing status. The
+[convergence record](engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) maps retained
+contributions. The dated slices below are historical checkpoints; their old
+draft labels, schema heads and test counts are not current acceptance claims.
+
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
+
+## Provenance write contract (Slice 1) — 5 November 2026
+
+Branch `program/slice1-write-contract`, from main `4b13bc2`. Implements
+program-plan §5.4 (Notion OI-09 §5.4): the per-agent write contract, so
+every agent/model write is attributable and replayable, or it is rejected.
+
+New `src/open_intelligence/agent_writes.py` is the single owner of the
+contract: `writeId`, `agentId`, `agentRole` (A1–A6), `agentVersion`,
+`promptVersion`, `modelId`, `runId`, `routeId`, `snapshotAt` (L1 as-of:
+ledger event anchor plus timestamp), `inputs` (source versions,
+assertions, evidence assessments, each with a content hash), and
+`toolCalls`. `CaseStore.save_investigation` stores no write without a
+complete, validated contract bound to the same route and model, and
+records it in the new `agent_writes` table in the same transaction;
+`get_investigation` returns the full contract and `list_investigations`
+carries `write_id`/`agent_role`/`route_id`. Pre-slice rows keep reading
+with a null contract. `check_replay` re-reads every recorded input,
+requires exact content-hash matches with source versions still current,
+and re-validates the stored claims against the recorded input ids; a
+superseded source version, changed input, missing input, route mismatch,
+or tampered contract makes the replay not reproducible with a typed
+reason. The HTTP investigation route builds the contract from the
+ledger state the run read. New `tests/test_agent_writes.py` (24 tests):
+rejection on every missing field, full contract stored, replay
+reproduces the run, stale snapshot invalidates the replay.
+
+Slice-1 mappings recorded in the module, provisional until later
+slices: the single existing model call writes as A1 for every template;
+`routeId` is deterministic (`route:<case>:<template>:<question>`) because
+no `route.decided` record exists yet; `evidenceSnapshotId` carries an
+evidence-assessment id; `toolCalls` is empty (no toolsets exist yet).
+The case-packet builder does not yet surface the contract, and K-checks,
+the Skeptic, and parallel role agents are later slices.
+
+Local suite on the slice branch: 796 tests, FAILED with 9 failures and
+8 errors — the same 17 `test_pdf_intake` failures (12 test names) as the
+main baseline run on the same clone, caused by the missing local `pypdf`
+installation; zero new failures. The pre-slice guard
+`tests/test_case_switch_guards.py` passes on main (6 tests), confirming
+the guard gap is closed with no guard slice needed. This is fictional-only
+engineering, draft and undeployed.
+
+## Connected patient preparation — 3 November 2026
+
+Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)
+continues [#287](https://github.com/OpenxIntelligence/open-intelligence/pull/287)
+at `247705700080052705817fee9e8f7b54afa8ffaa`, retaining its API, recovery,
+source and review owners unchanged. It brings #286's Overview onto that shared
+workflow and fixes a hosted-browser-reproduced contextual-navigation defect:
+prepared packet/brief views must clear when leaving a section through any link.
+The authored draft and exact uncertain-return intent remain intact.
+
+The combined browser acceptance resumes one authored question through Overview,
+inspects its original source, records a nonterminal verification return and
+performs a fresh authorized download. Current/unreviewed and source-reassessment
+counts retain their last-read and clinical limitations. This advances OI-007,
+OI-009 and OI-010; it does not complete biomedical investigation or clinical review.
+
+Local candidate checks: 178 client tests and locked build pass; the notice gate
+passes. API discovery runs 301 methods, with 51 passing and 250 explicitly skipped
+because PostgreSQL is unavailable locally. Final hosted exact-head acceptance,
+review and artifact inspection belong in #288's verification receipt. See
+[patient continuity behavior and evidence](engineering/H1_PATIENT_CONTINUITY.md)
+and the existing [shared project assessment](project-state/PROJECT_STATE.md).
+This remains fictional-only, draft, unmerged and undeployed.
+
+## Historical audit — 2 November 2026
+
+### H1 source intake and record receipt final authority — draft #265
+
+This continuation uses verified canonical source/question owner #244 at
+`3b6c466950852c20f99d57a70dd196fd2862571a`. The existing source-import and
+record-receive methods now prepare their JSON receipt and refresh the original
+bearer's independent grants under their original transactions. Denied imports,
+amendments, quarantine and received-pointer writes roll back; duplicate/history
+paths also refresh authority before returning their source identity. No source,
+request, evidence or review owner is duplicated, and no migration/dependency is
+added. The separate active review and source-brief owners remain #262 and #264.
+
+Twelve new actual PostgreSQL/HTTP regression methods supplement the existing
+gates. Hosted tests-first runs reproduced missing final checks and response
+preparation after commit. A generic renderer-hook mistake was corrected using
+the pinned FastAPI serializer's actual path; the failure history remains recorded.
+Local checks execute 42 API tests and explicitly skip 162 database executions;
+they are not PostgreSQL acceptance. Final exact-head API/migration/recovery and
+built React/Chromium evidence belongs to
+[PR #265's verification receipt](https://github.com/OpenxIntelligence/open-intelligence/pull/265).
+See the [existing source receipt documentation](engineering/H1_CANONICAL_RECORD_SOURCE_RECEIPT.md)
+for behavior and limits. This is fictional-only engineering, draft and undeployed;
+external grant revocation and network delivery are not atomically coupled to PostgreSQL.
+
+### H1 canonical patient identity integration — issue #112
+
+The audited default main was
+[24519839aa8ac1ea3aff88a956349ba72798a72a](https://github.com/OpenxIntelligence/open-intelligence/commit/24519839aa8ac1ea3aff88a956349ba72798a72a).
+Existing domain work remains spread across unmerged drafts. Passing a source
+branch does not establish that its behavior is on main or combined with other
+branches.
+
+The [apps/api integration](../apps/api/README.md) is based on #162 head
+62d2ad0dd2c2d581f9d13d7659f888265838a4f0, which itself depends on #137's
+synthetic-only safety correction. Its source-owned identity port comes unchanged
+from #148 at 19b1c1319ba543fd0e93744ea3425bd861b0f233. The API shell owner's
+concurrent network/startup corrections were retained; an overlapping local draft
+was discarded. No source branch is replaced or self-merged.
+
+| Capability | Source / ownership | Actual state and verification | Remaining gap |
+|---|---|---|---|
+| Canonical patient registry | #85; unchanged patient_registry.py blob 7edade0e13d81eebc4ffeac1a19beeb6c241cb3e | Existing first-party domain reused, not reimplemented | Merge/review dependency remains |
+| PostgreSQL identity persistence | #148 at 19b1c131; original port and receipt SQL retained | Identity-only Alembic migration tested on PostgreSQL 16.15, including immutable receipts, atomic failure, downgrade/re-upgrade and collision refusal | Broader experimental #145 schema is not promoted |
+| H1 patient HTTP | New integration/h1-pg16-patient-registry-20261102 branch, stacked on #162 | 49/49 API/migration/gate tests, zero skips; create/retry/read, org/grant denial, expiry/revocation, bounded inputs, concurrent retries and connection-loss cleanup | Synthetic fixture authority only; no verified accounts, consent, RLS or production service-role qualification |
+| Existing source/evidence/investigation prototype | Preserved Python/SQLite application on #137 safety base | 245/245 existing tests passed on combined local checkout | These contracts are not yet mounted on H1 PostgreSQL |
+| EHR / LIS / event / clinical spine | #74 / #56 / #70 / #89 / #95 | Active source owners preserved; separately implemented/unmerged candidates | No claim of this H1 patient API being connected through encounters, orders, specimens, results or PWM |
+| Biomedical rights / Composer / source corrections / review | Existing #93 and integration branches | Existing implementations and research retained | No new live knowledge retrieval, model execution or clinical review through H1 |
+| Container persistence/recovery | H1 workflow and verify_registry_compose.py | Acceptance implements real HTTP, API + DB restart, dump/restore and revocation; hosted exact-head result must be read before claiming success | Docker/Chromium unavailable locally |
+| React/Vite workspace | #119 and existing UI candidates | Accepted frontend target; no new UI in this bounded backend integration | Bind existing UI to canonical patient/source APIs |
+| Artifact rights | Unchanged inventory, lock, notices and gate | 24 exact wheels checked; 99 supplier native and 13 embedded-runtime entries recorded as separate evidence scopes | Full image/distribution, Mako inherited label and native link-map holds remain |
+
+The source shell's final [hosted run #41530234376](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41530234376)
+passed its 26 API tests, 245 prototype tests, both Chromium journeys and
+health-only Compose/API-restart checks. Those results belong to #162; the new
+patient/restore acceptance requires its own exact-head run.
+
+Independent review reproduced two defects before correction: a same-name weaker
+identity schema could be silently adopted, and rollback failure could bypass
+explicit connection release. The new migration preflight stops for reconciliation;
+nested cleanup guarantees close. Both meaningful regressions passed, and the
+reviewer confirmed the fixes. A Dockerfile-specific ignore also bounds build
+context after its move to the repository root.
+
+### Audit coverage and next connection
+
+GitHub remains the source of code/CI truth; the accepted Notion/Drive H1 decisions
+select PostgreSQL 16 and React/Vite/TypeScript. The #148 PostgreSQL 17/18 matrix
+is research evidence, not approval to change that H1 target. No new stack,
+patient ledger, task system or model gateway is introduced.
+
+This is bounded audit coverage. Historical patient-data artifacts were not
+opened or reproduced. Existing #137 safety controls and the static CI
+data-boundary scanner were retained. A passing scanner does not prove every
+historical artifact or arbitrary network behavior is safe. No identifiable
+patient record was acquired for this integration.
+
+The four rights registers remain separate. CIViC curated content, NLM/PubMed
+metadata/abstract distinctions, ClinicalTrials.gov access terms and NCI reuse
+rules are active research records, not implemented connectors or automatic
+commercial clearance. NCCN content remains disabled pending specific rights.
+
+**Next executable work:** reconcile canonical patient IDs and source bindings
+with #89/#95/#148, mount one scoped source acquisition/version contract in H1,
+and prove correct-patient binding, original/version preservation and bounded
+amendment invalidation before connecting the #119 React workspace. Existing
+EHR/LIS/events, PWM, evidence, Composer and review owners supply subsequent
+interfaces. Full M-H1-0, MRT-01, MVP, deployment and clinical validation remain
+incomplete.
+
+The dated slice reports below are preserved as history; their absence statements and next-step lists are not a current inventory. The inspected application baseline was main [`52ea683`](https://github.com/OpenxIntelligence/open-intelligence/commit/52ea683fbe3537b17a05066dceff2ba01f758c5d): **236 synthetic application tests passed locally**, with loopback HTTP servers and mocked/fixture external transports. Subsequent main [`24519839`](https://github.com/OpenxIntelligence/open-intelligence/commit/24519839) adds the no-personal-case-data policy and CI blocking changes; those changes do not establish a newly passing application baseline.
+
+Inspected code includes `CaseStore` source/evidence versions, questions, snapshots, discovery/rights links, options/preparation tasks, biological assets/inventory, bounded model-investigation receipts, and mission/timeline/change projections. `patient_access` supplies a synthetic gate with in-memory bindings, not production authorization. Replay exercises the investigation contract; this audit did not reverify live model operation. Current runtime is Python/SQLite and vanilla JavaScript; the accepted H1 target is Python/FastAPI/PostgreSQL plus React/Vite/TypeScript, excluding Next.js.
+
+**Unmerged draft candidate [#136](https://github.com/OpenxIntelligence/open-intelligence/pull/136):** `save_investigation()` preserves question state instead of automatically marking even an abstained or unreviewed attempt addressed. Four focused tests passed after first reproducing the failure, including restart, mission/HTTP visibility and preserved scoped demo acknowledgment. The isolated lifecycle branch passed **240 application tests** at [`94176658`](https://github.com/OpenxIntelligence/open-intelligence/commit/94176658fe126647aaeea83886bff1ccf776aae8). Existing addressed history is unchanged. This is not a merged capability or clinical review system.
+
+**Data-policy integration candidate:** current main plus reconciled CI/runtime retirement passed **245 application tests** and **204 research tests (191 passed, 13 optional HDF5 tests skipped locally)**. CI retains current main's pinned scientific dependencies to exercise those optional helpers. The static guard and receipt have nine regression tests; they do not prove arbitrary runtime network behavior. These counts belong to the isolated candidates, not to a tested combined platform. See the [bounded work-package record](engineering/PATIENT_DATA_CI_BOUNDARY_2026-11-02.md); hosted run evidence belongs in its review PR.
+
+### Integration sequence: reuse unmerged candidates
+
+These are integration candidates, not a verified combined product. Check each current head and dependencies before adoption; retain one canonical identity/source/evidence history.
+
+1. Integrate the reviewed main-based data-policy cleanup, preserving the founder prohibition without manual overrides. Re-run the applicable offline suites at the resulting exact commit.
+2. Review durable access bindings in [#53](https://github.com/OpenxIntelligence/open-intelligence/pull/53) alongside registry/EHR/LIS integration in [#95](https://github.com/OpenxIntelligence/open-intelligence/pull/95), reusing their constituent domains. Prove restart, revocation, case binding and source-version integrity before widening access.
+3. Reconcile Composer/integration candidates [#126](https://github.com/OpenxIntelligence/open-intelligence/pull/126), [#130](https://github.com/OpenxIntelligence/open-intelligence/pull/130) and [#132](https://github.com/OpenxIntelligence/open-intelligence/pull/132) against those contracts. Preserve source-bound run receipts and reviewable proposals; test interruption and retries without duplicate mutations.
+4. Review the question-lifecycle fix in [#136](https://github.com/OpenxIntelligence/open-intelligence/pull/136) alongside existing review/staleness work (#82/#91), then goals/follow-through (#80/#84). Project accepted state through Patient Mission rather than adding another ledger.
+5. Exercise the [eight-circumstance portfolio](FIRST_PRINCIPLES_PLAN.md#workflow-crosswalk-and-synthetic-portfolio--2-november-2026) through import, domain event, question, proposed investigation, explicit review and subsequent correction. Record each supported boundary and failure; passing separate PR suites is not combined-workflow validation.
+
+## Historical slice scope — 31 October 2026
 
 **Backlog coverage:** Part of OI-003, OI-006, OI-007, OI-009 and OI-010. Does not complete the broader investigation/evidence stage (OI-008), identity/governance (OI-012–013), or clinical evaluation (OI-014 onward).
 
@@ -18,7 +201,7 @@
 
 ## Important unproven areas
 
-- No authenticated identity, consent, delegation, role controls, auditing suitable for real patients, access revocation, or full security assessment.
+- Local demo accounts, roles, and sessions now exist (operator / clinician / patient read-only on their own case / auditor; operator-created accounts only; 24-hour server-side sessions; case routes require a live grant plus role permission; access decisions are logged and readable by operator/auditor). These are local demo labels, not verified identities — there is still no authenticated identity, consent, delegation, production access control, auditing suitable for real patients, or full security assessment. The safety packet still needs a refresh for this change.
 - No PDF/OCR, automated clinical assertion extraction, FHIR/mCODE exchange, biological or imaging analysis, medical literature appraisal, trial searching, model inference, or provider integration.
 - No independent professional review; demo acknowledgments are explicitly labeled and do not establish clinical correctness.
 - The Patient Mission panel is a workflow projection, not a patient summary, diagnostic assessment, treatment plan, safety monitor, trial matcher, care coordinator, or clinical decision-support system.

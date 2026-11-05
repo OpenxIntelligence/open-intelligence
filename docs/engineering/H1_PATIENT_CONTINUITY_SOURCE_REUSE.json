@@ -1,0 +1,49 @@
+{
+  "schema": "oi.h1-patient-continuity-source-reuse/1",
+  "shared_owner": {
+    "pr": 287,
+    "published_commit": "247705700080052705817fee9e8f7b54afa8ffaa",
+    "local_equivalent_commit": "b025f53b1aefe9a02e0aad69b0fdc054b26c0435",
+    "tree": "e5764062351a83a20b4cc41ce8da8deee28fc688",
+    "verified_runtime_commit": "f7b0f683ab64ba2de7363744b65b8e26528f3138"
+  },
+  "overview_owner": {
+    "pr": 286,
+    "commit": "eb3cff81a4edeaf433d25cc069c9894c3bc52d0b",
+    "exact_reused_blobs": {
+      "apps/web/src/patient-continuity.ts": "f0e8c3fbe9f993cf4f26150e056d4f3ece780ab3",
+      "apps/web/src/patient-continuity-view.tsx": "70fbc05e5b39bb8de00de34f1a8689dca09d39d8",
+      "apps/web/tests/patient-continuity.test.mjs": "e1f6bf3b89c33a8314ce13aafd80f155cbad98ea"
+    }
+  },
+  "protected_parent_objects": {
+    "apps/api": "9b80441a29ab46261f56fd3d0fe88db4b982efd8",
+    "src": "53fbe27dd548979ef17aebe769013b7bbb348931",
+    "tests": "b51efe72a9531f41aa9e20a9bea0266181336df7",
+    ".github/workflows": "395e199869ab96de015acc877fdaf99f78b532be",
+    "apps/web/package.json": "02b99925bcac8eb3f94dde9482fcc1b492df3a88",
+    "apps/web/package-lock.json": "5fde6b11a97f71461e1c1b22248c2930641da134",
+    "apps/web/tools/browser_journey.py": "3932206905b28179592455a54dd92798a193e747",
+    "apps/web/src/source-quote-review-packet.ts": "f4b297022b616b99bcf4c68d52d34e42ca756843",
+    "docs/project-state": "e825b060d55490c18af74d67ba6f1d1ed407b5e5"
+  },
+  "shared_session_adaptation": "Only the patientContinuity re-export; all parent session behavior unchanged.",
+  "continuation_changes": [
+    "Reuse Overview component, projection, eight client regressions and browser coverage.",
+    "Centralize existing packet/brief clearing for all section navigation.",
+    "Retain the contextual-navigation assertion that failed on published tests-first head.",
+    "Extend the existing connected question review browser helper with Overview and a linked acceptance receipt."
+  ],
+  "historical_tests_first_commit": "61a4734138c6961e221a9a14b833a325c0c516c0",
+  "new_dependencies": false,
+  "new_migrations": false,
+  "clinical_approval": false,
+  "verified_implementation_checkpoint": {
+    "published_commit": "372c69be705bb756fefcc7d4c6cd8a801ec407d0",
+    "local_commit": "75e91537952ba93e196c553b559261e42f482f1f",
+    "tree": "0fc131c9b95a9f3eabd674df2a5e89e8468c5b57",
+    "api_run": 41630262836,
+    "web_run": 41630262777,
+    "subsequent_change": "Documentation only: preserve the shared owner completion receipt and update ownership references."
+  }
+}

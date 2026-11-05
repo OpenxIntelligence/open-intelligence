@@ -1,8 +1,62 @@
 # Open Intelligence — a plan from first principles
 
-**Public project foundation · Updated 31 October 2026 · Open Intelligence**
+**Public project foundation · Reconciled 2 November 2026 · Open Intelligence**
 
 Original source checks: 29 October 2026. Source terms and guidance must be rechecked for each integration or deployment decision.
+
+## Governing objective — entire Open Intelligence core (founder clarification, 5 November 2026)
+
+**The objective is to build the entire working Open Intelligence core—not just an MVP, a partial patient chart, the first patient-facing journey, an isolated AI feature, or a collection of draft PRs.** The adopted scope is all **PF-01–PF-10 shared foundations** and **PD-01–PD-16 first-party product domains**, reconciled with the existing 30-domain capability map and modular, independently evolvable engines. These components must become one interoperable platform with durable real operational behavior under the appropriate authority. Neither a technical demonstration nor success in the first oncology workflow closes the core mandate.
+
+This overrides any earlier sequencing phrase (“minimum complete workflow”, “first product”, “recommended initial workflow”, “subsequent milestones”) **when interpreted as a permanent scope reduction**. Those stages are acceptance slices and integration checkpoints; the target remains complete core coverage. Preserve the existing architecture, owner contracts, accumulated tests, rights decisions and historical evidence. Do not create a parallel patient master, evidence ledger, blueprint or backlog.
+
+### Ten shared foundations: required functionality, not background assumptions
+
+| Foundation | Functional delivery target |
+| --- | --- |
+| PF-01 Identity, relationships & authority | One patient/case identity, distinct clinician/patient/caregiver/researcher/service authority, delegation, isolation and revocation |
+| PF-02 Consent & data-use | Purpose-scoped consent/sharing, research tiers, revocation and enforceable restrictions across every dependent service |
+| PF-03 Source registry | Typed entry, uploads, originals, issuer/source, version and exact locator, deduplication, identity/specimen matching, missing records, quarantine and custody |
+| PF-04 Patient world model | Temporal longitudinal oncology and general-health state, biological entities, source-linked interpretations, uncertainty, gaps, conflicting reports and change |
+| PF-05 Evidence & provenance graph | Exact claim/source/evidence lineage, citation versus actual support, research rights, hypothesis and review/decision status |
+| PF-06 Event & dependency system | Durable events, idempotency, retries, restart/recovery, amendments, dependency-specific invalidation, immutable historical receipts |
+| PF-07 Terminology & knowledge services | Rights- and version-aware clinical, laboratory, medication, cancer and genomic vocabulary with transparent unmapped/uncertain states |
+| PF-08 Intelligence & verification runtime | Replaceable-model orchestration, bounded specialized tools/agents, traceable computation, evaluation, independent verification, human controls and checkpoints |
+| PF-09 Interoperability adapters | FHIR/mCODE, HL7/CDA, DICOMweb, laboratory, imaging, omics, EHR/portal, payer, developer API and other approved connectors, with mapped coverage/loss |
+| PF-10 Security, audit & observability | Identity/authorization enforcement, encryption/key architecture, immutable audit, activity/incident monitoring, access isolation, backup/restore and reliability |
+
+### Sixteen domain cores: required operational coverage
+
+| Domain | Required working core |
+| --- | --- |
+| PD-01 Clinical EHR/EMR | Encounters, notes, diagnoses/problems, clinical history, clinical documentation, orders/referrals and corrections |
+| PD-02 Oncology management | Tumor episodes, stage/status and response, oncology care planning, multidisciplinary case review |
+| PD-03 Laboratory & LIS | Orders, specimens, accession/QC, original and released results, assay/provenance and amendments |
+| PD-04 Pathology & digital pathology | Specimens/cases, annotations/slide records, synoptic/molecular pathology and source verification |
+| PD-05 Radiology & imaging | DICOM studies, reports, imaging custody/viewing, measurements and serial lesion/imaging comparison |
+| PD-06 Genomics & precision oncology | Germline/somatic assays, variants, molecular findings, specimen/build identity and precision research context |
+| PD-07 Treatment, medication & pharmacy | Regimens and therapies, distinct planned/ordered/dispensed/administered/reported exposures, monitoring and adverse-event context |
+| PD-08 Radiation & surgical oncology | Radiation courses/plans/fractions, operative episodes, procedure/results follow-through |
+| PD-09 Hematologic oncology & cellular therapy | Specialized disease response/MRD, transplant and cell therapy workflows, toxicity monitoring |
+| PD-10 Patient & caregiver platform | Health history/records, goals, symptoms, authorized caregiver access, requests, explanations and communications |
+| PD-11 Supportive care, survivorship, palliative | Quality-of-life and symptom services, nutrition, psychosocial support, rehabilitation, survivorship and supportive referrals |
+| PD-12 Hereditary cancer, screening & prevention, fertility | Family/genetic context, risk/screening programs, preventive/fertility coordination |
+| PD-13 Research, trials & real-world evidence | Scientific sources, protocols, transparent eligibility pre-screen, research authorization, cohorts and reproducible evaluation |
+| PD-14 Clinical intelligence & AI | Source-grounded investigation, biomedical models/tools, uncertainty, knowledge, evidence appraisal, Opportunity Dossiers, human review |
+| PD-15 Enterprise, administration & finance | Scheduling/resources, access and billing/payer processes, facility/operational workflow, workforce and finance |
+| PD-16 Biobank & specimen research | Consented specimen/derivative inventory, experimental provenance, custody and research distribution |
+
+**Biomedical computation and scientific discovery belong within the connected platform**, especially PD-06/13/14/16: bioinformatics, genomic analysis, single-cell/transcriptomic and multi-omics analysis, biological hypotheses, targets, drug research and mRNA/personalized research. Build actual versioned interfaces and reproducible, evaluated synthetic/rights-cleared workflows for those specialized engines; do not confuse architectural placeholders with running scientific methods or experimentally validated therapies.
+
+### Core completion contract
+
+A PF or PD is not complete merely because it has a design, API stub, UI screen, library, agent name, test fixture, or independently passing branch. Essential operational state and module responsibilities must be implemented and connected through the existing patient/case/source/authority contracts, with usable frontend/API workflows, provenance, time/version/rights semantics, observed failure modes, persisted/recovered history, cross-domain interoperability and tested access controls. Every completion claim needs a revision-pinned repository implementation plus exact-head integration evidence and a clearly documented clinical/rights limitation.
+
+Execution can be dependency-ordered and independent modules developed in parallel after shared contracts are established, but **stop conditions apply to a particular verified increment, not to the full project objective**. Build the foundations, prove cross-domain seams with end-to-end patient cases, then continue implementing the rest of the PF/PD matrix and scientific core until the integrated system covers all required domains. Track each through the existing OI-16, OI-27, #424, #81 and domain owners; do not create a redundant workstream registry. When a domain is blocked by an explicit legal/content/clinical gate, keep that blocker visible and its completion status open instead of making an unsafe or fabricated claim.
+
+**Synthetic engineering is separate from clinical release.** Current development uses independently invented cases only. Production identity/consent, real PHI, external connections, regulated medical device functionality, professional approvals, therapeutics, clinical efficacy and patient outcome claims require separate justified validation, rights and release decisions. The full-core build mandate never overrides these controls.
+
+---
 
 ## Patient intelligence and opportunity loop — founder product priority, 4 November 2026
 
@@ -118,7 +172,13 @@ Keep the full ambition: an accessible, AI-native operating environment for under
 
 **Next decisive demonstration:** a second time point. An amended report must immediately mark affected conclusions as needing review, preserve the previous reviewed version, reopen the relevant question, and present a proposed change that a reviewer can inspect. Receipt of a source and acceptance of a clinical interpretation are distinct events.
 
-The architecture and milestones below are proposed. The initial repository contains planning documents and contributor instructions; it does not contain an implemented or clinically validated application. The backend, partner, jurisdiction, cohort, commercial model, deployment, and distribution license remain open decisions.
+This document preserves the existing architecture. The explicit founder mandate fixes the complete first-party healthcare destination and the patient-centered clinical/scientific intelligence priority. Technical proposals below remain proposals unless separately accepted. Main now contains a functioning synthetic Python/SQLite application; domain extensions in draft PRs are not merged capabilities. The bounded H1 target is Python/FastAPI/PostgreSQL and React/Vite/TypeScript, with Next.js excluded; migration and production qualification remain work to prove. Partner, jurisdiction, cohort, commercial model, deployment and distribution license are not established by this decision. See the [H1 engineering decision register](https://docs.google.com/document/d/1YrORrdNxzT6MN-WuKVdk2vWVtVXVw9OSo0z5ARvMypg/edit).
+
+### Founder clarification: learn workflows without using personal medical data
+
+Public descriptions of Sid Sijbrandij's journey may inform what information, expertise, tools and coordination a person needed. They do not authorize downloading, ingesting, indexing, embedding, analyzing, redistributing, training on or evaluating on his medical data. The earlier D-08/D-09 and OI-09.15 exceptions are superseded. No manual opt-in remains. All current engineering, development, testing and evaluation uses independently authored synthetic patients, never disguised or pseudonymized copies of an individual case.
+
+For each researched activity record: the goal; information and expertise needed; tools/services described; required technical function; existing domain/contract; bounded AI contribution; an improvement to test; and the synthetic acceptance scenario. Keep documented observations separate from product design inferences. Public narrative research is qualitative requirements evidence, not clinical validation or an efficacy claim.
 
 ## 1. What the earlier work taught us
 
@@ -157,13 +217,28 @@ The first success unit is a reviewed case investigation, not a chat answer. It h
 | Clinician-supported consultation investigation | A patient, coordinator and clinician can use a shared case to prepare, investigate and update a review | Requires real reviewers, a defined clinical setting and measured review burden | **Recommended initial workflow** |
 | Specialist molecular/tumor-board research | Deep biological context and evidence appraisal create value for complex cases | Specialist time, assay context, data access and stronger interpretation validation | Early design-partner path; enable as the foundation proves itself |
 
-A full EHR replacement would add prescribing, billing, enterprise operations and integrations without proving the central investigation thesis. Build interfaces to those systems as justified by the chosen workflow. Own the coherent case and investigation experience.
+The complete first-party EHR, oncology, LIS/LIMS, pathology, RIS/PACS, genomics, pharmacy, research, care-operations and enterprise products remain in scope. Initial hospital adapters are a deployment route. Own each domain's authoritative state and connect it through shared identity, evidence, time, authority and event contracts. Implement these domains through connected slices while making the patient intelligence experience useful from the start.
 
 **Provisional launch setting:** an adult oncology consultation, referral, second opinion or case-review service with an accountable oncology reviewer. Use one repeatable workflow and an initial cohort chosen with that partner. Use independently authored fictional cases for engineering, and do not let a synthetic example determine the market or imply a final disease scope.
 
 **Daily operator hypothesis:** an oncology nurse, navigator, clinical research coordinator or clinician preparing the case. **Accountable interpreter:** an appropriately qualified treating or reviewing clinician. **Patient/caregiver role:** access and source coordination, attributed history, goals, questions, correction requests and understanding of the reviewed output. **Buyer hypothesis:** the organization operating the review workflow. None of these demand assumptions has yet been established.
 
 Patients remain a co-designed audience from the beginning. Clinical review must not become an excuse to give them an opaque institutional dashboard. The same facts should support understandable patient explanations and more detailed professional review, with role-appropriate actions and visibility.
+
+### Workflow crosswalk and synthetic portfolio — 2 November 2026
+
+The public accounts below document work people performed; institutional guidance describes care processes. The capability mappings, AI roles and acceptance targets are **design inferences**, not demonstrated clinical effects. Author these eight circumstances independently, with invented identities, sources and measurements. They broaden the challenge portfolio without copying a person's case or selecting a final market. Reuse existing contracts; a destination domain named here is not a claim of implementation.
+
+| Synthetic circumstance and goal | Documented workflow basis | Existing contract → destination; proposed AI role | Proposed acceptance target |
+|---|---|---|---|
+| 1. New diagnosis across several institutions: reconstruct the record | Gathering heterogeneous information and coordinating experts [S1, S2] | `CaseStore` sources and `patient_access` → registry/EHR; propose normalization with source anchors | Quarantine wrong-subject material; preserve delayed records and amended versions |
+| 2. Rare disease with unresolved molecular questions: investigate alternatives | Literature investigation and iterative specialist review [S1, S2] | Evidence, rights, investigations and biological assets → genomics/pathology/research; draft cited hypotheses | Preserve specimen/assay context, contradictory evidence and abstention; unreviewed output leaves questions open |
+| 3. Ordinary multimorbidity: prepare an appointment | Patients review records, medications and questions in the NHS App [S12] | Questions, timeline and snapshots → EHR/pharmacy; explain terms and prepare questions | Keep an order distinct from administration; expose missing information without inventing adherence |
+| 4. Pediatric serious illness: support family handoffs | St. Jude describes team roles, care notes and child participation [S14] | Source, authority and task contracts → EHR/LIS/care operations; organize attributed notes | Scope guardian visibility and responsibility; preserve the child's questions and source attribution |
+| 5. Young adult changing services: retain continuity | Becky describes abrupt transition, changed relationships and preparation needs [S13] | Questions and authority → registry/EHR; prepare a transfer brief | Changing caregiver access must not silently carry old authority into the new context |
+| 6. Survivorship with local follow-up: sustain the plan | St. Jude describes local-provider, school and follow-up coordination [S15] | Timeline, mission and review → oncology/survivorship; organize follow-up questions | Distinguish a missing result, planned surveillance and completed review across time |
+| 7. Limited transport/connectivity and language support: complete necessary steps | Accounts describe family language support, canceled appointments and travel arrangements [S12, S15, S17] | Access and preparation tasks → care operations; organize requests with human owners | Retries avoid duplicate work; blocked access stays visible; unavailable records never become negative findings |
+| 8. Palliative home care: honor goals and support caregivers | A caregiver describes preferences, practical training, timely help and respite [S16] | Questions, review and proposed goals → supportive care; organize preferences and requests | Keep comfort goals and caregiver workload visible; escalation requires an explicit human service pathway |
 
 ## 4. The minimum complete workflow
 
@@ -251,7 +326,7 @@ Keep original source material, normalized assertions, derived interpretations an
 
 **Standards boundaries:** use FHIR/mCODE where they match exchange requirements; retain the application model for questions, permissions, dependencies and review. Preserve modality-native identifiers and formats. Treat OMOP as a possible later analytical projection, not a requirement for operational case review. Store evidence relationships in ordinary tables initially; introduce a graph database only when a measured query workload or operational requirement warrants it.
 
-**Backend choice:** compare an application-owned domain with FHIR adapters against Medplum using the same imports, source corrections, isolation, version recovery and export requirements. Add HAPI FHIR to the comparison only if partner interoperability requirements justify another full server candidate. An earlier Medplum probe outside this repository does not select the backend or establish dependency clearance here. Select on reduced total implementation/operational burden and rights closure, not ecosystem size.
+**Accepted bounded H1 target:** Python/FastAPI/PostgreSQL and React/Vite/TypeScript; Next.js is excluded. Current code remains Python/SQLite with vanilla browser JavaScript. The migration must preserve source identity, corrections, isolation, recovery and review contracts before adding deployment complexity. First-party EHR, oncology, LIS/LIMS, pathology, RIS/PACS, genomics, pharmacy, research, care operations and enterprise services remain the destination. FHIR adapters serve exchange boundaries; earlier Medplum/HAPI comparisons do not replace the accepted target or establish dependency clearance. Exact dependencies and production qualification still require evidence under the linked H1 decision register.
 
 **Continuous updates:** a durable change event records what changed. A worker finds affected assertions, evidence links and investigations. It prepares a bounded review task; it does not regenerate every answer or notify every user indiscriminately. Duplicate ingestion and retries must not create duplicate clinical events. If processing fails, existing snapshots remain available with a visible freshness state.
 
@@ -339,7 +414,7 @@ The stages below define an order and acceptance evidence. Scheduling depends on 
 
 ### First implementation milestone: the investigation loop
 
-**Stage 1 — contract and reference cases.** Define the intended workflow and allowed outputs; inventory existing implementation; define source/assertion/question/review semantics; author a small multi-case challenge set and expected update behavior. Establish a manual reference brief and a source/rights list for the slice. Default to independently authored text reports with explicit source and case identifiers for this first import contract; PDF/OCR and unfamiliar real-world reports require separate extraction qualification. If backend uncertainty blocks work, run only the bounded source-version/review comparison needed to choose a temporary implementation.
+**Stage 1 — contract and reference cases.** Define the intended workflow and allowed outputs; inventory existing implementation; define source/assertion/question/review semantics; author a small multi-case challenge set and expected update behavior. Establish a manual reference brief and a source/rights list for the slice. Default to independently authored text reports with explicit source and case identifiers for this first import contract; PDF/OCR and unfamiliar real-world reports require separate extraction qualification. Preserve these contracts while migrating toward the accepted bounded H1 stack; evaluate uncertain infrastructure choices with representative executable workloads.
 
 **Stage 2 — durable case and review.** Implement the workflow in this repository to import the declared authored source format, preserve versions, persist assertions and questions, show exact sources and review actions, and recover state after restart. Start with manual or deterministic extraction as a baseline; evaluate a model-assisted extractor only where rights and a task contract are ready. A prefilled fixture presented as live extraction does not satisfy the milestone.
 
@@ -377,7 +452,7 @@ Required functions include product/clinical-workflow leadership, technical owner
 
 **Recommended defaults:** clinician-supported consultation investigation first; a durable question/investigation as the main unit of work; a second-time-point demonstration; modular web architecture; source-preserving domain model; bounded model tasks; task-specific backend comparison; synthetic development followed by governed evaluation; scope-specific release evidence.
 
-**Open, with explicit provisional assumptions:** initial clinical partner/cohort; user/operator/buyer; launch jurisdiction; real-data access pathway; accountable reviewers; hosting/provider terms; team capacity and budget; final backend; licensed evidence entitlements; acceptable measured performance and workload. U.S. first and an adult oncology review setting are planning assumptions, not confirmed decisions.
+**Open, with explicit provisional assumptions:** initial clinical partner/cohort; user/operator/buyer; launch jurisdiction; real-data access pathway; accountable reviewers; hosting/provider terms; team capacity and budget; target-stack migration and production qualification; licensed evidence entitlements; acceptable measured performance and workload. U.S. first and an adult oncology review setting are planning assumptions, not confirmed decisions.
 
 The accompanying execution backlog records proposed work, dependencies, and acceptance evidence. Backlog entries are not evidence of completed implementation or approved clinical use.
 
@@ -404,3 +479,9 @@ Primary-source checks inform boundaries, not a claim that the proposed architect
 - **S9:** [DECIDE-AI reporting guidance](https://www.bmj.com/content/377/bmj-2022-070904). Primary publication verified through indexed publisher results; direct page returned 403.
 - **S10:** NICE, [Evidence standards framework: how to meet the standards](https://www.nice.org.uk/corporate/ecd7/chapter/how-to-meet-the-standards). Primary-domain indexed content; direct page returned 403. Useful evaluation guidance, not a substitute for U.S. legal classification.
 - **S11:** Open Source Initiative, [Frequently Answered Questions](https://opensource.org/faq), commercial use and copyleft sections.
+- **S12:** NHS England, [patient accounts of NHS App use](https://digital.nhs.uk/services/nhs-app/case-studies/patient-case-studies).
+- **S13:** Diabetes UK, [Becky's transition account](https://www.diabetes.org.uk/guide-to-diabetes/young-adults/moving-clinics/becky).
+- **S14:** St. Jude, [care coordination and handoffs](https://together.stjude.org/en-us/medical-care/navigating-health-care/care-coordination-and-handoffs.html).
+- **S15:** St. Jude, [Going Home](https://www.stjude.org/care-treatment/patient-families/life-beyond-st-jude/going-home.html).
+- **S16:** Marie Curie, [Georgina Offord's home-care account](https://www.mariecurie.org.uk/blog/my-husbands-wish-came-true).
+- **S17:** Diabetes UK, [Andy's account of interrupted support](https://www.diabetes.org.uk/living-with-diabetes/your-stories/andy-support-type-2).

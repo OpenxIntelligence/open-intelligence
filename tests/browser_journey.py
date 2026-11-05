@@ -24,11 +24,10 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen as _plain_urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 
-# B-01: case routes require a fictional actor, and seed() grants this demo
-# actor on the demo cases. This module-local wrapper presents the actor on
-# case-API calls and passes everything else (root wait, DevTools endpoint)
-# through untouched, so the journey below reads unchanged.
+# Transitional header: direct API calls in journeys still present the demo
+# actor; the browser itself signs in (see sign_in_demo) and sends no header.
 DEMO_ACTOR_HEADERS = {"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"}
 
 
@@ -38,6 +37,84 @@ def urlopen(url, *args, **kwargs):
         return _plain_urlopen(
             Request(target, headers=DEMO_ACTOR_HEADERS), *args, **kwargs)
     return _plain_urlopen(url, *args, **kwargs)
+
+
+# Slice 1: browser journeys sign in as the seeded demo account. seed()
+# creates the account (passwordless) and its grants; the operator sets the
+# password here, then the browser signs in through the form.
+DEMO_SIGNIN_ACCOUNT = "FICTIONAL-NAVIGATOR-A"
+DEMO_SIGNIN_PASSWORD = "fictional-demo-1"
+
+
+def set_demo_account_password(db: str) -> None:
+    from open_intelligence import CaseStore
+    store = CaseStore(db)
+    try:
+        store.set_account_password(DEMO_SIGNIN_ACCOUNT, DEMO_SIGNIN_PASSWORD)
+    finally:
+        store.close()
+
+
+def provision_demo_access(db: str, case_ids) -> None:
+    """Demo account + grants + password, for journeys that do not seed.
+
+    seed() does the account and grants itself; this is only the equivalent
+    for a journey that provisions its cases directly through the store.
+    """
+    from open_intelligence import CaseStore
+    from open_intelligence.__main__ import FICTIONAL_ACTOR_PURPOSE
+    store = CaseStore(db)
+    try:
+        if store.get_account(DEMO_SIGNIN_ACCOUNT) is None:
+            store.create_account(DEMO_SIGNIN_ACCOUNT, "Fictional demo navigator",
+                                 "clinician")
+        for case_id in case_ids:
+            if not store.has_active_grant(DEMO_SIGNIN_ACCOUNT, case_id,
+                                          FICTIONAL_ACTOR_PURPOSE):
+                store.create_grant(DEMO_SIGNIN_ACCOUNT, case_id,
+                                   FICTIONAL_ACTOR_PURPOSE,
+                                   "2020-01-01", "2999-12-31")
+    finally:
+        store.close()
+    set_demo_account_password(db)
+
+
+def sign_in_demo(session: ChromeSession) -> None:
+    # The app scripts load with `defer`, so Page.navigate returns before
+    # app.js has executed: the sign-in elements exist (the DOM is parsed)
+    # but initialize() has not attached the #signin-apply click handler
+    # yet. Clicking immediately then does nothing — no POST, no error —
+    # and the sign-in view never hides. initialize() sets this heading
+    # after attaching the handler (the static HTML says "Loading case…"),
+    # so the heading proves the handler is attached; the session view
+    # covers a page that is already signed in.
+    session.wait(
+        "document.querySelector('#case-heading')?.textContent === 'Sign in to view the demo cases'"
+        " || document.querySelector('#session-view')?.hidden === false",
+        "app initialized for sign-in")
+    session.evaluate(
+        "((account, password) => {"
+        "  document.querySelector('#signin-account').value = account;"
+        "  document.querySelector('#signin-password').value = password;"
+        "  document.querySelector('#signin-apply').click();"
+        "})(" + json.dumps(DEMO_SIGNIN_ACCOUNT) + ", "
+        + json.dumps(DEMO_SIGNIN_PASSWORD) + ")")
+    try:
+        session.wait("document.querySelector('#signin-view')?.hidden === true",
+                     "demo sign-in")
+    except AssertionError as err:
+        # Distinguish a sign-in request that failed from a handler that
+        # never ran: applySignIn reports a failed sign-in in
+        # #signin-status, while a click with no listener leaves it empty.
+        try:
+            status = session.evaluate(
+                "document.querySelector('#signin-status')?.textContent")
+        except RuntimeError:
+            status = "<status unreadable>"
+        raise AssertionError(
+            "demo sign-in did not complete; sign-in status: "
+            f"{status!r} (empty means the sign-in handler never ran; "
+            "a message means the sign-in request failed)") from err
 
 
 def free_port() -> int:
@@ -60,12 +137,15 @@ def wait_for(callback, label: str, timeout: float = 12):
     raise AssertionError(f"Timed out waiting for {label}; last error: {last_error}")
 
 
-def wait_for_browser(browser, stderr_path: Path, debug_port: int, timeout: float = 12):
+def wait_for_browser(browser, stderr_path: Path, debug_port: int, timeout: float = 30):
     """Keep startup failures actionable without relaxing the browser gate."""
     def targets():
         if browser.poll() is not None:
             raise AssertionError("Chrome exited before exposing a DevTools target")
-        return json.load(urlopen(f"http://127.0.0.1:{debug_port}/json/list", timeout=1))
+        with urlopen(f"http://127.0.0.1:{debug_port}/json/list", timeout=1) as response:
+            targets = json.load(response)
+        return [target for target in targets
+                if target.get("type") == "page" and target.get("webSocketDebuggerUrl")]
 
     try:
         return wait_for(targets, "Chrome DevTools target", timeout=timeout)
@@ -197,6 +277,7 @@ def main() -> None:
         db = str(Path(directory) / "test.sqlite")
         subprocess.run([sys.executable, "-m", "open_intelligence", "seed", "--db", db],
                        cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
+        set_demo_account_password(db)
         app_port, debug_port = free_port(), free_port()
         server = subprocess.Popen(
             [sys.executable, "-m", "open_intelligence", "serve", "--db", db, "--port", str(app_port)],
@@ -227,6 +308,10 @@ def main() -> None:
             })
             cd.command("Page.navigate", {"url": url})
 
+            sign_in_demo(cd)
+            assert cd.evaluate("document.querySelector('#session-status')?.textContent.includes('FICTIONAL-NAVIGATOR-A')"), (
+                "session indicator does not show the signed-in demo account"
+            )
             cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
                     "Alpha case loaded")
             cd.wait("document.querySelectorAll('#source-list .source-card').length === 2",
@@ -337,6 +422,35 @@ def main() -> None:
                 assert any(role == "group" and name == group_name for role, name in names), (
                     f"Checkbox group lacks an accessible name: {group_name}"
                 )
+
+            # Browser-level case-scoped draft regression: no unfinished Alpha
+            # narrative may be silently rebound to Beta. Check the selected
+            # case and the input value after each rejected case switch.
+            for draft_field in (
+                "scoped-decision-note", "scoped-dissent-rationale",
+                "ft-title", "ft-detail", "ft-reason", "ft-update-reason",
+                "option-label", "dependency-anchor", "task-label", "task-owner",
+                "threat-description", "threat-anchor", "reviewer-label", "review-scope",
+            ):
+                cd.evaluate("""(fieldId => {
+                  const field = document.getElementById(fieldId);
+                  if (!field) throw new Error('Missing draft field: ' + fieldId);
+                  field.value = 'Unsent CASE-ALPHA text for ' + fieldId;
+                  const picker = document.querySelector('#case-picker');
+                  picker.value = 'CASE-BETA';
+                  picker.dispatchEvent(new Event('change'));
+                })(""" + json.dumps(draft_field) + ")")
+                assert cd.evaluate("document.querySelector('#case-picker').value") == "CASE-ALPHA", (
+                    f"unfinished {draft_field} switched into another synthetic case"
+                )
+                assert cd.evaluate(
+                    "document.getElementById(" + json.dumps(draft_field) + ").value"
+                ) == "Unsent CASE-ALPHA text for " + draft_field, (
+                    f"blocked case switch erased draft field {draft_field}"
+                )
+                cd.evaluate("""(fieldId => {
+                  document.getElementById(fieldId).value = '';
+                })(""" + json.dumps(draft_field) + ")")
 
             cd.evaluate("""(() => {
               const picker = document.querySelector('#case-picker');
@@ -680,24 +794,59 @@ def main() -> None:
             # than only at the store layer: a byte-identical re-import and a
             # wrong-patient import must both be refused without new facts.
             cd.evaluate("""(() => {
+              const before = readyCase();
               const picker = document.querySelector('#case-picker');
               picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
+              if (readyCase() !== before) throw Error('Same-case picker event reset the loaded case');
             })()""")
-            cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
-                    "return to Alpha for rejection checks")
+            # Same-case selection retains readiness. Still verify the actual
+            # case-bound write guard rather than treating a visible heading as
+            # authority for the next duplicate or wrong-patient import check.
+            cd.wait("""(() => {
+              if (document.querySelector('#case-heading')?.textContent !== 'Fictional case Alpha')
+                return false;
+              if (document.querySelector('#case-picker')?.value !== 'CASE-ALPHA')
+                return false;
+              try { return readyCase() === 'CASE-ALPHA'; } catch { return false; }
+            })()""", "return to fully ready Alpha for duplicate and wrong-patient checks")
             cards_before = cd.evaluate("document.querySelectorAll('#source-list .source-card').length")
             state_before = json.load(urlopen(
                 f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
             original_id = next(x["id"] for x in state_before["sources"]
                                if x["document_id"] == "PATH-ALPHA" and x["version"] == 1)
+            # Diagnostic only: observe notice mutations without changing the import command
+            # or weakening its required visible duplicate-result assertion.
+            cd.evaluate("""(() => {
+              const element = document.querySelector('#notice');
+              window.__oiDuplicateNoticeTrace = [];
+              if (element) new MutationObserver(() => {
+                const note = (element.textContent || '').slice(0, 220);
+                if (window.__oiDuplicateNoticeTrace.length < 32)
+                  window.__oiDuplicateNoticeTrace.push(note);
+              }).observe(element, {childList: true, subtree: true, characterData: true, attributes: true});
+            })()""")
             cd.evaluate("""(async (sourceId) => {
               const text = (await (await fetch('/api/cases/CASE-ALPHA/sources/' + sourceId,
                 {headers: {'X-Fictional-Actor': 'FICTIONAL-NAVIGATOR-A'}})).json()).text;
               document.querySelector('#report-text').value = text;
               document.querySelector('#import-form').requestSubmit();
             })(""" + str(original_id) + ")")
-            cd.wait("document.querySelector('#notice')?.textContent.includes('Import: duplicate')",
-                    "duplicate import refused in browser")
+            try:
+                cd.wait("document.querySelector('#notice')?.textContent.includes('Import: duplicate')",
+                        "duplicate import refused in browser")
+            except AssertionError as error:
+                # Bounded synthetic-only state; never log original source text or request data.
+                context = cd.evaluate("""JSON.stringify({
+                  notice: (document.querySelector('#notice')?.textContent || '').slice(0, 220),
+                  notices: (window.__oiDuplicateNoticeTrace || []).slice(-32),
+                  selectedCase: document.querySelector('#case-picker')?.value,
+                  heading: (document.querySelector('#case-heading')?.textContent || '').slice(0, 120),
+                  caseId: typeof caseId === 'string' ? caseId : null,
+                  renderedCaseId: typeof renderedCaseId === 'string' ? renderedCaseId : null,
+                  sourceCards: document.querySelectorAll('#source-list .source-card').length,
+                  reportLength: document.querySelector('#report-text')?.value?.length ?? -1
+                })""")
+                raise AssertionError(f"{error}; bounded synthetic UI state: {context}") from error
             assert cd.evaluate("document.querySelectorAll('#source-list .source-card').length") == cards_before, (
                 "duplicate import added a source card"
             )
@@ -775,5 +924,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

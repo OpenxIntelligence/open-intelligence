@@ -4,7 +4,7 @@
 
 Read `README.md`, `docs/FIRST_PRINCIPLES_PLAN.md`, and the relevant rows in `docs/EXECUTION_BACKLOG.csv`. Inspect the current repository before claiming that a capability, dependency, test, or decision already exists.
 
-The initial repository is a planning foundation. Implement bounded work against explicit acceptance criteria. Ordinary development and reversible fixes within the authorized task should proceed without repeated approval requests.
+The repository contains a synthetic implementation and a planning foundation. Implement bounded work against explicit acceptance criteria. Ordinary development and reversible fixes within the authorized task should proceed without repeated approval requests.
 
 ## Project identity and complementary research
 
@@ -26,6 +26,8 @@ The initial repository is a planning foundation. Implement bounded work against 
 
 ## Repository boundaries
 
+- **Founder clarification, 2 November 2026:** public accounts of Sid Sijbrandij's journey may inform abstract workflow and capability requirements only. Do not acquire, download, ingest, index, embed, analyze, redistribute, train on, or evaluate on his personal medical data. No manual flag, ethics-note exception, or public-data license overrides this project decision. Use independently authored synthetic patient data for all current engineering, development, testing, demonstrations and evaluation; do not create pseudonymized replicas of a real person's records.
+- Study multiple journeys and care settings. Map each activity's goal, required information, enabling service, technical function, AI contribution and improvement opportunity to the existing source, evidence, investigation, review, authority and operational contracts. Public accessibility does not make an individual medical file a development input.
 - Do not commit real patient data, credentials, private correspondence, or restricted clinical content. Use independently authored synthetic cases with explicit provenance.
 - Before integrating a third-party component, document its exact version, intended use, license/terms, dependency and asset obligations, and unresolved issues. Hold integrations with unresolved permissions.
 - Public repository visibility does not select a distribution license or establish clinical approval. Do not silently choose a project license, relax documented rights requirements, or describe an unvalidated function as clinically validated.
@@ -42,7 +44,9 @@ The initial repository is a planning foundation. Implement bounded work against 
 
 Prefer deterministic software for authorization, source identity, validation, versioning, job state, and publication state. Model outputs are inspectable proposals governed by typed task contracts and allowed tools.
 
-The backend, model provider, and detailed application stack remain undecided. Select them using the workflow requirements and a bounded comparison, rather than treating an earlier candidate as an approved dependency.
+The complete first-party healthcare ecosystem remains the destination: EHR, oncology, LIS/LIMS, pathology, RIS/PACS, genomics, pharmacy, research, care operations and enterprise services. The patient-centered intelligence experience is the first implementation priority. An initial adapter to an existing hospital does not reduce that scope.
+
+The bounded H1 engineering decision selects Python/FastAPI/PostgreSQL and React/Vite/TypeScript. **Next.js is excluded.** The connected fictional application is in `apps/api` and `apps/web`; use `docs/H1_DEMO.md` and the exact-revision acceptance receipts in [consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481). The Python/SQLite prototype remains a separate reference implementation. This does not establish migration of the complete planned platform, production suitability or clinical release. Exact dependencies and those release claims still require their own evidence. See the [H1 decision register](https://docs.google.com/document/d/1YrORrdNxzT6MN-WuKVdk2vWVtVXVw9OSo0z5ARvMypg/edit).
 
 ## Completion reports
 

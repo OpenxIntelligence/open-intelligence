@@ -32,12 +32,20 @@
     <aside class="rail">
       <label for="case-picker">Case</label>
       <select id="case-picker" aria-label="Select synthetic case"></select>
-      <p class="muted tiny">Fictional case data stays on this local machine. There is no identity verification or patient login.</p>
-      <div class="actor-block">
-        <label for="actor-input">Fictional actor</label>
-        <input id="actor-input" type="text" value="FICTIONAL-NAVIGATOR-A" maxlength="40" spellcheck="false" autocomplete="off">
-        <button id="actor-apply" type="button" class="button secondary minor">Apply actor</button>
-        <p id="actor-status" class="muted tiny">Acting as FICTIONAL-NAVIGATOR-A (fictional grant only — not identity verification).</p>
+      <p class="muted tiny">Fictional case data stays on this local machine. Local demo accounts only — not verified identities.</p>
+      <div class="signin-block">
+        <div id="signin-view">
+          <label for="signin-account">Account</label>
+          <input id="signin-account" type="text" autocomplete="username" spellcheck="false">
+          <label for="signin-password">Password</label>
+          <input id="signin-password" type="password" autocomplete="current-password">
+          <button id="signin-apply" type="button" class="button secondary minor">Sign in</button>
+          <p id="signin-status" class="muted tiny"></p>
+        </div>
+        <div id="session-view" hidden>
+          <p id="session-status" class="muted tiny"></p>
+          <button id="signout-apply" type="button" class="button secondary minor">Sign out</button>
+        </div>
       </div>
       <details class="section-menu" open>
         <summary>Navigate</summary>
@@ -212,6 +220,13 @@
         <div class="subhead">Waiting for review</div><div id="review-awaiting" class="snapshots" aria-live="polite"></div>
         <div class="subhead">Decided</div><div id="review-resolved" class="snapshots" aria-live="polite"></div>
         <div class="subhead">Sign-off history</div><div id="review-receipts" class="activity" aria-live="polite"></div>
+      </section>
+      <section class="panel" id="access-log" aria-labelledby="access-log-heading">
+        <div class="panel-head"><div><div class="eyebrow">02 / ACCESS LOG</div><h2 id="access-log-heading">Access log</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Who opened this fictional case and when. Operator and auditor accounts only; the log records the signed-in account, the case, the route, and whether access was allowed or denied. It never contains source text.</p>
+        <button id="access-log-apply" type="button" class="button secondary minor">View access log</button>
+        <p id="access-log-status" class="muted tiny"></p>
+        <div id="access-log-list" class="activity" aria-live="polite"></div>
       </section>
       <section class="panel" id="patient-view">
         <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2>Your case, in plain words</h2></div><span class="pill">Same facts, plainer language</span></div>
@@ -475,6 +490,7 @@
               </fieldset>
               <label for="draft-observations">Reported observations</label>
               <textarea id="draft-observations" rows="3" minlength="10" maxlength="1200" required></textarea>
+              <p class="field-error" id="draft-observations-error" hidden></p>
               <label for="draft-summary">Working hypothesis or mechanism</label>
               <textarea id="draft-summary" rows="3" maxlength="1000"></textarea>
               <label for="draft-assumptions">Assumptions, contradictions, and gaps</label>

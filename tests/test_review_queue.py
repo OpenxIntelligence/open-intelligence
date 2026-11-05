@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore, InvalidInput
 from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
+from open_intelligence.agent_writes import build_investigation_contract
 from open_intelligence.investigation import validate_output
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -320,7 +321,11 @@ class ReviewQueueTests(unittest.TestCase):
                          'uncertainty': 'moderate', 'limits': 'Synthetic only.'}],
              'abstentions': []},
             facts['valid_sources'], facts['valid_assessments'])
-        inv_id = self.store.save_investigation('CASE-ALPHA', q, 'evidence-summary', validated, 'replay')
+        inv_id = self.store.save_investigation(
+            'CASE-ALPHA', q, 'evidence-summary', validated, 'replay',
+            write_contract=build_investigation_contract(
+                self.store, 'CASE-ALPHA', q, 'evidence-summary',
+                validated.model, facts=facts))
         # A bound draft ensures the amendment below invalidates dependent work,
         # which is what marks the case's investigations stale.
         self._snapshot()

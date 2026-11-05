@@ -1,0 +1,4 @@
+# Optional bounded PDF intake runtime; Python 3.12 or newer, no extras.
+# Install with --require-hashes --only-binary=:all: --no-deps.
+# Source and license: docs/engineering/DOCUMENT_INTAKE.md; THIRD_PARTY_NOTICES/pypdf.txt.
+pypdf==6.21.4 --hash=sha256:33e4fb41ca352810eb4e9838aa0d82d6888a5f8bf682f43e99cce5faa666255c
