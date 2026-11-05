@@ -387,8 +387,21 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         open_report(first_report['report_id'])
 
         # Navigation must invalidate disclosed report content. It cannot reappear late.
+        before_overview_reads = len(responses())
         navigate('Overview')
         assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-report-body]'))")
+        # Actual PostgreSQL question/evidence state is projected into the second-opinion
+        # agenda without another API read, an inferred recommendation or a write.
+        selector = (f'[data-testid=second-opinion-agenda-item][data-question-id="{question_id}"]'
+                    ' [data-testid=second-opinion-proposal-readiness][data-checked=true]')
+        cd.wait("Boolean(document.querySelector(" + json.dumps(selector) + "))",
+                'case-owned authored evidence comparisons appear as unreviewed patient preparation')
+        summary = cd.evaluate('document.querySelector(' + json.dumps(selector) + ').textContent')
+        assert '1 proposed support' in summary and '1 proposed contradiction' in summary
+        assert '1 current unreviewed report' in summary
+        assert 'not a scientific evidence grade' in summary
+        assert 'not been verified' not in summary
+        assert len(responses()) == before_overview_reads, 'Overview must not fetch or submit evidence implicitly'
         inspect()
         restart_api()
         inspect()
