@@ -220,15 +220,17 @@ class PopulatedImageReviewUpgradeTests(PopulatedImageReviewFixture):
 
     def test_review_provenance_guard_rolls_back_downgrade_of_combined_head(self):
         self._seed_parent(REVIEW_REVISION)
-        migrate(self.settings, "upgrade", "head")
+        # Keep this proof on the last pre-outbox head so the intended review
+        # provenance guard, rather than a newer owner, must reject downgrade.
+        migrate(self.settings, "upgrade", "0019_composer_runs")
         self._seed_image()
         before = self._snapshot()
 
-        with self.assertRaises(CommandError):
+        with self.assertRaisesRegex(CommandError, "Canonical review history"):
             migrate(self.settings, "downgrade", "0005_source_versions")
-        self.assertEqual(self._heads(), {SCHEMA_REVISION})
+        self.assertEqual(self._heads(), {"0019_composer_runs"})
         self.assertEqual(self._snapshot(), before)
-        self._assert_readiness(True)
+        self._assert_readiness(False)
 
 
 if __name__ == "__main__":

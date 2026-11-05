@@ -20,6 +20,9 @@ from test_laboratory_fhir_r4 import OBS
 from test_source_versions import SourceVersionFixture
 
 
+LABORATORY_REVISION = "0018_laboratory_questions"
+
+
 class LaboratoryQuestionMigrationTests(SourceVersionFixture):
     services = evidence.EvidenceConvergenceMigrationTests.services
     start_at = evidence.EvidenceConvergenceMigrationTests.start_at
@@ -27,17 +30,18 @@ class LaboratoryQuestionMigrationTests(SourceVersionFixture):
     seed_lab = previous.LabManualPopulatedMigrationTests.seed_lab
     assert_existing_history_preserved = previous.LabManualPopulatedMigrationTests.assert_existing_history_preserved
 
-    def seed(self):
+    def seed(self, *, target=SCHEMA_REVISION):
         patient, text_question, _ = self.start_at(previous.JOIN)
         _, source = self.seed_lab(patient)
         history = self.snapshot()
-        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        migrate(self.admin, "upgrade", LABORATORY_REVISION)
         self.assert_existing_history_preserved(history)
         self.assertEqual(self.snapshot()[0]["investigation.laboratory_question_anchors"], [])
-        # A new empty typed owner is reversible without changing existing rows.
+        # Prove the original typed owner's reversibility at its own revision;
+        # later immutable source-delivery backfill must not be discarded.
         migrate(self.admin, "downgrade", previous.JOIN)
         self.assertEqual(self.snapshot(), history)
-        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        migrate(self.admin, "upgrade", target)
         with self.services() as registry:
             index = PostgresSourceVersions(registry).list(patient, "CASE-ALPHA", **evidence.OPTIONS)
             payload = dict(source_id=source["source_id"], observation_reference=OBS,
@@ -50,7 +54,7 @@ class LaboratoryQuestionMigrationTests(SourceVersionFixture):
         return patient, text_question, payload, receipt
 
     def test_typed_anchors_reject_incomplete_mismatched_or_mutated_history(self):
-        _, text_qid, payload, receipt = self.seed()
+        _, text_qid, payload, receipt = self.seed(target=LABORATORY_REVISION)
         qid, sid = receipt["question_id"], payload["source_id"]
         history = self.snapshot()
         def bad_clone(changes, marker, *, anchor=None):
@@ -98,7 +102,7 @@ class LaboratoryQuestionMigrationTests(SourceVersionFixture):
         self.assertEqual(self.snapshot(), history)
         with self.engine.connect() as conn:
             self.assertEqual(conn.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(),
-                             SCHEMA_REVISION)
+                             LABORATORY_REVISION)
 
     def test_full_history_remains_readable_and_exact_requests_recover(self):
         patient, _, payload, receipt = self.seed()

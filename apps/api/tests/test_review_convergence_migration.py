@@ -11,8 +11,13 @@ import unittest
 from sqlalchemy import text
 
 from oi_api.app import create_app
+from oi_api.case_bindings import CanonicalCaseBindings
 from oi_api.migrate import migrate
+from oi_api.source_world_model import project_source_world_model
+from oi_api.sources import PostgresSourceVersions
 from http_support import running_server
+import test_evidence_convergence_migrations as existing_upgrades
+from test_evidence_convergence_migrations import COMMON, OPTIONS
 from test_canonical_review_flow import RETURN_REASON, create_question
 from test_patients import TOKEN_A, request
 from test_source_versions import ORIGINAL, SourceVersionFixture
@@ -37,6 +42,8 @@ def legacy_hash(value):
 
 
 class ReviewConvergenceMigrationTests(SourceVersionFixture):
+    services = existing_upgrades.EvidenceConvergenceMigrationTests.services
+
     def rows(self, table, patient):
         with self.engine.connect() as connection:
             return [dict(row) for row in connection.execute(text(
@@ -144,19 +151,9 @@ class ReviewConvergenceMigrationTests(SourceVersionFixture):
 
     def exercise_upgrade(self, starting_revision):
         snapshot_branch = starting_revision == "0007_question_snapshot_contract"
-        # Current HTTP readiness correctly requires head. Seed only unchanged
-        # patient/source owners there, then establish each real old schema.
-        with running_server(create_app(self.settings)) as base:
-            patient = self.setup_case(base)
-            status, source, _ = self.ingest(base, patient)
-            self.assertEqual(status, 201, source)
-            prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA"
-            status, world, _ = request(base, prefix + "/world-model", token=TOKEN_A)
-            self.assertEqual(status, 200, world)
-            fingerprint = world["snapshot_fingerprint"]
-        # No question, return or image history exists yet. Recreate the exact
-        # original review branch from the shared source owner, excluding the
-        # independent image sibling retained by a question-only downgrade.
+        # Establish the actual original review branch while the fixture is
+        # empty, excluding the independent image sibling. Once head has source
+        # outbox history, its downgrade guard must preserve that history.
         migrate(self.admin, "downgrade", "0005_source_versions")
         migrate(self.admin, "upgrade", starting_revision)
         with self.engine.connect() as connection:
@@ -168,6 +165,23 @@ class ReviewConvergenceMigrationTests(SourceVersionFixture):
                 "WHERE table_schema='investigation' AND table_name='source_questions'"
             )).scalars())
             self.assertEqual("source_snapshot_contract" in question_columns, snapshot_branch)
+        # Seed the legitimate old schema through existing canonical owners;
+        # current authenticated HTTP still starts only after upgrading to head.
+        with self.services() as registry:
+            patient = registry.create_patient(**COMMON, request_key="CREATE-ALPHA")["patient_id"]
+            CanonicalCaseBindings(registry).bind(
+                patient, **COMMON, case_id="CASE-ALPHA", source_organization="ORG-INSTITUTION",
+                source_system="SYS-SYNTH", source_subject_ref="SUBJECT-ALPHA", review_ref="REVIEW-SYNTH")
+            source = PostgresSourceVersions(registry).import_original(
+                patient, "CASE-ALPHA", ORIGINAL.encode("utf-8"), **OPTIONS)
+            self.assertEqual((source["result"], source["version"]), ("imported", 1))
+            index = PostgresSourceVersions(registry).list(patient, "CASE-ALPHA", **OPTIONS)
+            world = project_source_world_model(index)
+            self.assertEqual(world["contract"], CANONICAL_SOURCE)
+            fingerprint = world["snapshot_fingerprint"]
+        self.creds[0]["patient_ids"].append(patient)
+        self.write()
+        prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA"
         old_queue_hash = self.seed_old_history(
             patient, source["source_id"], fingerprint, snapshot_branch=snapshot_branch
         )
