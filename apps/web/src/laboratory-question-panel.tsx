@@ -1,5 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
-import type {RegistrySession} from './registry-client';
+import {LaboratoryCitationReportPanel} from './laboratory-citation-report-panel.js';
+import {QuestionEvidencePanel} from './question-evidence-panel';
+import type {RegistrySession,ViewState} from './registry-client';
 import type {SourceWorldModel} from './source-world-model';
 import {validLabQuestion} from './laboratory-question';
 import type {LabPreparation,LabQuestionView} from './laboratory-question';
@@ -48,7 +50,7 @@ export function LaboratoryQuestionPanel({session,model,busy,sourceSavePending,st
   </form>;
 }
 
-export function SavedLaboratoryQuestions({session,model,state,busy,sourceSavePending}:{session:RegistrySession;model:SourceWorldModel;state:LabQuestionView;busy:boolean;sourceSavePending:boolean}){
+export function SavedLaboratoryQuestions({session,model,state,busy,sourceSavePending}:{session:RegistrySession;model:SourceWorldModel;state:ViewState;busy:boolean;sourceSavePending:boolean}){
   const locked=['saving','unknown'].includes(state.labQuestionWritePhase);
   return <section aria-label="Saved laboratory questions" data-testid="lab-saved-questions">
     <h4>Saved laboratory questions</h4>
@@ -56,12 +58,14 @@ export function SavedLaboratoryQuestions({session,model,state,busy,sourceSavePen
     {state.labQuestionWritePhase==='unknown'&&<button type="button" data-testid="lab-question-retry" disabled={busy||sourceSavePending} onClick={()=>void session.retryLabQuestion(model)}>Retry original save</button>}
     <button type="button" data-testid="lab-questions-reopen" disabled={busy||sourceSavePending||locked||state.labQuestionListPhase==='loading'} onClick={()=>void session.loadLabQuestions(model)}>Reopen saved laboratory questions</button>
     {state.labQuestionListMessage&&<p role="status">{state.labQuestionListMessage}</p>}
-    {state.labQuestionHistory&&<>{state.labQuestionHistory.questions.length===0?<p>No laboratory questions saved for this case.</p>:<ul>{state.labQuestionHistory.questions.map(row=><li key={row.question_id} data-testid="lab-saved-question">
+    {state.labQuestionHistory&&<>{state.labQuestionHistory.questions.length===0?<p>No laboratory questions saved for this case.</p>:<ul>{state.labQuestionHistory.questions.map(row=><li key={row.question_id} data-testid="lab-saved-question" data-question-id={row.question_id}>
       <p><strong>{row.question}</strong></p>
       <p>{row.source_context_state==='source_reassessment_required'?'Needs reassessment · the original question is preserved.':'Unreviewed · source context current at last check.'}</p>
       <p>{row.observation_reference} · source version {row.source_version}</p>
       <details><summary>Inspect saved source reference</summary><p>Original source <code>{row.source_id}</code> · SHA-256 <code>{row.source_sha256}</code></p>
         <p>Question <code>{row.question_id}</code></p><p>Context fingerprint <code>{row.source_snapshot_sha256}</code></p></details>
+      <QuestionEvidencePanel question={row} state={state} session={session} busy={busy||locked||sourceSavePending}/>
+      <LaboratoryCitationReportPanel question={row} state={state} session={session} busy={busy||locked||sourceSavePending}/>
     </li>)}</ul>}</>}
   </section>;
 }

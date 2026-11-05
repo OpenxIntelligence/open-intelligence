@@ -132,7 +132,7 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
             state={state} session={session} busy={busy}/>
          </li>)}</ul>}
     </div>}
-    {evidenceQuestionId&&!(state.questionsCaseId===caseId&&state.questions?.some(item=>item.question_id===evidenceQuestionId))&&
+    {evidenceQuestionId&&!state.evidenceLinkIntent?.laboratoryAnchor&&state.evidenceFamily!=='laboratory'&&!(state.questionsCaseId===caseId&&state.questions?.some(item=>item.question_id===evidenceQuestionId))&&
       <QuestionEvidenceRecovery state={state} session={session} busy={busy}/>}
     <p data-testid="brief-status" role="status" aria-live="polite"
       className={'status '+(state.briefPhase==='error'?'error':'')}>{state.briefMessage}</p>

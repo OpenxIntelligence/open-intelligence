@@ -1254,6 +1254,12 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         records_authorized=records_authorized,
         final_question_authority=final_question_authority, errors=errors,
     )
+    from .laboratory_citation_report_routes import register_laboratory_citation_report
+    register_laboratory_citation_report(
+        router, principal=principal, registry=registry,
+        records_authorized=records_authorized,
+        final_question_authority=final_question_authority, errors=errors,
+    )
     from .authored_evidence_routes import register_evidence_routes as register_authored_evidence_routes
     register_authored_evidence_routes(router, principal=principal, registry=registry,
         records_authorized=records_authorized, final_question_authority=final_question_authority, errors=errors)

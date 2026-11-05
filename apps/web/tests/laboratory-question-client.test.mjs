@@ -259,3 +259,80 @@ test('denied laboratory preparation, save or history clears patient, sources, Wo
   await f.session.loadLabQuestions(f.session.snapshot().worldModel);assert.equal(f.session.snapshot().labQuestionHistory.questions.length,1);
  }
 });
+
+const record={citation:'FICT-LAB-CATALOG@1',id:'FICT-LAB-CATALOG',version:'1',source_kind:'fictional',
+ title:'Fictional laboratory record metadata',licence:'Original synthetic fixture',link:'https://example.invalid/fictional/catalog/1',
+ metadata_sha256:'e'.repeat(64),availability:'metadata_only',rights_status:'granted'};
+const link={link_id:'EVIDENCE-LINK-'+'9'.repeat(32),citation:record.citation,metadata_sha256:record.metadata_sha256,
+ actor_label:'ACTOR-FICTIONAL',created_at:'2026-11-03T10:00:00Z',status:'available',record};
+const qBase='/v1/patients/'+patient+'/cases/'+caseId+'/composer/laboratory-questions/'+qid;
+const labRow=savedRow(),{question_id:_id,question:_q,source_context_state:_state,...anchor}=labRow;
+const catalogScope={patient_id:patient,case_id:caseId,question_id:qid,source_context_state:'current_unreviewed_question',
+ source_access_receipt_id:access,synthetic:true,model_executed:false,content_appraised:false,clinical_approval:false,question_anchor:anchor};
+const hits=()=>({...catalogScope,contract:'oi.pg-question-evidence-search/1',query:'catalog',records:[record]});
+const links=(rows=[],state=catalogScope.source_context_state)=>({...catalogScope,contract:'oi.pg-question-evidence-links/1',source_context_state:state,links:rows});
+const receipt=(duplicate=false)=>({link_id:link.link_id,citation:link.citation,metadata_sha256:link.metadata_sha256,duplicate});
+async function catalogSession(respond,rows=()=>[labRow]){
+ const f=await ready((url,body)=>respond(url,'POST',body),()=>reply(history(rows())),projection,
+   url=>url.startsWith(qBase+'/')?respond(url,'GET'):null);
+ await f.session.loadLabQuestions(f.world);return f.session;
+}
+test('lab catalog search requires the Observation anchor; it never sends the question text or a lab value',async()=>{
+ let actual=hits();const calls=[];const s=await catalogSession((url,method,body)=>{calls.push({url,method,body});return reply(actual);});
+ await s.searchQuestionEvidence(qid,'catalog','laboratory');assert.equal(s.snapshot().evidenceSearch.records[0].title,record.title);
+ assert.deepEqual(calls,[{url:qBase+'/evidence-search',method:'POST',body:{synthetic:true,query:'catalog'}}]);
+ for(const invalid of [undefined,{...anchor,source_id:'SRC-'+'C'.repeat(32)},{...anchor,source_version:2},
+   {...anchor,observation_reference:'Observation/Other'},{...anchor,source_sha256:'1'.repeat(64)},
+   {...anchor,source_snapshot_sha256:'1'.repeat(64)},{...anchor,preflight_sha256:'1'.repeat(64)},{...anchor,source_line:12}]){
+   actual={...hits(),question_anchor:invalid};await s.searchQuestionEvidence(qid,'catalog','laboratory');
+   assert.equal(s.snapshot().evidenceSearch,null);assert.equal(s.snapshot().evidenceSearchPhase,'error');
+   await s.saveQuestionEvidence(qid,record.citation,'laboratory');assert.ok(calls.every(call=>call.url.endsWith('/evidence-search')));
+ }
+});
+test('lab citation uncertain write reopens the exact question on same-patient recheck, and can recover its receipt after amendment',async()=>{
+ const writes=[];let historical=false;
+ const s=await catalogSession((url,method,body)=>{
+   if(url.endsWith('/evidence-search'))return reply(hits());assert.equal(url,qBase+'/evidence-links');
+   if(method==='GET')return reply(links([link],historical?'source_reassessment_required':'current_unreviewed_question'));
+   writes.push(body);return writes.length===1?reply({},503):reply(receipt(true));
+ },()=>[{...labRow,source_context_state:historical?'source_reassessment_required':'current_unreviewed_question'}]);
+ await s.searchQuestionEvidence(qid,'catalog','laboratory');await s.saveQuestionEvidence(qid,record.citation,'laboratory');
+ assert.equal(s.snapshot().evidenceLinkPhase,'unknown');
+ const {request_key,...body}=writes[0];assert.match(request_key,/^[\w-]{36}$/);
+ assert.deepEqual(body,{synthetic:true,citation:record.citation,expected_metadata_sha256:record.metadata_sha256,
+   source_snapshot_contract:'oi.pg-source-world-model/1',expected_source_snapshot_sha256:labRow.source_snapshot_sha256,expected_preflight_sha256:labRow.preflight_sha256});
+ historical=true;await s.read(patient);await s.loadCases();await s.loadWorldModel(caseId);
+ await s.retryQuestionEvidenceLink();assert.equal(writes.length,1,'must reopen exact historical anchor first');
+ await s.loadLabQuestions(s.snapshot().worldModel);await s.retryQuestionEvidenceLink();
+ assert.deepEqual(writes,[writes[0],writes[0]]);assert.equal(s.snapshot().evidenceLinkReceipt.link_id,link.link_id);
+ assert.equal(s.snapshot().evidenceLinkReceipt.duplicate,true);assert.equal(s.snapshot().evidenceLinks.source_context_state,'source_reassessment_required');
+});
+test('lab history alone is available after reassessment; wrong anchors and restricted metadata disclosures are refused',async()=>{
+ let read=links([{...link,status:'rights_restricted',record:null}],'source_reassessment_required');let sent=0;
+ const s=await catalogSession((url,method)=>{sent++;assert.equal(url,qBase+'/evidence-links');assert.equal(method,'GET');return reply(read);},()=>[{...labRow,source_context_state:'source_reassessment_required'}]);
+ await s.searchQuestionEvidence(qid,'catalog','laboratory');await s.saveQuestionEvidence(qid,record.citation,'laboratory');assert.equal(sent,0);
+ await s.loadQuestionEvidenceLinks(qid,'laboratory');assert.equal(s.snapshot().evidenceLinks.links[0].record,null);
+ for(const corrupt of [{question_anchor:{...anchor,observation_reference:'Observation/Another'}},{source_context_state:'current_unreviewed_question'},{links:[{...link,status:'rights_restricted'}]}]){
+   read={...links([],'source_reassessment_required'),...corrupt};await s.loadQuestionEvidenceLinks(qid,'laboratory');assert.equal(s.snapshot().evidenceLinks,null);
+ }
+});
+test('denied laboratory catalog actions clear the full patient scope and all citation metadata and retry material',async()=>{
+ for(const status of [403,404])for(const op of ['read','search','save']){
+   let deny=false;const s=await catalogSession((url,method)=>deny?reply({},status):reply(url.endsWith('/evidence-search')?hits():links([])));
+   await s.searchQuestionEvidence(qid,'catalog','laboratory');assert.equal(s.snapshot().evidenceSearch.records.length,1);deny=true;
+   if(op==='read')await s.loadQuestionEvidenceLinks(qid,'laboratory');
+   if(op==='search')await s.searchQuestionEvidence(qid,'catalog','laboratory');
+   if(op==='save')await s.saveQuestionEvidence(qid,record.citation,'laboratory');
+   const st=s.snapshot();for(const key of ['patient','cases','worldModel','labQuestionHistory','evidenceSearch','evidenceLinks','evidenceLinkIntent','evidenceLinkReceipt'])assert.equal(st[key],null,op+' '+key);
+ }
+});
+test('an older laboratory catalog result cannot restore a title after rights-checked history or a fresh question list',async()=>{
+ for(const action of ['rights refresh','new list']){
+   let release;const held=new Promise(r=>release=r);
+   const s=await catalogSession(url=>url.endsWith('/evidence-search')?held:reply(links([{...link,status:'rights_restricted',record:null}])));
+   const search=s.searchQuestionEvidence(qid,'catalog','laboratory');
+   if(action==='rights refresh')await s.loadQuestionEvidenceLinks(qid,'laboratory');else await s.loadLabQuestions(s.snapshot().worldModel);
+   release(reply(hits()));await search;assert.equal(s.snapshot().evidenceSearch,null);
+   if(action==='rights refresh')assert.equal(s.snapshot().evidenceLinks.links[0].record,null);
+ }
+});

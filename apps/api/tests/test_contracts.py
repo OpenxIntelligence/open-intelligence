@@ -74,7 +74,7 @@ class HTTPContractTests(unittest.TestCase):
             self.assertEqual(body["authentication"], "deny_all")
             self.assertFalse(body["patient_data_enabled"])
             self.assertTrue(body["synthetic_registry_enabled"])
-            self.assertEqual(body["capabilities"], ["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel", "synthetic_record_request_receive", "synthetic_case_binding_create", "synthetic_case_binding_list", "synthetic_case_binding_revoke", "synthetic_source_import", "synthetic_source_list", "synthetic_source_original_read", "synthetic_source_world_model_read", "synthetic_source_composer_preflight", "synthetic_source_question_create", "synthetic_source_question_list", "synthetic_image_import", "synthetic_image_list", "synthetic_image_original_read", "synthetic_source_review_queue_read", "synthetic_source_review_return", "synthetic_source_question_brief", "synthetic_source_review_packet_read", "synthetic_question_followthrough_read", "synthetic_question_followthrough_create", "synthetic_question_followthrough_update", "synthetic_question_evidence_search", "synthetic_question_evidence_link", "synthetic_question_evidence_list", "synthetic_question_evidence_read", "synthetic_question_evidence_import", "synthetic_question_evidence_assess", "synthetic_question_evidence_withdraw", "synthetic_question_evidence_original_read", "synthetic_question_evidence_report", "synthetic_laboratory_question_preflight", "synthetic_laboratory_question_save", "synthetic_laboratory_question_history"])
+            self.assertEqual(body["capabilities"], ["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel", "synthetic_record_request_receive", "synthetic_case_binding_create", "synthetic_case_binding_list", "synthetic_case_binding_revoke", "synthetic_source_import", "synthetic_source_list", "synthetic_source_original_read", "synthetic_source_world_model_read", "synthetic_source_composer_preflight", "synthetic_source_question_create", "synthetic_source_question_list", "synthetic_image_import", "synthetic_image_list", "synthetic_image_original_read", "synthetic_source_review_queue_read", "synthetic_source_review_return", "synthetic_source_question_brief", "synthetic_source_review_packet_read", "synthetic_question_followthrough_read", "synthetic_question_followthrough_create", "synthetic_question_followthrough_update", "synthetic_question_evidence_search", "synthetic_question_evidence_link", "synthetic_question_evidence_list", "synthetic_question_evidence_read", "synthetic_question_evidence_import", "synthetic_question_evidence_assess", "synthetic_question_evidence_withdraw", "synthetic_question_evidence_original_read", "synthetic_question_evidence_report", "synthetic_laboratory_question_preflight", "synthetic_laboratory_question_save", "synthetic_laboratory_question_history", "synthetic_laboratory_question_evidence_metadata", "synthetic_laboratory_source_citation_report"])
 
     def test_missing_database_is_unready_not_a_fake_pass(self):
         with running_server(create_app(Settings.from_env({}))) as base:
@@ -142,6 +142,9 @@ class HTTPContractTests(unittest.TestCase):
             "/v1/patients/{patient_id}/cases/{case_id}/composer/source-preflight",
             "/v1/patients/{patient_id}/cases/{case_id}/composer/laboratory-preflight",
             "/v1/patients/{patient_id}/cases/{case_id}/composer/laboratory-questions",
+            "/v1/patients/{patient_id}/cases/{case_id}/composer/laboratory-questions/{question_id}/evidence-search",
+            "/v1/patients/{patient_id}/cases/{case_id}/composer/laboratory-questions/{question_id}/source-citation-report",
+            "/v1/patients/{patient_id}/cases/{case_id}/composer/laboratory-questions/{question_id}/evidence-links",
             "/v1/patients/{patient_id}/cases/{case_id}/documents",
             "/v1/patients/{patient_id}/cases/{case_id}/documents/preview",
             "/v1/patients/{patient_id}/cases/{case_id}/documents/{source_id}",
@@ -200,6 +203,9 @@ class HTTPContractTests(unittest.TestCase):
             operation = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/" + suffix][method]
             self.assertEqual(operation["security"], [{"SyntheticFixture": []}])
             self.assertIn("503", operation["responses"])
+            laboratory = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/composer/laboratory-questions/{question_id}/" + suffix][method]
+            self.assertEqual(laboratory["security"], operation["security"])
+            self.assertNotEqual(laboratory["operationId"], operation["operationId"])
 
 
 if __name__ == "__main__":

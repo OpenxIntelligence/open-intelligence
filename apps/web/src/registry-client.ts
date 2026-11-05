@@ -1,3 +1,4 @@
+import {readLaboratoryCitationReport} from './laboratory-citation-report.js';
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 export {patientContinuity} from './patient-continuity.js';
 import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
@@ -25,7 +26,7 @@ import {canCreateFollowthrough,decodeFollowthrough,decodeFollowthroughReceipt,
 import type {FollowthroughDraft,FollowthroughUnsentDraft,FollowthroughIntent,FollowthroughList,
   FollowthroughReceipt,FollowthroughTransition,FollowthroughTransitionFields,FollowthroughUnsentTransition} from './followthrough-view.js';
 import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,decodeQuestionEvidenceReceipt,
-  validEvidenceQuery} from './question-evidence-view.js';
+  laboratoryEvidenceAnchor,matchesLaboratoryEvidenceAnchor,unwrapLaboratoryEvidence,validEvidenceQuery} from './question-evidence-view.js';
 import type {QuestionEvidenceSearch,QuestionEvidenceLinks,QuestionEvidenceIntent,
   QuestionEvidenceReceipt} from './question-evidence-view.js';
 import {QuestionEvidenceSession,emptyEvidenceState} from './authored-evidence-session.js';
@@ -73,7 +74,7 @@ export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryI
   followthroughWritePhase:'idle'|'saving'|'saved'|'unknown'|'error';followthroughWriteMessage:string;
   sourceQuotePacket:QuestionSourceReviewPacket|null;
   sourceQuotePhase:'idle'|'loading'|'ready'|'error';sourceQuoteMessage:string;
-  evidenceQuestionId:string|null;
+  evidenceQuestionId:string|null;evidenceGeneration:number;evidenceFamily:'text'|'laboratory'|null;
   evidenceSearch:QuestionEvidenceSearch|null;evidenceSearchPhase:'idle'|'loading'|'ready'|'error';evidenceSearchMessage:string;
   evidenceLinks:QuestionEvidenceLinks|null;evidenceLinksPhase:'idle'|'loading'|'ready'|'error';evidenceLinksMessage:string;
   evidenceLinkIntent:QuestionEvidenceIntent|null;evidenceLinkReceipt:QuestionEvidenceReceipt|null;
@@ -110,7 +111,7 @@ const emptyEvidenceMetadata=()=>({evidenceSearch:null,evidenceSearchPhase:'idle'
   evidenceSearchMessage:'Enter your own terms to search the original fictional catalog.',
   evidenceLinks:null,evidenceLinksPhase:'idle' as const,
   evidenceLinksMessage:'Refresh saved citations to check their current availability.'});
-const emptyEvidence=()=>({...emptyEvidenceMetadata(),evidenceQuestionId:null,evidenceLinkIntent:null,evidenceLinkReceipt:null,
+const emptyEvidence=()=>({...emptyEvidenceMetadata(),evidenceQuestionId:null,evidenceFamily:null,evidenceLinkIntent:null,evidenceLinkReceipt:null,
   evidenceLinkPhase:'idle' as const,evidenceLinkMessage:'No citation link is being saved.'});
 const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerPhase:'idle' as const,
   composerMessage:'Select an exact current source observation to prepare a non-executing context.',
@@ -123,7 +124,7 @@ const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerP
 const unconfirmedLabQuestion = {labQuestionWritePhase:'unknown',labQuestionWriteMessage:
   'The earlier save is unconfirmed. Retry its unchanged request after reopening this case.'} as const;
 
-const fresh = (): ViewState => Object.freeze({...emptyLabQuestions(),manualPassageDraftQuestionIds:Object.freeze([]),connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
+const fresh = (): ViewState => Object.freeze({evidenceGeneration:0,...emptyLabQuestions(),manualPassageDraftQuestionIds:Object.freeze([]),connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
 const emptyRecords=()=>({...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptySourceImages(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
@@ -188,6 +189,36 @@ export class RegistrySession {
     return {read:()=>current()?this.#manualPassageIntents.get(key)??null:null,
       write:body=>{if(body===null)this.#manualPassageIntents.delete(key);else if(current())this.#manualPassageIntents.set(key,body);}};
   };
+  /** A report is a fresh protected read, not retained in the session or browser storage. */
+  async readLaboratoryCitationReport(questionId:string,signal:AbortSignal){
+    if(signal.aborted||this.#savingEvidence||this.#state.evidenceLinkPhase==='unknown')throw Error('Finish the citation save first');
+    this.#focusSavedQuestion(questionId);
+    this.dismissEvidenceMetadata();
+    const generation=this.#evidenceRead,scope=this.#scope,patient=this.#state.patient?.patient_id;
+    const model=this.#state.worldModel,subject=this.#catalogSubject(questionId,'laboratory');
+    if(!patient||!model||!subject?.laboratory||!this.#token)throw Error('Reopen authorized saved questions');
+    const question=subject.laboratory;
+    const control=new AbortController();this.#controllers.add(control);
+    const stop=()=>control.abort();signal.addEventListener('abort',stop,{once:true});
+    const timeout=setTimeout(stop,10000);
+    const current=()=>generation===this.#evidenceRead&&scope===this.#scope&&this.#state.worldModel===model&&
+      this.#state.patient?.patient_id===patient&&this.#inspectionQuestionId===questionId&&
+      this.#catalogSubject(questionId,'laboratory')?.row===question&&!signal.aborted;
+    try{
+      const res=await this.transport(this.#catalogPath(patient,model.case_id,questionId,true)+'/source-citation-report',this.#init(control));
+      if(!current()){void res.body?.cancel().catch(()=>{});throw Error('Report scope changed');}
+      if(res.status!==200){
+        if(res.status===401)this.#httpError(401);
+        else if(res.status===403||res.status===404)this.#denyLaboratoryQuestionAccess('evidence');
+        void res.body?.cancel().catch(()=>{});
+        throw Error('Report unavailable');
+      }
+      if(control.signal.aborted)throw Error('Report timed out');
+      const report=readLaboratoryCitationReport(await json(res,512000),model,question);
+      if(!current()||control.signal.aborted)throw Error('Report scope changed');
+      return {report,generation};
+    }finally{signal.removeEventListener('abort',stop);clearTimeout(timeout);this.#controllers.delete(control);}
+  }
   async documentRequest(caseId:string,path:string,body?:string,questionId?:string):Promise<import('./reviewed-documents').DocumentReply>{
     if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations)|\/selections\/ANN-[A-F0-9]{32}\/[a-z][a-z0-9_-]{0,59})?$/.test(path))throw Error('Invalid document path');
     if(questionId!==undefined&&!/^QUESTION-[A-F0-9]{32}$/.test(questionId))throw Error('Invalid question scope');
@@ -307,7 +338,7 @@ export class RegistrySession {
     const ids=scoped?(next.questions??[]).filter(q=>q.patient_id===patient&&q.case_id===caseId&&
       this.#manualPassageDrafts.has(JSON.stringify([patient,caseId,q.question_id]))).map(q=>q.question_id):[];
     if(this.#labPending&&next.cases!==null&&!next.cases.some(c=>c.patient_id===this.#labPending?.patient&&c.case_id===this.#labPending?.caseId&&c.status==='active'))next={...next,...this.#resetLabQuestions()};
-    this.#state=Object.freeze({...next,manualPassageDraftQuestionIds:Object.freeze(ids)});
+    this.#state=Object.freeze({...next,evidenceGeneration:this.#evidenceRead,manualPassageDraftQuestionIds:Object.freeze(ids)});
     for(const listener of this.#listeners)listener();
   }
   #resetEvidence(preserveCase?:string){
@@ -423,10 +454,14 @@ export class RegistrySession {
     // Invalidate the earlier response and every displayed source. Retain only the
     // exact command for this patient until its case can be authorized again.
     const pendingLabQuestion=this.#labPending?.patient===id?this.#labPending:null;
+    const pendingCitation=this.#state.evidenceLinkIntent?.patient_id===id&&
+      ['saving','unknown'].includes(this.#state.evidenceLinkPhase)?this.#state.evidenceLinkIntent:null;
     const clearedInvestigation=this.#resetInvestigation();
     this.#labPending=pendingLabQuestion;
     this.#records++;this.#publish({patient:null,...emptyRecords(),...clearedInvestigation,
       ...(pendingLabQuestion?unconfirmedLabQuestion:{}),
+      ...(pendingCitation?{evidenceLinkIntent:pendingCitation,evidenceLinkPhase:'unknown' as const,
+        evidenceLinkMessage:'Reopen the question to check the original citation save.'}:{}),
       ...(preserveLaboratory?{laboratoryIntent:preserveLaboratory,laboratoryPhase:'unknown' as const,
         laboratoryMessage:'The earlier laboratory import remains uncertain. Recheck this case, then retry its exact saved request.'}:{}),
       ...(preserveEvidence?{evidenceWriteIntent:preserveEvidence,evidenceWritePhase:'unknown' as const,
@@ -895,7 +930,7 @@ export class RegistrySession {
   async retryLabQuestion(model:SourceWorldModel):Promise<void>{
     if(this.#state.labQuestionWritePhase==='unknown'&&this.#canReadLabModel(model)&&!questionSaveBlocksSourceChange(this.#state))await this.#sendLabQuestion(model);
   }
-  #denyLaboratoryQuestionAccess(operation:'prepare'|'save'|'history'){
+  #denyLaboratoryQuestionAccess(operation:'prepare'|'save'|'history'|'evidence'){
     // A 403/404 can represent lost patient or case authority. Invalidate all
     // patient data and outstanding responses before permitting another read.
     this.#clearPatientSessionData();
@@ -910,6 +945,7 @@ export class RegistrySession {
     if(!intent||intent.caseId!==model.case_id||intent.patient!==model.patient_id||this.#state.labQuestionWritePhase==='saving')return;
     const epoch=++this.#labSave,current=()=>epoch===this.#labSave&&this.#labPending===intent&&this.#canReadLabModel(model);
     this.#labList++;
+    this.#dismissLabCitations(model.case_id);
     this.#publish({...emptyLabQuestions(),labQuestionWritePhase:'saving',labQuestionWriteMessage:'Saving the prepared question…'});
     const control=new AbortController();this.#controllers.add(control);const timer=setTimeout(()=>control.abort(),10000);
     try{
@@ -934,6 +970,7 @@ export class RegistrySession {
   async loadLabQuestions(model:SourceWorldModel):Promise<void>{
     if(!this.#canReadLabModel(model)||questionSaveBlocksSourceChange(this.#state)||this.#labPending)return;
     const epoch=++this.#labList,current=()=>epoch===this.#labList&&this.#canReadLabModel(model);
+    this.#dismissLabCitations(model.case_id);
     this.#publish({labQuestionHistory:null,labQuestionListPhase:'loading',labQuestionListMessage:'Checking access to saved laboratory questions…'});
     const control=new AbortController();this.#controllers.add(control);const timer=setTimeout(()=>control.abort(),10000);
     try{
@@ -1189,7 +1226,7 @@ export class RegistrySession {
           .filter(([id,draft])=>draft.patient_id===patientId&&draft.case_id===caseId&&history.questions.some(item=>
             item.question_id===id&&item.preflight_sha256===draft.preflight_sha256&&
             item.source_snapshot_sha256===draft.source_snapshot_sha256&&item.source_context_state==='current_unreviewed_question')))),
-        ...(pendingEvidence&&!history.questions.some(item=>item.question_id===pendingEvidence.question_id)?this.#resetEvidence():{}),
+        ...(pendingEvidence&&!pendingEvidence.laboratoryAnchor&&!history.questions.some(item=>item.question_id===pendingEvidence.question_id)?this.#resetEvidence():{}),
         questionsCaseId:caseId,questionListPhase:'ready',
         questionListMessage:history.questions.length?
           'Authorized source-linked questions, including any reopened reassessment needs.':
@@ -1200,66 +1237,85 @@ export class RegistrySession {
     }finally{clearTimeout(timeout);this.#controllers.delete(controller);}
   }
 
+  #dismissLabCitations(caseId:string){
+    if(this.#state.evidenceFamily==='laboratory'||this.#state.evidenceLinkIntent?.laboratoryAnchor)
+      this.#publish(this.#resetEvidence(caseId));
+  }
+  #catalogSubject(questionId:string,family:'text'|'laboratory'){
+    const st=this.#state, model=st.worldModel;
+    if(family==='laboratory'){
+      const row=st.labQuestionHistory?.questions.find(q=>q.question_id===questionId);
+      return model&&this.#canReadLabModel(model)&&st.labQuestionListPhase==='ready'&&row?
+        {caseId:model.case_id,row,laboratory:row,canSearch:row.source_context_state==='current_unreviewed_question',
+          canSave:row.source_context_state==='current_unreviewed_question'&&row.source_snapshot_sha256===model.snapshot_fingerprint}:null;
+    }
+    const row=st.questions?.find(q=>q.question_id===questionId);
+    return row&&st.questionListPhase==='ready'&&row.case_id===st.questionsCaseId&&row.patient_id===st.patient?.patient_id?
+      {caseId:row.case_id,row,laboratory:null,canSearch:true,canSave:canPrepareSourceBrief(row,model)}:null;
+  }
+  #catalogPath(patient:string,caseId:string,question:string,laboratory:boolean){
+    return '/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+
+      (laboratory?'/composer/laboratory-questions/':'/questions/')+encodeURIComponent(question);
+  }
+
   /** Catalog queries are manually supplied; no patient-derived text is sent. */
-  async searchQuestionEvidence(questionId:string,query:string):Promise<void>{
+  async searchQuestionEvidence(questionId:string,query:string,family:'text'|'laboratory'='text'):Promise<void>{
     if(this.#savingEvidence)return;
     if(this.#state.evidenceLinkPhase==='unknown'){
       this.#publish({evidenceLinkMessage:'Resolve the earlier uncertain citation save before searching for or saving another citation.'});return;
     }
-    await this.#readQuestionEvidence(questionId,query);
+    await this.#readQuestionEvidence(questionId,family,query);
   }
 
-  async loadQuestionEvidenceLinks(questionId:string):Promise<void>{
+  async loadQuestionEvidenceLinks(questionId:string,family:'text'|'laboratory'='text'):Promise<void>{
     if(this.#savingEvidence)return;
-    await this.#readQuestionEvidence(questionId);
+    await this.#readQuestionEvidence(questionId,family);
   }
 
-  async #readQuestionEvidence(questionId:string,query?:string):Promise<void>{
+  async #readQuestionEvidence(questionId:string,family:'text'|'laboratory',query?:string):Promise<void>{
     this.#focusSavedQuestion(questionId);
-    const patientId=this.#state.patient?.patient_id,caseId=this.#state.questionsCaseId;
-    const question=this.#state.questions?.find(item=>item.question_id===questionId);
+    const patientId=this.#state.patient?.patient_id,subject=this.#catalogSubject(questionId,family),caseId=subject?.caseId;
     const search=query!==undefined;
     const read=++this.#evidenceRead,scope=this.#scope,selection=this.#read,
       questionRead=this.#questionRead,worldRead=this.#worldRead;
     // Both readers share this barrier. A rights-restricted refresh must also
     // erase an earlier search title and prevent its delayed response returning.
-    this.#publish({...emptyEvidenceMetadata(),evidenceQuestionId:questionId});
+    this.#publish({...emptyEvidenceMetadata(),evidenceQuestionId:questionId,evidenceFamily:family});
     const failed=(message:string)=>this.#publish(search?{evidenceSearchPhase:'error',evidenceSearchMessage:message}:
       {evidenceLinksPhase:'error',evidenceLinksMessage:message});
-    if(!this.#token||!patientId||!caseId||!question||this.#state.phase!=='ready'||this.#uploading||
-       this.#state.questionListPhase!=='ready'||question.patient_id!==patientId||question.case_id!==caseId||
+    if(!this.#token||!patientId||!caseId||!subject||this.#state.phase!=='ready'||this.#uploading||
        !this.#state.cases?.some(item=>item.case_id===caseId&&item.status==='active')||
-       (search&&!validEvidenceQuery(query))){
+       (search&&(!subject.canSearch||!validEvidenceQuery(query)))){
       failed(search?'Choose an authorized saved question and enter 1–200 visible characters without surrounding spaces.':
         'Refresh the authorized case and saved questions before reading citation links.');return;
     }
     const current=()=>read===this.#evidenceRead&&scope===this.#scope&&selection===this.#read&&
       questionRead===this.#questionRead&&worldRead===this.#worldRead&&this.#state.patient?.patient_id===patientId&&
-      this.#inspectionQuestionId===questionId&&this.#state.questionsCaseId===caseId;
+      this.#inspectionQuestionId===questionId&&this.#catalogSubject(questionId,family)?.row===subject.row;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
     this.#publish(search?{evidenceSearchPhase:'loading',evidenceSearchMessage:'Checking permission and searching fictional catalog metadata…'}:
       {evidenceLinksPhase:'loading',evidenceLinksMessage:'Rechecking saved citation versions and current metadata permissions…'});
     try{
-      const base='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+
-        '/questions/'+encodeURIComponent(questionId);
+      const base=this.#catalogPath(patientId,caseId,questionId,!!subject.laboratory);
       const res=await this.transport(base+(search?'/evidence-search':'/evidence-links'),
         this.#init(control,search?JSON.stringify({synthetic:true,query}):undefined));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
         if([403,404].includes(res.status)){
+          if(subject.laboratory){this.#denyLaboratoryQuestionAccess('evidence');return;}
           const receipt=this.#state.evidenceLinkPhase==='saved'?this.#state.evidenceLinkReceipt:null;
           // A metadata-read denial cannot resolve a separately authorized write.
           // Keep only its opaque exact intent; retry rechecks link permission.
-          this.#publish({...this.#resetEvidence(caseId),evidenceQuestionId:questionId,
+          this.#publish({...this.#resetEvidence(caseId),evidenceQuestionId:questionId,evidenceFamily:family,
             ...(receipt?{evidenceLinkReceipt:receipt,evidenceLinkPhase:'saved' as const,
               evidenceLinkMessage:'The citation save receipt is recorded. Current metadata access is unavailable.'}:{})});
         }
         failed('Evidence metadata is unavailable under current permissions or service state. No previous titles or links are shown.');return;
       }
       if(control.signal.aborted)throw Error('evidence timeout');
-      const value=await json(res,1048576);
+      const raw=await json(res,1048576),value=subject.laboratory?unwrapLaboratoryEvidence(raw,subject.laboratory,search):raw;
       const result=search?decodeQuestionEvidenceSearch(value,patientId,caseId,questionId,query):
         decodeQuestionEvidenceLinks(value,patientId,caseId,questionId);
       if(!current())return;if(control.signal.aborted)throw Error('evidence timeout');
@@ -1276,19 +1332,19 @@ export class RegistrySession {
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
 
-  async saveQuestionEvidence(questionId:string,citation:string):Promise<void>{
+  async saveQuestionEvidence(questionId:string,citation:string,family:'text'|'laboratory'='text'):Promise<void>{
     if(this.#savingEvidence)return;
     if(this.#state.evidenceLinkPhase==='unknown'){
       this.#publish({evidenceLinkMessage:'Retry the exact uncertain citation save or explicitly abandon recovery before recording another link.'});return;
     }
     const patientId=this.#state.patient?.patient_id,model=this.#state.worldModel,search=this.#state.evidenceSearch;
-    const question=this.#state.questions?.find(item=>item.question_id===questionId);
+    const subject=this.#catalogSubject(questionId,family),question=subject?.row;
     const record=search?.records.find(item=>item.citation===citation);
-    if(!this.#token||!patientId||!model||!question||!record||!search||this.#uploading||
-       this.#state.phase!=='ready'||this.#state.worldPhase!=='ready'||this.#state.questionListPhase!=='ready'||
+    if(!this.#token||!patientId||!model||!subject||!question||!record||!search||this.#uploading||
+       this.#state.phase!=='ready'||this.#state.worldPhase!=='ready'||this.#state.evidenceFamily!==family||
        this.#state.evidenceSearchPhase!=='ready'||this.#state.evidenceQuestionId!==questionId||search.question_id!==questionId||
-       search.patient_id!==patientId||search.case_id!==model.case_id||this.#state.questionsCaseId!==model.case_id||
-       search.source_context_state!=='current_unreviewed_question'||!canPrepareSourceBrief(question,model)||
+       search.patient_id!==patientId||search.case_id!==model.case_id||subject.caseId!==model.case_id||
+       search.source_context_state!=='current_unreviewed_question'||!subject.canSave||
        !this.#state.cases?.some(item=>item.case_id===model.case_id&&item.status==='active')){
       this.#publish({evidenceLinkReceipt:null,evidenceLinkPhase:'error',evidenceLinkMessage:
         'Inspect a current fictional search result for this exact saved question before saving. Changed source context requires reassessment.'});return;
@@ -1296,7 +1352,8 @@ export class RegistrySession {
     const body=Object.freeze({synthetic:true as const,request_key:crypto.randomUUID(),citation:record.citation,
       expected_metadata_sha256:record.metadata_sha256,source_snapshot_contract:'oi.pg-source-world-model/1' as const,
       expected_source_snapshot_sha256:question.source_snapshot_sha256,expected_preflight_sha256:question.preflight_sha256});
-    await this.#writeQuestionEvidence(Object.freeze({patient_id:patientId,case_id:model.case_id,question_id:questionId,body}));
+    await this.#writeQuestionEvidence(Object.freeze({patient_id:patientId,case_id:model.case_id,question_id:questionId,body,
+      ...(subject.laboratory?{laboratoryAnchor:laboratoryEvidenceAnchor(subject.laboratory)}:{})}));
   }
 
   async retryQuestionEvidenceLink():Promise<void>{
@@ -1314,7 +1371,11 @@ export class RegistrySession {
   };
 
   async #writeQuestionEvidence(intent:QuestionEvidenceIntent,recovering=false):Promise<void>{
+    const family=intent.laboratoryAnchor?'laboratory':'text';
+    const subject=intent.laboratoryAnchor?this.#catalogSubject(intent.question_id,'laboratory'):null;
     if(!this.#token||this.#state.patient?.patient_id!==intent.patient_id||this.#state.phase!=='ready'||this.#uploading||
+       (intent.laboratoryAnchor&&(!subject?.laboratory||subject.caseId!==intent.case_id||
+         !matchesLaboratoryEvidenceAnchor(intent.laboratoryAnchor,subject.laboratory)))||
        !this.#state.cases?.some(item=>item.case_id===intent.case_id&&item.status==='active')){
       this.#publish({evidenceLinkMessage:'Recheck the authorized case before retrying. The exact earlier citation intent remains saved.'});return;
     }
@@ -1327,16 +1388,16 @@ export class RegistrySession {
       evidenceLinkMessage:'Citation save outcome uncertain. Retry this exact intent to recover its original receipt. A new save is blocked until recovery or explicit abandonment.'});
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({...emptyEvidenceMetadata(),evidenceQuestionId:intent.question_id,evidenceLinkIntent:intent,
+    this.#publish({...emptyEvidenceMetadata(),evidenceQuestionId:intent.question_id,evidenceFamily:family,evidenceLinkIntent:intent,
       evidenceLinkReceipt:null,evidenceLinkPhase:'saving',evidenceLinkMessage:recovering?
         'Recovering the exact earlier citation save under current permissions…':
         'Checking independent link permission and saving this exact metadata version…'});
     try{
-      const url='/v1/patients/'+encodeURIComponent(intent.patient_id)+'/cases/'+encodeURIComponent(intent.case_id)+
-        '/questions/'+encodeURIComponent(intent.question_id)+'/evidence-links';
+      const url=this.#catalogPath(intent.patient_id,intent.case_id,intent.question_id,!!intent.laboratoryAnchor)+'/evidence-links';
       const res=await this.transport(url,this.#init(control,JSON.stringify(intent.body)));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
+      if(intent.laboratoryAnchor&&[403,404].includes(res.status)){this.#denyLaboratoryQuestionAccess('evidence');return;}
       if([400,403,404,409,413,422].includes(res.status)){
         if(recovering){
           uncertain();
@@ -1344,7 +1405,7 @@ export class RegistrySession {
             'This retry was refused under current permissions or source/input state. The earlier save outcome is still uncertain. Recheck access and retry this exact intent, or explicitly abandon recovery.'});
           return;
         }
-        this.#publish({...this.#resetEvidence(),evidenceQuestionId:intent.question_id,evidenceLinkPhase:'error',
+        this.#publish({...this.#resetEvidence(),evidenceQuestionId:intent.question_id,evidenceFamily:family,evidenceLinkPhase:'error',
           evidenceLinkMessage:res.status===409?
             'The metadata, source context or request intent changed. Refresh the question and catalog before a new save.':
             'The citation save was refused by the current permission or input contract. No successful link is assumed.'});return;
@@ -1357,7 +1418,7 @@ export class RegistrySession {
         'Original citation receipt recovered. The same request was not saved twice.':
         'Citation link saved. Its content was not appraised, no model ran, and no clinical approval was created.'});
       this.#savingEvidence=false;
-      await this.loadQuestionEvidenceLinks(intent.question_id);
+      await this.loadQuestionEvidenceLinks(intent.question_id,family);
     }catch(_){if(current())uncertain();}
     finally{clearTimeout(timeout);this.#controllers.delete(control);
       if(write===this.#evidenceWrite&&scope===this.#scope)this.#savingEvidence=false;}
