@@ -1,5 +1,12 @@
 # AI evaluation plan
 
+Current repair: additive `0022_lab_citation_source_scope` now aligns the database
+guard with the existing structured-source snapshot and preserves published 0021.
+The reviewed-document mismatch was reproduced in hosted PostgreSQL run
+42096046609 before repair. The earlier source inspection below records the
+pre-repair boundary; final repaired-head PostgreSQL/browser/recovery acceptance
+is tracked in draft [#542](https://github.com/OpenxIntelligence/open-intelligence/pull/542).
+
 Updated 2026-11-05. This executes OI-011/OI-014 in the
 [existing backlog](../EXECUTION_BACKLOG.csv) and the
 [master execution plan](MASTER_EXECUTION_PLAN.md). Current work uses independently
@@ -42,7 +49,7 @@ deterministic authority/freshness checks run again before saving or disclosing.
 
 | Stage / task | Baseline and test material | Required result before expansion |
 |---|---|---|
-| 0. Combined deterministic foundation | Final candidate API/reference/client checks plus real PostgreSQL, migration/recovery and browser paths | Typed identity, wrong-patient isolation, original integrity, exact retry, late revocation and amendment invalidation; a skipped DB check is not a pass |
+| 0. Combined deterministic foundation | Final candidate API/reference/client checks plus real PostgreSQL, migration/recovery and browser paths | Repair the `0021` reviewed-document/source-snapshot mismatch; prove typed identity, wrong-patient isolation, original integrity, exact retry, late revocation and amendment invalidation; a skipped DB check is not a pass |
 | 1. Document/pathology extraction proposals | Manual exact transcription and current parser; independently authored varied layouts and pathology reports | Exact value/unit/specimen/negation/uncertainty/anchor fidelity; omissions and invented associations counted separately; measured correction and inspection effort |
 | 2. Semantic field mapping research | Existing deterministic mapping baseline and simple lookup; #476 question-only packet | Correct mappings, useful abstention, false joins, unsafe outputs, malformed/truncated output and transport errors reported separately. Keep proposals unreviewed |
 | 3. Typed oncology links and chronology | Deterministic/source-search baseline after episode registry acceptance; two primaries, metastases, recurrence, amendments and uncertain dates | Source attribution and cutoff fidelity; proposed links distinct from reviewed reconciliation; no invented dates/stage or cross-specimen equivalence |

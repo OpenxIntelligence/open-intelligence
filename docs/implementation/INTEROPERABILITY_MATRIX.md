@@ -1,5 +1,12 @@
 # Interoperability implementation matrix
 
+Current repair: additive `0022_lab_citation_source_scope` now aligns the database
+guard with the existing structured-source snapshot and preserves published 0021.
+The reviewed-document mismatch was reproduced in hosted PostgreSQL run
+42096046609 before repair. The earlier source inspection below records the
+pre-repair boundary; final repaired-head PostgreSQL/browser/recovery acceptance
+is tracked in draft [#542](https://github.com/OpenxIntelligence/open-intelligence/pull/542).
+
 Updated 2026-11-05. Scope: accepted main
 `f188aecc70f3415741dac0e7dd5bf3f2d9fd02a9` and candidate code
 `3dd9811738e222274aa2c9e03edeff8104d64d53`. “Implemented” below means a
@@ -17,7 +24,7 @@ The candidate still needs the [release acceptance](RELEASE_ACCEPTANCE.md) gates.
 | Laboratory values/missingness | Preserves reported numeric decimal text plus declared unit, or explicit supported data-absence reason | Existing laboratory source projection and `laboratory-fhir-view.tsx` | Never infer absent as negative/zero. Expand value types only with source fidelity and clinically reviewed semantics |
 | LOINC/UCUM | Declared systems and bounded code syntax; no code-set lookup or unit conversion | Same parser; records source codes and units | Acquire/version permitted terminology artifacts, validate code membership and value sets, record mappings and uncertainty; qualify any conversion separately |
 | Question-source identity | Text questions and resource-based laboratory questions have existing owners | Candidate `question_anchors.py` makes the variants explicit and strict, preserving external payloads/hashes | Keep patient/case/source/version/digest plus exact line or Observation/Specimen/Report references; exercise coercion, mixed variants and frozen compatibility outputs |
-| Laboratory question citations | Durable questions on main | Candidate preserves citation metadata links/reports and adds transaction-wide freshness guard `0021_lab_citation_freshness` | Hosted concurrent import/link tests, stale transaction refusal, historical reads and rights revocation before combined acceptance; bibliographic metadata is not claim appraisal |
+| Laboratory question citations | Durable questions on main | Candidate preserves citation metadata links/reports and adds transaction-wide freshness guard `0021_lab_citation_freshness`; source review found its reviewed-document scope mismatch | Repair with a follow-up migration; prove reviewed-document import permits a new link/retry while independent structured import refuses it, then run concurrency/history/rights tests; bibliographic metadata is not claim appraisal |
 | Generic FHIR metadata/admission kernel | Not present in inspected main | #427 merged into a separate integration lineage; its `fhir_kernel.py` and `/v1/fhir/metadata` route are absent from candidate | Reconcile source-only Patient/Observation/DiagnosticReport/Provenance/AuditEvent admission with existing custody and authorization; generate claims only for actually mounted/verified behavior |
 | US Core / mCODE | No general package/profile validator established by these owners | #427 declares US Core 9.0.0 / R4 as not loaded; this branch is not integrated | Select exact release, acquire permitted artifacts, record hashes, validate profiles/terminology and loss, test mappings against typed oncology sources; no present conformance claim |
 | SMART/OIDC/external FHIR API | Synthetic local bearer fixture, not SMART authorization | No new external authorization or FHIR resource CRUD in this consolidation | Qualified identity/delegation/consent, issuer/audience/scope checks, source entitlements, refresh/revocation and protected endpoint evaluation before connecting a real service |

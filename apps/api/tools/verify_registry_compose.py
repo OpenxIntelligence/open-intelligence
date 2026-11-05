@@ -85,6 +85,36 @@ def main():
                     raise RuntimeError("Synthetic API did not become ready")
                 time.sleep(0.25)
 
+        def snapshot(database="oi_api_synthetic"):
+            tables = ("identity.identity_patients", "identity.identity_create_receipts",
+                      "identity.identity_domain_events", "ehr.clinical_encounters",
+                      "ehr.clinical_note_headers", "ehr.clinical_note_versions",
+                      "ehr.clinical_encounter_commands", "public.alembic_version")
+            result = {}
+            for table in tables:
+                sql = ("SELECT COALESCE(json_agg(row ORDER BY row::text),'[]'::json) "
+                       "FROM (SELECT to_jsonb(t) AS row FROM " + table + " t) v")
+                output = command(["exec", "-T", "db", "psql", "-X", "-U", "oi_api", "-d", database,
+                                  "-v", "ON_ERROR_STOP=1", "-At", "-c", sql], capture_output=True, text=True)
+                result[table] = json.loads(output.stdout)
+            sql = """SELECT COALESCE(json_agg(s ORDER BY schemaname,sequencename),'[]'::json)
+                     FROM (SELECT schemaname,sequencename,start_value,min_value,max_value,
+                                  increment_by,cycle,cache_size,last_value FROM pg_sequences
+                            WHERE schemaname IN ('identity','ehr')) s"""
+            output = command(["exec", "-T", "db", "psql", "-X", "-U", "oi_api", "-d", database,
+                              "-v", "ON_ERROR_STOP=1", "-At", "-c", sql], capture_output=True, text=True)
+            result["sequence_state"] = json.loads(output.stdout)
+            return result
+
+        def serve_database(database):
+            override = access / "restored-api.compose.json"
+            override.write_text(json.dumps({"services": {"api": {"environment": {
+                "OI_API_DATABASE_URL": "postgresql+pg8000://oi_api:oi_h1_synthetic_only@db:5432/" + database,
+            }}}}), encoding="utf-8")
+            compose.extend(["--file", str(override)])
+            command(["up", "--no-deps", "--force-recreate", "--detach", "api"])
+            ready()
+
         save_access()
         try:
             command(["config", "--quiet"])
@@ -132,12 +162,15 @@ def main():
                            "target": "in_progress", "expected_revision": 1})[0] == 200
             note_path = visit_path + "/notes/PROOF-NOTE/versions"
             drafts = ["Independently fictional draft.", "Revised independently fictional draft."]
+            note_commands, note_receipts = [], []
             for i, body in enumerate(drafts):
                 command_body = {"synthetic": True, "request_key": "PROOF-DRAFT-" + str(i),
                                 "expected_version": i, "body": body, "note_kind": "consultation"}
                 written = request(note_path, tokens[0], command_body)
                 assert written[0] == 200 and written[1]["version"] == i + 1
                 assert request(note_path, tokens[0], command_body) == written
+                note_commands.append(command_body)
+                note_receipts.append(written)
             versions = request(note_path, tokens[0])[1]["versions"]
             assert [v["body"] for v in versions] == drafts
             assert request(note_path, tokens[1])[0] == 404
@@ -151,6 +184,7 @@ def main():
 
             # A real server dump/restore checks identity history, not only an
             # in-process serialization. Both databases belong to this project.
+            original = snapshot()
             dump = command(["exec", "-T", "db", "pg_dump", "-U", "oi_api", "-d", "oi_api_synthetic", "--format=custom"], capture_output=True).stdout
             command(["exec", "-T", "db", "createdb", "-U", "oi_api", "oi_api_test_restore"])
             command(["exec", "-T", "db", "pg_restore", "-U", "oi_api", "-d", "oi_api_test_restore", "--exit-on-error", "--no-owner"], input=dump)
@@ -174,10 +208,45 @@ def main():
                 "(SELECT count(*) FROM identity.identity_domain_events WHERE event_type='clinical_note_draft_saved')"],
                 capture_output=True, text=True).stdout.strip()
             assert saved == "4|2", saved
+            assert snapshot("oi_api_test_restore") == original, "Restore changed EHR rows or sequence state"
+            serve_database("oi_api_test_restore")
+            assert snapshot("oi_api_test_restore") == original, "Restored API startup changed history"
+            assert request(note_path, tokens[0])[1]["versions"] == versions
+            for note_command, note_receipt in zip(note_commands, note_receipts):
+                assert request(note_path, tokens[0], note_command) == note_receipt
+            third_body = "A third independently fictional draft saved after database restore."
+            third_command = {"synthetic": True, "request_key": "PROOF-DRAFT-RESTORED-3",
+                             "expected_version": 2, "body": third_body, "note_kind": "consultation"}
+            status, third = request(note_path, tokens[0], third_command)
+            assert status == 200 and third["version"] == 3 and third["status"] == "draft"
+            assert third["note_id"] == note_receipts[0][1]["note_id"]
+            assert third["sha256"] == hashlib.sha256(third_body.encode()).hexdigest()
+            assert request(note_path, tokens[0], third_command) == (200, third)
+            restored_versions = request(note_path, tokens[0])[1]["versions"]
+            assert restored_versions[:2] == versions
+            assert [row["body"] for row in restored_versions] == drafts + [third_body]
+            assert restored_versions[2]["id"] > max(row["id"] for row in versions)
+            assert restored_versions[2]["supersedes_id"] == versions[-1]["id"]
+            restored_state = snapshot("oi_api_test_restore")
+            assert len(restored_state["ehr.clinical_encounter_commands"]) == 5
+            assert len(restored_state["ehr.clinical_note_versions"]) == 3
+            old_events = original["identity.identity_domain_events"]
+            new_events = restored_state["identity.identity_domain_events"]
+            assert all(event in new_events for event in old_events)
+            third_event, = [event for event in new_events
+                            if event["event_type"] == "clinical_note_draft_saved"
+                            and event["metadata_json"]["version"] == 3]
+            assert third_event["id"] > max(event["id"] for event in old_events)
+            assert snapshot() == original, "Restored HTTP reads/writes changed the original database"
             credentials[0]["actions"].remove("note.read")
             save_access()
             assert request(note_path, tokens[0])[0] == 404
-            print("PASS EHR: two immutable draft versions, exact retry, restart, restored hashes and receipts, access withdrawal")
+            assert snapshot("oi_api_test_restore") == restored_state, "Denied note read changed restored history"
+            assert request(path, tokens[0])[0] == 200
+            assert "note.write" in credentials[0]["actions"]
+            assert snapshot() == original
+            print("PASS EHR: exact restored rows/sequences, served prior notes and retries, third draft appended "
+                  "through restored HTTP, independent note-read withdrawal and original database unchanged")
             credentials[0]["patient_ids"] = []
             save_access()
             assert request(path, tokens[0])[0] == 404

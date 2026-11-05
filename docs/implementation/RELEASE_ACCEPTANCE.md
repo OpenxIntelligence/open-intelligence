@@ -14,6 +14,16 @@ Final commit/tree and hosted receipts belong in the draft PR; a document cannot
 contain its own commit hash. Recheck current main and all input branches before
 any human-authorized merge.
 
+Current draft: [#542](https://github.com/OpenxIntelligence/open-intelligence/pull/542).
+Its test-first head `80660730df2b8a819aa37215e39bc7f9af55c0f7` has tree
+`857a28f8fedc49dfeaa9cc2a262dc117db761461`, exactly matching the local source.
+[Hosted red run](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42096046609)
+ran six real PostgreSQL joined-core tests: five passed and the new reviewed-document
+regression failed with the expected HTTP 503 instead of 201. Additive 0022 now
+aligns only the guard's source set with the existing canonical snapshot; its
+downgrade restores the original 0021 function, without dropping its trigger.
+Final repaired-head acceptance is required; the red run is not acceptance.
+
 ## Test-first integration evidence
 
 The four existing #539 fixture/test files were added to #540 before integration.
@@ -29,6 +39,11 @@ acceptance of coerced stored source identity. After merging #539's complete
 history, all 25 methods pass. All 13 frozen legacy payload/fingerprint outputs
 remain equal. This is pure projection/contract evidence, not database authority.
 
+Two further mixed-anchor subtests first failed because the legacy/text-preflight
+adapters accepted the laboratory owner's `observation_reference` alias. The
+explicit mixed-field guard now rejects it; all 25 methods remain green and the
+13 legacy compatibility fixtures remain unchanged.
+
 ## Baseline limitations
 
 On the inspected main, full local API discovery executes 785 test methods with
@@ -42,12 +57,20 @@ Local dependencies are reused from installed tooling with the identical web
 package-lock (`b8a6bbf0…8c3b`), without a new dependency selection. See final PR
 for completed candidate command results and exact lock hash.
 
+Completed local candidate checks before the 0022 repair: 853 reference tests,
+676 client tests, 13 rights tests, TypeScript/Vite build and synthetic data guard
+passed. One initial client invocation hung and was interrupted; a complete
+bounded run of all 676 tests passed with no timeout, cancellation or skip.
+Candidate full API discovery: 832 methods, 75 AF_UNIX permission errors, 493
+PostgreSQL skips. Neither incomplete API run counts as a pass. The added PG
+regression makes subsequent discovery one method larger.
+
 ## Acceptance matrix
 
 | Gate | Required evidence | Current state at document creation |
 |---|---|---|
 | Strict identity and compatibility | 25 methods and 13 frozen payloads | Passed locally |
-| Migration graph | One head 0021, both published 0019 parents unchanged | Candidate verification required |
+| Migration graph | One head 0022, 0022→0021→0020→both published 0019 parents unchanged | Graph passed locally; populated hosted verification required |
 | API/domain/authorization | Full pinned API suite, zero unexplained skips | Hosted exact-head run required |
 | Populated upgrades | EHR-only, lab-only, both heads; original retries and independent revoked grants | Existing tests retained; hosted run required |
 | Citation DB freshness | Independent source import; repeatable-read refusal; rollback and historical retry | Existing #540 regression retained; hosted run required |
@@ -61,7 +84,7 @@ for completed candidate command results and exact lock hash.
 ## Reproduction and stop conditions
 
 Use `docs/H1_DEMO.md` for the persistent synthetic application. Explicitly migrate
-to `0021_lab_citation_freshness`; do not auto-upgrade a populated clinical service.
+to `0022_lab_citation_source_scope`; do not auto-upgrade a populated clinical service.
 Use the committed `.github/workflows/h1-api.yml` and `h1-web.yml` for pinned
 PostgreSQL and actual Chromium acceptance. Never skip an existing recovery stage,
 weaken authorization or infer combined success from successful donor runs.

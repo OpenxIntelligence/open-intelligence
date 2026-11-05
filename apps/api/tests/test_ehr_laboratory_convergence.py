@@ -39,7 +39,9 @@ class EHRLaboratoryGraphTests(unittest.TestCase):
     def test_single_head_depends_on_both_published_owners(self):
         script = graph()
         self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
-        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0020_ehr_lab_convergence")
+        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0021_lab_citation_freshness")
+        self.assertEqual(script.get_revision("0021_lab_citation_freshness").down_revision,
+                         "0020_ehr_lab_convergence")
         self.assertEqual(set(script.get_revision("0020_ehr_lab_convergence").down_revision), {EHR, LAB})
         for parent in (EHR, LAB):
             self.assertEqual(script.get_revision(parent).down_revision, COMMON)

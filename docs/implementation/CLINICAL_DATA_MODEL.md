@@ -1,5 +1,12 @@
 # Clinical data model
 
+Current repair: additive `0022_lab_citation_source_scope` now aligns the database
+guard with the existing structured-source snapshot and preserves published 0021.
+The reviewed-document mismatch was reproduced in hosted PostgreSQL run
+42096046609 before repair. The earlier source inspection below records the
+pre-repair boundary; final repaired-head PostgreSQL/browser/recovery acceptance
+is tracked in draft [#542](https://github.com/OpenxIntelligence/open-intelligence/pull/542).
+
 Date: 2026-11-05. Implementation basis: the Phase 0 candidate preserving #540
 and #539 described in [MASTER_EXECUTION_PLAN.md](MASTER_EXECUTION_PLAN.md).
 This document inventories its actual owners and specifies the next Phase 1

@@ -1,5 +1,12 @@
 # Security and governance execution plan
 
+Current repair: additive `0022_lab_citation_source_scope` now aligns the database
+guard with the existing structured-source snapshot and preserves published 0021.
+The reviewed-document mismatch was reproduced in hosted PostgreSQL run
+42096046609 before repair. The earlier source inspection below records the
+pre-repair boundary; final repaired-head PostgreSQL/browser/recovery acceptance
+is tracked in draft [#542](https://github.com/OpenxIntelligence/open-intelligence/pull/542).
+
 Updated 2026-11-05. This continues OI-004/OI-012/OI-013 in the
 [existing backlog](../EXECUTION_BACKLOG.csv). It distinguishes implemented
 synthetic controls from production obligations that still need an accountable
@@ -30,7 +37,7 @@ is established.
 | Patient/source identity | One canonical registry and qualified immutable patient/case binding; same source/version owner for text and FHIR originals | Qualified external issuer/subject resolution and correction protocol; broader tenant access tests for every new path |
 | Typed anchors | Candidate `question_anchors.py` rejects numeric/string coercion and mixed variants | Preserve original-byte, relationship, access and freshness checks in source owners; an immutable anchor grants no permissions |
 | Transactions and history | Existing command/event receipts and source versions; shared encounter integrity checks; immutable note history and exact retries | Combined-head PostgreSQL concurrency, rollback and populated-upgrade/recovery evidence; production least-privilege DB roles and policy evaluation |
-| Laboratory citation freshness | Candidate `0021_lab_citation_freshness` guards inserts against later case imports and refuses unsupported transaction-wide snapshots | Hosted READ COMMITTED/REPEATABLE READ/SERIALIZABLE adversarial checks and restoration on final revision; donor results are not combined acceptance |
+| Laboratory citation freshness | Candidate `0021_lab_citation_freshness` adds an insert guard and refuses unsupported transaction-wide snapshots; source review found it includes reviewed-document sources excluded by canonical snapshots | Follow-up migration must align source scope, then run PostgreSQL reviewed-document acceptance, independent structured-source refusal, isolation and restoration checks; donor results are not combined acceptance |
 | Clinical sign-off | H1 encounter API exposes draft notes; no `note.attest` grant or attestation route. Domain test states/author labels do not establish credentials | Verified professional scope, attestation/signature evidence, correction/supersession and reviewer revocation protocol before enabling clinician confirmation |
 | Evidence rights | Existing metadata and authored-content owners enforce per-use/current-family permissions and withdrawal | Exact permissions for external content, terminology, assets, models, services and redistribution; citation metadata alone does not clear full text or model processing |
 | Model/tool access | H1 source/evidence preparation is bounded; reference model code/write contracts are separate | Qualified permission-filtered H1 copilot, provider/egress policy, per-tool grants, source-rights filtering and current authorization before every effect |
@@ -50,6 +57,10 @@ retaining #536/#537 encounter/laboratory work. Keep both published 0019 migratio
 parents unchanged, the no-DDL `0020_ehr_lab_convergence` join, and the following
 `0021` enforcement revision. Record actual final checks and limitations in
 [RELEASE_ACCEPTANCE.md](RELEASE_ACCEPTANCE.md).
+
+At the inspected `3dd9811` code, the `0021` source-scope mismatch is an acceptance
+blocker. Preserve that published migration and correct it in a following revision;
+do not change the question's snapshot semantics to conceal the discrepancy.
 
 Required adversarial scenarios include wrong patient/organization/subject,
 revoked/expired/ambiguous grants, revocation after response preparation, changed

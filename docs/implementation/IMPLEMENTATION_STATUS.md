@@ -8,7 +8,7 @@ package ownership. Historical PR receipts describe their exact revisions only.
 |---|---|---|
 | Repository/main/audit reconciliation | Implemented | Main inspected at f188aec; #481 already merged; current source and all six named donor PRs inspected |
 | H1 EHR/laboratory/strict-anchor consolidation | In progress | Candidate preserves complete #536/#537/#540/#539 histories; strict-anchor regression and compatibility checks pass; full exact-head hosted acceptance and human merge remain open |
-| PostgreSQL migration graph | Implemented | Published EHR/laboratory 0019 siblings join at 0020, followed by 0021 freshness repair; no parent migration rewritten |
+| PostgreSQL migration graph | Implemented | Published EHR/laboratory 0019 siblings join at 0020, then 0021 freshness and additive 0022 scope correction; no parent migration rewritten; populated hosted acceptance required |
 | Current synthetic source custody | Tested on prior accepted revisions | Original text/PDF, manual passages, constrained DICOM, FHIR laboratory custody, source versions, saved questions, reports and tasks retained; combined candidate must rerun recovery/browser acceptance |
 | Source-reported cancer episode attribution | Implemented | Existing v2 parser, exact source-line validation, World Model context and Journey grouping; no clinically reconciled episode master |
 | Typed oncology episode master and relationships | Not started | Extend existing source evidence with append-only reconciliation and reviewed associations; see clinical model and Phase 1 plan |

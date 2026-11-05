@@ -1,5 +1,12 @@
 # Architecture decisions for the integration candidate
 
+Current repair: additive `0022_lab_citation_source_scope` now aligns the database
+guard with the existing structured-source snapshot and preserves published 0021.
+The reviewed-document mismatch was reproduced in hosted PostgreSQL run
+42096046609 before repair. The earlier source inspection below records the
+pre-repair boundary; final repaired-head PostgreSQL/browser/recovery acceptance
+is tracked in draft [#542](https://github.com/OpenxIntelligence/open-intelligence/pull/542).
+
 Updated 2026-11-05. This is the implementation crosswalk for the
 [master execution plan](MASTER_EXECUTION_PLAN.md), not a replacement for the
 first-principles plan or historical decision records.
@@ -16,7 +23,15 @@ Candidate code was inspected at `3dd9811738e222274aa2c9e03edeff8104d64d53`:
 `299cfb54df8259c6d72ddd88f3e0c08ca3dda3f4`, preserving #536/#537.
 It adds the connected encounter/draft-note service, laboratory citation work,
 database citation-freshness enforcement and shared strict question anchors.
-Its required head is `0021_lab_citation_freshness`.
+At that inspection its required head is `0021_lab_citation_freshness`.
+
+Independent source review found a release blocker in that revision: the `0021`
+trigger checks all source versions, while the canonical question snapshot
+excludes reviewed-document intakes. A reviewed-document import can therefore
+leave a laboratory question current while wrongly preventing a new citation.
+Repair through a new follow-up migration, preserving published `0021`, and prove
+the behavior on PostgreSQL before acceptance. The final head and repair evidence
+must be recorded in the release acceptance file.
 
 The focused integration comparison produced 38 failing assertions/subtests
 before adding the strict owner; the joined candidate passed all 25 anchor test
@@ -35,11 +50,11 @@ nor donor CI approves a merge, deployment or clinical use.
 | One original-source owner | Preserve bytes, digests, immutable versions, source identity, specimen context and amendment edges | `sources.py`, `source_integrity.py`, `laboratory_fhir_store.py`; source-reported facts remain distinct from reviewed meaning |
 | Strict question identity | Explicit text-line versus FHIR Observation variants; strict strings/integers; reject coercion and mixed variants | Candidate `question_anchors.py`, used by existing preflight/question/follow-through owners; no new tables, wire payloads or request fingerprints |
 | Existing owners retain authority | An anchor is identity only; resolving it requires current patient/case grants, original integrity and freshness | `composer_preflight.py`, `source_questions.py`, `question_followthrough.py`, `laboratory_questions.py` |
-| Encounter workflows | Reuse one clinical state machine with PostgreSQL persistence hooks | Candidate `src/open_intelligence/clinical_encounters.py`, `postgres_encounters.py`, API `encounter_routes.py`; HTTP exposes draft-note operations, not professional attestation |
+| Encounter workflows | Reuse one clinical state machine with PostgreSQL persistence hooks | Candidate `src/open_intelligence/clinical_encounters.py`, `src/open_intelligence/postgres_encounters.py`, API `encounter_routes.py`; HTTP exposes draft-note operations, not professional attestation |
 | Transactional writes | Domain state, command receipt and event share a transaction; prepare complete disclosure before final authority checks where implemented | Registry and route owners; preserve retry intent, rollback on denied grants or response-preparation failure |
-| Laboratory citation freshness | New links require the complete case source snapshot to remain current | Candidate `0021_lab_citation_freshness` trigger; new laboratory inserts require READ COMMITTED; old history/receipt replay remains inspectable under current access |
+| Laboratory citation freshness | New links require the canonical case source snapshot to remain current | Candidate `0021_lab_citation_freshness` adds database enforcement and READ COMMITTED restriction; its reviewed-document scope mismatch above blocks acceptance until repaired; old history/receipt replay remains inspectable under current access |
 | Oncology semantics | Keep current reported episode labels; introduce typed episode identity/source associations in the next accepted increment | `sources.py`, `source_world_model.py`, `source-oncology-label.tsx`; reported labels do not establish clinically reconciled primaries/metastases |
-| Models | Inspectable proposals behind deterministic task/authority contracts | Reference `investigation.py` and `agent_writes.py`; a connected H1 copilot and parallel role-agent execution remain future work |
+| Models | Inspectable proposals behind deterministic task/authority contracts | Reference `src/open_intelligence/investigation.py` and `src/open_intelligence/agent_writes.py`; a connected H1 copilot and parallel role-agent execution remain future work |
 | Infrastructure | Modular owners and relational contracts first; qualify added infrastructure for a demonstrated task | No new runtime dependency in this consolidation; research catalogs do not adopt a broker, vector store, graph store, agent runtime or vendor |
 
 Paths without a prefix in this table refer to `apps/api/src/oi_api`, except
