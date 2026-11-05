@@ -115,7 +115,8 @@ def main():
         token = secrets.token_urlsafe(32)
         actions = ["patient_create", "patient_read", "case_binding_create",
                    "case_binding_read", "case_binding_revoke", "source_import",
-                   "source_read", "source_original_read"]
+                   "source_read", "source_original_read", "record_request_create",
+                   "record_request_read", "record_request_receive"]
         credential = {
             "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
             "actor": "ACTOR-SOURCE-PROOF", "organization": "ORG-SOURCE-PROOF",
@@ -321,12 +322,23 @@ def main():
                 "review_ref": "REVIEW-SYNTHETIC-COMPOSE"})
             assert status == 201 and binding["patient_id"] == patient
             source_path = patient_path + "/cases/" + CASE + "/sources"
+            records_path = patient_path + "/record-requests"
+            status, tracked = request(records_path, {
+                "synthetic": True, "request_key": "REQUEST-SOURCE-RECOVERY", "kind": "pathology",
+                "record_label": "Fictional pathology report", "source_organization": "ORG-SYNTHETIC-SOURCE",
+            })
+            assert status == 201 and tracked["duplicate"] is False
+            receive_path = records_path + "/" + tracked["request_id"] + "/receive"
             source_ids = []
             for version, original in enumerate((ORIGINAL, AMENDED), start=1):
                 status, receipt = request(source_path, {"synthetic": True, "original_text": original})
                 assert (status, receipt["result"], receipt["version"]) == (201, "imported", version)
                 assert re.fullmatch(r"SRC-[0-9A-F]{32}", receipt["source_id"])
                 source_ids.append(receipt["source_id"])
+                if version == 1:
+                    received_command = {"synthetic": True, "case_id": CASE, "source_id": source_ids[0]}
+                    status, received = request(receive_path, received_command)
+                    assert status == 201 and received["version"] == 1 and received["duplicate"] is False
                 read_index(source_ids)
                 read_original(source_ids[-1], original, version, "current")
             read_original(source_ids[0], ORIGINAL, 1, "superseded")
@@ -524,7 +536,20 @@ def main():
                     status, value = request(path, body)
                     assert status == 200 and value == {**prior, "duplicate": True}, "Restored retry identity changed"
 
+            def check_received_source(expected_status, disclose):
+                status, listing = request(records_path)
+                assert status == 200
+                row, = listing["requests"]
+                assert (row["request_id"], row["status"], row["receipt_status"]) == (
+                    tracked["request_id"], "received", expected_status)
+                expected = {"case_id": CASE, "source_id": source_ids[0], "version": 1,
+                            "sha256": hashlib.sha256(ORIGINAL.encode("utf-8")).hexdigest()}
+                assert row["source_reference"] == (expected if disclose else None)
+
             def readable_cycle():
+                check_received_source("source_superseded_reconciliation_required", True)
+                status, retried = request(receive_path, received_command)
+                assert status == 200 and retried == {**received, "duplicate": True}
                 restored_index()
                 for item in documents:
                     restored_document(item)
@@ -593,6 +618,15 @@ def main():
                     no_effect_denial(item["path"] + "/annotations", item["correction"])
                     for selected in item["selections"]:
                         no_effect_denial(selected["path"])
+                if field == "purpose":
+                    status, bindings = request(patient_path + "/case-bindings")
+                    assert status == 200 and bindings["mappings"] == []
+                    status, listing = request(records_path)
+                    assert status == 200 and listing["requests"] == []
+                    no_effect_denial(receive_path, received_command)
+                    no_effect_denial(patient_path + "/case-bindings/" + CASE + "/revoke", {
+                        "synthetic": True, "reason": "Fictional other-purpose withdrawal",
+                    })
                 credential[field] = previous
                 save_access()
             no_effect_denial(document_path, authenticated=False)
@@ -619,6 +653,8 @@ def main():
             revoked_database = "oi_api_test_documents_revoked"
             revoked_before = restore(restored_database, revoked_database)
             assert revoked_before["tables"]["coordination.patient_case_bindings"][0]["status"] == "revoked"
+            check_received_source("binding_revoked_not_usable", False)
+            no_effect_denial(receive_path, received_command, database=revoked_database)
             no_effect_denial(document_path, database=revoked_database)
             for item in documents:
                 for path, body in ((item["path"], None), (item["path"] + "/original", None),
@@ -647,6 +683,8 @@ def main():
                 "restored_binary_originals": True, "restored_exact_retries": True,
                 "restored_exact_selection_references": sum(len(item["selections"]) for item in documents),
                 "restored_independent_grants": True, "restored_api_database_restart": True,
+                "restored_acquisition_receipt": tracked["request_id"],
+                "restored_acquisition_purpose_isolation": True,
                 "restored_revoked_binding_denial": True, "original_database_unchanged": True}
             output = os.environ.get("OI_SOURCE_ACCEPTANCE_FILE")
             if output:
