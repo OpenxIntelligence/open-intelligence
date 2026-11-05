@@ -188,6 +188,7 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
             self.assertFalse(receipt["duplicate"])
             self.assertEqual(receipt["version"], 1)
             self.assertEqual(receipt["observation_count"], 1)
+            self.assertEqual(receipt["original_sha256"], hashlib.sha256(raw.encode()).hexdigest())
             source_id = receipt["source_id"]
             self.assertEqual(self.lab_counts(), (1, 1, 1, 1))
 
@@ -232,6 +233,7 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
             self.assertEqual(retry[0], 200, retry[1])
             self.assertTrue(retry[1]["duplicate"])
             self.assertEqual(retry[1]["source_id"], source_id)
+            self.assertEqual(retry[1]["original_sha256"], first[1]["original_sha256"])
             self.assertEqual(self.lab_counts(), (1, 1, 1, 1))
 
             changed = example()
@@ -253,6 +255,15 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
             self.assertEqual(world["history"][0]["source_id"], source_id)
             self.assertEqual(world["current_sources"][0]["version"], 2)
             self.assertEqual(world["laboratory_observations"][0]["value_text"], "5")
+            # Exact retry of the original historical command remains valid, but
+            # a fresh request key may not resurrect superseded bytes as current.
+            self.assertEqual(self.import_source(
+                base, patient, request_key="LAB-STALE-REPLAY")[0], 409)
+            replay = self.import_source(base, patient)
+            self.assertEqual((replay[0], replay[1]["source_id"], replay[1]["version"]),
+                             (200, source_id, 1))
+            self.assertTrue(replay[1]["duplicate"])
+            self.assertEqual(self.lab_counts(), (2, 2, 2, 2))
 
     def test_import_revocation_after_preparation_rolls_back_all_source_and_lab_rows(self):
         with running_server(self.app) as base:

@@ -42,28 +42,6 @@ const world=()=>({
   limitations:['Independently fictional data only; no professional review or clinical interpretation.'],
 });
 const clone=x=>structuredClone(x);
-const laboratoryWorld=()=>{
-  const w=world();
-  const labSource={...source(),source_id:'SRC-'+'C'.repeat(32),document_id:'FHIRLAB-FICTIONAL',
-    sha256:'e'.repeat(64),kind:'laboratory',event_date:'2026-04-03',issued_at:'2026-04-04',
-    specimen_id:'Specimen/FICTIONAL-SPECIMEN-A'};
-  w.current_sources.push(labSource);
-  w.laboratory_observations=[{
-    source_id:labSource.source_id,document_id:labSource.document_id,document_version:1,
-    source_sha256:labSource.sha256,observation_reference:'Observation/FICTIONAL-OBS-A',
-    loinc_code:'777-3',effective_at:'2026-04-03T09:05:00-04:00',issued_at:'2026-04-04T12:00:00Z',
-    status:'reported_value',value_text:'4.20',unit_code:'10*9/L',absent_reason:null,
-    specimen_reference:'Specimen/FICTIONAL-SPECIMEN-A',source_reported:true,
-    clinical_review:'not_performed',review_state:'not_established',clinical_meaning:null,
-  }];
-  w.laboratory_timeline=[{
-    source_id:labSource.source_id,observation_reference:'Observation/FICTIONAL-OBS-A',
-    occurred_at:'2026-04-03T09:05:00-04:00',issued_at:'2026-04-04T12:00:00Z',
-    loinc_code:'777-3',status:'reported_value',clinical_interpretation:'not_performed',
-  }];
-  w.summary={...w.summary,current_sources:2,current_observations:2,current_laboratory_observations:1};
-  return w;
-};
 
 test('strict source-world contract preserves original anchors without assigning clinical meaning',()=>{
   const m=parseSourceWorldModel(world(),patientId,caseId);
@@ -76,16 +54,40 @@ test('strict source-world contract preserves original anchors without assigning 
   assert.equal(m.summary.unresolved_observations,1);
   assert.ok(Object.isFrozen(m));
 });
-test('typed laboratory observations are validated without becoming text assertions or clinical meaning',()=>{
-  const checked=parseSourceWorldModel(laboratoryWorld(),patientId,caseId);
-  assert.equal(checked.summary.current_laboratory_observations,1);
-  assert.equal(checked.summary.current_observations,2);
-  assert.equal(checked.observations.length,1);
-  assert.equal(checked.laboratory_observations.length,1);
-  assert.equal(checked.laboratory_observations[0].loinc_code,'777-3');
-  assert.equal(checked.laboratory_observations[0].value_text,'4.20');
+test('strict typed laboratory projection stays source-reported and rejects fabricated interpretation',()=>{
+  const w=world(),labSource='SRC-'+'C'.repeat(32);
+  w.current_sources.push({...source(),source_id:labSource,document_id:'FICTIONAL-REPORT-A',
+    sha256:'e'.repeat(64),kind:'laboratory',event_date:'2026-04-03',issued_at:'2026-04-04',
+    specimen_id:'FICTIONAL-SPECIMEN-A'});
+  const lab={source_id:labSource,document_id:'FICTIONAL-REPORT-A',document_version:1,
+    source_sha256:'e'.repeat(64),observation_reference:'Observation/FICTIONAL-OBS-A',
+    loinc_code:'777-3',effective_at:'2026-04-03T09:05:00-04:00',
+    issued_at:'2026-04-04T12:00:00Z',specimen_reference:'Specimen/FICTIONAL-SPECIMEN-A',
+    specimen_type_text:'Fictional plasma sample',
+    specimen_collected_at:'2026-04-03T09:05:00-04:00',
+    report_reference:'DiagnosticReport/FICTIONAL-REPORT-A',status:'reported_value',
+    value_text:'4.20',unit_code:'10*9/L',absent_reason:null,source_reported:true,
+    review_state:'not_established',clinical_review:'not_performed',clinical_meaning:null};
+  w.laboratory_observations=[lab];
+  w.laboratory_timeline=[{source_id:labSource,observation_reference:lab.observation_reference,
+    loinc_code:'777-3',effective_at:lab.effective_at,issued_at:lab.issued_at,
+    specimen_reference:lab.specimen_reference,status:'reported_value',
+    clinical_interpretation:'not_performed'}];
+  w.summary.current_sources=2;w.summary.current_observations=2;
+  w.summary.current_laboratory_observations=1;
+  const checked=parseSourceWorldModel(w,patientId,caseId);
   assert.equal(checked.laboratory_observations[0].clinical_meaning,null);
   assert.equal(checked.laboratory_timeline[0].clinical_interpretation,'not_performed');
+  for(const mutate of [
+    x=>{x.laboratory_observations[0].clinical_review='approved';},
+    x=>{x.laboratory_observations[0].source_sha256='f'.repeat(64);},
+    x=>{x.laboratory_observations[0].status='reported_absent';},
+    x=>{x.laboratory_timeline[0].loinc_code='9999-9';},
+    x=>{x.summary.current_laboratory_observations=0;},
+  ]){
+    const bad=structuredClone(w);mutate(bad);
+    assert.throws(()=>parseSourceWorldModel(bad,patientId,caseId));
+  }
 });
 test('cross-patient, forged clinical authority, hash/source mismatch and count fraud fail closed',()=>{
   for(const mutate of [
