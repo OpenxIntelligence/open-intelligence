@@ -4,7 +4,7 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. The API requires `0021_lab_citation_freshness`. Run
+records the original integration. The API requires `0022_ehr_patient_ownership`. Run
 `python -m oi_api.migrate upgrade head` from either published 0019 revision.
 The join retains both the [encounter and note service](#connected-encounter-and-note-service)
 and the original Observation behind each governed laboratory citation. See
