@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {readLaboratoryCitationReport} from '../.test-dist/laboratory-citation-report.js';
+import {parseSourceWorldModel} from '../.test-dist/source-world-model.js';
 import {caseId,patient,projection} from './laboratory-projection-fixture.mjs';
 
 const model=projection(),qid='QUESTION-'+'A'.repeat(32),receipt='ACCESS-'+'D'.repeat(32);
@@ -51,6 +52,29 @@ test('historical report needs exact original version, explicit stale state, and 
  assert.equal(readLaboratoryCitationReport(withLink(null),historical,old).citations.links[0].record,null);
  assert.throws(()=>readLaboratoryCitationReport(withLink({title:'Previously visible'}),historical,old));
 });
+test('the current patient record accepts only scalar laboratory absence codes',()=>{
+ const absent=model.laboratory_observations.find(o=>o.status==='reported_absent');
+ const withReason=reason=>({...model,laboratory_observations:model.laboratory_observations.map(o=>
+   o===absent?{...o,absent_reason:reason}:o)});
+ for(const code of ['unknown','not-performed','error','masked']){
+   const current=parseSourceWorldModel(withReason(code),patient,caseId);
+   assert.equal(current.laboratory_observations.find(o=>o.status==='reported_absent').absent_reason,code);
+   assert.throws(()=>parseSourceWorldModel(withReason([code]),patient,caseId));
+ }
+});
+
+test('reopening a superseded result rejects malformed absence codes without a current Observation',()=>{
+ const {question,result,citations,wire}=fixture(model.laboratory_observations.find(o=>o.status==='reported_absent'));
+ const old={...question,source_context_state:'source_reassessment_required'};
+ const historical={...model,current_sources:[],laboratory_observations:[],history:[{...model.current_sources[0],state:'superseded'}]};
+ const inspect=reason=>readLaboratoryCitationReport({...wire,reported_result:{...result,absent_reason:reason},
+   citations:{...citations,source_context_state:old.source_context_state}},historical,old);
+ for(const code of ['unknown','not-performed','error','masked']){
+   assert.equal(inspect(code).result.absent_reason,code);
+   assert.throws(()=>inspect([code]));
+ }
+});
+
 async function sessionFor(readReport){
  const {question,citations}=fixture();
  const binding={case_id:caseId,patient_id:patient,source_organization:'ORG-A',source_system:'SYS-A',source_subject_ref:'SUBJECT-A',review_ref:'REVIEW-A',
