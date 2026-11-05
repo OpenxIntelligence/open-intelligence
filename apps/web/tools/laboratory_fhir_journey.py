@@ -40,7 +40,9 @@ def fictional_bundle(*, amended=False):
          'collection': {'collectedDateTime': effective}},
         *observations,
         {'resourceType': 'DiagnosticReport', 'id': 'FICT-WEB-REPORT',
-         'status': 'final', 'category': category, 'code': coding('58410-2'),
+         'status': 'final', 'category': [{'coding': [{
+             'system': 'http://terminology.hl7.org/CodeSystem/v2-0074', 'code': 'HM'}]}],
+         'code': coding('58410-2'),
          'subject': subject, 'specimen': [specimen],
          'result': [{'reference': 'Observation/' + row['id']} for row in observations],
          'effectiveDateTime': effective, 'issued': issued},
@@ -264,6 +266,10 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
                     "e.value=" + json.dumps(target) + ";e.dispatchEvent(new Event('change',{bubbles:true}));})()")
         cd.wait("Boolean(document.querySelector('[data-testid=lab-question-text]'))", 'editable question for selected lab result')
 
+    def filter_results(control_id, value):
+        cd.evaluate("(() => {const e=document.getElementById(" + json.dumps(control_id) + ");"
+                    "e.value=" + json.dumps(value) + ";e.dispatchEvent(new Event('change',{bubbles:true}));})()")
+
     def question_text():
         return cd.evaluate("document.querySelector('[data-testid=lab-question-text]').value")
 
@@ -320,6 +326,21 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     alternate = 'Which measurement is associated with this second fictional result?'
     requests = cd.evaluate('window.__oiLabRequests')
     draft_question(source, 'ZERO', question)
+    # Filtering the authorized timeline must never retarget or erase a separate question draft.
+    filter_results('lab-filter-code', '6690-2')
+    cd.wait("document.querySelectorAll('[data-testid=world-laboratory-observation]').length===1 && "
+            "document.querySelector('[data-testid=world-laboratory-value]').textContent.includes('not-performed')",
+            'exact test filter shows its reported absence')
+    filter_results('lab-filter-status', 'reported_value')
+    cd.wait("!document.querySelector('[data-testid=world-laboratory-observation]') && "
+            "document.querySelector('[data-testid=world-laboratory-results]').textContent.includes('No results match')",
+            'code and result state combine without fabricating a value')
+    assert question_text() == question
+    assert cd.evaluate("document.querySelector('[data-testid=lab-question-result]').value") == source + '|Observation/FICT-WEB-ZERO'
+    cd.evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent==='Clear laboratory filters').click()")
+    cd.wait("document.querySelectorAll('[data-testid=world-laboratory-observation]').length===3",
+            'clearing filters restores the original laboratory timeline')
+    assert cd.evaluate('window.__oiLabRequests') == requests, 'Result filters must stay local'
     choose_result(source, 'NUMBER')
     assert question_text() == '', 'Another result must start with its own wording'
     draft_question(source, 'NUMBER', alternate)
@@ -329,7 +350,9 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert question_text() == alternate, 'The second result must recover its own wording'
     assert cd.evaluate('window.__oiLabRequests') == requests, 'Switching between drafts must stay local'
     assert operator('/cases/' + CASE + '/composer/laboratory-questions')['questions'] == []
+    filter_results('lab-filter-code', '718-7')
     journey('0')
+    assert cd.evaluate("document.getElementById('lab-filter-code').value") == '', 'A fresh report read resets local filters'
     for suffix in ('ZERO', 'NUMBER'):
         choose_result(source, suffix)
         assert question_text() == '', 'A fresh authorized report view must start with empty drafts'

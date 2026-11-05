@@ -69,7 +69,7 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
     artifacts.mkdir(parents=True, exist_ok=True)
     previous_actions = list(credentials[0]['actions'])
     case_path = f'/v1/patients/{patient_id}/cases/{CASE}'
-    original = dicom_bytes(patient_id='SUBJECT-IMAGE', issuer='ORG-INSTITUTION/SYS-SYNTH',
+    original = dicom_bytes(modality='MR', patient_id='SUBJECT-IMAGE', issuer='ORG-INSTITUTION/SYS-SYNTH',
         study_uid='2.25.33001', series_uid='2.25.33002', sop_uid='2.25.33003', study_date='20260210')
     original_sha = hashlib.sha256(original).hexdigest()
     downloads = []
@@ -134,13 +134,26 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         before = len(observed())
         source_click(source_id, 'source-images-open', keyboard=keyboard)
         path = case_path + '/sources/' + source_id + '/images'
-        cd.wait('window.__oiImageContinuityChecks.responses.length>' + str(before)
-                + " && Boolean(document.querySelector('[data-testid=source-images-receipt]'))", 'actual image index in Records')
-        payload = latest(path)['payload']
+        cd.wait("window.__oiImageContinuityChecks.responses.slice(" + str(before) + ").some(row => "
+                + "row.path === " + json.dumps(path) + " && row.method === 'GET' && row.status === 200 "
+                + "&& row.payload?.access_receipt_id && row.payload.access_receipt_id === "
+                + "document.querySelector('[data-testid=source-images-receipt]')?.textContent)",
+                'fresh report-specific image index receipt rendered in Records')
+        rendered_receipt = cd.evaluate("document.querySelector('[data-testid=source-images-receipt]').textContent")
+        payload = next(row['payload'] for row in observed()[before:]
+                       if row['path'] == path and row['method'] == 'GET' and row['status'] == 200
+                       and row['payload']['access_receipt_id'] == rendered_receipt)
         assert (payload['patient_id'], payload['case_id'], payload['source_id']) == (patient_id, CASE, source_id)
         assert payload['synthetic'] is True and payload['source_identity_verified'] is False
         assert len(payload['images']) == expected_count
         assert cd.evaluate("document.querySelectorAll('[data-testid=source-image-row]').length") == expected_count
+        displayed = cd.evaluate("""Array.from(document.querySelectorAll('[data-testid=source-image-row]'), row => [
+            row.closest('[data-testid=source-image-study]').dataset.studyUid,
+            row.closest('[data-testid=source-image-series]').dataset.seriesUid,
+            row.closest('[data-testid=source-image-series]').querySelector('summary').textContent.split(' ')[0],
+            row.dataset.imageId])""")
+        assert sorted(displayed) == sorted([item['study_uid'], item['series_uid'], item['modality'], item['image_id']]
+                                           for item in payload['images'])
         return payload
 
     def download_image(source_id, label, *, denied=False):
@@ -330,6 +343,19 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         status, relinked = operator(case_path + '/sources/' + current_source + '/images', raw=original)
         assert status == 201 and relinked['result'] == 'linked' and relinked['image_id'] == image_id
         records(current_source);inspect_images(current_source);download_image(current_source, 'explicit-current-source-relink')
+        # The browser must nest a mixed-modality study and a separate study
+        # from the same authorized report without inferring an acquisition order.
+        for study, series, sop in (('2.25.33001', '2.25.33004', '2.25.33005'),
+                                   ('2.25.33006', '2.25.33007', '2.25.33008')):
+            ct = dicom_bytes(patient_id='SUBJECT-IMAGE', issuer='ORG-INSTITUTION/SYS-SYNTH',
+                             study_uid=study, series_uid=series, sop_uid=sop, study_date='20260210')
+            assert operator(case_path + '/sources/' + current_source + '/images', raw=ct)[0] == 201
+        source_click(current_source, 'source-images-close')
+        mixed = inspect_images(current_source, expected_count=3)
+        assert len({row['study_uid'] for row in mixed['images']}) == 2
+        assert {row['modality'] for row in mixed['images'] if row['study_uid'] == '2.25.33001'} == {'CT', 'MR'}
+        assert cd.evaluate("document.querySelectorAll('[data-testid=source-image-study]').length") == 2
+        assert cd.evaluate("document.querySelectorAll('[data-testid=source-image-series]').length") == 3
         cd.command('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
         cd.wait('document.documentElement.scrollWidth<=innerWidth+1', 'image inspector stays within narrow browser viewport')
         cd.evaluate("document.querySelector('[data-testid=source-images-inspection]').scrollIntoView({block:'start'})")

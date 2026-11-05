@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,8 +18,8 @@ function fixture(t, location = 'node_modules/example', name = 'example') {
   const base = path.join(root, location);
   fs.mkdirSync(base, { recursive: true });
   const manifest = { name, version: '1.0.0', license: 'MIT' };
-  const record = { version: '1.0.0', license: 'MIT', integrity: 'sha512-fixture', resolved: 'https://registry.npmjs.org/example/-/example-1.0.0.tgz' };
-  const lock = { lockfileVersion: 3, packages: { '': {}, [location]: record } };
+  const record = { version: '1.0.0', license: 'MIT', integrity: 'sha512-' + crypto.createHash('sha512').update('fictional tarball').digest('base64'), resolved: 'https://registry.npmjs.org/example/-/example-1.0.0.tgz' };
+  const lock = { lockfileVersion: 3, packages: { '': { name: 'fictional-web', version: '1.0.0' }, [location]: record } };
   const writeManifest = () => fs.writeFileSync(path.join(base, 'package.json'), JSON.stringify(manifest));
   writeManifest();
   fs.writeFileSync(path.join(base, 'LICENSE'), 'Independently authored fictional notice.\n');
@@ -123,4 +124,65 @@ test('an installed optional package cannot hide a missing manifest', t => {
   f.record.optional = true;
   fs.unlinkSync(path.join(f.base, 'package.json'));
   blocked(f.run(), /manifest|regular file|package.json/i);
+});
+
+function readBom(f) {
+  return JSON.parse(fs.readFileSync(path.join(f.root, '.licenses/web.cdx.json'), 'utf8'));
+}
+
+test('exports inspected installed locations with upstream alias identity and locked archive digest', t => {
+  const f = fixture(t, 'node_modules/alias', '@fictional/actual');
+  f.record.name = f.manifest.name;
+  f.record.dev = true;
+  f.lock.packages['node_modules/unused'] = { ...f.record, optional: true };
+  const run = f.run();
+  assert.equal(run.status, 0);
+  const bom = readBom(f);
+  assert.equal(bom.bomFormat, 'CycloneDX');
+  assert.equal(bom.specVersion, '1.6');
+  assert.equal(bom.components.length, 1);
+  const component = bom.components[0];
+  assert.equal(component.purl, 'pkg:npm/%40fictional/actual@1.0.0');
+  assert.equal(component.group, '@fictional');
+  assert.equal(component.name, 'actual');
+  assert.equal(component.externalReferences[0].hashes[0].content, crypto.createHash('sha512').update('fictional tarball').digest('hex'));
+  assert.deepEqual(component.licenses, [{ expression: 'MIT' }]);
+  const properties = Object.fromEntries(bom.metadata.properties.map(p => [p.name, p.value]));
+  assert.equal(properties['oi:package-lock-sha256'], run.inventory.lock_sha256);
+  assert.equal(properties['oi:absent-optional-count'], '1');
+  assert.equal(component.properties.find(p => p.name === 'oi:development-dependency').value, 'true');
+  assert.equal(f.run().status, 0);
+  assert.deepEqual(readBom(f), bom);
+});
+
+test('keeps duplicate installations separately addressable', t => {
+  const f = fixture(t);
+  const second = 'node_modules/parent/node_modules/example';
+  fs.mkdirSync(path.dirname(path.join(f.root, second)), { recursive: true });
+  fs.cpSync(f.base, path.join(f.root, second), { recursive: true });
+  f.lock.packages[second] = { ...f.record };
+  assert.equal(f.run().status, 0);
+  const parts = readBom(f).components;
+  assert.equal(parts.length, 2);
+  assert.equal(parts[0].purl, parts[1].purl);
+  assert.notEqual(parts[0]['bom-ref'], parts[1]['bom-ref']);
+});
+
+test('removes a preceding successful BOM when a repeated gate run fails', t => {
+  const f = fixture(t);
+  assert.equal(f.run().status, 0);
+  assert.ok(readBom(f));
+  f.record.integrity = 'sha512-short';
+  blocked(f.run(), /SHA512/i);
+  assert.equal(fs.existsSync(path.join(f.root, '.licenses/web.cdx.json')), false);
+});
+
+test('a malformed lock cannot leave a successful BOM from a previous run', t => {
+  const f = fixture(t);
+  assert.equal(f.run().status, 0);
+  assert.ok(readBom(f));
+  fs.writeFileSync(path.join(f.root, 'package-lock.json'), '{invalid');
+  const result = spawnSync(process.execPath, [tool], { cwd: f.root, encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.equal(fs.existsSync(path.join(f.root, '.licenses/web.cdx.json')), false);
 });

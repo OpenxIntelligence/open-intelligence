@@ -53,6 +53,7 @@ jobs:
           set -o pipefail
           mkdir -p ../../verification-web
           npm run rights 2>&1 | tee ../../verification-web/rights-gate-tests.txt
+          test -s .licenses/web.cdx.json
           npm audit --omit=optional --audit-level=high --json | tee ../../verification-web/audit.json
       - name: Compile client and build actual React UI
         working-directory: apps/web
@@ -65,7 +66,7 @@ jobs:
       - name: Preserve upstream reviewed backend dependency gate
         run: |
           python apps/api/tools/prepare_dependencies.py --wheel-dir /tmp/oi-h1-wheels
-          python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
+          python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom verification-web/api.cdx.json
           python -m pip install --force-reinstall --no-deps --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
           python -m pip check
       - name: Actual PostgreSQL API and built React browser journey

@@ -77,7 +77,8 @@ class ImageCustodyHTTPTests(SourceVersionFixture):
                          "WHERE event_type LIKE 'image.%' " + suffix + " ORDER BY id")
 
     def test_exact_originals_idempotency_index_receipts_and_restart(self):
-        originals = [image_bytes(), image_bytes(sop_uid="2.25.104", pixels=b"\x01\x00" * 4)]
+        originals = [image_bytes(), image_bytes(modality="MR", series_uid="2.25.105",
+                                                 sop_uid="2.25.104", pixels=b"\x01\x00" * 4)]
         with running_server(create_app(self.settings)) as base:
             patient, source, path = self.prepare(base)
             ids = []
@@ -94,6 +95,8 @@ class ImageCustodyHTTPTests(SourceVersionFixture):
             status, index, _ = request(base, path, token=TOKEN_A)
             self.assertEqual(status, 200)
             self.assertEqual({item["image_id"] for item in index["images"]}, set(ids))
+            self.assertEqual({item["series_uid"]: item["modality"] for item in index["images"]},
+                             {"2.25.102": "CT", "2.25.105": "MR"})
             receipts = [index["access_receipt_id"]]
             for image_id, raw in zip(ids, originals):
                 code, retrieved, headers = image_request(base, path + "/" + image_id)
@@ -169,6 +172,95 @@ class ImageCustodyHTTPTests(SourceVersionFixture):
             self.assertEqual(request(base, self.url(patient) + "/" + source, token=TOKEN_A)[1]["original_text"], REPORT)
         self.assertEqual(self.rows("SELECT count(*) FROM clinical_source.dicom_objects")[0][0], 1)
         self.assertEqual(self.rows("SELECT count(*) FROM clinical_source.source_image_links")[0][0], 2)
+
+    def test_concurrent_imports_cannot_assign_one_series_to_two_studies(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, _, path = self.prepare(base)
+            other = self.ingest(base, patient, REPORT.replace("DOC-IMAGE", "DOC-OTHER"))[1]
+            other_path = self.url(patient) + "/" + other["source_id"] + "/images"
+            inputs = [(path, image_bytes()), (other_path, image_bytes(study_uid="2.25.108", sop_uid="2.25.109"))]
+            start = threading.Barrier(2)
+
+            def submit(item):
+                target, raw = item
+                start.wait(timeout=5)
+                return image_request(base, target, raw=raw)
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                outcomes = list(pool.map(submit, inputs))
+            self.assertEqual(sorted(item[0] for item in outcomes), [201, 409])
+            for (target, raw), (status, response, _) in zip(inputs, outcomes):
+                index = image_request(base, target)[1]["images"]
+                if status == 201:
+                    self.assertEqual([item["image_id"] for item in index], [response["image_id"]])
+                    self.assertEqual(image_request(base, target, raw=raw)[1]["result"], "duplicate")
+                else:
+                    self.assertEqual(index, [])
+            self.assertEqual(len(self.events("AND event_type='image.original_imported'")), 1)
+            self.assertEqual(self.rows("SELECT count(*) FROM clinical_source.source_image_links")[0][0], 1)
+
+    def test_series_modality_is_case_scoped_and_original_read_has_its_own_grant(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, _, path = self.prepare(base)
+            mr = image_bytes(modality="MR")
+            status, receipt, _ = image_request(base, path, raw=mr)
+            self.assertEqual(status, 201, receipt)
+            self.assertEqual(receipt["modality"], "MR")
+            other = self.ingest(base, patient, REPORT.replace("DOC-IMAGE", "DOC-SECOND"))[1]
+            other_path = self.url(patient) + "/" + other["source_id"] + "/images"
+            before = self.events()
+            self.assertEqual(image_request(base, other_path, raw=image_bytes(sop_uid="2.25.111"))[0], 409)
+            self.assertEqual(self.events(), before)
+            self.creds[0]["actions"].remove("image_original_read")
+            self.write()
+            self.assertEqual(image_request(base, path)[1]["images"][0]["modality"], "MR")
+            before = self.events()
+            status, body, headers = image_request(base, path + "/" + receipt["image_id"])
+            self.assertEqual(status, 404, body)
+            self.assertIsNone(headers.get("X-OI-Access-Receipt"))
+            self.assertEqual(self.events(), before)
+
+    def test_cross_case_link_in_restored_data_withholds_the_entire_source_index(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, source, path = self.prepare(base)
+            self.assertEqual(image_request(base, path, raw=image_bytes())[0], 201)
+            other = self.setup_case(base, token=TOKEN_B, case="CASE-BETA", key="CREATE-BETA",
+                                    source_subject="SUBJECT-BETA")
+            other_source = self.ingest(base, other, REPORT.replace("CASE-ALPHA", "CASE-BETA"),
+                                       case="CASE-BETA", token=TOKEN_B)[1]["source_id"]
+            other_path = self.url(other, "CASE-BETA") + "/" + other_source + "/images"
+            other_image = image_request(base, other_path, token=TOKEN_B,
+                                        raw=image_bytes(patient_id="SUBJECT-BETA"))[1]["image_id"]
+
+            # Reproduce inconsistent historical data as a fixture administrator.
+            with self.engine.begin() as connection:
+                connection.exec_driver_sql("ALTER TABLE clinical_source.source_image_links "
+                                           "DISABLE TRIGGER oi_image_link_insert_guard")
+                connection.execute(text("INSERT INTO clinical_source.source_image_links(source_id,image_id) "
+                                        "VALUES (:source,:image)"), {"source": source, "image": other_image})
+                connection.exec_driver_sql("ALTER TABLE clinical_source.source_image_links "
+                                           "ENABLE TRIGGER oi_image_link_insert_guard")
+            with patch.object(PostgresSourceImages, "_validated_object",
+                              side_effect=AssertionError("No original should be fetched")) as parse:
+                self.assertEqual(image_request(base, path)[:2], (503, {"detail": "Patient registry unavailable"}))
+                parse.assert_not_called()
+            self.assertEqual(image_request(base, path + "/" + other_image)[0], 404)
+            self.assertEqual(self.events("AND event_type='image.read_authorized'"), [])
+
+    def test_legacy_conflict_across_reports_withholds_index_and_preserves_original_access(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, _, path = self.prepare(base)
+            original = image_request(base, path, raw=image_bytes())[1]
+            second = self.ingest(base, patient, REPORT.replace("DOC-IMAGE", "DOC-OTHER"))[1]
+            other_path = self.url(patient) + "/" + second["source_id"] + "/images"
+            with patch.object(PostgresSourceImages, "_case_paths_agree", return_value=True):
+                # Reproduce a valid pair of originals admitted by the previous writer.
+                self.assertEqual(image_request(base, other_path, raw=image_bytes(
+                    study_uid="2.25.108", sop_uid="2.25.109"))[0], 201)
+            for target in (path, other_path):
+                self.assertEqual(image_request(base, target)[:2], (503, {"detail": "Patient registry unavailable"}))
+            self.assertEqual(self.events("AND event_type='image.read_authorized'"), [])
+            self.assertEqual(image_request(base, path + "/" + original["image_id"])[:2], (200, image_bytes()))
 
     def test_same_sop_changed_date_is_conflict_rather_than_stored_corruption(self):
         with running_server(create_app(self.settings)) as base:
@@ -315,6 +407,8 @@ class ImageCustodyHTTPTests(SourceVersionFixture):
                     connection.execute(text("UPDATE clinical_source.dicom_objects SET raw=:raw,sha256=:sha,byte_count=:n WHERE image_id=:id"),
                                        {"raw": raw, "sha": digest, "n": len(raw), "id": image_id})
                     connection.exec_driver_sql("ALTER TABLE clinical_source.dicom_objects ENABLE TRIGGER oi_image_update_guard")
+                self.assertEqual(image_request(base, path)[:2],
+                                 (503, {"detail": "Patient registry unavailable"}))
                 self.assertEqual(image_request(base, path + "/" + image_id)[:2],
                                  (503, {"detail": "Patient registry unavailable"}))
             self.assertEqual(self.events("AND event_type LIKE '%read_authorized'"), [])

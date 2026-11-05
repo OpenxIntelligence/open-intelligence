@@ -238,3 +238,8 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 .continuity-preparation-list h4{font-size:15px;margin:0 0 8px}
 .continuity-preparation-list p{font-size:13px;margin:8px 0}
 @media(max-width:600px){.continuity-preparation-list{grid-template-columns:minmax(0,1fr)}.continuity-preparation-list button{width:100%}}
+
+.source-image-studies > section { margin-block: 1rem; border-top: 1px solid #c6d8c9; }
+.source-image-studies h6 { font-size: 1rem; margin: .9rem 0 .35rem; }
+.source-image-studies summary { cursor: pointer; overflow-wrap: anywhere; }
+.source-image-studies details { margin-block: .5rem; }

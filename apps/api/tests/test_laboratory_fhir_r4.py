@@ -82,6 +82,26 @@ class FHIRPreparationTests(unittest.TestCase):
         with self.assertRaises(LaboratoryBundleRejected):
             self.prepared(bundle, mapping=mapping)
 
+    def test_report_service_sections_preserve_exact_original_and_legacy_result_identity(self):
+        expected = self.prepared().observations
+        for section in ("LAB", "CH", "HM"):
+            with self.subTest(section=section):
+                bundle = example()
+                resource(bundle, "DiagnosticReport")["category"] = [{"coding": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/v2-0074", "code": section}]}]
+                result = self.prepared(bundle)
+                self.assertEqual(result.original_bytes, encode(bundle))
+                self.assertEqual(result.observations, expected)
+
+    def test_service_sections_are_report_only_and_require_the_exact_system_and_code(self):
+        system = "http://terminology.hl7.org/CodeSystem/v2-0074"
+        for kind, identifier, code in (("Observation", system, "HM"), ("DiagnosticReport", system, "RAD"),
+                                       ("DiagnosticReport", system, "hm"), ("DiagnosticReport", "urn:other", "LAB")):
+            with self.subTest(kind=kind, system=identifier, code=code):
+                bundle = example()
+                resource(bundle, kind)["category"] = [{"coding": [{"system": identifier, "code": code}]}]
+                self.rejected(bundle)
+
     def test_bounded_exact_original_unreviewed_and_preserves_decimal_precision(self):
         original = encode(example())
         result = prepare_laboratory_bundle(original, expected_subject_reference=PATIENT)
