@@ -433,7 +433,7 @@ class QuestionEvidenceAuthorityTests(EvidenceFixture):
             p, q, _ = self.start(base)
             self.assertEqual(self.imported(base, p, q)[0], 201)
             before = self.persisted_state()
-            with self.assertRaisesRegex(CommandError, "Evidence history requires explicit reconciliation"):
+            with self.assertRaisesRegex(CommandError, "Stored source delivery history"):
                 migrate(self.admin, "downgrade", "0008_review_convergence")
             self.assertEqual(self.persisted_state(), before)
             with self.engine.connect() as db:

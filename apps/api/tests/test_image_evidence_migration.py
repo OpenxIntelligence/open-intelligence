@@ -377,25 +377,31 @@ class PopulatedImageEvidenceUpgradeTests(PopulatedImageReviewFixture):
                 self.assertIsNone(connection.execute(text("SELECT to_regclass(:table)"),
                                                       {"table": table}).scalar_one())
 
-    def _reject_populated_downgrade(self, target, reason):
-        before = self._snapshot()
-        definitions = self._schema_definition()
-        with self.assertRaisesRegex(CommandError, reason):
-            migrate(self.settings, "downgrade", target)
-        self.assertEqual(self._heads(), {SCHEMA_REVISION})
-        self.assertEqual(self._snapshot(), before)
-        self.assertEqual(self._schema_definition(), definitions)
-        self._assert_readiness(True)
+    def _reject_populated_downgrade(self, target, owner_reason):
+        original_rows = self._snapshot()
+        for revision, reason in ((MERGE_REVISION, owner_reason),
+                                 (SCHEMA_REVISION, "Stored source delivery history")):
+            # At the historical head, the named clinical owner must reject. At
+            # the latest head, backfilled immutable outbox rows must reject first.
+            migrate(self.settings, "upgrade", revision)
+            self.assertEqual(self._snapshot(), original_rows)
+            definitions = self._schema_definition()
+            with self.assertRaisesRegex(CommandError, reason):
+                migrate(self.settings, "downgrade", target)
+            self.assertEqual(self._heads(), {revision})
+            self.assertEqual(self._snapshot(), original_rows)
+            self.assertEqual(self._schema_definition(), definitions)
+            self._assert_readiness(revision == SCHEMA_REVISION)
 
     def test_populated_evidence_blocks_downgrade_without_changing_images_tasks_or_receipts(self):
         self._seed_parent(EVIDENCE_REVISION)
-        migrate(self.settings, "upgrade", "head")
+        migrate(self.settings, "upgrade", MERGE_REVISION)
         self._seed_image()
         self._reject_populated_downgrade("0009_question_followthrough", "Populated evidence history")
 
     def test_populated_tasks_roll_back_removal_of_empty_evidence_schema_and_preserve_images(self):
         self._seed_parent(IMAGE_REVISION)
-        migrate(self.settings, "upgrade", "head")
+        migrate(self.settings, "upgrade", MERGE_REVISION)
         self._seed_task()
         self._reject_populated_downgrade("0008_review_convergence", "Follow-through history")
 

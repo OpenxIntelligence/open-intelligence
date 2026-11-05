@@ -6,6 +6,7 @@ Current authenticated HTTP is exercised only after the real converging upgrade.
 """
 from contextlib import contextmanager
 
+from alembic.util.exc import CommandError
 from sqlalchemy import text
 
 from http_support import running_server
@@ -168,6 +169,13 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
             original = owner.import_evidence(patient, "CASE-ALPHA", question, **OPTIONS,
                 payload={"synthetic": True, "request_key": "UPGRADE-ORIGINAL", "original_text": ORIGINAL_EVIDENCE,
                          "content_item": "api_output", "permissions": rights})
+        # Verify the authored-evidence guard before later outbox history exists.
+        before = self.snapshot()
+        with self.assertRaisesRegex(CommandError, "Evidence history requires explicit reconciliation"):
+            migrate(self.admin, "downgrade", "0008_review_convergence")
+        self.assertEqual(self.snapshot(), before)
+        with self.services() as registry:
+            owner = AuthoredEvidence(registry)
             packet = owner.packet(patient, "CASE-ALPHA", question, **OPTIONS)
             evidence, = packet["evidence"]
             assessment_intent = {

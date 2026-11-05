@@ -570,3 +570,11 @@ and this receipt remain in Git.
 The final evidence-only update also retains #307's four documentation updates at
 `c35219dc5eb244874a7df6e9bf00cfbfda18251f`. No tested code changes in that update.
 The work remains fictional-only, draft, unmerged and undeployed.
+
+## Reproduce a returned report's literal evidence checks
+
+When an operator returns a completed source brief and a current authored report to verification, the evidence owner reopens the preserved originals and checks the report under the case lock. Verifier `oi.h1-literal-evidence-verifier/1` then hashes each exact quoted range. The check concerns literal correspondence and declared rights at return time. Clinical and scientific appraisal stays with the reviewer.
+
+The original review return, one `investigation.evidence.passage_verified` event per comparison and one `investigation.evidence.passages_verified` summary commit in the same transaction. All use the same return receipt ID. The summary binds the patient, case, question, source version/line, completed run and report digests. Individual records bind the assessment ID, evidence ID/version, original and rights digests, content item, statement line and UTF-8 SHA-256 of the passage. Range indexes are zero-based Unicode code points within the parsed statement, with an exclusive end. The journal retains references and digests only.
+
+To reproduce `verification_sha256`, take the summary metadata, remove `receipt_id` and `verification_sha256`, and add the journal row's `patient_id` as `patient_id`. For each passage in ascending journal event ID order remove those same two metadata fields. Apply the existing canonical JSON hash to `{"inputs": summary, "passages": passages}`. Durable retries reuse the initial return and its original history, including returns created before this verifier existed. A new or repeated return requires the existing current authorization and evidence rights checks.
