@@ -13,7 +13,7 @@ SUBJECT = 'FICT-WEB-LAB'
 
 
 def fictional_bundle(*, amended=False):
-    """Independently authored numeric-zero, negative-number and absent fixtures."""
+    """Independently authored numeric, absent and coded fixtures."""
     # Source originals may mix exact fullUrl references with local resource IDs.
     subject = {'reference': 'urn:uuid:10000000-0000-4000-8000-000000000001'}
     specimen = {'reference': 'urn:uuid:10000000-0000-4000-8000-000000000002'}
@@ -22,12 +22,18 @@ def fictional_bundle(*, amended=False):
     issued = '2026-04-05T12:00:00Z' if amended else '2026-04-04T12:00:00Z'
     effective = '2026-04-03T09:05:00-04:00'
     observations = []
-    for suffix, code in [('ZERO', '777-3'), ('NUMBER', '718-7'), ('ABSENT', '6690-2')]:
+    for suffix, code in [('ZERO', '777-3'), ('NUMBER', '718-7'), ('ABSENT', '6690-2'), ('CODED', '999990-1')]:
         row = {'resourceType': 'Observation', 'id': 'FICT-WEB-' + suffix,
                'status': 'final', 'category': category, 'code': coding(code),
                'subject': subject, 'specimen': specimen,
                'effectiveDateTime': effective, 'issued': issued}
-        if suffix == 'ABSENT':
+        if suffix == 'CODED':
+            row['valueCodeableConcept'] = {'coding': [{
+                'system': 'urn:oi:synthetic:lab-results', 'version': 'fixture-v1',
+                'code': 'DETECTED' if amended else 'NOT-DETECTED',
+                'display': 'Detected' if amended else 'Not detected',
+            }]}
+        elif suffix == 'ABSENT':
             row['dataAbsentReason'] = {'coding': [{'system': 'http://terminology.hl7.org/CodeSystem/data-absent-reason', 'code': 'not-performed'}]}
         else:
             row['valueQuantity'] = {'value': 1 if amended and suffix == 'ZERO' else 0 if suffix == 'ZERO' else -4.25,
@@ -250,11 +256,16 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
             cd.evaluate('document.querySelector("[data-testid=world-load-cases]").click()')
             cd.wait(has_case, 'authorized laboratory case available')
         cd.evaluate('[...document.querySelectorAll(".world-cases li")].find(e=>e.textContent.includes(' + json.dumps(CASE) + ')).querySelector("[data-testid=world-load]").click()')
-        cd.wait('document.querySelectorAll("[data-testid=world-laboratory-observation]").length===3', 'three typed source laboratory results')
+        cd.wait('document.querySelectorAll("[data-testid=world-laboratory-observation]").length===4', 'four typed source laboratory results')
         rendered = cd.evaluate('[...document.querySelectorAll("[data-testid=world-laboratory-observation]")].map(e=>({text:e.textContent,value:e.querySelector("[data-testid=world-laboratory-value]").textContent}))')
         assert any('777-3' in row['text'] and row['value'] == expected_value + ' 10*9/L (UCUM)' for row in rendered), rendered
         assert any('718-7' in row['text'] and row['value'] == '-4.25 10*9/L (UCUM)' for row in rendered), rendered
         assert any('6690-2' in row['text'] and row['value'] == 'Result absent · source reason: not-performed' for row in rendered), rendered
+        coded, = [row for row in rendered if 'Observation/FICT-WEB-CODED' in row['text']]
+        literal = 'DETECTED' if expected_value == '1' else 'NOT-DETECTED'
+        label = 'Detected' if expected_value == '1' else 'Not detected'
+        assert all(part in coded['text'] for part in (literal, label, 'urn:oi:synthetic:lab-results', 'fixture-v1'))
+        assert 'Result absent' not in coded['value'] and '(UCUM)' not in coded['value']
         rows = [row['text'] for row in rendered]
         assert all('Specimen/FICT-WEB-SPEC' in row and 'DiagnosticReport/FICT-WEB-REPORT' in row for row in rows)
         assert cd.evaluate('document.querySelectorAll("[data-testid=world-laboratory-observation] script").length===0')
@@ -320,7 +331,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert cd.evaluate('Boolean(document.querySelector("[data-testid=continuity-preparation-item][data-kind=unresolved-statements]"))')
     assert not cd.evaluate('Boolean(document.querySelector("[data-testid=continuity-preparation-item][data-kind=prepare-a-question]"))')
     cd.evaluate('document.querySelector("[data-testid=continuity-preparation-item][data-kind=unresolved-statements] button").click()')
-    cd.wait('document.querySelectorAll("[data-testid=world-laboratory-observation]").length===3', 'Overview returns to the three source-reported laboratory results')
+    cd.wait('document.querySelectorAll("[data-testid=world-laboratory-observation]").length===4', 'Overview returns to the four source-reported laboratory results')
     assert operator(questions_path)['questions'] == []
     source = first['source_id']
     alternate = 'Which measurement is associated with this second fictional result?'
@@ -338,8 +349,13 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert question_text() == question
     assert cd.evaluate("document.querySelector('[data-testid=lab-question-result]').value") == source + '|Observation/FICT-WEB-ZERO'
     cd.evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent==='Clear laboratory filters').click()")
-    cd.wait("document.querySelectorAll('[data-testid=world-laboratory-observation]').length===3",
+    cd.wait("document.querySelectorAll('[data-testid=world-laboratory-observation]').length===4",
             'clearing filters restores the original laboratory timeline')
+    filter_results('lab-filter-status', 'reported_coded')
+    cd.wait("document.querySelectorAll('[data-testid=world-laboratory-observation]').length===1 && "
+            "document.querySelector('[data-testid=world-laboratory-observation]').textContent.includes('NOT-DETECTED')",
+            'reported coded result stays distinct from a missing result')
+    filter_results('lab-filter-status', '')
     assert cd.evaluate('window.__oiLabRequests') == requests, 'Result filters must stay local'
     choose_result(source, 'NUMBER')
     assert question_text() == '', 'Another result must start with its own wording'
@@ -356,18 +372,18 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     for suffix in ('ZERO', 'NUMBER'):
         choose_result(source, suffix)
         assert question_text() == '', 'A fresh authorized report view must start with empty drafts'
-    draft_question(first['source_id'], 'ZERO', question)
+    draft_question(first['source_id'], 'CODED', question)
     # The subsequent real save and lost-response retry must use the resumed
     # wording and original Observation, even after visiting a different result.
     choose_result(source, 'NUMBER')
-    choose_result(source, 'ZERO')
+    choose_result(source, 'CODED')
     submit_question()
     cd.wait("window.__oiLabPrepareCodes.length===1", 'explicit preparation completed over HTTP')
     assert cd.evaluate("window.__oiLabPrepareCodes") == [200], 'Expected scoped laboratory HTTP success'
     cd.wait("Boolean(document.querySelector('[data-testid=lab-question-receipt]')) || !document.querySelector('[data-testid=world-projection]')", 'client accepted or rejected the prepared source')
     assert cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))"), cd.evaluate("document.querySelector('[data-testid=world-status]').textContent")
     prepared = cd.evaluate("document.querySelector('[data-testid=lab-question-receipt]').textContent")
-    assert all(x in prepared for x in (question, first['source_id'], first['sha256'], 'Observation/FICT-WEB-ZERO', 'ACCESS-'))
+    assert all(x in prepared for x in (question, first['source_id'], first['sha256'], 'Observation/FICT-WEB-CODED', 'ACCESS-'))
     laboratory_history = '/cases/' + CASE + '/composer/laboratory-questions'
     assert operator(laboratory_history)['questions'] == []
     cd.evaluate("document.querySelector('[data-testid=lab-question-save]').click()")
@@ -436,6 +452,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     click(cd, control('lab-citation-report-open'))
     cd.wait(exists('lab-citation-report'), 'original laboratory question and permitted citation report opened')
     current_report = visible_text('lab-citation-report')
+    assert all(part in current_report for part in ('NOT-DETECTED', 'Not detected', 'urn:oi:synthetic:lab-results', 'fixture-v1'))
     assert all(token in current_report for token in (committed['source_id'],committed['source_sha256'],committed['observation_reference'],catalog_record['title']))
     draft_question(first['source_id'], 'ABSENT', 'Why was the selected result not performed?')
     assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))"), 'Editing clears previous receipt'
@@ -464,7 +481,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
     cd.wait("document.querySelector('[data-testid=lab-saved-question]')?.textContent.toLowerCase().includes('needs reassessment')", 'amendment flags the historical question')
     row = cd.evaluate("document.querySelector('[data-testid=lab-saved-question]').textContent")
-    assert all(v in row for v in (question, first['source_id'], first['sha256'], 'Observation/FICT-WEB-ZERO'))
+    assert all(v in row for v in (question, first['source_id'], first['sha256'], 'Observation/FICT-WEB-CODED'))
     inspect_overview_laboratory(0, 1)
     click(cd, control('metadata-evidence-open'))
     cd.wait(exists('evidence-stale')+' && '+exists('evidence-saved-link'), 'historical question reopens its original citation')
@@ -484,6 +501,8 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         cd.wait(exists('lab-citation-report'), 'report independently rechecks metadata rights after withdrawal')
         historical_report=visible_text('lab-citation-report')
         assert all(v in historical_report for v in (committed['source_id'],committed['source_sha256'],committed['observation_reference'],CITATION))
+        assert all(part in historical_report for part in ('NOT-DETECTED', 'Not detected', 'urn:oi:synthetic:lab-results', 'fixture-v1'))
+        assert 'Detected' not in historical_report
         assert all(v not in historical_report for v in (current['source_id'],catalog_record['title'],catalog_record['licence'],catalog_record['link']))
         (artifacts / 'laboratory-question-citations.json').write_text(json.dumps({
             'synthetic':True,'question_id':question_id,'question_anchor':expected_anchor,'catalog_query':'continuity',
@@ -583,10 +602,10 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     (artifacts / 'laboratory-fhir-workflow.json').write_text(json.dumps({
         'synthetic': True, 'case_id': CASE, 'original_source_id': first['source_id'],
         'amended_source_id': current['source_id'], 'original_sha256': first['sha256'],
-        'amended_sha256': current['sha256'], 'observation_count': 3,
+        'amended_sha256': current['sha256'], 'observation_count': 4,
         'selection_writes': 0, 'lost_response_retry_same_intent': True,
         'preserved_original_and_history': True, 'original_denial': True,
         'projection_denial': True, 'journey_to_records_fresh_metadata_only': True,
         'laboratory_only_overview_inspection': True,
         'clinical_interpretation': False}, indent=2) + '\n')
-    print('PASS LABORATORY: actual fictional file selection; zero implicit writes; exact lost-response retry; typed zero/number/absence; explicit amendment; exact current/historical JSON; original and projection revocation; 390px layout.')
+    print('PASS LABORATORY: actual fictional file selection; zero implicit writes; exact lost-response retry; typed zero/number/absence/coded value; explicit amendment; exact current/historical JSON; original and projection revocation; 390px layout.')

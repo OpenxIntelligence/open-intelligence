@@ -6,3 +6,13 @@ function projection(){
  return {contract:'oi.pg-source-world-model/1',patient_id:patient,case_id:caseId,access_receipt_id:'ACCESS-'+'C'.repeat(32),synthetic:true,authority:'source_report_only_unreviewed',clinical_interpretation:false,research_review_invalidation_integrated:false,composer_execution_authorized:false,snapshot_fingerprint:'d'.repeat(64),as_of_received_at:src.received_at,summary:{current_sources:1,historical_sources:0,current_observations:3,current_laboratory_observations:3,unresolved_observations:1,source_disagreements:0},current_sources:[src],history:[],observations:[],laboratory_observations:observations,laboratory_timeline:timeline,unresolved_refs:[],conflicts:[],limitations:['Independently fictional; source-reported only.']};
 }
 export {patient,caseId,sourceId,hash,projection};
+
+// The local observation and test identifiers stay fixed when the result variant changes.
+export const fictionalCoding={system:'urn:oi:synthetic:lab-results',code:'FIC.a-01_2',
+  version:'V1.0-fixture',display:'Literal  <img src=x> & "label"'};
+export function codedProjection(coding=fictionalCoding){
+ const w=projection(),o=w.laboratory_observations[0];
+ Object.assign(o,{status:'reported_coded',value_text:null,unit_code:null,absent_reason:null,coded_result:{...coding}});
+ w.laboratory_timeline.find(t=>t.observation_reference===o.observation_reference).status=o.status;
+ return w;
+}

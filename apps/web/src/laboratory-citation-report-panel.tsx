@@ -1,3 +1,4 @@
+import {codedResultLabel,CodingProvenance} from './laboratory-coding-view';
 import {useEffect,useRef,useState} from 'react';
 import type {LaboratoryInspection} from './laboratory-citation-report.js';
 import type {SavedLabQuestion} from './laboratory-question.js';
@@ -35,7 +36,7 @@ export function LaboratoryCitationReportPanel({question,state,session,busy}:{
       <h5>Result and citation report</h5><p>{report.question}</p>
       <p><strong>{report.citations.source_context_state==='source_reassessment_required'?'Needs reassessment.':'Unreviewed.'}</strong>{' '}
         {report.citations.source_context_state==='source_reassessment_required'?'The source context changed. This is the result from the original question.':'This is the result from the report used to save this question.'}</p>
-      <p><strong>Reported result: </strong>{r.status==='reported_value'?<>{r.value_text} {r.unit_code}</>:<>No value reported. The source gives the reason: {r.absent_reason}.</>}</p>
+      <p><strong>Reported result: </strong>{r.status==='reported_value'?<>{r.value_text} {r.unit_code}</>:r.status==='reported_coded'?<span className="lab-coded-label">{codedResultLabel(r.coded_result)}</span>:<>No value reported. The source gives the reason: {r.absent_reason}.</>}</p>
       <p>Source: {r.report_reference}, version {r.version}. Collected specimen: {r.specimen_type_text} ({r.specimen_reference}).</p>
       <p><strong>Saved citations</strong></p>
       {report.citations.links.length?<ul>{report.citations.links.map(l=><li key={l.link_id}><code>{l.citation}</code> ·{' '}
@@ -43,6 +44,7 @@ export function LaboratoryCitationReportPanel({question,state,session,busy}:{
           l.status==='superseded'?'This citation version has been superseded.':'Metadata unavailable.'}</li>)}</ul>:<p>No citations are saved on this question.</p>}
       <p>The citations identify catalog entries. Their contents have not been assessed, and no clinician approval is recorded here.</p>
       <details><summary>Inspect the original references</summary><p>Observation <code>{r.resource_reference}</code> · LOINC {r.loinc_code}</p>
+        {r.status==='reported_coded'&&<CodingProvenance coding={r.coded_result}/>}
         <p>Specimen collected {r.specimen_collected_at}. Result effective {r.effective_at}; issued {r.issued_at}.</p>
         <p>Original <code>{r.source_id}</code> · SHA-256 <code>{r.sha256}</code></p>
         <p>Question <code>{question.question_id}</code> · read receipt <code>{report.citations.source_access_receipt_id}</code></p></details>

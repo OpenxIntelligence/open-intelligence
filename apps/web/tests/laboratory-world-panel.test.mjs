@@ -12,7 +12,7 @@ before(async()=>{
  await build({configFile:false,logLevel:'silent',build:{ssr:resolve('src/world-model-view.tsx'),outDir:'.test-dist/laboratory-world-ui',emptyOutDir:true,rollupOptions:{output:{entryFileNames:'world-model-view.mjs'}}}});
  ({WorldModelView}=await import(pathToFileURL(resolve('.test-dist/laboratory-world-ui/world-model-view.mjs')).href));
 });
-import {patient,caseId,sourceId,hash,projection} from './laboratory-projection-fixture.mjs';
+import {patient,caseId,sourceId,hash,projection,codedProjection,fictionalCoding} from './laboratory-projection-fixture.mjs';
 const idleQuestionSave = {questionSavePhase:'idle', questionSaveMessage:''};
 const render=model=>renderToStaticMarkup(createElement(WorldModelView,{session:{},state:{...idleQuestionSave,patient:{patient_id:patient},cases:[],worldPhase:'ready',recordsPhase:'ready',worldMessage:'Fresh read',worldModel:model},busy:false,onOverview(){}}));
 test('laboratory-only projection renders zero, negative and absent results with exact unreviewed provenance',()=>{
@@ -94,4 +94,19 @@ test('Journey separates simultaneous primaries and an indeterminate lesion with 
    w.observations[0].oncology=bad;
    assert.throws(()=>parseSourceWorldModel(w,patient,caseId));
  }
+});
+
+test('Journey and the question selector distinguish coded, quantitative and absent results without interpreting the source label',()=>{
+ const w=codedProjection(),html=render(parseSourceWorldModel(w,patient,caseId));
+ const row=html.match(/<li data-testid="world-laboratory-observation">[\s\S]*?<\/li>/g).find(r=>r.includes(fictionalCoding.code));
+ assert.ok(row.includes('LOINC 777-3'));assert.ok(row.includes('Coded result: '+fictionalCoding.code));
+ for(const s of [fictionalCoding.system,fictionalCoding.version,'Source label: Literal  &lt;img src=x&gt; &amp;',sourceId,hash,
+    w.laboratory_observations[0].observation_reference,'Source-reported, not clinically reviewed'])assert.ok(row.includes(s),s);
+ assert.doesNotMatch(row,/<img|UCUM|Result absent/);
+ const selector=html.split('data-testid="lab-question-result"')[1].split('</select>')[0];
+ for(const s of [fictionalCoding.code,'Source label: Literal','-0.25 10*9/L','Absent: not-performed'])assert.ok(selector.includes(s),s);
+ const bare=codedProjection({system:fictionalCoding.system,code:'BARE'});
+ const bareRow=render(parseSourceWorldModel(bare,patient,caseId)).match(/<li data-testid="world-laboratory-observation">[\s\S]*?<\/li>/g).find(r=>r.includes('BARE'));
+ assert.ok(bareRow.includes(fictionalCoding.system));assert.doesNotMatch(bareRow,/Source label:|Code system version:|undefined|null/);
+ assert.ok(!render(null).includes('urn:oi:synthetic:lab-results'));
 });

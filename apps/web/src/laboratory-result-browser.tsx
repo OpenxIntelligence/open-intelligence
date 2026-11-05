@@ -1,3 +1,4 @@
+import {codedResultLabel,CodingProvenance} from './laboratory-coding-view';
 import {useState} from 'react';
 import type {ReactElement,ReactNode} from 'react';
 import type {WorldLaboratoryObservation} from './source-world-model';
@@ -51,8 +52,8 @@ export function LaboratoryResultPage({children,filters,page,change,setPage}:{
         </select></div>
       <div><label htmlFor="lab-filter-status">Reported result</label>
         <select id="lab-filter-status" value={filters.status} onChange={e=>change({...filters,status:e.target.value})}>
-          <option value="">All result states</option><option value="reported_value">Value reported</option>
-          <option value="reported_absent">Result absent</option>
+          <option value="">All result states</option><option value="reported_value">Quantity reported</option>
+          <option value="reported_coded">Coded result</option><option value="reported_absent">Result absent</option>
         </select></div>
     </div>
     <div className="filter-summary">
@@ -71,7 +72,7 @@ export function LaboratoryResultPage({children,filters,page,change,setPage}:{
 export function LaboratoryResultRow({result:item,children}:ResultRowProps){
   return <li data-testid="world-laboratory-observation">
     <p><strong>LOINC {item.loinc_code}</strong> · <time dateTime={item.effective_at}>{item.effective_at}</time></p>
-    <p data-testid="world-laboratory-value">{item.status==='reported_value'?<><strong>{item.value_text}</strong> <code>{item.unit_code}</code> (UCUM)</>:<>Result absent · source reason: <strong>{item.absent_reason}</strong></>}</p>
+    <p data-testid="world-laboratory-value">{item.status==='reported_value'?<><strong>{item.value_text}</strong> <code>{item.unit_code}</code> (UCUM)</>:item.status==='reported_coded'?<span className="lab-coded-label">{codedResultLabel(item.coded_result)}</span>:<>Result absent · source reason: <strong>{item.absent_reason}</strong></>}</p>
     <p>{item.document_id} v{item.document_version} · {item.specimen_reference} · {item.specimen_type_text}</p>
     <p>Source-reported, not clinically reviewed</p>
     <details><summary>Inspect result provenance</summary>
@@ -86,6 +87,7 @@ export function LaboratoryResultRow({result:item,children}:ResultRowProps){
         <dt>Source identity</dt><dd><code>{item.source_id}</code></dd>
         <dt>Original SHA-256</dt><dd><code>{item.source_sha256}</code></dd>
       </dl>
+      {item.status==='reported_coded'&&<CodingProvenance coding={item.coded_result}/>}
       <p>The reference above locates this result within its exact original.</p>
       {children}
     </details>

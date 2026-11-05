@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {RegistrySession} from '../.test-dist/registry-client.js';
+import {parseSourceWorldModel} from '../.test-dist/source-world-model.js';
 import {readLabPreparation,readLabQuestionList} from '../.test-dist/laboratory-question.js';
-import {patient,caseId,projection} from './laboratory-projection-fixture.mjs';
+import {patient,caseId,projection,codedProjection,fictionalCoding} from './laboratory-projection-fixture.mjs';
 
 const question='What does this source report about the specimen?', token='fictional_lab_preparation_token_00000000001';
 const access='ACCESS-'+'D'.repeat(32);
@@ -18,6 +19,7 @@ function prepared(w,o){
       kind:'laboratory',resource_reference:o.observation_reference,specimen_reference:o.specimen_reference,specimen_type_text:o.specimen_type_text,
       specimen_collected_at:o.specimen_collected_at,report_reference:o.report_reference,loinc_code:o.loinc_code,effective_at:o.effective_at,
       issued_at:o.issued_at,status:o.status,value_text:o.value_text,unit_code:o.unit_code,absent_reason:o.absent_reason,
+      ...(o.status==='reported_coded'?{coded_result:{...o.coded_result}}:{}),
       source_reported:true,review_state:'not_established',clinical_review:'not_performed'}};
 }
 async function ready(onPost,onList,worldReply=projection,onPatientRead=()=>null){
@@ -341,4 +343,50 @@ test('an authenticated laboratory question history retains its source case and r
  assert.equal(parsed.patient_id,patient);
  assert.equal(parsed.case_id,caseId);
  assert.equal(parsed.checked_source_snapshot_sha256,w.snapshot_fingerprint);
+});
+
+test('coded question preflight binds the whole source tuple; edits, substitutions and legacy field injection fail closed',async()=>{
+ const {system,code,display,version}=fictionalCoding;
+ const getWorld=()=>codedProjection();
+ const session=await ready(()=>reply(prepared(session.world,session.item)),undefined,getWorld);
+ assert.equal((await session.send()).receipt,access);
+ const p=prepared(session.world,session.item);
+ const reordered={display,code,system,version};
+ const changed=fields=>({...p,selected_source:{...p.selected_source,...fields}});
+ assert.equal(readLabPreparation(changed({coded_result:reordered}),session.world,session.item,question).receipt,access);
+ for(const fields of [{coded_result:{system,code}},{coded_result:{...reordered,version:'v2'}},
+   {coded_result:{...reordered,code:'different'}},{coded_result:{...reordered,system:'http://loinc.org'}},
+   {coded_result:{...reordered,display:display.toUpperCase()}},{coded_result:{...reordered,text:display}},
+   {coded_result:null},{value_text:'0'},{absent_reason:'unknown'},{unit_code:'1'}]){
+   assert.throws(()=>readLabPreparation(changed(fields),session.world,session.item,question));
+ }
+ for(const o of projection().laboratory_observations){
+   const v=prepared(session.world,o);v.selected_source.coded_result=null;
+   assert.throws(()=>readLabPreparation(v,session.world,o,question));
+ }
+ const bad=await ready(()=>reply(changed({coded_result:{...reordered,code:'REPLACEMENT'}})),undefined,getWorld);
+ assert.equal(await bad.send(),null);assert.equal(bad.session.snapshot().worldModel,null);
+});
+
+test('Journey and preflight preserve legacy quantity strings, UTF-16 bounds and source locators',async()=>{
+ for(const [value_text,unit_code] of [['0','mg\u00ad/L'],[' 4.20 ',' 1 '],['-0.0','x\u2028y'],['x'.repeat(64),'🧪'.repeat(16)]]){
+   const wire=projection(),o=wire.laboratory_observations[0];
+   Object.assign(o,{value_text,unit_code});
+   const f=await ready(()=>reply(prepared(f.world,f.item)),undefined,()=>wire);
+   assert.equal(f.item.value_text,value_text);assert.equal(f.item.unit_code,unit_code);
+   assert.equal((await f.send()).receipt,access);
+   const changed=prepared(f.world,f.item);changed.selected_source.unit_code=unit_code+'X';
+   assert.throws(()=>readLabPreparation(changed,f.world,f.item,question));
+ }
+ const raw=projection(),o=raw.laboratory_observations[0];
+ const entry=raw.laboratory_timeline.find(t=>t.observation_reference===o.observation_reference);
+ Object.assign(o,{observation_reference:'Observation/legacy_reference',report_reference:'Legacy report locator',specimen_reference:'Legacy specimen locator'});
+ Object.assign(entry,{observation_reference:o.observation_reference,specimen_reference:o.specimen_reference});
+ const f=await ready(()=>reply(prepared(f.world,f.item)),undefined,()=>raw);
+ assert.equal((await f.send()).receipt,access);
+ const invalid=projection();
+ for(const fields of [{unit_code:'🧪'.repeat(17)}, {unit_code:''},{value_text:'x'.repeat(65)},{value_text:''}]){
+   const bad=structuredClone(invalid);Object.assign(bad.laboratory_observations[0],fields);
+   assert.throws(()=>parseSourceWorldModel(bad,patient,caseId));
+ }
 });

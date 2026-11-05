@@ -11,8 +11,11 @@ from collections import defaultdict
 import hashlib
 import json
 
+from pydantic import ValidationError
+
 from open_intelligence.patient_registry import PatientRegistryError
 from open_intelligence.store import STATES
+from .laboratory_result_contracts import ReportedLaboratoryResult
 
 UNRESOLVED = frozenset((
     "pending", "indeterminate", "not-reported", "not-assessed", "conflicting",
@@ -132,7 +135,7 @@ def project_source_world_model(index: dict, laboratory_observations: list[dict] 
         "source_reported","review_state","clinical_review","clinical_meaning",
     }
     for item in laboratory_observations:
-        if type(item) is not dict or set(item) != required_lab:
+        if type(item) is not dict or set(item) - {"coded_result"} != required_lab:
             raise PatientRegistryError("Invalid laboratory observation projection")
         source = by_id.get(item["source_id"])
         identity = (item["source_id"], item["observation_reference"])
@@ -140,21 +143,18 @@ def project_source_world_model(index: dict, laboratory_observations: list[dict] 
                 or identity in seen_labs
                 or (item["document_id"], item["document_version"], item["source_sha256"])
                    != (source["document_id"], source["version"], source["sha256"])
-                or item["status"] not in ("reported_value", "reported_absent")
                 or item["source_reported"] is not True
                 or item["review_state"] != "not_established"
                 or item["clinical_review"] != "not_performed"
                 or item["clinical_meaning"] is not None):
             raise PatientRegistryError("Invalid laboratory observation projection")
-        if item["status"] == "reported_value":
-            if item["value_text"] is None or item["unit_code"] is None or item["absent_reason"] is not None:
-                raise PatientRegistryError("Invalid laboratory value projection")
-        else:
-            if item["value_text"] is not None or item["unit_code"] is not None or item["absent_reason"] not in (
-                    "unknown", "not-performed", "error", "masked"):
-                raise PatientRegistryError("Invalid laboratory absence projection")
+        try:
+            result = ReportedLaboratoryResult.model_validate({
+                k: item[k] for k in ReportedLaboratoryResult.model_fields if k in item})
+        except ValidationError:
+            raise PatientRegistryError("Invalid laboratory result projection") from None
         seen_labs.add(identity)
-        laboratory.append(dict(item))
+        laboratory.append({**item, **result.model_dump()})
     laboratory.sort(key=lambda o: (
         o["effective_at"], o["document_id"], o["document_version"],
         o["observation_reference"], o["source_id"]))

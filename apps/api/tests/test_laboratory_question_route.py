@@ -111,6 +111,7 @@ class LaboratoryQuestionRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         body = json.loads(response.text)
         self.assertEqual(body["selected_source"]["value_text"], "4.20")
+        self.assertNotIn("coded_result", body["selected_source"])
         self.assertEqual(body["selected_source"]["resource_reference"], OBS)
         self.assertFalse(body["durable_question_created"])
         self.assertEqual(response.headers["cache-control"], "no-store")
@@ -118,6 +119,25 @@ class LaboratoryQuestionRouteTests(unittest.TestCase):
         self.assertLess(self.events.index("serialized"), self.events.index("final-authority"))
         self.assertEqual(self.events[-1], "commit")
         self.assertEqual(self.events.count("final-authority"), 2)
+
+    def test_coded_preflight_emits_only_supplied_fields_and_revocation_withholds_them(self):
+        coding = {"system": "urn:oi:synthetic:lab-results", "code": "Pattern.1"}
+        self.index, self.labs = context(coded=coding)
+        self.payload["expected_source_snapshot_sha256"] = project_source_world_model(
+            self.index)["snapshot_fingerprint"]
+        response = self.post(PATH, payload=self.payload)
+        self.assertEqual(response.status_code, 200, response.text)
+        selected = json.loads(response.text)["selected_source"]
+        self.assertEqual(selected["coded_result"], coding)
+        self.assertEqual(selected["status"], "reported_coded")
+        self.assertEqual([selected[k] for k in ("value_text", "unit_code", "absent_reason")], [None] * 3)
+        self.state["late_deny"] = True
+        self.events.clear()
+        denied = self.post(PATH, payload=self.payload)
+        self.assertEqual(denied.status_code, 404)
+        self.assertEqual(set(json.loads(denied.text)), {"detail"})
+        self.assertIn("serialized", self.events)
+        self.assertEqual(self.events[-1], "rollback")
 
     def test_independent_patient_source_and_composer_grants_are_required(self):
         for grant in ("patient_read", "source_read", "composer_context_read"):

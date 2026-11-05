@@ -15,9 +15,10 @@ patient/case/source; repeated setup and stop/resume retain its saved work.
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. This diagnostic branch requires `0023_dicom_mr_custody`.
+the retained contributions. This diagnostic branch requires `0024_fhir_coded_results`.
 It connects [encounters and draft notes](apps/api/README.md#connected-encounter-and-note-service),
-[laboratory questions and citations](docs/engineering/H1_LABORATORY_CITATIONS.md),
+[laboratory questions and citations](docs/engineering/H1_LABORATORY_CITATIONS.md) for numeric,
+explicitly absent and [source-reported coded results](apps/api/README.md#source-reported-coded-laboratory-results),
 and source-bound classic CT/MR originals. The [implementation status](docs/implementation/IMPLEMENTATION_STATUS.md)
 tracks the supported profiles and outstanding clinical and production work.
 The Python/SQLite application is retained as a separate reference implementation.

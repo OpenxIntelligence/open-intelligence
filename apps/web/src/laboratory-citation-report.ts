@@ -1,5 +1,6 @@
 import type {SavedLabQuestion} from './laboratory-question.js';
-import {isLaboratoryAbsentReason,type SourceWorldModel} from './source-world-model.js';
+import type {SourceWorldModel} from './source-world-model.js';
+import {laboratoryValueKeys,readLaboratoryValue,sameLaboratoryValue,type LaboratoryValue} from './laboratory-result.js';
 import {decodeQuestionEvidenceLinks,unwrapLaboratoryEvidence} from './question-evidence-view.js';
 import type {QuestionEvidenceLinks} from './question-evidence-view.js';
 import {citationEvidenceTimestamp} from './evidence-timestamp.js';
@@ -8,9 +9,8 @@ export type LaboratoryReportedResult=Readonly<{
   anchor_kind:'fhir_observation';kind:'laboratory';resource_reference:string;source_id:string;version:number;sha256:string;
   report_reference:string;document_id:string;specimen_reference:string;specimen_type_text:string;
   specimen_collected_at:string;effective_at:string;issued_at:string;loinc_code:string;
-  status:'reported_value'|'reported_absent';value_text:string|null;unit_code:string|null;absent_reason:string|null;
   source_reported:true;review_state:'not_established';clinical_review:'not_performed';
-}>;
+}>&LaboratoryValue;
 export type LaboratoryInspection=Readonly<{
   question:string;result:LaboratoryReportedResult;citations:QuestionEvidenceLinks;
 }>;
@@ -32,7 +32,7 @@ export function readLaboratoryCitationReport(raw:unknown,model:SourceWorldModel,
     (citations.source_context_state==='current_unreviewed_question'&&(source.state!=='current'||model.snapshot_fingerprint!==q.source_snapshot_sha256))||
     !exact(r,['source_id','sha256','version','document_id','resource_reference','report_reference','specimen_reference',
       'specimen_type_text','specimen_collected_at','effective_at','issued_at','loinc_code','source_reported','clinical_review',
-      'review_state','kind','anchor_kind','status','value_text','unit_code','absent_reason'])||
+      'review_state','kind','anchor_kind',...laboratoryValueKeys(r)])||
     r.source_id!==q.source_id||r.sha256!==q.source_sha256||r.version!==q.source_version||
     r.document_id!==source.document_id||r.resource_reference!==q.observation_reference||
     r.report_reference!=='DiagnosticReport/'+source.document_id||!source.specimen_id||r.specimen_reference!=='Specimen/'+source.specimen_id||
@@ -40,16 +40,13 @@ export function readLaboratoryCitationReport(raw:unknown,model:SourceWorldModel,
     !citationEvidenceTimestamp(r.specimen_collected_at)||!citationEvidenceTimestamp(r.effective_at)||!citationEvidenceTimestamp(r.issued_at)||
     r.source_reported!==true||r.clinical_review!=='not_performed'||r.review_state!=='not_established'||
     r.kind!=='laboratory'||r.anchor_kind!=='fhir_observation')throw Error('Invalid original result');
-  if(r.status==='reported_value'){
-    if(!visible(r.value_text,64)||!(/^-?\d+(?:\.\d+)?$/).test(r.value_text)||!visible(r.unit_code,32)||r.absent_reason!==null)
-      throw Error('Invalid reported measurement');
-  }else if(r.status!=='reported_absent'||r.value_text!==null||r.unit_code!==null||
-      !isLaboratoryAbsentReason(r.absent_reason))throw Error('Invalid reported absence');
+  const value=readLaboratoryValue(r);
+  if(value.status==='reported_value'&&(!visible(value.value_text,64)||!(/^-?\d+(?:\.\d+)?$/).test(value.value_text)||
+    !visible(value.unit_code,32)))throw Error('Invalid reported measurement');
   const current=model.laboratory_observations.find(o=>o.source_id===q.source_id&&o.observation_reference===q.observation_reference);
   if((source.state==='current'&&!current)||(current&&(
     r.loinc_code!==current.loinc_code||r.specimen_type_text!==current.specimen_type_text||
     !sameInstant(r.effective_at,current.effective_at)||!sameInstant(r.issued_at,current.issued_at)||
-    !sameInstant(r.specimen_collected_at,current.specimen_collected_at)||r.status!==current.status||
-    r.value_text!==current.value_text||r.unit_code!==current.unit_code||r.absent_reason!==current.absent_reason)))throw Error('Result changed');
-  return Object.freeze({question:q.question,result:Object.freeze({...r} as LaboratoryReportedResult),citations});
+    !sameInstant(r.specimen_collected_at,current.specimen_collected_at)||!sameLaboratoryValue(value,current))))throw Error('Result changed');
+  return Object.freeze({question:q.question,result:Object.freeze({...r,...value} as LaboratoryReportedResult),citations});
 }

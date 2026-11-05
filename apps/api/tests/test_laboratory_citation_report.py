@@ -3,6 +3,8 @@ from decimal import Decimal
 import json
 from unittest.mock import patch
 
+from sqlalchemy import text
+
 from http_support import running_server
 from oi_api import evidence_catalog, laboratory_citation_report_routes
 from oi_api.app import create_app
@@ -35,6 +37,97 @@ class LaboratoryCitationInspectionTests(SourceVersionFixture):
         with self.catalog_db.registry_connection() as connection:
             evidence_catalog.seed_fictional_records(PostgresPatientRegistry(connection),
                 evidence_catalog.fictional_records(), recorded_by="FIXTURE-AUTHOR")
+
+    def coded_source(self, base, case, coding, key, previous=None):
+        bundle = json.loads(lab.two_observations(0))
+        first = lab.resource(bundle, "Observation")
+        del first["valueQuantity"]
+        first["valueCodeableConcept"] = {"coding": [coding]}
+        raw = lab.encode(bundle).decode()
+        preview = self.expect(200, base, case + "/laboratory/fhir-r4/preview",
+                              {"synthetic": True, "bundle_json": raw})
+        rows = {row["reference"]: row for row in preview["observations"]}
+        self.assertEqual(rows[lab.OBS]["coded_result"], coding)
+        self.assertNotIn("coded_result", rows[lab.ABSENT])
+        receipt = self.expect(201, base, case + "/laboratory/fhir-r4/sources", {
+            "synthetic": True, "request_key": key, "expected_previous_source_id": previous,
+            "bundle_json": raw})
+        self.assertEqual(receipt["original_sha256"], preview["original_sha256"])
+        return receipt
+
+    def test_literal_coding_is_bound_to_its_observation_source_version_and_question(self):
+        with running_server(create_app(self.settings)) as base:
+            _, case = self.scope(base)
+            first = {"system": "urn:oi:synthetic:lab-results", "code": "Fixt.A-1",
+                     "version": "rev.1", "display": "Fictional <pattern> A"}
+            v1 = self.coded_source(base, case, first, "IMPORT-CODED-1")
+            world = self.expect(200, base, case + "/world-model")
+            rows = {r["observation_reference"]: r for r in world["laboratory_observations"]}
+            self.assertEqual(rows[lab.OBS]["coded_result"], first)
+            self.assertNotIn("coded_result", rows[lab.ABSENT])
+            self.assertEqual(world["summary"]["unresolved_observations"], 1)
+            self.assertEqual({r["status"] for r in world["laboratory_timeline"]},
+                             {"reported_coded", "reported_absent"})
+            prepared, stale = self.prepare(base, case, v1["source_id"])
+            path, anchor = self.saved(base, case, v1)
+            selected = prepared["selected_source"]
+            self.assertEqual(selected["coded_result"], first)
+            self.assertEqual((selected["value_text"], selected["unit_code"], selected["absent_reason"]),
+                             (None, None, None))
+            metadata = self.find(base, path, anchor)
+            self.expect(201, base, path + "/evidence-links", self.command(metadata, anchor, "CITE-CODED"))
+            def report(path):
+                return self.expect(200, base, path + "/source-citation-report")
+            current = report(path)
+            self.assertEqual(current["reported_result"], selected)
+            self.assertEqual(current["citations"]["source_context_state"], "current_unreviewed_question")
+            second = {"system": first["system"], "code": first["code"]}
+            v2 = self.coded_source(base, case, second, "IMPORT-CODED-2", v1["source_id"])
+            self.expect(409, base, case + lab.LAB_HISTORY, {**stale, "request_key": "STALE-CODED-KEY"})
+            fresh_path, new_anchor = self.saved(base, case, v2, key="SAVE-CODED-2")
+            fresh = report(fresh_path)
+            self.assertEqual(fresh["reported_result"]["coded_result"], second)
+            self.assertEqual(fresh["reported_result"]["version"], 2)
+            self.assertEqual(fresh["citations"]["links"], [])
+            for field in ("source_sha256", "source_snapshot_sha256", "preflight_sha256"):
+                self.assertNotEqual(anchor[field], new_anchor[field])
+            historical = report(path)
+            self.assertEqual(historical["reported_result"], selected)
+            self.assertEqual(historical["citations"]["question_anchor"], anchor)
+            self.assertEqual(historical["citations"]["source_context_state"], "source_reassessment_required")
+            self.assertEqual(historical["citations"]["links"], current["citations"]["links"])
+            self.creds[0]["actions"].remove("source_read")
+            self.write()
+            self.assertEqual(set(self.expect(404, base, path + "/source-citation-report")), {"detail"})
+
+    def test_valid_but_false_historical_coding_blocks_even_a_siblings_citation_read(self):
+        with running_server(create_app(self.settings)) as base:
+            _, case = self.scope(base)
+            v1 = self.coded_source(base, case, {"system": "urn:oi:synthetic:lab-results",
+                                   "code": "Source.A"}, "IMPORT-INTACT-V1")
+            coded, _ = self.saved(base, case, v1)
+            sibling, _ = self.saved(base, case, v1, lab.ABSENT, "ABSENT-SIBLING")
+            self.import_lab(base, case, value=1, previous=v1["source_id"])
+            for question in (coded, sibling):
+                self.expect(200, base, question + "/source-citation-report")
+            # Simulate out-of-band corruption of one typed child. The replacement
+            # is structurally allowed; only the preserved source bytes disprove it.
+            with self.engine.begin() as db:
+                db.exec_driver_sql("ALTER TABLE clinical_source.fhir_laboratory_observations "
+                                   "DISABLE TRIGGER oi_fhir_observation_update_guard")
+                changed = db.execute(text("""
+                    UPDATE clinical_source.fhir_laboratory_observations
+                    SET coded_result=jsonb_set(coded_result, '{code}', to_jsonb('Changed.B'::text))
+                    WHERE source_id=:sid AND observation_reference=:ref
+                    """), {"sid": v1["source_id"], "ref": lab.OBS})
+                self.assertEqual(changed.rowcount, 1)
+                db.exec_driver_sql("ALTER TABLE clinical_source.fhir_laboratory_observations "
+                                   "ENABLE TRIGGER oi_fhir_observation_update_guard")
+            before = self.counts()
+            for question in (coded, sibling):
+                error = self.expect(503, base, question + "/source-citation-report")
+                self.assertEqual(error, {"detail": "Patient registry unavailable"})
+            self.assertEqual(self.counts(), before)
 
     def test_exact_measured_and_absent_results_survive_amendment_but_revoked_metadata_does_not(self):
         with running_server(create_app(self.settings)) as base:

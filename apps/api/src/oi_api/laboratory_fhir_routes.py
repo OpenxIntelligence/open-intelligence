@@ -19,6 +19,7 @@ from .laboratory_fhir_r4 import LaboratoryBundleRejected, prepare_laboratory_bun
 from .laboratory_fhir_store import PostgresLaboratoryFHIR
 from .sources import PostgresSourceVersions
 from .laboratory_questions import PostgresLaboratoryQuestions
+from .laboratory_result_contracts import ReportedLaboratoryResult
 
 
 class LabFHIRPreviewRequest(Contract):
@@ -26,17 +27,13 @@ class LabFHIRPreviewRequest(Contract):
     bundle_json: str = Field(min_length=1, max_length=65_536)
 
 
-class LabObservationPreview(Contract):
+class LabObservationPreview(ReportedLaboratoryResult):
     reference: str
     loinc_code: str
     effective_at: str
     issued_at: str
     source_reported: bool
     clinical_review: str
-    status: str
-    value_text: str | None
-    unit_code: str | None
-    absent_reason: str | None
 
 
 class LabFHIRImportRequest(Contract):
@@ -84,7 +81,7 @@ class PrepareLaboratoryQuestion(Contract):
     question: StrictStr = Field(min_length=8, max_length=500)
 
 
-class PreparedLaboratorySource(Contract):
+class PreparedLaboratorySource(ReportedLaboratoryResult):
     anchor_kind: Literal["fhir_observation"]
     source_id: StrictStr = Field(pattern=r"^SRC-[0-9A-F]{32}$")
     document_id: StrictStr
@@ -99,10 +96,6 @@ class PreparedLaboratorySource(Contract):
     loinc_code: StrictStr
     effective_at: StrictStr
     issued_at: StrictStr
-    status: Literal["reported_value", "reported_absent"]
-    value_text: StrictStr | None
-    unit_code: StrictStr | None
-    absent_reason: Literal["unknown", "not-performed", "error", "masked"] | None
     source_reported: Literal[True]
     review_state: Literal["not_established"]
     clinical_review: Literal["not_performed"]

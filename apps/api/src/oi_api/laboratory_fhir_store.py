@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import date
+import json
 import re
 from typing import TypeVar
 import uuid
@@ -13,7 +14,7 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from .case_bindings import _case_id
-from .laboratory_fhir_r4 import PreparedLaboratoryBundle
+from .laboratory_fhir_r4 import PreparedLaboratoryBundle, prepare_laboratory_bundle
 from .sources import PostgresSourceVersions, _source_id
 
 PreparedResponse = TypeVar("PreparedResponse")
@@ -99,6 +100,13 @@ class PostgresLaboratoryFHIR:
             raise PatientRegistryDenied("FHIR laboratory import unavailable")
         if not isinstance(prepared, PreparedLaboratoryBundle) or prepared.persisted:
             raise PatientRegistryError("Validated unpersisted FHIR laboratory bundle required")
+        # Prepared rows contain mutable dictionaries. Bind every field used at
+        # commit to a fresh parse of exactly the bytes that will be preserved.
+        original = prepare_laboratory_bundle(
+            prepared.original_bytes, expected_subject_reference=prepared.subject_reference)
+        if original != prepared:
+            raise PatientRegistryError("Prepared FHIR laboratory result differs from its original")
+        prepared = original
         expected_previous_source_id = (
             _source_id(expected_previous_source_id)
             if expected_previous_source_id is not None else None
@@ -214,25 +222,30 @@ class PostgresLaboratoryFHIR:
                 "report_reference,report_effective_at,report_issued_at,fhir_release,"
                 "profile_contract,observation_count) "
                 "VALUES (%s,%s,%s,%s,%s,%s,%s::timestamptz,%s,%s::timestamptz,"
-                "%s::timestamptz,'R4','oi.fhir-r4-laboratory-custody/1',%s)",
+                "%s::timestamptz,'R4',%s,%s)",
                 (source_id, source_org, source_system, prepared.subject_reference,
                  prepared.specimen_reference, prepared.specimen_type_text,
                  prepared.specimen_collected_at, prepared.report_reference,
                  prepared.report_effective_at, prepared.report_issued_at,
-                 len(prepared.observations)),
+                 prepared.profile_contract, len(prepared.observations)),
             )
             for position, observation in enumerate(prepared.observations, 1):
+                # Keep the historical numeric/absent insert usable on pre-0024
+                # schemas during populated migration tests.
+                coded = "coded_result" in observation
+                coded_param = (json.dumps(observation["coded_result"]),) if coded else ()
                 self.registry._execute(
                     "INSERT INTO clinical_source.fhir_laboratory_observations "
                     "(source_id,observation_reference,position,loinc_code,effective_at,"
                     "issued_at,status,value_text,unit_code,absent_reason,source_reported,"
-                    "clinical_review) "
-                    "VALUES (%s,%s,%s,%s,%s::timestamptz,%s::timestamptz,%s,%s,%s,%s,true,'not_performed')",
+                    "clinical_review" + (",coded_result" if coded else "") + ") "
+                    "VALUES (%s,%s,%s,%s,%s::timestamptz,%s::timestamptz,%s,%s,%s,%s,true,'not_performed'"
+                    + (",%s::jsonb)" if coded else ")"),
                     (source_id, observation["reference"], position,
                      observation["loinc_code"], observation["effective_at"],
                      observation["issued_at"], observation["status"],
                      observation["value_text"], observation["unit_code"],
-                     observation["absent_reason"]),
+                     observation["absent_reason"], *coded_param),
                 )
             self.registry._execute(
                 "INSERT INTO clinical_source.fhir_laboratory_commands "
@@ -251,11 +264,14 @@ class PostgresLaboratoryFHIR:
         if not self.registry._transaction_active:
             raise PatientRegistryError("Laboratory projection requires caller transaction")
         case_id = _case_id(case_id)
+        result_fields = self.sources._laboratory_result_fields()
+        if result_fields is None:
+            raise PatientRegistryError("Laboratory observation schema unavailable")
         rows = self.registry._fetchall(
             "SELECT o.source_id,s.document_id,s.version,s.sha256,o.observation_reference,"
             "o.loinc_code,o.effective_at,o.issued_at,f.specimen_reference,"
             "f.specimen_type_text,f.specimen_collected_at,f.report_reference,o.status,"
-            "o.value_text,o.unit_code,o.absent_reason "
+            "o.value_text,o.unit_code,o.absent_reason," + result_fields + " "
             "FROM clinical_source.fhir_laboratory_observations o "
             "JOIN clinical_source.fhir_laboratory_sources f ON f.source_id=o.source_id "
             "JOIN clinical_source.source_versions s ON s.source_id=o.source_id "
@@ -273,6 +289,7 @@ class PostgresLaboratoryFHIR:
             "specimen_collected_at": r[10].isoformat(),
             "report_reference": r[11], "status": r[12],
             "value_text": r[13], "unit_code": r[14], "absent_reason": r[15],
+            **r[16],
             "source_reported": True, "review_state": "not_established",
             "clinical_review": "not_performed", "clinical_meaning": None,
         } for r in rows]

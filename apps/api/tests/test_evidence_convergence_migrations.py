@@ -5,6 +5,7 @@ readiness bypass, copied patient ledger or alternate report renderer is used.
 Current authenticated HTTP is exercised only after the real converging upgrade.
 """
 from contextlib import contextmanager
+import json
 
 from sqlalchemy import text
 
@@ -95,6 +96,15 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
             tables = {name: connection.execute(text(
                 f"SELECT row_to_json(t)::text FROM {name} t ORDER BY row_to_json(t)::text"
             )).scalars().all() for name in names}
+            # Revision 0024 appends one nullable field to a populated table.
+            # Compare every old field and any populated new field across heads.
+            lab = "clinical_source.fhir_laboratory_observations"
+            if lab in tables:
+                observations = [json.loads(row) for row in tables[lab]]
+                for observation in observations:
+                    if observation.get("coded_result") is None:
+                        observation.pop("coded_result", None)
+                tables[lab] = sorted(json.dumps(row, sort_keys=True) for row in observations)
             sequences = {}
             for schema, name in connection.execute(text(
                 "SELECT schemaname,sequencename FROM pg_sequences "
