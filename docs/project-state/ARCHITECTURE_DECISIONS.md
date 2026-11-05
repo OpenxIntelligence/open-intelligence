@@ -88,3 +88,28 @@ Source registers: [OI Task Board](https://app.notion.com/p/40b3866f77ef807eb47bc
 
 This assessment records conflicts without altering historical source documents or assuming a new vendor, project license, clinical purpose, deployment or distribution approval.
 
+## Subsequent founder directive — modular engines, 5 November 2026
+
+The founder explicitly adopted one unified Open Intelligence ecosystem with
+modular, independently evolving domain engines and shared identity, permission,
+provenance, security and clinical governance. This extends the existing modular
+H1 direction. It does not authorize a parallel patient master, source ledger,
+World Model, clinical authority or competing roadmap.
+
+The [bounded implementation record](../engineering/MODULAR_ENGINE_BOUNDARIES.md)
+is grounded in main `4b13bc2e802bc785ea36f98d63478e51ee3a66a4`, which already
+contains the connected FastAPI/PostgreSQL and React application. Earlier selected
+heads and migration statements above remain historical evidence for their dates.
+
+The selected first engineering increment is an offline ownership/import gate,
+machine-readable component map and exact legacy-coupling ledger. It enforces
+reviewable boundaries while preserving runtime behavior. All 15 requested
+specialized engines and six product verticals are mapped in that record; a planned
+capability is not relabeled as an executable engine. Dynamic capability execution,
+durable workers, independently deployed services and consequential API/schema/
+authority changes retain their scoped implementation and approval gates.
+
+Track this work under existing OI-005 and OI-018, with OI-009/OI-013/OI-016 for
+subsequent freshness, authority/recovery and specialist-execution work. Test
+evidence belongs to the implementation revision/PR, not to adoption of the idea.
+
