@@ -243,3 +243,5 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 .source-image-studies h6 { font-size: 1rem; margin: .9rem 0 .35rem; }
 .source-image-studies summary { cursor: pointer; overflow-wrap: anywhere; }
 .source-image-studies details { margin-block: .5rem; }
+
+.lab-coded-label { white-space: pre-wrap; overflow-wrap: anywhere; }

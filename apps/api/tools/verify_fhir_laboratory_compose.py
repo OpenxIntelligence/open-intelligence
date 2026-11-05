@@ -23,7 +23,10 @@ BASE = "http://127.0.0.1:8000"
 CASE = "CASE-FHIR-LAB"
 RESTORED = "oi_api_test_fhir_lab_restore"
 REVOKED_RESTORE = "oi_api_test_fhir_lab_revoked"
-OBSERVATION = "Observation/FICTIONAL-OBS-A"
+OBSERVATION = "Observation/FICTIONAL-CODED"
+CODED_V1 = {"system": "urn:oi:synthetic:lab-results", "version": "fixture-v1",
+            "code": "NOT-DETECTED", "display": "Not detected"}
+CODED_V2 = {**CODED_V1, "code": "DETECTED", "display": "Detected"}
 
 FHIR_V1 = (
     '{"resourceType":"Bundle","type":"collection","entry":['
@@ -43,19 +46,30 @@ FHIR_V1 = (
     '"effectiveDateTime":"2026-04-03T09:05:00-04:00",'
     '"issued":"2026-04-04T12:00:00Z",'
     '"valueQuantity":{"value":4.20,"system":"http://unitsofmeasure.org","code":"10*9/L"}}},'
+    '{"fullUrl":"urn:uuid:00000000-0000-4000-8000-000000000005","resource":'
+    '{"resourceType":"Observation","id":"FICTIONAL-CODED","status":"final",'
+    '"category":[{"coding":[{"system":"http://terminology.hl7.org/CodeSystem/observation-category","code":"laboratory"}]}],'
+    '"code":{"coding":[{"system":"http://loinc.org","code":"999990-1"}]},'
+    '"subject":{"reference":"Patient/FICTIONAL-PATIENT-A"},'
+    '"specimen":{"reference":"Specimen/FICTIONAL-SPECIMEN-A"},'
+    '"effectiveDateTime":"2026-04-03T09:05:00-04:00","issued":"2026-04-04T12:00:00Z",'
+    '"valueCodeableConcept":{"coding":[{"system":"urn:oi:synthetic:lab-results","version":"fixture-v1",'
+    '"code":"NOT-DETECTED","display":"Not detected"}]}}},'
     '{"fullUrl":"urn:uuid:00000000-0000-4000-8000-000000000004","resource":'
     '{"resourceType":"DiagnosticReport","id":"FICTIONAL-REPORT-A","status":"final",'
     '"category":[{"coding":[{"system":"http://terminology.hl7.org/CodeSystem/observation-category","code":"laboratory"}]}],'
     '"code":{"coding":[{"system":"http://loinc.org","code":"58410-2"}]},'
     '"subject":{"reference":"Patient/FICTIONAL-PATIENT-A"},'
     '"specimen":[{"reference":"Specimen/FICTIONAL-SPECIMEN-A"}],'
-    '"result":[{"reference":"Observation/FICTIONAL-OBS-A"}],'
+    '"result":[{"reference":"Observation/FICTIONAL-OBS-A"},{"reference":"Observation/FICTIONAL-CODED"}],'
     '"effectiveDateTime":"2026-04-03T09:05:00-04:00",'
     '"issued":"2026-04-04T12:00:00Z"}}]}'
 )
 # The amended fictional source names its targets by their exact entry fullUrls.
 # Keep the first source's relative links to exercise recovery of both spellings.
 FHIR_V2 = (FHIR_V1.replace('"value":4.20', '"value":5.00')
+           .replace('"code":"NOT-DETECTED","display":"Not detected"', '"code":"DETECTED","display":"Detected"')
+           .replace('"Observation/FICTIONAL-CODED"', '"urn:uuid:00000000-0000-4000-8000-000000000005"')
            .replace("2026-04-04T12:00:00Z", "2026-04-05T12:00:00Z")
            .replace('"Patient/FICTIONAL-PATIENT-A"', '"urn:uuid:00000000-0000-4000-8000-000000000001"')
            .replace('"Specimen/FICTIONAL-SPECIMEN-A"', '"urn:uuid:00000000-0000-4000-8000-000000000002"')
@@ -73,7 +87,7 @@ def main():
         token = secrets.token_urlsafe(32)
         actions = ["patient_create", "patient_read", "case_binding_create", "case_binding_read",
                    "case_binding_revoke", "source_import", "source_read", "source_original_read",
-                   "composer_context_read", "question_create", "question_read", "evidence_read", "evidence_link"]
+                   "composer_context_read", "question_create", "question_read", "evidence_read", "evidence_link", "review_packet_read"]
         credential = {
             "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
             "actor": "ACTOR-FHIR-LAB-PROOF", "organization": "ORG-FHIR-LAB-PROOF",
@@ -172,22 +186,27 @@ def main():
             if previous is not None: value["expected_previous_source_id"] = previous
             return value
 
-        def verify_world(patient_path, source_id, value, history):
+        def verify_world(patient_path, source_id, value, coding, history):
             status, world = request(patient_path + "/cases/" + CASE + "/world-model")
             assert status == 200 and world["observations"] == []
-            assert world["summary"]["current_laboratory_observations"] == 1
-            assert world["summary"]["current_observations"] == 1
+            assert world["summary"]["current_laboratory_observations"] == 2
+            assert world["summary"]["current_observations"] == 2
             assert world["summary"]["historical_sources"] == history
-            lab, = world["laboratory_observations"]
-            assert lab["observation_reference"] == OBSERVATION
+            results = {row["observation_reference"]: row for row in world["laboratory_observations"]}
+            lab = results["Observation/FICTIONAL-OBS-A"]
+            assert "coded_result" not in lab
+            qualitative = results[OBSERVATION]
+            assert qualitative["source_id"] == source_id and qualitative["status"] == "reported_coded"
+            assert qualitative["coded_result"] == coding
+            assert all(qualitative[k] is None for k in ("value_text", "unit_code", "absent_reason", "clinical_meaning"))
             assert lab["specimen_reference"] == "Specimen/FICTIONAL-SPECIMEN-A"
             assert lab["report_reference"] == "DiagnosticReport/FICTIONAL-REPORT-A"
             assert (lab["source_id"],lab["loinc_code"],lab["value_text"],lab["unit_code"]) == (
                 source_id,"777-3",value,"10*9/L")
             assert lab["clinical_review"] == "not_performed" and lab["clinical_meaning"] is None
-            timeline, = world["laboratory_timeline"]
-            assert timeline["source_id"] == source_id
-            assert timeline["clinical_interpretation"] == "not_performed"
+            assert {t["observation_reference"] for t in world["laboratory_timeline"]} == set(results)
+            assert all(t["source_id"] == source_id and t["clinical_interpretation"] == "not_performed"
+                       for t in world["laboratory_timeline"])
             return world["snapshot_fingerprint"]
 
         def save_question(case_path, source, fingerprint, key, literal):
@@ -254,6 +273,14 @@ def main():
             if restricted:
                 wire = json.dumps(result)
                 assert original["record"]["title"] not in wire and original["record"]["link"] not in wire
+            status, report = request(cited["path"] + "/source-citation-report")
+            assert status == 200 and report["citations"]["question_anchor"] == cited["anchor"]
+            original_result = report["reported_result"]
+            expected = CODED_V1 if cited["anchor"]["source_version"] == 1 else CODED_V2
+            assert original_result["resource_reference"] == OBSERVATION
+            assert original_result["status"] == "reported_coded" and original_result["coded_result"] == expected
+            assert all(original_result[k] is None for k in ("value_text", "unit_code", "absent_reason"))
+            assert report["citations"]["links"] == result["links"]
             return result["source_access_receipt_id"]
 
         def withdraw_fixture_rights():
@@ -320,12 +347,12 @@ finally:
 
             command(["exec", "-T", "api", "python", "-m", "oi_api.evidence_catalog"])
             status, first = request(endpoint,body(FHIR_V1,"FHIR-LAB-IMPORT-1"))
-            assert status == 201 and first["version"] == 1 and first["observation_count"] == 1
+            assert status == 201 and first["version"] == 1 and first["observation_count"] == 2
             first_id=first["source_id"]
             assert request(endpoint,body(FHIR_V1,"FHIR-LAB-IMPORT-1")) == (
                 200,{**first,"duplicate":True})
             verify_original(patient_path,first_id,FHIR_V1,1,"current")
-            first_fingerprint = verify_world(patient_path,first_id,"4.20",0)
+            first_fingerprint = verify_world(patient_path,first_id,"4.20",CODED_V1,0)
             cmd1, saved1 = save_question(case_path, first, first_fingerprint, "LAB-QUESTION-ORIGINAL",
                                          "What does the first fictional source report?")
             verify_questions(questions, [(first, cmd1, saved1, "current_unreviewed_question")], patient)
@@ -337,7 +364,7 @@ finally:
             second_id=second["source_id"]
             verify_original(patient_path,first_id,FHIR_V1,1,"superseded")
             verify_original(patient_path,second_id,FHIR_V2,2,"current")
-            second_fingerprint = verify_world(patient_path,second_id,"5.00",1)
+            second_fingerprint = verify_world(patient_path,second_id,"5.00",CODED_V2,1)
             cmd2, saved2 = save_question(case_path, second, second_fingerprint, "LAB-QUESTION-AMENDED",
                                          "What changed in the amended fictional report?")
             assert saved2["question_id"] != saved1["question_id"]
@@ -353,7 +380,10 @@ finally:
             state=snapshot()
             assert state["revision"] == SCHEMA_REVISION
             assert len(state["sources"])==2 and len(state["fhir_sources"])==2
-            assert len(state["observations"])==2 and len(state["commands"])==2
+            assert len(state["observations"])==4 and len(state["commands"])==2
+            assert {row["profile_contract"] for row in state["fhir_sources"]} == {"oi.fhir-r4-laboratory-custody/2"}
+            assert {row["source_id"]: row["coded_result"] for row in state["observations"]
+                    if row["observation_reference"] == OBSERVATION} == {first_id: CODED_V1, second_id: CODED_V2}
             assert len(state["citations"]) == len(state["citation_anchors"]) == len(state["citation_events"]) == 2
             by_link = {row["link_id"]: row for row in state["citations"]}
             decisions = {row["decision_id"]: row for row in state["rights"]}
@@ -393,7 +423,7 @@ finally:
                 assert snapshot() == before
                 verify_original(patient_path,first_id,FHIR_V1,1,"superseded")
                 verify_original(patient_path,second_id,FHIR_V2,2,"current")
-                verify_world(patient_path,second_id,"5.00",1)
+                verify_world(patient_path,second_id,"5.00",CODED_V2,1)
                 verify_questions(questions, versions, patient)
 
                 verify_citation(first_cite, "source_reassessment_required")
@@ -404,7 +434,7 @@ finally:
             before_restore=restore("oi_api_synthetic",RESTORED)
             verify_original(patient_path,first_id,FHIR_V1,1,"superseded")
             verify_original(patient_path,second_id,FHIR_V2,2,"current")
-            verify_world(patient_path,second_id,"5.00",1)
+            verify_world(patient_path,second_id,"5.00",CODED_V2,1)
             assert request(endpoint,body(FHIR_V2,"FHIR-LAB-AMEND-1",first_id)) == (
                 200,{**second,"duplicate":True})
             # A restored read must commit its new receipt in the restored DB only.
@@ -473,6 +503,7 @@ finally:
             before_receipts = query(receipts_sql, REVOKED_RESTORE)
             for path,payload in (
                 (questions, None), (questions, cmd1), (questions, cmd2),
+                (first_cite["path"] + "/source-citation-report", None),
                 (old_links, None), (old_links, first_cite["payload"]),
                 (current_links, None), (current_links, second_cite["payload"]),
                 (first_cite["path"] + "/evidence-search", {"synthetic": True, "query": first_cite["term"]}),
@@ -488,7 +519,7 @@ finally:
                   "restored new citation insert and independent-import stale refusal, import receipts and sequences, "
                   "and revoked restored binding denied citation search, history and replay.")
             print("PASS FHIR LABORATORY RECOVERY: exact source versions, typed observations and "
-                  "both durable question anchors survived API/DB restart and pg_dump/pg_restore; "
+                  "both version-specific coded results and durable question anchors survived API/DB restart and pg_dump/pg_restore; "
                   "historical/current retries preserved IDs and fresh read receipt was restore-local; "
                   "second restored revoked binding denied original, history and both retries. "
                   "Source-reported only, no clinical interpretation.")

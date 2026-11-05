@@ -1,3 +1,4 @@
+import {codedResultLabel,CodingProvenance} from './laboratory-coding-view';
 import {useEffect,useRef,useState} from 'react';
 import {LaboratoryCitationReportPanel} from './laboratory-citation-report-panel.js';
 import {QuestionEvidencePanel} from './question-evidence-panel';
@@ -37,7 +38,7 @@ export function LaboratoryQuestionPanel({session,model,busy,sourceSavePending,st
       <select data-testid="lab-question-result" disabled={locked} value={selection} onChange={e=>{stop();select(e.target.value);}}>
         <option value="">Choose a result</option>
         {model.laboratory_observations.map(o=><option key={keyOf(o)} value={keyOf(o)}>
-          {o.document_id} v{o.document_version} · {o.observation_reference} · {o.status==='reported_value'?o.value_text+' '+o.unit_code:'Absent: '+o.absent_reason}
+          {o.document_id} v{o.document_version} · {o.observation_reference} · {o.status==='reported_value'?o.value_text+' '+o.unit_code:o.status==='reported_coded'?codedResultLabel(o.coded_result):'Absent: '+o.absent_reason}
         </option>)}
       </select>
     </label>
@@ -49,7 +50,9 @@ export function LaboratoryQuestionPanel({session,model,busy,sourceSavePending,st
     <div role="status" aria-live="polite">{pending?'Checking the current report and your access…':receipt&&item&&
       <div data-testid="lab-question-receipt"><strong>Question prepared · not saved</strong>
         <p>{question}</p><p>{item.observation_reference} · {item.document_id} v{item.document_version}</p>
+        {item.status==='reported_coded'&&<p className="lab-coded-label">{codedResultLabel(item.coded_result)}</p>}
         <details><summary>Source and access receipt</summary><p>Source <code>{item.source_id}</code></p>
+          {item.status==='reported_coded'&&<CodingProvenance coding={item.coded_result}/>}
           <p>Original SHA-256 <code>{item.source_sha256}</code></p><p>Read receipt <code>{receipt.receipt}</code></p></details>
         <button type="button" data-testid="lab-question-save" disabled={busy||sourceSavePending||locked} onClick={save}>Save this question</button>
       </div>}</div>

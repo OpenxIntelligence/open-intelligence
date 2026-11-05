@@ -26,6 +26,9 @@ _ID = re.compile(r"[A-Za-z0-9.-]{1,64}\Z")
 _LOINC = re.compile(r"[0-9]{1,6}-[0-9]\Z")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _ALLOWED_ABSENT = frozenset(("unknown", "not-performed", "error", "masked"))
+_RESULT_SYSTEM = "urn:oi:synthetic:lab-results"
+_RESULT_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+_RESULT_DISPLAY = re.compile(r"[ -~]{1,120}")
 _REPORT_SECTION_SYSTEM = "http://terminology.hl7.org/CodeSystem/v2-0074"
 _LAB_REPORT_SECTIONS = frozenset({"LAB", "CH", "HM"})
 _LAB_CATEGORY = "http://terminology.hl7.org/CodeSystem/observation-category"
@@ -116,6 +119,21 @@ def _lab_category(value: Any, *, report: bool = False) -> None:
     _reject("Unsupported laboratory category")
 
 
+def checked_result_coding(value: Any) -> dict:
+    """Return a single bounded fictional Coding, preserving only supplied fields."""
+    coding = _shape(value, {"system", "code"}, {"version", "display"})
+    if coding["system"] != _RESULT_SYSTEM:
+        _reject("Unsupported laboratory result coding system")
+    for key in ("code", "version"):
+        if key in coding and (type(coding[key]) is not str or not _RESULT_TOKEN.fullmatch(coding[key])):
+            _reject("Invalid laboratory result code or version")
+    if "display" in coding:
+        display = coding["display"]
+        if type(display) is not str or not _RESULT_DISPLAY.fullmatch(display) or display.strip(" ") != display:
+            _reject("Invalid laboratory result coding display")
+    return dict(coding)
+
+
 def _full_url(value: Any) -> str:
     if type(value) is not str or not value.startswith("urn:uuid:"):
         _reject("Only local bundle identities are supported")
@@ -144,6 +162,11 @@ class PreparedLaboratoryBundle:
     authority: str = "synthetic_source_unreviewed"
     clinical_review: str = "not_performed"
     persisted: bool = False
+
+    @property
+    def profile_contract(self) -> str:
+        version = 2 if any(row["status"] == "reported_coded" for row in self.observations) else 1
+        return f"oi.fhir-r4-laboratory-custody/{version}"
 
 
 def prepare_laboratory_bundle(raw: bytes, *, expected_subject_reference: str) -> PreparedLaboratoryBundle:
@@ -209,7 +232,7 @@ def prepare_laboratory_bundle(raw: bytes, *, expected_subject_reference: str) ->
     for ref, observation in sorted(observations.items()):
         _shape(observation, {"resourceType", "id", "status", "category", "code",
                              "subject", "specimen", "effectiveDateTime", "issued"},
-               {"valueQuantity", "dataAbsentReason"})
+               {"valueQuantity", "valueCodeableConcept", "dataAbsentReason"})
         if observation["status"] != "final":
             _reject("Non-final or corrected results require separate source review")
         _lab_category(observation["category"])
@@ -221,14 +244,13 @@ def prepare_laboratory_bundle(raw: bytes, *, expected_subject_reference: str) ->
             _reject("Observation patient or specimen mismatch")
         effective = _instant(observation["effectiveDateTime"])
         issued = _instant(observation["issued"])
-        has_value = "valueQuantity" in observation
-        has_absent = "dataAbsentReason" in observation
-        if has_value == has_absent:
-            _reject("Result must be a value or an explicit absent reason, never both")
+        result_fields = observation.keys() & {"valueQuantity", "valueCodeableConcept", "dataAbsentReason"}
+        if len(result_fields) != 1:
+            _reject("Exactly one result value or explicit absent reason required")
         row = {"reference": ref, "loinc_code": code["code"],
                "effective_at": effective, "issued_at": issued,
                "source_reported": True, "clinical_review": "not_performed"}
-        if has_value:
+        if "valueQuantity" in result_fields:
             quantity = _shape(observation["valueQuantity"], {"value", "system", "code"})
             if quantity["system"] != "http://unitsofmeasure.org":
                 _reject("Only declared UCUM units supported; no conversion")
@@ -242,6 +264,13 @@ def prepare_laboratory_bundle(raw: bytes, *, expected_subject_reference: str) ->
                 _reject("Result quantity is nonfinite or outside profile bounds")
             row.update(status="reported_value", value_text=format(number, "f"),
                        unit_code=quantity["code"], absent_reason=None)
+        elif "valueCodeableConcept" in result_fields:
+            concept = _shape(observation["valueCodeableConcept"], {"coding"})
+            coding = concept["coding"]
+            if type(coding) is not list or len(coding) != 1:
+                _reject("Exactly one laboratory result coding required")
+            row.update(status="reported_coded", value_text=None, unit_code=None,
+                       absent_reason=None, coded_result=checked_result_coding(coding[0]))
         else:
             absent = _concept(observation["dataAbsentReason"],
                               "http://terminology.hl7.org/CodeSystem/data-absent-reason")

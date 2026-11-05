@@ -1,4 +1,5 @@
 import type {SourceWorldModel, WorldLaboratoryObservation} from './source-world-model.js';
+import {laboratoryValueKeys,readLaboratoryValue,sameLaboratoryValue} from './laboratory-result.js';
 
 export function validLabQuestion(text:string):boolean {
   return text===text.trim() && [...text].length>=8 && [...text].length<=500 && !/[\u0000-\u001f\u007f]/.test(text);
@@ -24,6 +25,11 @@ function matches(x:unknown, expected:Record<string,unknown>, timestamps:readonly
 export function readLabPreparation(x:unknown, world:SourceWorldModel, item:WorldLaboratoryObservation, question:string):LabPreparation {
   if(!record(x)) throw Error('Invalid laboratory preparation');
   const {selected_source, access_receipt_id, preflight_sha256, ...body}=x;
+  if(!record(selected_source)||!sameLaboratoryValue(readLaboratoryValue(selected_source),item))
+    throw Error('Invalid prepared laboratory result');
+  // Validate the value variant separately; the rest of the source receipt is scalar.
+  const sourceContext={...selected_source};
+  for(const key of laboratoryValueKeys(selected_source))delete sourceContext[key];
   if(!matches(body,{
     contract:'oi.synthetic-laboratory-question-preflight/1', patient_id:world.patient_id, case_id:world.case_id, question,
     source_snapshot_contract:world.contract, source_snapshot_sha256:world.snapshot_fingerprint, synthetic:true,
@@ -31,14 +37,13 @@ export function readLabPreparation(x:unknown, world:SourceWorldModel, item:World
     biomedical_evidence_rights_verified:false, model_execution_authorized:false, clinical_approval:false,
     clinical_interpretation:'not_performed', terminology_validation:'not_performed',
     reassessment_policy:'revalidate_source_and_authority_before_any_future_write',
-  }) || !matches(selected_source,{
+  }) || !matches(sourceContext,{
     anchor_kind:'fhir_observation', source_id:item.source_id, document_id:item.document_id,
     version:item.document_version, sha256:item.source_sha256, kind:'laboratory',
     resource_reference:item.observation_reference, specimen_reference:item.specimen_reference,
     specimen_type_text:item.specimen_type_text, specimen_collected_at:item.specimen_collected_at,
     report_reference:item.report_reference, loinc_code:item.loinc_code, effective_at:item.effective_at,
-    issued_at:item.issued_at, status:item.status, value_text:item.value_text, unit_code:item.unit_code,
-    absent_reason:item.absent_reason, source_reported:true, review_state:'not_established', clinical_review:'not_performed',
+    issued_at:item.issued_at, source_reported:true, review_state:'not_established', clinical_review:'not_performed',
   },['effective_at','issued_at','specimen_collected_at']) || typeof access_receipt_id!=='string' || !/^ACCESS-[0-9A-F]{32}$/.test(access_receipt_id) ||
       typeof preflight_sha256!=='string' || !/^[0-9a-f]{64}$/.test(preflight_sha256)) throw Error('Invalid laboratory preparation');
   return Object.freeze({receipt:access_receipt_id,fingerprint:preflight_sha256});

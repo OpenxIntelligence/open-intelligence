@@ -206,7 +206,7 @@ def validate_fhir_laboratory_original(
             "report_effective_at": _instant(prepared.report_effective_at),
             "report_issued_at": _instant(prepared.report_issued_at),
             "fhir_release": "R4",
-            "profile_contract": "oi.fhir-r4-laboratory-custody/1",
+            "profile_contract": prepared.profile_contract,
             "observation_count": len(prepared.observations),
         }
         for key, expected_value in exact_metadata.items():
@@ -218,7 +218,7 @@ def validate_fhir_laboratory_original(
 
         normalized = []
         for item in observations:
-            if not isinstance(item, Mapping):
+            if not isinstance(item, Mapping) or item["source_id"] != row["source_id"]:
                 raise ValueError()
             normalized.append({
                 "reference": item["observation_reference"],
@@ -232,6 +232,7 @@ def validate_fhir_laboratory_original(
                 "source_reported": item["source_reported"],
                 "clinical_review": item["clinical_review"],
                 "position": item["position"],
+                **({"coded_result": item["coded_result"]} if "coded_result" in item else {}),
             })
         expected_observations = [{
             "reference": item["reference"], "loinc_code": item["loinc_code"],
@@ -240,6 +241,7 @@ def validate_fhir_laboratory_original(
             "value_text": item["value_text"], "unit_code": item["unit_code"],
             "absent_reason": item["absent_reason"], "source_reported": True,
             "clinical_review": "not_performed", "position": position,
+            **({"coded_result": item["coded_result"]} if "coded_result" in item else {}),
         } for position, item in enumerate(prepared.observations, 1)]
         if normalized != expected_observations:
             raise ValueError()

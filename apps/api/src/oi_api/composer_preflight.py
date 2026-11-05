@@ -231,6 +231,7 @@ def prepare_laboratory_question(source_index: dict, laboratory_observations: lis
         "issued_at": anchor["issued_at"], "status": anchor["status"],
         "value_text": anchor["value_text"], "unit_code": anchor["unit_code"],
         "absent_reason": anchor["absent_reason"], "source_reported": True,
+        **({"coded_result": anchor["coded_result"]} if "coded_result" in anchor else {}),
         "review_state": "not_established", "clinical_review": "not_performed",
     }
     prepared = laboratory_preflight_payload(patient_id, case_id, question, world["snapshot_fingerprint"], selected_source)

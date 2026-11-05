@@ -33,7 +33,7 @@ export function LaboratoryIntake({session,patientId,caseId,disabled=false}:{
   return <section className="intake-panel" data-testid="laboratory-intake" aria-labelledby="laboratory-heading">
     <h3 id="laboratory-heading">Add structured laboratory results</h3>
     <p>Import an independently authored fictional FHIR R4 laboratory JSON file into this patient’s existing record.
-      The supported format contains one patient, one specimen, one final report and 1–16 final observations.</p>
+      The supported format contains one patient, one specimen, one final report and 1–16 final observations. Each observation can report a quantity, a fictional result code or a reason for an absent result.</p>
     <p className="small">Patient <code>{patientId}</code> · case <code>{caseId}</code>. Imported results stay unreviewed.</p>
     <form onSubmit={event=>{event.preventDefault();if(file&&!locked)void session.importLaboratory(caseId,file.text,confirmed,previous||null);}}>
       <label htmlFor="laboratory-file">Fictional laboratory JSON (up to 64 KiB)</label>

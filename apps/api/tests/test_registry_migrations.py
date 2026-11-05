@@ -111,6 +111,7 @@ class RegistryMigrationTests(unittest.TestCase):
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.fhir_laboratory_sources"))
             connection.execute(text("DROP FUNCTION IF EXISTS clinical_source.guard_fhir_laboratory_command_insert()"))
             connection.execute(text("DROP FUNCTION IF EXISTS clinical_source.guard_fhir_laboratory_source_insert()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS clinical_source.verify_fhir_laboratory_result_profile()"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.annotation_revisions"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.document_intakes"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.source_image_links"))

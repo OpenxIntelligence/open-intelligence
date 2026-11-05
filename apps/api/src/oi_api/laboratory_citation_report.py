@@ -38,7 +38,7 @@ class LaboratoryCitationReport:
             row = self.registry._fetchone(
                 "SELECT s.document_id,s.state,f.specimen_reference,f.specimen_type_text,"
                 "f.specimen_collected_at,f.report_reference,o.loinc_code,o.effective_at,"
-                "o.issued_at,o.status,o.value_text,o.unit_code,o.absent_reason "
+                "o.issued_at,o.status,o.value_text,o.unit_code,o.absent_reason,o.coded_result "
                 "FROM clinical_source.source_versions s "
                 "JOIN clinical_source.fhir_laboratory_sources f USING (source_id) "
                 "JOIN clinical_source.fhir_laboratory_observations o USING (source_id) "
@@ -65,10 +65,11 @@ class LaboratoryCitationReport:
                 "specimen_collected_at": row[4].isoformat(), "report_reference": row[5],
                 "loinc_code": row[6], "effective_at": row[7].isoformat(), "issued_at": row[8].isoformat(),
                 "status": row[9], "value_text": row[10], "unit_code": row[11], "absent_reason": row[12],
+                **({"coded_result": row[13]} if row[13] is not None else {}),
                 "source_reported": True, "review_state": "not_established", "clinical_review": "not_performed",
             }
             # Same serializer used by the original save. This binds literal numeric
-            # precision/absence, units, report, specimen, timestamps and wording,
+            # precision, absence or coding, units, report, specimen, timestamps and wording,
             # even after this source stops appearing in the current World Model.
             original = laboratory_preflight_payload(patient_id, case_id, question["question"],
                                                     anchor["source_snapshot_sha256"], result)

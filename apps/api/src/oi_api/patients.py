@@ -24,6 +24,7 @@ from .case_bindings import CanonicalCaseBindings
 from .sources import PostgresSourceVersions
 from .source_world_model import project_source_world_model
 from .laboratory_fhir_store import PostgresLaboratoryFHIR
+from .laboratory_result_contracts import LaboratoryResultStatus, ReportedLaboratoryResult
 from .composer_preflight import PostgresSourceComposerPreflight, SHA256
 from .source_questions import PostgresSourceQuestions
 from .question_review_returns import PostgresQuestionReviewReturns
@@ -318,7 +319,7 @@ class WorldObservation(SourceOncologyFields):
     clinical_meaning: None
 
 
-class WorldLaboratoryObservation(Contract):
+class WorldLaboratoryObservation(ReportedLaboratoryResult):
     source_id: str
     document_id: str
     document_version: int = Field(ge=1)
@@ -331,10 +332,6 @@ class WorldLaboratoryObservation(Contract):
     specimen_type_text: str
     specimen_collected_at: datetime
     report_reference: str
-    status: Literal["reported_value", "reported_absent"]
-    value_text: str | None
-    unit_code: str | None
-    absent_reason: str | None
     source_reported: Literal[True]
     review_state: Literal["not_established"]
     clinical_review: Literal["not_performed"]
@@ -348,7 +345,7 @@ class WorldLaboratoryTimelineItem(Contract):
     effective_at: datetime
     issued_at: datetime
     specimen_reference: str
-    status: Literal["reported_value", "reported_absent"]
+    status: LaboratoryResultStatus
     clinical_interpretation: Literal["not_performed"]
 
 

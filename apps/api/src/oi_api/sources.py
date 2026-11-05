@@ -59,6 +59,36 @@ class PostgresSourceVersions:
         return bool(self._document_filter() and self.registry._fetchone(
             "SELECT source_id FROM clinical_source.document_intakes WHERE source_id=%s", (source_id,)))
 
+    def _laboratory_result_fields(self) -> str | None:
+        # Older populated migration fixtures predate the optional result column.
+        # Preserve the distinction between SQL NULL (no field) and a corrupt
+        # stored JSON null (present field) when comparing against original bytes.
+        table, coded = self.registry._fetchone(
+            "SELECT relation,EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid=relation "
+            "AND attname='coded_result' AND NOT attisdropped) FROM "
+            "(SELECT to_regclass('clinical_source.fhir_laboratory_observations') AS relation) AS lab")
+        if table is None:
+            return None
+        return ("CASE WHEN o.coded_result IS NULL THEN '{}'::jsonb "
+                "ELSE jsonb_build_object('coded_result',o.coded_result) END" if coded else "'{}'::jsonb")
+
+    def _laboratory_children(self, result_fields: str, *, case_id: str | None = None,
+                             source_id: str | None = None) -> list[dict]:
+        if (case_id is None) == (source_id is None):
+            raise ValueError("Exactly one laboratory read scope required")
+        scope = ("JOIN clinical_source.source_versions s ON s.source_id=o.source_id "
+                 "WHERE s.case_id=%s ORDER BY s.document_id,s.version,o.position"
+                 if case_id is not None else "WHERE o.source_id=%s ORDER BY o.position")
+        rows = self.registry._fetchall(
+            "SELECT o.source_id,o.observation_reference,o.position,o.loinc_code,o.effective_at,"
+            "o.issued_at,o.status,o.value_text,o.unit_code,o.absent_reason,o.source_reported,"
+            "o.clinical_review," + result_fields + " FROM clinical_source.fhir_laboratory_observations o "
+            + scope, (case_id if case_id is not None else source_id,))
+        fields = ("source_id", "observation_reference", "position", "loinc_code", "effective_at",
+                  "issued_at", "status", "value_text", "unit_code", "absent_reason", "source_reported",
+                  "clinical_review")
+        return [dict(zip(fields, row), **row[-1]) for row in rows]
+
     def _binding(self, patient_id: str, case_id: str, organization: str, purpose: str) -> int:
         PostgresRecordRequests(self.registry)._active_patient(patient_id, organization)
         # Row lock serializes same-case imports and revocation, including
@@ -135,9 +165,8 @@ class PostgresSourceVersions:
         originals = [dict(zip(fields, row), case_id=case_id) for row in rows]
         fhir_sources = {}
         fhir_observations = {}
-        table = self.registry._fetchone(
-            "SELECT to_regclass('clinical_source.fhir_laboratory_sources')")[0]
-        if table is not None:
+        result_fields = self._laboratory_result_fields()
+        if result_fields is not None:
             metadata_rows = self.registry._fetchall(
                 "SELECT f.source_id,f.source_organization,f.source_system,f.subject_reference,"
                 "f.specimen_reference,f.specimen_type_text,f.specimen_collected_at,"
@@ -152,20 +181,8 @@ class PostgresSourceVersions:
                 "report_reference","report_effective_at","report_issued_at","fhir_release",
                 "profile_contract","observation_count")
             fhir_sources = {row[0]: dict(zip(metadata_fields, row)) for row in metadata_rows}
-            observation_rows = self.registry._fetchall(
-                "SELECT o.source_id,o.observation_reference,o.position,o.loinc_code,"
-                "o.effective_at,o.issued_at,o.status,o.value_text,o.unit_code,o.absent_reason,"
-                "o.source_reported,o.clinical_review "
-                "FROM clinical_source.fhir_laboratory_observations o "
-                "JOIN clinical_source.source_versions s ON s.source_id=o.source_id "
-                "WHERE s.case_id=%s ORDER BY s.document_id,s.version,o.position", (case_id,))
-            observation_fields = (
-                "source_id","observation_reference","position","loinc_code","effective_at",
-                "issued_at","status","value_text","unit_code","absent_reason",
-                "source_reported","clinical_review")
-            for row in observation_rows:
-                item = dict(zip(observation_fields, row))
-                fhir_observations.setdefault(row[0], []).append(item)
+            for item in self._laboratory_children(result_fields, case_id=case_id):
+                fhir_observations.setdefault(item["source_id"], []).append(item)
         return validate_snapshot(
             originals, assertions, requested_case_id=case_id,
             fhir_sources=fhir_sources, fhir_observations=fhir_observations)
@@ -303,9 +320,8 @@ class PostgresSourceVersions:
             if previous is not None:
                 predecessor = dict(zip(("source_id", "case_id", "document_id", "version", "kind",
                                         "event_date", "specimen_id", "state"), previous))
-        lab_table = self.registry._fetchone(
-            "SELECT to_regclass('clinical_source.fhir_laboratory_sources')")[0]
-        if lab_table is not None:
+        result_fields = self._laboratory_result_fields()
+        if result_fields is not None:
             metadata_row = self.registry._fetchone(
                 "SELECT source_id,source_organization,source_system,subject_reference,"
                 "specimen_reference,specimen_type_text,specimen_collected_at,"
@@ -320,16 +336,7 @@ class PostgresSourceVersions:
                     "report_reference","report_effective_at","report_issued_at","fhir_release",
                     "profile_contract","observation_count")
                 metadata = dict(zip(metadata_fields, metadata_row))
-                observation_rows = self.registry._fetchall(
-                    "SELECT source_id,observation_reference,position,loinc_code,effective_at,"
-                    "issued_at,status,value_text,unit_code,absent_reason,source_reported,"
-                    "clinical_review FROM clinical_source.fhir_laboratory_observations "
-                    "WHERE source_id=%s ORDER BY position", (source_id,))
-                observation_fields = (
-                    "source_id","observation_reference","position","loinc_code","effective_at",
-                    "issued_at","status","value_text","unit_code","absent_reason",
-                    "source_reported","clinical_review")
-                observations = [dict(zip(observation_fields, row)) for row in observation_rows]
+                observations = self._laboratory_children(result_fields, source_id=source_id)
                 return stored, validate_fhir_laboratory_original(
                     stored, metadata, observations, requested_case_id=case_id,
                     predecessor=predecessor)

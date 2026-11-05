@@ -22,10 +22,13 @@ SID = "SRC-" + "A" * 32
 QUESTION = "What should I ask my care team about this source-reported result?"
 
 
-def context(value=Decimal("4.20"), absent=None):
+def context(value=Decimal("4.20"), absent=None, coded=None):
     bundle = example()
     observation = resource(bundle, "Observation")
-    if absent is None:
+    if coded is not None:
+        del observation["valueQuantity"]
+        observation["valueCodeableConcept"] = {"coding": [coded]}
+    elif absent is None:
         observation["valueQuantity"]["value"] = Decimal("4.20")
     else:
         del observation["valueQuantity"]
@@ -60,6 +63,8 @@ def context(value=Decimal("4.20"), absent=None):
            "absent_reason": observation["absent_reason"], "source_reported": True,
            "review_state": "not_established", "clinical_review": "not_performed",
            "clinical_meaning": None}
+    if "coded_result" in observation:
+        lab["coded_result"] = observation["coded_result"]
     return index, [lab]
 
 
@@ -99,6 +104,49 @@ class LaboratoryQuestionPreparationTests(unittest.TestCase):
         self.assertNotEqual(selected["effective_at"], selected["issued_at"])
         self.assertEqual(selected["specimen_collected_at"], "2026-04-03T09:05:00-04:00")
         self.assertEqual(selected["review_state"], "not_established")
+
+    def test_legacy_preflights_keep_their_original_hash_and_shape(self):
+        # Fixed digests from the quantity/absence contract before coded support.
+        for absent, digest in (
+            (None, "7cd0c51938f2d3a1215b9526cbcd7299ca5d4cf28e24f4125498b038c4a0071c"),
+            ("unknown", "3a7c2ae6045b6bef27bb9f02346e58579f43f8f017a4d590d1476e9142e4facf"),
+        ):
+            prepared = self.prepare(*context(absent=absent))
+            self.assertEqual(prepared["preflight_sha256"], digest)
+            self.assertNotIn("coded_result", prepared["selected_source"])
+
+    def test_coded_preflight_commits_to_the_exact_literal_without_aliasing(self):
+        coding = {"system": "urn:oi:synthetic:lab-results", "code": "Pattern.A",
+                  "version": "r1.0", "display": "Fictional pattern A"}
+        index, rows = context(coded=coding)
+        prepared = self.prepare(index, rows)
+        selected = prepared["selected_source"]
+        self.assertEqual(selected["coded_result"], coding)
+        self.assertEqual(selected["status"], "reported_coded")
+        self.assertTrue(all(selected[k] is None for k in ("value_text", "unit_code", "absent_reason")))
+        # Isolate the selected-literal digest from the independently checked
+        # original SHA: even a display-only edit changes the preflight.
+        rows[0]["coded_result"]["display"] = "Second fictional wording"
+        self.assertNotEqual(self.prepare(index, rows)["preflight_sha256"], prepared["preflight_sha256"])
+        self.assertEqual(selected["coded_result"], coding)
+
+    def test_invalid_or_mixed_typed_codings_cannot_enter_a_question(self):
+        coding = {"system": "urn:oi:synthetic:lab-results", "code": "Pattern.A"}
+        index, rows = context(coded=coding)
+        for changes in (
+            {"coded_result": None}, {"coded_result": {**coding, "version": None}},
+            {"coded_result": {**coding, "display": " padded"}},
+            {"coded_result": {**coding, "code": "A/B"}},
+            {"coded_result": {**coding, "system": "urn:other"}},
+            {"coded_result": {**coding, "interpretation": "inferred"}},
+            {"value_text": "0"}, {"unit_code": "mg"}, {"absent_reason": "unknown"},
+            {"status": "reported_value", "value_text": "0", "unit_code": "mg"},
+            {"status": "reported_absent", "absent_reason": "masked"},
+        ):
+            with self.subTest(changes=changes), self.assertRaises(PatientRegistryError):
+                self.prepare(index, [rows[0] | changes])
+        with self.assertRaises(PatientRegistryError):
+            self.prepare(index, [{k: v for k, v in rows[0].items() if k != "coded_result"}])
 
     def test_zero_negative_and_absence_never_change_meaning(self):
         for value, expected in [(Decimal("0"), "0"), (Decimal("-2.50"), "-2.50")]:

@@ -91,7 +91,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
         </li>)}</ol>}
         {model.laboratory_observations.length>0&&<section aria-labelledby="laboratory-results-heading" data-testid="world-laboratory-results">
           <h3 id="laboratory-results-heading">Laboratory results (<span data-testid="world-laboratory-count">{model.summary.current_laboratory_observations}</span>)</h3>
-          <p>Values, units and dates are reported by the source. An absent result is not a negative result. Clinical interpretation and reference-range assessment have not been performed.</p>
+          <p>Values, units, result codes and dates are reported by the source. An absent result is not a negative result. Clinical interpretation and reference-range assessment have not been performed.</p>
           <LaboratoryResultBrowser key={'labs:'+model.access_receipt_id}>{model.laboratory_timeline.map(entry=>{
             const item=laboratoryByRef.get(entry.source_id+':'+entry.observation_reference)!;
             return <LaboratoryResultRow key={item.source_id+':'+item.observation_reference} result={item}>

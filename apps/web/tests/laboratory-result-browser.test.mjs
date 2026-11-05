@@ -74,3 +74,18 @@ test('a large timeline renders bounded pages without dropping or duplicating any
   const shown=[...rows(first),...rows(second)];assert.equal(shown.length,data.length);
   data.forEach((entry,i)=>{assert.ok(shown[i].includes(entry.observation_reference));assert.ok(shown[i].includes(entry.source_id));});
 });
+
+test('coded status filtering spans pages without mixing test codes or bundle-local source identities',()=>{
+  const original=results(true),data=[...original,...original.slice(0,3)].map((o,i)=>i<27?
+    {...o,observation_reference:'Observation/Literal-'+i,status:'reported_coded',value_text:null,unit_code:null,absent_reason:null,
+      coded_result:{system:'urn:oi:synthetic:lab-results',code:'FIXTURE-'+i}}:o);
+  const filter={status:'reported_coded'},first=page(data,filter),last=page(data,filter,1);
+  assert.match(first,/<option value="reported_coded" selected="">Coded result<\/option>/);
+  assert.match(first,/Showing 1–25 of 27/);assert.match(last,/Showing 26–27 of 27/);
+  const shown=[...rows(first),...rows(last)];assert.equal(shown.length,27);
+  shown.forEach((row,i)=>{assert.ok(row.includes('Coded result: FIXTURE-'+i+'<'));assert.ok(row.includes(data[i].source_id));});
+  const b=data[0],criteria={...filter,context:JSON.stringify([b.source_id,b.specimen_reference]),code:b.loinc_code};
+  const scoped=rows(page(data,criteria));
+  assert.equal(scoped.length,data.filter(r=>r.status===filter.status&&r.source_id===b.source_id&&r.loinc_code===b.loinc_code).length);
+  assert.ok(scoped.every(row=>row.includes(b.source_sha256)&&row.includes('LOINC '+b.loinc_code)));
+});

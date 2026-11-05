@@ -62,3 +62,9 @@ The November 4 audit observed main at `a5a5482f` and assessed #481 as a draft. #
 | Parallel proposals | [#543](https://github.com/OpenxIntelligence/open-intelligence/pull/543) command admission, [#544](https://github.com/OpenxIntelligence/open-intelligence/pull/544) visit/note UI, [#547](https://github.com/OpenxIntelligence/open-intelligence/pull/547) purpose-bound acquisition and [#548](https://github.com/OpenxIntelligence/open-intelligence/pull/548) episode disagreements have distinct owners. | Compare against the eventual integration head and retain verified donor history. No capability is credited to this branch from its PR title. |
 
 The exact proposed-head workflows and changes are tracked on [#546](https://github.com/OpenxIntelligence/open-intelligence/pull/546). Clinical use, institutional consent/authentication, broad LIS/PACS support and production release are outstanding.
+
+## Coded laboratory results on the verified #546 base
+
+The source revision for this extension is [5a6d77d9](https://github.com/OpenxIntelligence/open-intelligence/commit/5a6d77d97b9e0b6e0ea172d45ca8977374ccc5eb). The increment adds a distinct coded-result form to the existing source, World Model, question and citation owners. It extends the real browser and PostgreSQL restore exercises with a fictional result amended from “Not detected” to “Detected,” while preserving the first question's literal source and prior report version.
+
+The profile admits one project-owned fictional result code system. General terminology validation, governed external result systems, free-text narratives, multi-coding translation, compound panels and clinical validation remain open. [Current profile](../../apps/api/README.md#source-reported-coded-laboratory-results) · [Clinical model](CLINICAL_DATA_MODEL.md).

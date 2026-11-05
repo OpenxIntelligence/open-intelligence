@@ -4,6 +4,7 @@
  */
 import {parseOncologyContext} from './source-contracts.js';
 import type {ReportedOncologyContext,SourceVersion} from './source-contracts.js';
+import {laboratoryValueKeys,readLaboratoryValue,type LaboratoryValue} from './laboratory-result.js';
 
 export type WorldRef=Readonly<{source_id:string;source_line:number}>;
 export type WorldObservation=Readonly<{
@@ -17,15 +18,14 @@ export type WorldLaboratoryObservation=Readonly<{
   source_id:string;document_id:string;document_version:number;source_sha256:string;
   observation_reference:string;loinc_code:string;effective_at:string;issued_at:string;
   specimen_reference:string;specimen_type_text:string;specimen_collected_at:string;
-  report_reference:string;status:'reported_value'|'reported_absent';
-  value_text:string|null;unit_code:string|null;absent_reason:string|null;
+  report_reference:string;
   source_reported:true;review_state:'not_established';
   clinical_review:'not_performed';clinical_meaning:null;
-}>;
+}>&LaboratoryValue;
 export type WorldLaboratoryTimelineItem=Readonly<{
   source_id:string;observation_reference:string;loinc_code:string;
   effective_at:string;issued_at:string;specimen_reference:string;
-  status:'reported_value'|'reported_absent';clinical_interpretation:'not_performed';
+  status:LaboratoryValue['status'];clinical_interpretation:'not_performed';
 }>;
 export type WorldConflict=Readonly<{
   specimen_id:string;event_date:string;finding_key:string;
@@ -57,7 +57,6 @@ const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const TYPES=new Set(['clinical','pathology','laboratory','imaging','molecular','other']);
 const STATES=new Set(['reported','negative','pending','indeterminate','not-reported','not-assessed','conflicting']);
 const UNRESOLVED=new Set(['pending','indeterminate','not-reported','not-assessed','conflicting']);
-const LAB_STATUS=new Set(['reported_value','reported_absent']);
 const LOINC=/^[0-9]{1,6}-[0-9]$/;
 const error=():never=>{throw Error('world-model-contract');};
 function shape(v:unknown,keys:readonly string[]):Record<string,unknown>{
@@ -103,32 +102,27 @@ function ref(v:unknown,currentIds:Set<string>):WorldRef{
   if(!SOURCE.test(id)||!currentIds.has(id))return error();
   return Object.freeze({source_id:id,source_line:line});
 }
-export function isLaboratoryAbsentReason(value:unknown):boolean{
-  return value==='unknown'||value==='not-performed'||value==='error'||value==='masked';
-}
-
 function labObs(v:unknown,current:Map<string,SourceVersion>):WorldLaboratoryObservation{
   const x=shape(v,['source_id','document_id','document_version','source_sha256',
     'observation_reference','loinc_code','effective_at','issued_at','specimen_reference',
-    'specimen_type_text','specimen_collected_at','report_reference','status','value_text',
-    'unit_code','absent_reason','source_reported','review_state','clinical_review','clinical_meaning']);
+    'specimen_type_text','specimen_collected_at','report_reference',...laboratoryValueKeys(v),
+    'source_reported','review_state','clinical_review','clinical_meaning']);
   const id=str(x.source_id,36),src=current.get(id);
   if(!src||src.kind!=='laboratory'||x.document_id!==src.document_id||
      x.document_version!==src.version||x.source_sha256!==src.sha256||
      x.source_reported!==true||x.review_state!=='not_established'||
-     x.clinical_review!=='not_performed'||x.clinical_meaning!==null||
-     !LAB_STATUS.has(String(x.status)))return error();
-  str(x.observation_reference,128);const loinc=str(x.loinc_code,64);
+     x.clinical_review!=='not_performed'||x.clinical_meaning!==null)return error();
+  const reference=str(x.observation_reference,128);
+  if(x.status==='reported_coded'&&(!/^Observation\/[A-Za-z0-9.-]{1,64}$/.test(reference)||
+    x.report_reference!=='DiagnosticReport/'+src.document_id||!src.specimen_id||x.specimen_reference!=='Specimen/'+src.specimen_id))return error();
+  const loinc=str(x.loinc_code,64);
   if(!LOINC.test(loinc))return error();
   stamp(x.effective_at);stamp(x.issued_at);str(x.specimen_reference,128);
   str(x.specimen_type_text,100);stamp(x.specimen_collected_at);str(x.report_reference,128);
-  if(x.status==='reported_value'){
-    if(typeof x.value_text!=='string'||!x.value_text||x.value_text.length>64||
-       typeof x.unit_code!=='string'||!x.unit_code||x.unit_code.length>32||
-       x.absent_reason!==null)return error();
-  }else if(x.value_text!==null||x.unit_code!==null||
-           !isLaboratoryAbsentReason(x.absent_reason))return error();
-  return Object.freeze({...x} as WorldLaboratoryObservation);
+  const value=readLaboratoryValue(x);
+  if(value.status==='reported_value'&&(!value.value_text||value.value_text.length>64||
+    !value.unit_code||value.unit_code.length>32))return error();
+  return Object.freeze({...x,...value} as WorldLaboratoryObservation);
 }
 function obs(v:unknown,current:Map<string,SourceVersion>):WorldObservation{
   const typed=v!==null && typeof v==='object' && Object.hasOwn(v,'oncology');

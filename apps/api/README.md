@@ -4,7 +4,7 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. The API requires `0023_dicom_mr_custody`. Run
+records the original integration. The API requires `0024_fhir_coded_results`. Run
 `python -m oi_api.migrate upgrade head` from either published 0019 revision.
 The join retains both the [encounter and note service](#connected-encounter-and-note-service)
 and the original Observation behind each governed laboratory citation. See
@@ -12,6 +12,20 @@ and the original Observation behind each governed laboratory citation. See
 for save, retry and history behavior.
 The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)
 maps the retained source, document, image, laboratory, question, report and task owners.
+
+## Source-reported coded laboratory results
+
+A final laboratory Observation can carry a quantity, an explicit absence reason, or one `valueCodeableConcept` containing a single coding from `urn:oi:synthetic:lab-results`. The test's LOINC code identifies what was tested. The result coding records the answer that the fictional source supplied. For example, a coded “Not detected” result retains its code and optional label; “not performed” belongs to a different result state.
+
+```json
+{"valueCodeableConcept":{"coding":[{"system":"urn:oi:synthetic:lab-results","code":"NOT-DETECTED","version":"fixture-v1","display":"Not detected"}]}}
+```
+
+Codes and optional versions are 1–64 ASCII characters, start with a letter or digit, and may also contain periods, hyphens or underscores. An optional display is 1–120 printable ASCII characters with no leading or trailing space. Explicit nulls, multiple codings, external systems and additional value arms are refused. The synthetic code system serves as an opaque identifier. The importer does not fetch definitions or assign clinical meaning.
+
+Use the existing case-scoped laboratory preview/import and original-inspection routes. A saved question references the exact report version and Observation. Amending the code or label requires a new source version. The original question continues to show its earlier result and becomes eligible for reassessment. Journey's **Coded result** filter and the citation report expose the source's answer and provenance.
+
+Migration 0024 follows the CT/MR custody revision. Bundles with coded answers record the v2 laboratory custody profile; existing numeric and absent bundles retain v1. A downgrade refuses to discard coded history. [Source validator](src/oi_api/laboratory_fhir_r4.py) · [Recovery exercise](tools/verify_fhir_laboratory_compose.py) · [FHIR R4 Observation](https://hl7.org/fhir/R4/observation.html).
 
 ## Historical document/image checkpoint — #381
 
@@ -726,7 +740,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0023_dicom_mr_custody; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0024_fhir_coded_results; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |
