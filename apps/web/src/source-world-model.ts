@@ -97,7 +97,7 @@ function source(v:unknown):SourceVersion{
   if(s.specimen_id!==null)str(s.specimen_id,128);
   return Object.freeze({...s} as SourceVersion);
 }
-function ref(v:unknown,currentIds:Set<string>):WorldRef{
+function ref(v:unknown,currentIds:ReadonlyMap<string,SourceVersion>):WorldRef{
   const r=shape(v,['source_id','source_line']);
   const id=str(r.source_id,36),line=pos(r.source_line);
   if(!SOURCE.test(id)||!currentIds.has(id))return error();
@@ -142,6 +142,64 @@ function obs(v:unknown,current:Map<string,SourceVersion>):WorldObservation{
   str(x.finding_key,128);pos(x.source_line);
   return Object.freeze({...x,...(typed?{oncology:parseOncologyContext(x.oncology)}:{})} as WorldObservation);
 }
+// Match source_comparison_key in the H1 projection. Only source-declared scope
+// can connect two observations, including the separate legacy (untyped) scope.
+function comparisonKey(item:WorldObservation):string|null{
+  if(item.specimen_id===null || item.oncology?.episode_id===null)return null;
+  return JSON.stringify([item.specimen_id,item.event_date,item.finding_key,
+    item.oncology?.episode_id,item.oncology?.role]);
+}
+
+const refOf=(item:WorldRef)=>item.source_id+':'+item.source_line;
+
+function parseConflicts(rawConflicts:unknown[],observations:readonly WorldObservation[],
+                        current:ReadonlyMap<string,SourceVersion>):WorldConflict[]{
+  const expected=new Map<string,{anchors:Set<string>;states:Set<string>}>();
+  const byAnchor=new Map<string,WorldObservation>();
+  for(const item of observations){
+    const anchor=refOf(item);
+    if(byAnchor.has(anchor))return error();
+    byAnchor.set(anchor,item);
+    const key=comparisonKey(item);
+    if(key===null)continue;
+    const group=expected.get(key)??{anchors:new Set<string>(),states:new Set<string>()};
+    group.anchors.add(anchor);
+    group.states.add(item.reported_state);
+    expected.set(key,group);
+  }
+  for(const [key,group] of expected){
+    if(!group.states.has('reported') || !group.states.has('negative'))expected.delete(key);
+  }
+  if(rawConflicts.length!==expected.size)return error();
+
+  return rawConflicts.map(raw=>{
+    const c=shape(raw,['specimen_id','event_date','finding_key','status',
+      'reported_states','source_refs','clinical_interpretation']);
+    if(c.status!=='unresolved_source_disagreement'||c.clinical_interpretation!=='not_performed'||
+       !Array.isArray(c.reported_states)||!Array.isArray(c.source_refs)||
+       c.source_refs.length<2||c.source_refs.length>4096)return error();
+    const refs=c.source_refs.map(rawRef=>ref(rawRef,current));
+    const first=byAnchor.get(refOf(refs[0]));
+    if(!first||c.specimen_id!==first.specimen_id||c.event_date!==first.event_date||
+       c.finding_key!==first.finding_key||first.specimen_id===null)return error();
+    const key=comparisonKey(first);
+    if(key===null)return error();
+    const group=expected.get(key);
+    if(!group || refs.length!==group.anchors.size)return error();
+    for(const anchor of refs){
+      if(!group.anchors.delete(refOf(anchor)))return error();
+    }
+    const states=[...group.states].sort();
+    const receivedStates=c.reported_states;
+    if(receivedStates.length!==states.length || states.some((state,i)=>state!==receivedStates[i]))return error();
+    expected.delete(key);
+    return Object.freeze({specimen_id:first.specimen_id,event_date:first.event_date,
+      finding_key:first.finding_key,status:'unresolved_source_disagreement' as const,
+      reported_states:Object.freeze(states),source_refs:Object.freeze(refs),
+      clinical_interpretation:'not_performed' as const});
+  });
+}
+
 export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expectedCase:string):SourceWorldModel{
   if(!PID.test(expectedPatient)||!CASE.test(expectedCase))return error();
   if(raw===null||typeof raw!=='object'||Array.isArray(raw))return error();
@@ -204,40 +262,12 @@ export function parseSourceWorldModel(raw:unknown,expectedPatient:string,expecte
   });
   if(timeline.length!==laboratory.length||
      new Set(timeline.map(x=>x.source_id+':'+x.observation_reference)).size!==laboratory.length)return error();
-  const refOf=(x:WorldRef)=>x.source_id+':'+x.source_line;
-  const indexedRefs=new Map<string,WorldObservation>();
-  for(const x of observations){
-    const k=refOf(x);
-    if(indexedRefs.has(k))return error();
-    indexedRefs.set(k,x);
-  }
-  const unresolved=v.unresolved_refs.map(x=>ref(x,new Set(currentById.keys())));
+  const unresolved=v.unresolved_refs.map(x=>ref(x,currentById));
   const expectedUnresolved=new Set(observations.filter(x=>UNRESOLVED.has(x.reported_state)).map(x=>refOf(x)));
   if(unresolved.length!==expectedUnresolved.size||
      unresolved.some(x=>!expectedUnresolved.has(refOf(x)))||
      new Set(unresolved.map(refOf)).size!==unresolved.length)return error();
-  const conflicts:WorldConflict[]=v.conflicts.map(raw=>{
-    const c=shape(raw,['specimen_id','event_date','finding_key','status',
-      'reported_states','source_refs','clinical_interpretation']);
-    if(c.status!=='unresolved_source_disagreement'||c.clinical_interpretation!=='not_performed'||
-       !Array.isArray(c.reported_states)||!Array.isArray(c.source_refs)||
-       c.source_refs.length<2||c.source_refs.length>4096||
-       c.reported_states.length<2||c.reported_states.length>7)return error();
-    const specimen=str(c.specimen_id,128),event=date(c.event_date),finding=str(c.finding_key,128);
-    const refs=c.source_refs.map(x=>ref(x,new Set(currentById.keys())));
-    const relevant=refs.map(x=>indexedRefs.get(refOf(x)));
-    if(relevant.some(x=>!x||x.specimen_id!==specimen||x.event_date!==event||x.finding_key!==finding))return error();
-    const context=relevant[0]?.oncology;
-    if(context?.episode_id===null || relevant.some(x=>x?.oncology?.episode_id!==context?.episode_id ||
-       x?.oncology?.role!==context?.role))return error();
-    const states=new Set(relevant.map(x=>x!.reported_state));
-    if(!states.has('reported')||!states.has('negative')||
-       new Set(refs.map(refOf)).size!==refs.length||
-       JSON.stringify([...states].sort())!==JSON.stringify(c.reported_states))return error();
-    return Object.freeze({specimen_id:specimen,event_date:event,finding_key:finding,
-      status:'unresolved_source_disagreement' as const,reported_states:Object.freeze([...states].sort()),
-      source_refs:Object.freeze(refs),clinical_interpretation:'not_performed' as const});
-  });
+  const conflicts=parseConflicts(v.conflicts,observations,currentById);
   const summary=shape(v.summary,hasLaboratory?
     ['current_sources','historical_sources','current_observations',
      'current_laboratory_observations','unresolved_observations','source_disagreements']:

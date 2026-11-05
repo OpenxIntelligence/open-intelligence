@@ -139,6 +139,75 @@ test('known same-specimen same-date contradiction is never promoted to assessmen
   assert.equal(checked.conflicts.length,1);
   assert.equal(checked.conflicts[0].clinical_interpretation,'not_performed');
 });
+function disagreementWorld() {
+  const snapshot=world();
+  const template=snapshot.observations[0];
+  const specs=[
+    ['A','EP-A','reported'], ['B','EP-A','negative'], ['C','EP-A','reported'],
+    ['D','EP-B','reported'], ['E','EP-B','negative'],
+    ['F',null,'negative'], ['7',null,'reported'],
+    ['8',undefined,'negative'], ['9',undefined,'reported'],
+  ];
+  snapshot.current_sources=specs.map(([id])=>({...source(),
+    source_id:'SRC-'+id.repeat(32),document_id:'DOC-'+id,sha256:id.toLowerCase().repeat(64)}));
+  snapshot.observations=specs.map(([,episode,reported_state],i)=>{
+    const original=snapshot.current_sources[i];
+    return {...template,source_id:original.source_id,document_id:original.document_id,
+      source_sha256:original.sha256,reported_state,
+      ...(episode===undefined?{}:{oncology:{role:'primary',episode_id:episode}})};
+  });
+  const group=(start,end)=>({
+    specimen_id:template.specimen_id,event_date:template.event_date,finding_key:template.finding_key,
+    status:'unresolved_source_disagreement',clinical_interpretation:'not_performed',
+    reported_states:['negative','reported'],
+    source_refs:snapshot.observations.slice(start,end).map(({source_id,source_line})=>({source_id,source_line})),
+  });
+  snapshot.conflicts=[group(0,3),group(3,5),group(7,9)];
+  snapshot.unresolved_refs=[];
+  Object.assign(snapshot.summary,{current_sources:9,current_observations:9,
+    unresolved_observations:0,source_disagreements:3});
+  return snapshot;
+}
+
+test('complete episode and legacy disagreements are independent of source or group order',()=>{
+  const snapshot=disagreementWorld();
+  snapshot.conflicts.reverse();
+  snapshot.observations.reverse();
+  for(const group of snapshot.conflicts)group.source_refs.reverse();
+  assert.equal(parseSourceWorldModel(snapshot,patientId,caseId).conflicts.length,3);
+});
+
+for(const [name,mutate] of [
+  ['omitted episode',w=>w.conflicts.shift()],
+  ['repeated episode replacing another',w=>{w.conflicts[1]=structuredClone(w.conflicts[0]);}],
+  ['missing corroborating source',w=>w.conflicts[0].source_refs.pop()],
+  ['split overlapping groups',w=>{
+    const other=structuredClone(w.conflicts[0]);
+    other.source_refs.shift();
+    w.conflicts[0].source_refs.pop();
+    w.conflicts.push(other);
+  }],
+  ['mixed primary and metastasis',w=>{w.observations[1].oncology.role='metastasis';}],
+]) {
+  test('Journey withholds the refreshed projection for a disagreement with '+name,async()=>{
+    const fresh=disagreementWorld();
+    const broken=structuredClone(fresh);
+    mutate(broken);
+    broken.summary.source_disagreements=broken.conflicts.length;
+    let payload=fresh;
+    const session=new RegistrySession(async url=>response(url.endsWith('/case-bindings')?caseList():
+      url.endsWith('/world-model')?payload:patient()));
+    session.connect(token);
+    await session.read(patientId);
+    await session.loadCases();
+    await session.loadWorldModel(caseId);
+    assert.equal(session.snapshot().worldPhase,'ready');
+    payload=broken;
+    await session.loadWorldModel(caseId);
+    assert.equal(session.snapshot().worldPhase,'error');
+    assert.equal(session.snapshot().worldModel,null);
+  });
+}
 test('session retrieves only the exact authorized patient/case source World Model',async()=>{
   const urls=[];
   const s=new RegistrySession(async (url,init)=>{
