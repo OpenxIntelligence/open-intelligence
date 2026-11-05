@@ -20,6 +20,8 @@ function PreparationLaboratoryQuestions({history,session,state,busy}:{
 }){
  const [questionId,setQuestionId]=useState('');
  const selected=history.questions.find(row=>row.question_id===questionId);
+ const sources=[...(state.worldModel?.current_sources??[]),...(state.worldModel?.history??[])];
+ const reportNames=new Map(sources.map(source=>[source.source_id,source.document_id]));
  return <section className="second-opinion-agenda preparation-lab" aria-labelledby="preparation-lab-heading">
   <h3 id="preparation-lab-heading">Laboratory questions for discussion</h3>
   <label>Choose a saved laboratory question
@@ -27,15 +29,15 @@ function PreparationLaboratoryQuestions({history,session,state,busy}:{
     onChange={event=>setQuestionId(event.currentTarget.value)}>
     <option value="">Choose a question</option>
     {history.questions.map(row=><option key={row.question_id} value={row.question_id}>
-     {row.question} · {row.observation_reference} · v{row.source_version}
+     {row.question} · {reportNames.get(row.source_id)} v{row.source_version} · {row.observation_reference}
     </option>)}
    </select>
   </label>
   {selected&&<div data-testid="preparation-lab-question" data-question-id={selected.question_id}>
    <p className="second-opinion-agenda-question"><strong>{selected.question}</strong></p>
-   <p>{selected.observation_reference} · source version {selected.source_version}.{' '}
+   <p>{reportNames.get(selected.source_id)} · version {selected.source_version} · {selected.observation_reference}.{' '}
     {selected.source_context_state==='source_reassessment_required'?
-     'Source changed. Recheck the original result.':'Source current at last check. Unreviewed.'}</p>
+     'Needs reassessment. Review the original result.':'Source context current at last check. Unreviewed.'}</p>
    <LaboratoryCitationReportPanel key={selected.question_id} session={session} state={state} question={selected}
     busy={busy}/>
   </div>}

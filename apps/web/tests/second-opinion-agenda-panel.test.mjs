@@ -137,7 +137,7 @@ test('historical-only task status is counted, never presented as an open action'
 test('second-opinion UI shows laboratory questions as a separate unreviewed source, never a fictional line',()=>{
  const state=base(),sid='SRC-'+'F'.repeat(32),sha='a'.repeat(64);
  const snapshot=state.worldModel.snapshot_fingerprint;
- const scope={...state,worldModel:{...state.worldModel,current_sources:[{source_id:sid,version:1,
+ const scope={...state,worldModel:{...state.worldModel,current_sources:[{source_id:sid,document_id:'FICTIONAL-REPORT',version:1,
   sha256:sha,kind:'laboratory',state:'current'}],history:[],laboratory_observations:[{
   source_id:sid,observation_reference:'Observation/FICTIONAL-OBS'}]},labQuestionListPhase:'ready',
   labQuestionHistory:{patient_id:patientId,case_id:caseId,checked_source_snapshot_sha256:snapshot,
@@ -151,7 +151,7 @@ test('second-opinion UI shows laboratory questions as a separate unreviewed sour
  assert.match(html,/Refresh laboratory questions/);
  assert.match(html,/data-testid="preparation-lab-select"/);
  assert.match(html,/Could we discuss &lt;fictional&gt; result\?/);
- assert.match(html,/Observation\/FICTIONAL-OBS/);
+ assert.match(html,/FICTIONAL-REPORT v1 · Observation\/FICTIONAL-OBS/);
  assert.doesNotMatch(html,/data-testid="lab-citation-report(?:-open)?"/);
  assert.match(render({...scope,labQuestionListPhase:'idle',labQuestionHistory:null}),/Check laboratory questions/);
  assert.match(render({...scope,evidenceLinkPhase:'unknown'}),/data-testid="preparation-lab-refresh" disabled/);
