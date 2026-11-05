@@ -1,17 +1,20 @@
 """Purpose and in-flight authority across fictional source acquisition, on real PG16."""
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from copy import deepcopy
+from threading import Barrier
 from unittest.mock import patch
 
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from oi_api.app import create_app
-from oi_api.patients import CaseBindingList, CaseBindingReceipt, RecordRequests, RecordRequestReceipt
+from oi_api.record_requests import PostgresRecordRequests
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from http_support import running_server
 from test_patients import TOKEN_A, request
-from test_source_versions import SourceVersionFixture
+from test_source_versions import ORIGINAL, SourceVersionFixture
 
 
 class AcquisitionPurposeTests(SourceVersionFixture):
@@ -102,6 +105,7 @@ class AcquisitionPurposeTests(SourceVersionFixture):
             source = self.ingest(base, patient)[1]["source_id"]
             with self.credential(purpose="research"):
                 record = self.create_record(base, records, "HISTORICAL-REQUEST")[1]["request_id"]
+                other = self.create_record(base, records, "VALID-RESEARCH")[1]["request_id"]
             # Reproduce a receipt that could be written by an older version.
             with self.engine.begin() as db:
                 raw = db.connection.driver_connection
@@ -116,9 +120,40 @@ class AcquisitionPurposeTests(SourceVersionFixture):
             with self.credential(purpose="research"):
                 status, body, _ = self.records(base, records)
                 self.assertEqual(status, 200)
-                row, = body["requests"]
-                self.assertEqual((row["status"], row["receipt_status"], row["source_reference"]),
-                                 ("received", "binding_purpose_not_usable", None))
+                self.assertEqual([row["request_id"] for row in body["requests"]], [other])
+                before = self.state()
+                self.assertEqual(self.post(base, records + "/" + record + "/cancel",
+                                           reason="Fictional old receipt check")[0], 404)
+                self.assertEqual(self.state(), before)
+
+    def test_concurrent_crossed_receipt_retries_return_conflicts_without_mutation(self):
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            path = f"/v1/patients/{patient}"
+            self.assertEqual(self.bind(base, path + "/case-bindings")[0], 201)
+            records = path + "/record-requests"
+            def receive(record, case, source):
+                return self.post(base, records + "/" + record + "/receive",
+                                 case_id=case, source_id=source)[0]
+            cases = ("CASE-ALPHA", "CASE-BETA")
+            accepted = []
+            for case in cases:
+                record = self.create_record(base, records, "REQUEST-" + case)[1]["request_id"]
+                source = self.ingest(base, patient, ORIGINAL.replace(cases[0], case),
+                                     case=case)[1]["source_id"]
+                self.assertEqual(receive(record, case, source), 201)
+                accepted.append((record, case, source))
+            before = self.state()
+            # Meet only after each writer owns its submitted request, binding and source.
+            barrier = Barrier(2, timeout=4)
+            lookup = PostgresRecordRequests._receipt
+            def synchronized(owner, *args, **kwargs):
+                barrier.wait()
+                return lookup(owner, *args, **kwargs)
+            with patch.object(PostgresRecordRequests, "_receipt", synchronized), ThreadPoolExecutor(2) as pool:
+                results = [pool.submit(receive, accepted[i][0], *accepted[1-i][1:]) for i in (0, 1)]
+                self.assertEqual([result.result() for result in results], [409, 409])
+            self.assertEqual(self.state(), before)
 
     def test_withdrawal_during_response_preparation_rolls_back_or_withholds_each_result(self):
         with running_server(create_app(self.settings)) as base:
@@ -126,26 +161,32 @@ class AcquisitionPurposeTests(SourceVersionFixture):
             path = f"/v1/patients/{patient}"
             bindings, records = path + "/case-bindings", path + "/record-requests"
             record = self.create_record(base, records, "ALREADY-REQUESTED")[1]["request_id"]
+            source = self.ingest(base, patient)[1]["source_id"]
+            linked = self.create_record(base, records, "RECEIVED-RECORD")[1]["request_id"]
+            self.assertEqual(self.post(base, records + "/" + linked + "/receive",
+                                       case_id="CASE-ALPHA", source_id=source)[0], 201)
             reason = {"reason": "Fictional transaction test"}
             checks = (
-                (CaseBindingList, "case_binding_read", lambda: self.records(base, bindings)),
-                (CaseBindingReceipt, "case_binding_create", lambda: self.bind(base, bindings)),
-                (CaseBindingReceipt, "case_binding_revoke", lambda: self.post(base, bindings + "/CASE-ALPHA/revoke", **reason)),
-                (RecordRequests, "record_request_read", lambda: self.records(base, records)),
-                (RecordRequests, "source_read", lambda: self.records(base, records)),
-                (RecordRequestReceipt, "record_request_create", lambda: self.create_record(base, records, "NEW-REQUEST")),
-                (RecordRequestReceipt, "patient_read", lambda: self.create_record(base, records, "ALREADY-REQUESTED")),
-                (RecordRequestReceipt, "record_request_cancel", lambda: self.post(base, records + "/" + record + "/cancel", **reason)),
+                ("case_binding_read", lambda: self.records(base, bindings)),
+                ("case_binding_create", lambda: self.bind(base, bindings)),
+                ("case_binding_revoke", lambda: self.post(base, bindings + "/CASE-ALPHA/revoke", **reason)),
+                ("record_request_read", lambda: self.records(base, records)),
+                ("source_read", lambda: self.records(base, records)),
+                ("record_request_create", lambda: self.create_record(base, records, "NEW-REQUEST")),
+                ("patient_read", lambda: self.create_record(base, records, "ALREADY-REQUESTED")),
+                ("record_request_cancel", lambda: self.post(base, records + "/" + record + "/cancel", **reason)),
             )
-            for model, grant, act in checks:
+            for grant, act in checks:
                 with self.subTest(grant=grant), self.credential():
                     before = self.state()
-                    validate = model.__init__
-                    def withdraw(instance, **values):
-                        validate(instance, **values)
-                        self.creds[0]["actions"].remove(grant)
-                        self.write()
-                    with patch.object(model, "__init__", withdraw):
+                    render = JSONResponse.render
+                    def withdraw(response, content):
+                        encoded = render(response, content)
+                        if isinstance(content, dict) and "detail" not in content:
+                            self.creds[0]["actions"].remove(grant)
+                            self.write()
+                        return encoded
+                    with patch.object(JSONResponse, "render", withdraw):
                         status, result, _ = act()
                     self.assertEqual((status, set(result), self.state() == before),
                                      (404, {"detail"}, True))
