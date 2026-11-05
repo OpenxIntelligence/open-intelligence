@@ -71,6 +71,26 @@ export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion}:{st
          </p>}
         <p className="small">Citation metadata has not been appraised for scientific support. Trial eligibility, treatment benefit and clinical decisions have not been assessed by this view.</p>
        </section>
+       <section className="second-opinion-proposal-readiness" data-testid="second-opinion-proposal-readiness"
+        data-checked={item.comparisonReadiness!==null} aria-label="Human-authored evidence comparison status">
+        <h4>Proposed evidence relationships</h4>
+        {item.comparisonReadiness===null?
+         <p data-testid="second-opinion-proposals-unchecked">Human-authored comparison history has not been verified for this exact question and source snapshot. Reopen the question in Investigations for a fresh authorized check.</p>:
+         <div data-testid="second-opinion-proposals-checked">
+          <p data-testid="second-opinion-proposals-counts">
+           {item.comparisonReadiness.proposed.support} proposed support · {item.comparisonReadiness.proposed.contradiction} proposed contradiction · {item.comparisonReadiness.proposed.context} context · {item.comparisonReadiness.proposed.unknown} relationship unknown.
+          </p>
+          <p data-testid="second-opinion-proposals-history">
+           {item.comparisonReadiness.reassessment} comparison(s) need reassessment · {item.comparisonReadiness.withheld} content withheld.
+           {' '}{item.comparisonReadiness.reports.currentUnreviewed} current unreviewed report(s) · {item.comparisonReadiness.reports.historical} historical report(s) · {item.comparisonReadiness.reports.withheld} report(s) withheld.
+          </p>
+          {Object.values(item.comparisonReadiness.proposed).every(count=>count===0)&&
+           item.comparisonReadiness.reassessment===0&&item.comparisonReadiness.withheld===0&&
+           Object.values(item.comparisonReadiness.reports).every(count=>count===0)&&
+           <p data-testid="second-opinion-proposals-empty">This authorized evidence read returned no authored comparisons or reports. It does not establish that no relevant research exists.</p>}
+         </div>}
+        <p className="small">All relationship labels are human-authored, unreviewed proposals—not a scientific evidence grade, AI conclusion, medical recommendation or clinician approval. Contents require a fresh rights check in Investigations.</p>
+       </section>
        <section className="second-opinion-question-work" data-testid="second-opinion-question-work" data-work-state={item.work===null?'unavailable':'ready'} aria-label="Recorded follow-up for this question">
         <h4>Recorded follow-up</h4>
         {!item.work?<p className="small" data-testid="second-opinion-question-work-unavailable">Follow-up work has not been checked or is unavailable for this case. No task count is implied.</p>:

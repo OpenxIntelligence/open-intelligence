@@ -31,10 +31,10 @@ test('a saved discussion agenda preserves literal question content, provenance a
  assert.deepEqual(view.agenda,{total:2,preview:[
   {questionId:rows[0].question_id,text:rows[0].question,sourceVersion:1,sourceLine:1,
    sourceContextState:'source_reassessment_required',
-   evidenceReadiness:{original:'changed',citations:null},work:null},
+   evidenceReadiness:{original:'changed',citations:null},comparisonReadiness:null,work:null},
   {questionId:rows[1].question_id,text:rows[1].question,sourceVersion:2,sourceLine:2,
    sourceContextState:'current_unreviewed_question',
-   evidenceReadiness:{original:'not_matched',citations:null},work:null}]});
+   evidenceReadiness:{original:'not_matched',citations:null},comparisonReadiness:null,work:null}]});
 });
 test('a bounded preview carries its full count, rather than silently losing remaining questions',()=>{
  const rows=Array.from({length:7},(_,i)=>question(i+1));

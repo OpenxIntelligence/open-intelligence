@@ -161,3 +161,41 @@ test('citation denial hides prior counted links but preserves separately authori
  assert.match(denied,/Could we discuss fictional marker/);
  assert.doesNotMatch(render({...ready,questionListPhase:'error'}),/data-testid="second-opinion-question-evidence"/);
 });
+
+test('second-opinion proposal status distinguishes unread from verified no comparisons',()=>{
+ const s={...base(),questions:[question()]};
+ assert.match(render(s),/data-testid="second-opinion-proposals-unchecked"/);
+ const q=question();
+ const packet={contract:'oi.h1-question-evidence/1',patient_id:patientId,case_id:caseId,
+  question:q,source_snapshot_sha256:q.source_snapshot_sha256,
+  access_receipt_id:'ACCESS-'+'A'.repeat(32),packet_sha256:'e'.repeat(64),
+  evidence:[],assessments:[],reports:[],synthetic:true,
+  human_review_state:'not_performed',clinical_approval:false,model_executed:false};
+ const checked=render({...s,worldModel:{...s.worldModel,snapshot_fingerprint:q.source_snapshot_sha256},
+  evidencePhase:'ready',evidencePacket:packet});
+ assert.match(checked,/data-testid="second-opinion-proposals-checked"/);
+ assert.match(checked,/data-testid="second-opinion-proposals-empty"/);
+ assert.doesNotMatch(checked,/data-testid="second-opinion-proposals-unchecked"/);
+ assert.match(checked,/not a scientific evidence grade/);
+});
+test('separately revoked comparison access withholds old counts and keeps saved question',()=>{
+ const s={...base(),questions:[question()]},q=question();
+ const ev={evidence_id:'EVIDENCE-'+'F'.repeat(32),sha256:'a'.repeat(64),
+  rights_sha256:'b'.repeat(64),state:'current',statement:'Synthetic text'};
+ const packet={contract:'oi.h1-question-evidence/1',patient_id:patientId,case_id:caseId,
+  question:q,source_snapshot_sha256:q.source_snapshot_sha256,
+  access_receipt_id:'ACCESS-'+'A'.repeat(32),packet_sha256:'e'.repeat(64),
+  evidence:[ev],assessments:[{question_id:q.question_id,evidence_id:ev.evidence_id,
+   evidence_sha256:ev.sha256,rights_sha256:ev.rights_sha256,
+   source_snapshot_sha256:q.source_snapshot_sha256,preflight_sha256:q.preflight_sha256,
+   state:'current_unreviewed',relation:'contradicts'}],
+  reports:[],synthetic:true,human_review_state:'not_performed',clinical_approval:false,model_executed:false};
+ const ready={...s,worldModel:{...s.worldModel,snapshot_fingerprint:q.source_snapshot_sha256},
+  evidencePhase:'ready',evidencePacket:packet};
+ assert.match(render(ready),/1 proposed contradiction/);
+ const denied=render({...ready,evidencePhase:'error'});
+ assert.match(denied,/data-testid="second-opinion-proposals-unchecked"/);
+ assert.doesNotMatch(denied,/1 proposed contradiction/);
+ assert.match(denied,/Could we discuss fictional marker/);
+ assert.doesNotMatch(render({...ready,questionListPhase:'error'}),/data-testid="second-opinion-proposal-readiness"/);
+});
