@@ -1,5 +1,6 @@
 """Purpose and in-flight authority across fictional source acquisition, on real PG16."""
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 from contextlib import contextmanager
 from copy import deepcopy
 from threading import Barrier
@@ -185,6 +186,29 @@ class AcquisitionPurposeTests(SourceVersionFixture):
                 self.assertEqual(self.post(base, records + "/" + record + "/cancel",
                                            reason="Fictional old receipt check")[0], 404)
                 self.assertEqual(self.state(), before)
+
+    def test_selected_original_must_match_before_write_and_on_exact_retry(self):
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            path = f"/v1/patients/{patient}/record-requests"
+            record = self.create_record(base, path, "SELECTED-ORIGINAL")[1]["request_id"]
+            source = self.ingest(base, patient)[1]["source_id"]
+            receive_path = path + "/" + record + "/receive"
+            selection = {"version": 1, "sha256": hashlib.sha256(ORIGINAL.encode()).hexdigest()}
+
+            def link(pin):
+                return self.post(base, receive_path, case_id="CASE-ALPHA", source_id=source,
+                                 expected_original=pin)
+
+            for expected_status in (201, 200):
+                before = self.state()
+                for mismatch in ({"version": 2}, {"sha256": "0" * 64}):
+                    self.assertEqual(link({**selection, **mismatch})[0], 409)
+                    self.assertEqual(self.state(), before)
+                status, receipt, _ = link(selection)
+                self.assertEqual((status, receipt["duplicate"]), (expected_status, expected_status == 200))
+            row, = self.records(base, path)[1]["requests"]
+            self.assertEqual(row["source_reference"], {**selection, "source_id": source, "case_id": "CASE-ALPHA"})
 
     def test_concurrent_crossed_receipt_retries_return_conflicts_without_mutation(self):
         with running_server(create_app(self.settings)) as base:

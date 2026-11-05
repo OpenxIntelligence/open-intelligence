@@ -336,7 +336,10 @@ def main():
                 assert re.fullmatch(r"SRC-[0-9A-F]{32}", receipt["source_id"])
                 source_ids.append(receipt["source_id"])
                 if version == 1:
-                    received_command = {"synthetic": True, "case_id": CASE, "source_id": source_ids[0]}
+                    received_command = {
+                        "synthetic": True, "case_id": CASE, "source_id": source_ids[0],
+                        "expected_original": {"version": 1, "sha256": hashlib.sha256(ORIGINAL.encode()).hexdigest()},
+                    }
                     status, received = request(receive_path, received_command)
                     assert status == 201 and received["version"] == 1 and received["duplicate"] is False
                 read_index(source_ids)
@@ -643,6 +646,30 @@ def main():
                   "exact current/historical selection references and hashes, exact retries, independent "
                   "grants and restarts; restored-only access receipts")
 
+            reconcile_path = records_path + "/" + tracked["request_id"] + "/reconcile"
+            history_path = records_path + "/" + tracked["request_id"] + "/receipt-history"
+            amendment = {"synthetic": True, "case_id": CASE, "expected_source_id": source_ids[0],
+                         "replacement_source_id": source_ids[1], "reason_code": "source_amendment",
+                         "request_key": "RECOVER-RECONCILIATION"}
+            status, decision = request(reconcile_path, amendment)
+            assert status == 201 and decision["duplicate"] is False
+            amended_database = "oi_api_test_reconciled_restore"
+            restore(restored_database, amended_database)
+            status, replay = request(reconcile_path, amendment)
+            assert status == 200 and replay == {**decision, "duplicate": True}
+            status, history = request(history_path)
+            assert status == 200
+            assert [(e["kind"], e["source_reference"]["source_id"], e["source_reference"]["sha256"])
+                    for e in history["receipts"]] == [
+                        ("received", source_ids[0], hashlib.sha256(ORIGINAL.encode()).hexdigest()),
+                        ("reconciled", source_ids[1], hashlib.sha256(AMENDED.encode()).hexdigest()),
+                    ]
+            assert history["receipts"][1]["reconciliation_id"] == decision["reconciliation_id"]
+            status, latest = request(records_path)
+            assert status == 200 and latest["requests"][0]["source_reference"]["source_id"] == source_ids[1]
+            status, original_retry = request(receive_path, received_command)
+            assert status == 200 and original_retry == {**received, "duplicate": True}
+            print("PASS RECONCILED RESTORE: both exact originals, amendment decision, historical retry and current request.")
             # Revoke on the restored copy and back it up again. Keep every grant
             # enabled so only the restored binding state can explain denial.
             assert credential["actions"] == actions and credential["patient_ids"] == [patient]
@@ -651,9 +678,11 @@ def main():
                 "synthetic": True, "reason": "Withdraw the independently fictional Compose binding"})
             assert status == 200 and revoked["duplicate"] is False
             revoked_database = "oi_api_test_documents_revoked"
-            revoked_before = restore(restored_database, revoked_database)
+            revoked_before = restore(amended_database, revoked_database)
             assert revoked_before["tables"]["coordination.patient_case_bindings"][0]["status"] == "revoked"
             check_received_source("binding_revoked_not_usable", False)
+            no_effect_denial(history_path, database=revoked_database)
+            no_effect_denial(reconcile_path, amendment, database=revoked_database)
             no_effect_denial(receive_path, received_command, database=revoked_database)
             no_effect_denial(document_path, database=revoked_database)
             for item in documents:
@@ -668,7 +697,7 @@ def main():
                 status, value = request(path)
                 assert status == 404 and "access_receipt_id" not in value and "original_text" not in value
             assert snapshot(revoked_database) == revoked_before, "Restored revoked requests changed state"
-            assert snapshot(restored_database) == revoked_before, "Revoked restore changed its source copy"
+            assert snapshot(amended_database) == revoked_before, "Revoked restore changed its source copy"
             assert snapshot(original_database) == readable_before, "Recovery changed original database"
             receipt = {"contract": "oi.source-document-recovery/1", "synthetic": True,
                 "schema_revision": SCHEMA_REVISION, "table_count": len(rows),

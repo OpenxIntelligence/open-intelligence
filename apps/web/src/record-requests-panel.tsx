@@ -1,6 +1,6 @@
 import {useLayoutEffect,useState} from 'react';
 import type {FormEvent} from 'react';
-import {requestKinds,validRequestFields} from './record-requests';
+import {requestKinds,validRequestFields,replacementFor} from './record-requests';
 import type {RecordRequestSession,RequestKind,RequestRow,RequestsView} from './record-requests';
 import type {SourceIndex} from './source-contracts';
 
@@ -12,8 +12,9 @@ const receiptLabels:Record<RequestRow['receipt_status'],string>={
   source_superseded_reconciliation_required:'Linked version superseded · reconciliation required',
   binding_revoked_not_usable:'Case access revoked · receipt cannot be used',
 };
-function Item({row,index,busy,session,onOriginal}:Omit<Props,'view'>&{row:RequestRow}){
+function Item({row,index,busy,session,onOriginal,view}:Props&{row:RequestRow}){
   const [selection,select]=useState('');
+  const replacement=replacementFor(row,index);
   const options=index.sources.filter(s=>s.state==='current' && s.kind===row.kind);
   return <li className="case-row" data-testid="request-row" data-request-id={row.request_id} data-status={row.status} data-receipt-status={row.receipt_status}>
     <strong>{row.record_label}</strong>
@@ -34,6 +35,19 @@ function Item({row,index,busy,session,onOriginal}:Omit<Props,'view'>&{row:Reques
         <button type="button" data-testid="request-inspect-original" disabled={busy}
           onClick={e=>onOriginal(row.source!.source_id,e.currentTarget)}>Inspect linked original</button></>:
         <p>Source details withheld in this case.</p>}
+      {replacement && <div>
+        <p>{replacement.document_id} has an amended version. The request still points to v{row.source!.version}.</p>
+        <button disabled={busy} onClick={e=>onOriginal(replacement.source_id,e.currentTarget)}>Inspect amendment v{replacement.version}</button>
+        <button disabled={busy} data-testid="request-reconcile"
+          onClick={()=>void session.reconcile(index,row,replacement)}>Use v{replacement.version} for this request</button>
+      </div>}
+      {row.source && <button disabled={busy} data-testid="request-history" onClick={()=>void session.history(index,row)}>Check receipt history</button>}
+      {view.history?.requestId===row.request_id && <ol aria-label="Receipt history" data-testid="request-history-entries">
+        {view.history.entries.map(({source,actor,occurredAt},i)=><li key={source.source_id}>
+          {i===0?'Original received':'Amendment linked'} · {actor} · <time dateTime={occurredAt}>{occurredAt}</time>
+          <button disabled={busy} onClick={e=>onOriginal(source.source_id,e.currentTarget)}>Inspect {source.document_id} v{source.version}</button>
+        </li>)}
+      </ol>}
     </>:<p>No record linked.</p>}
   </li>;
 }
@@ -62,7 +76,7 @@ export function RecordRequestsDisclosure({session,index,view,busy,onOriginal}:Pr
       </div>}
       {view.rows && <>
         {view.rows.length>0&&<ul className="case-list" aria-label="Patient record requests">{view.rows.map(row=>
-          <Item key={row.request_id} row={row} index={index} session={session} busy={blocked || view.retryCreate} onOriginal={onOriginal}/>)}</ul>}
+          <Item key={row.request_id} view={view} row={row} index={index} session={session} busy={blocked || view.retryCreate} onOriginal={onOriginal}/>)}</ul>}
         {!view.retryCreate&&<form onSubmit={create} aria-label="New missing-record request">
           <h4>Request a missing record</h4>
           <label>Record label<input data-testid="request-label" value={fields.record_label} required maxLength={140}

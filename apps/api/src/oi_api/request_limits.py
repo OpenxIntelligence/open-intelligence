@@ -30,7 +30,7 @@ class PatientRequestLimit:
                 ("/followthrough/" in route and route.endswith("/transitions")) or
                 ("/questions/" in route and route.endswith(("/evidence", "/evidence-assessments", "/evidence-reports"))) or
                 ("/questions/" in route and "/evidence/" in route and route.endswith("/withdraw")) or
-                ("/record-requests/" in route and route.endswith(("/cancel", "/receive"))) or
+                ("/record-requests/" in route and route.endswith(("/cancel", "/receive", "/reconcile"))) or
                 ("/case-bindings/" in route and route.endswith("/revoke"))
             )
         ) or image_upload or laboratory_preview

@@ -11,6 +11,7 @@ export type RequestRow = RequestFields & Readonly<{
   source:SourceVersion|null;
 }>;
 export type RequestsView = Readonly<{
+  history?:Readonly<{requestId:string; entries:readonly HistoryEntry[]}>;
   rows:readonly RequestRow[]|null; busy:boolean; message:string; retryCreate:boolean; retryFields:RequestFields|null;
 }>;
 
@@ -39,7 +40,7 @@ export function readRequests(v:unknown,index:SourceIndex):readonly RequestRow[] 
     const {status,receipt_status,source_reference:ref}=r;
     let source:SourceVersion|null=null;
     if(status==='received'){
-      if(r.revision!==2 || (receipt_status!=='source_current_unreviewed' && receipt_status!=='source_superseded_reconciliation_required' &&
+      if(typeof r.revision!=='number' || !Number.isSafeInteger(r.revision) || r.revision<2 || r.revision>257 || (receipt_status!=='source_current_unreviewed' && receipt_status!=='source_superseded_reconciliation_required' &&
          receipt_status!=='binding_revoked_not_usable') || (receipt_status==='binding_revoked_not_usable' && ref!==null)) return invalid();
       if(ref!==null){
         if(!exact(ref,['case_id','source_id','version','sha256']) || !id(ref.case_id,/^CASE-[A-Z0-9-]{1,35}$/) ||
@@ -55,6 +56,52 @@ export function readRequests(v:unknown,index:SourceIndex):readonly RequestRow[] 
     return Object.freeze({request_id:r.request_id,status,receipt_status:receipt_status as ReceiptStatus,
       kind:r.kind,record_label:r.record_label,source_organization:r.source_organization,source});
   }));
+}
+
+type HistoryEntry = Readonly<{source:SourceVersion; actor:string; occurredAt:string}>;
+export function replacementFor(row:RequestRow,index:SourceIndex) {
+  const prior=row.source;
+  if (!prior || row.receipt_status!=='source_superseded_reconciliation_required') return null;
+  const chain=index.sources.filter(s=>s.document_id===prior.document_id).sort((a,b)=>a.version-b.version);
+  const start=chain.indexOf(prior);
+  if (start<0 || start===chain.length-1) return null;
+  for(let i=start+1;i<chain.length;i++) {
+    const next=chain[i], prev=chain[i-1];
+    if(next.kind!==prior.kind || next.specimen_id!==prior.specimen_id || next.event_date!==prior.event_date ||
+       next.version!==prev.version+1 || next.supersedes_id!==prev.source_id || prev.state!=='superseded') return null;
+  }
+  const last=chain[chain.length-1];
+  return last.state==='current'?last:null;
+}
+export function readReceiptHistory(value:unknown,row:RequestRow,index:SourceIndex):readonly HistoryEntry[] {
+  if(!row.source || !exact(value,['patient_id','request_id','receipts','access_receipt_id','synthetic',
+       'clinical_approval','external_request_sent']) || value.patient_id!==index.patient_id ||
+     value.request_id!==row.request_id || !id(value.access_receipt_id,/^ACCESS-[A-F0-9]{32}$/) ||
+     value.synthetic!==true || value.clinical_approval!==false || value.external_request_sent!==false ||
+     !Array.isArray(value.receipts) || !value.receipts.length || value.receipts.length>256) return invalid();
+  const history:HistoryEntry[]=[];
+  const seen=new Set<string>();
+  for(const step of value.receipts) {
+    if(!exact(step,['kind','source_reference','previous_source_id','reconciliation_id','revision','occurred_at',
+        'actor','reason_code','clinical_approval','external_request_sent']) ||
+       !exact(step.source_reference,['case_id','source_id','version','sha256']) ||
+       step.source_reference.case_id!==index.case_id || step.clinical_approval!==false ||
+       step.external_request_sent!==false || !citationEvidenceTimestamp(step.occurred_at) ||
+       !id(step.actor,/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/) ||
+       step.revision!==history.length+2) return invalid();
+    const ref=step.source_reference, previous=history.at(-1)?.source;
+    const source=index.sources.find(s=>s.source_id===ref.source_id && s.version===ref.version && s.sha256===ref.sha256 &&
+      s.document_id===row.source!.document_id && s.kind===row.kind);
+    if(!source || step.previous_source_id!==(previous?.source_id??null)) return invalid();
+    if(previous) {
+      if(step.kind!=='reconciled' || step.reason_code!=='source_amendment' || source.version<=previous.version ||
+         !id(step.reconciliation_id,/^RECON-[A-F0-9]{32}$/) || seen.has(step.reconciliation_id)) return invalid();
+      seen.add(step.reconciliation_id);
+    } else if(step.kind!=='received' || step.reason_code!==null || step.reconciliation_id!==null) return invalid();
+    history.push(Object.freeze({source,actor:step.actor,occurredAt:step.occurred_at}));
+  }
+  if(history.at(-1)?.source.source_id!==row.source.source_id) return invalid();
+  return Object.freeze(history);
 }
 
 export const emptyRequests = ():RequestsView => ({rows:null,busy:false,message:'Refresh to check this patient’s requests.',retryCreate:false,retryFields:null});
@@ -97,9 +144,10 @@ export class RecordRequestSession {
     this.#open=false;this.#listAuthorized=false;this.#inflight?.abort();this.#inflight=null;this.port.publish(emptyRequests());
   }
   #available(index:SourceIndex){return this.#open && this.#index===index && this.port.index()===index && !this.#inflight;}
-  #path(index:SourceIndex,requestId?:string){
+  #path(index:SourceIndex,requestId?:string,action:'receive'|'reconcile'|'receipt-history'='receive'){
     const base='/v1/patients/'+encodeURIComponent(index.patient_id)+'/record-requests';
-    return requestId?base+'/'+requestId+'/receive':base+'?case_id='+encodeURIComponent(index.case_id);
+    const scope='?case_id='+encodeURIComponent(index.case_id);
+    return requestId ? base+'/'+requestId+'/'+action+(action==='receive'?'':scope) : base+scope;
   }
   #show(rows:RequestsView['rows'],busy:boolean,message:string){
     const retryCreate=this.#pending!==null && this.#listAuthorized;
@@ -172,7 +220,45 @@ export class RecordRequestSession {
     const row=this.port.view().rows?.find(r=>r.request_id===request && r.status==='requested');
     const source=index.sources.find(s=>s.source_id===sourceId && s.state==='current' && s.kind===row?.kind);
     if(!row || !source)return;
-    await this.#write(index,JSON.stringify({synthetic:true,case_id:index.case_id,source_id:sourceId}),{request,source});
+    await this.#write(index,JSON.stringify({synthetic:true,case_id:index.case_id,source_id:sourceId,
+      expected_original:{version:source.version,sha256:source.sha256}}),{request,source});
+  }
+  async history(index:SourceIndex,row:RequestRow) {
+    const rows=this.port.view().rows;
+    if(!this.#available(index) || this.#pending || !row.source || !rows?.includes(row)) return;
+    await this.#run(index,async(c,current)=>{
+      this.#show(null,true,'Checking receipt history…');
+      const reply=await this.#reply(c,current,this.#path(index,row.request_id,'receipt-history'));
+      if(!reply || !current())return;
+      if(reply.status!==200)throw Error('History unavailable');
+      const entries=readReceiptHistory(reply.value,row,index);
+      this.port.publish({...emptyRequests(),rows,history:{requestId:row.request_id,entries},message:'Receipt history checked.'});
+    },()=>this.#show(null,false,'Receipt history unavailable. Refresh requests and source versions.'));
+  }
+  async reconcile(index:SourceIndex,row:RequestRow,replacement:SourceVersion) {
+    if(!this.#available(index) || this.#pending || !this.port.view().rows?.includes(row) ||
+       !row.source || replacementFor(row,index)!==replacement)return;
+    const previous=row.source.source_id;
+    const body=JSON.stringify({synthetic:true,case_id:index.case_id,expected_source_id:previous,
+      replacement_source_id:replacement.source_id,reason_code:'source_amendment',
+      request_key:[row.request_id,previous,replacement.source_id].join(':')});
+    let confirmed=false;
+    await this.#run(index,async(c,current)=>{
+      this.#show(null,true,'Recording the selected amendment…');
+      const reply=await this.#reply(c,current,this.#path(index,row.request_id,'reconcile'),body);
+      if(!reply || !current())return;
+      const {value,status}=reply;
+      if(status===409){this.#show(null,false,'The receipt or source changed. Refresh both before choosing an amendment.');return;}
+      if(!exact(value,['request_id','source_id','previous_source_id','version','duplicate','reconciliation_id',
+          'clinical_approval','external_request_sent']) || (status!==200 && status!==201) ||
+         value.duplicate!==(status===200) || value.request_id!==row.request_id ||
+         value.previous_source_id!==previous || value.source_id!==replacement.source_id ||
+         value.version!==replacement.version || !id(value.reconciliation_id,/^RECON-[A-F0-9]{32}$/) ||
+         value.clinical_approval!==false || value.external_request_sent!==false) throw Error('Unconfirmed reconciliation');
+      confirmed=true;
+      await this.#list(index,c,current,'Amendment linked. The original receipt is preserved in history.');
+    },()=>this.#show(null,false,confirmed?'Amendment saved. Refresh the request history.':
+      'Amendment receipt unconfirmed. Refresh before retrying the same selection.'));
   }
   async #write(index:SourceIndex,body:string,receive?:{request:string;source:SourceVersion}){
     let confirmed=false;

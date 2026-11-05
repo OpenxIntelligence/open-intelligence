@@ -137,8 +137,8 @@ class PostgresRecordRequests:
                 disclose_source: bool, workspace_case_id: str | None) -> dict:
         (request_id, patient_id, kind, record_label, provider, status, revision,
          created_at, updated_at) = row
-        received = self._receipt(patient_id, request_id, kind, organization, purpose,
-                                 disclose_source=disclose_source, workspace_case_id=workspace_case_id)
+        received = self._latest_receipt(patient_id, request_id, kind, organization, purpose,
+                                        disclose_source=disclose_source, workspace_case_id=workspace_case_id)
         if status == "cancelled" and received is not None:
             raise PatientRegistryError("Contradictory received/cancelled history")
         return {
@@ -148,7 +148,7 @@ class PostgresRecordRequests:
             # Operational status is a projection of the immutable receipt
             # event, not a second mutable copy of that receipt in this table.
             "status": "received" if received else status,
-            "revision": 2 if received else revision,
+            "revision": received["revision"] if received else revision,
             "created_at": created_at.isoformat() if isinstance(created_at, datetime) else str(created_at),
             # A receive is a journal event, not a record-request row update.
             # Project the true transition time rather than incorrectly
@@ -277,6 +277,7 @@ class PostgresRecordRequests:
     def receive(self, patient_id: str, request_id: str, case_id: str,
                 source_id: str, *, organization: str,
                 actor: str, purpose: str,
+                expected_original: tuple[int, str] | None = None,
                 recheck_authority: Callable[[], None],
                 prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
         """Attach an existing exact current original; do not ingest or recopy it.
@@ -330,6 +331,8 @@ class PostgresRecordRequests:
                 raise PatientRegistryDenied("Source does not match requested category and case")
             if hashlib.sha256(bytes(source[5])).hexdigest() != source[3]:
                 raise PatientRegistryError("Original source integrity check failed")
+            if expected_original is not None and expected_original != (source[2], source[3]):
+                raise PatientRegistryConflict("Selected original does not match its version and digest")
             existing = self._receipt(patient_id, request_id, row[0], organization, purpose,
                                      expected_reference=(case_id, source_id))
             if existing is not None:
@@ -347,3 +350,280 @@ class PostgresRecordRequests:
             )
             return complete({"request_id": request_id, "source_id": source_id,
                              "version": source[2], "duplicate": False})
+
+    def _source_chain(self, source_id: str, case_id: str, kind: str, *,
+                      verify_originals: bool = True) -> dict:
+        """Validate original bytes and every amendment edge with the source owner."""
+        from .source_integrity import SourceIntegrityError
+        from .reviewed_documents import ReviewedDocuments
+        row = self.patients._fetchone(
+            "SELECT document_id FROM clinical_source.source_versions "
+            "WHERE source_id=%s AND case_id=%s", (source_id, case_id),
+        )
+        if row is None:
+            raise PatientRegistryDenied("Source unavailable")
+        # Request-only readers may see operational status, but must not load
+        # original bytes without the independent source_read grant.
+        originals = ReviewedDocuments(self.patients)
+        rows = self.patients._fetchall(
+            "SELECT source_id,case_id,document_id,version,sha256,kind,event_date,"
+            "issued_at,specimen_id,state,supersedes_id "
+            "FROM clinical_source.source_versions WHERE case_id=%s AND document_id=%s "
+            "ORDER BY version LIMIT 257 FOR SHARE", (case_id, row[0]),
+        )
+        if not rows or len(rows) > 256:
+            raise SourceIntegrityError("Source history unavailable")
+        fields = ("source_id", "case_id", "document_id", "version", "sha256", "kind",
+                  "event_date", "issued_at", "specimen_id", "state", "supersedes_id")
+        chain = {}
+        previous = None
+        for version, values in enumerate(rows, start=1):
+            source = dict(zip(fields, values))
+            if verify_originals:
+                if originals._is_reviewed(source["source_id"]):
+                    originals._load(case_id, source["source_id"])
+                else:
+                    originals._validated_original(case_id, source["source_id"])
+            if (source["case_id"] != case_id or source["document_id"] != row[0]
+                  or source["supersedes_id"] != (previous["source_id"] if previous else None)
+                  or (previous is not None and
+                      (source["kind"], source["event_date"], source["specimen_id"]) !=
+                      (previous["kind"], previous["event_date"], previous["specimen_id"]))):
+                raise SourceIntegrityError("Source metadata history unavailable")
+            if (type(source["version"]) is not int or source["version"] != version or source["kind"] != kind
+                    or source["state"] != ("current" if version == len(rows) else "superseded")):
+                raise SourceIntegrityError("Source history unavailable")
+            chain[source["source_id"]] = source
+            previous = source
+        if source_id not in chain:
+            raise SourceIntegrityError("Source history unavailable")
+        return chain
+
+    def _history(self, patient_id: str, request_id: str, kind: str,
+                 organization: str, purpose: str, *, verify_originals: bool = True,
+                 workspace_case_id: str | None = None) -> list[dict]:
+        """Project the immutable journal; malformed or forked history fails closed."""
+        from .source_integrity import SourceIntegrityError
+        events = self.patients._fetchall(
+            "SELECT event_type,metadata_json,occurred_at "
+            "FROM identity.identity_domain_events WHERE patient_id=%s "
+            "AND event_type IN ('record.request.received','record.request.reconciled') "
+            "AND metadata_json->>'request_id'=%s ORDER BY id LIMIT 257",
+            (patient_id, request_id),
+        )
+        if not events:
+            return []
+        if len(events) > 256:
+            raise SourceIntegrityError("Record receipt history unavailable")
+        case_id = events[0][1].get("case_id")
+        binding = self.patients._fetchone(
+            "SELECT patient_id,origin_org,status,purpose FROM coordination.patient_case_bindings "
+            "WHERE case_id=%s FOR SHARE", (case_id,),
+        )
+        if binding is None or tuple(binding[:2]) != (patient_id, organization):
+            raise SourceIntegrityError("Record receipt binding mismatch")
+        if binding[3] != purpose:
+            raise _ReceiptOutsidePurpose("Record request unavailable")
+        chain = self._source_chain(events[0][1].get("source_id"), case_id, kind,
+                                   verify_originals=verify_originals and binding[2] == "active"
+                                   and workspace_case_id in (None, case_id))
+        history = []
+        keys, identifiers = set(), set()
+        for index, (event_type, metadata, occurred_at) in enumerate(events):
+            source = chain.get(metadata.get("source_id"))
+            if (event_type != ("record.request.received" if index == 0 else "record.request.reconciled")
+                    or metadata.get("case_id") != case_id or source is None
+                    or type(metadata.get("source_version")) is not int
+                    or metadata["source_version"] != source["version"]
+                    or metadata.get("source_sha256") != source["sha256"]
+                    or not isinstance(occurred_at, datetime) or occurred_at.utcoffset() is None):
+                raise SourceIntegrityError("Record receipt history mismatch")
+            if index:
+                old = chain[history[-1]["source_reference"]["source_id"]]
+                expected_digest = _digest({
+                    "patient": patient_id, "request": request_id, "case": case_id,
+                    "organization": organization, "actor": metadata.get("actor"),
+                    "purpose": metadata.get("purpose"), "expected": old["source_id"],
+                    "replacement": source["source_id"], "reason": "source_amendment",
+                })
+                if (metadata.get("previous_source_id") != old["source_id"]
+                        or source["version"] <= old["version"]
+                        or metadata.get("reason_code") != "source_amendment"
+                        or metadata.get("organization") != organization
+                        or metadata.get("purpose") != purpose
+                        or type(metadata.get("revision")) is not int
+                        or metadata["revision"] != index + 2
+                        or metadata.get("intent_sha256") != expected_digest
+                        or not isinstance(metadata.get("request_key"), str)
+                        or metadata["request_key"] in keys
+                        or not isinstance(metadata.get("reconciliation_id"), str)
+                        or metadata["reconciliation_id"] in identifiers):
+                    raise SourceIntegrityError("Record receipt history mismatch")
+                keys.add(metadata["request_key"])
+                identifiers.add(metadata["reconciliation_id"])
+            history.append({
+                "kind": "received" if index == 0 else "reconciled",
+                "source_reference": {"case_id": case_id, "source_id": source["source_id"],
+                                     "version": source["version"], "sha256": source["sha256"]},
+                "previous_source_id": metadata.get("previous_source_id") if index else None,
+                "reconciliation_id": metadata.get("reconciliation_id") if index else None,
+                "revision": index + 2, "occurred_at": occurred_at,
+                "actor": metadata["actor"],
+                "reason_code": "source_amendment" if index else None,
+                "clinical_approval": False, "external_request_sent": False,
+                "_metadata": metadata, "_source_state": source["state"], "_document_id": source["document_id"],
+                "_binding_active": binding[2] == "active",
+            })
+        return history
+
+    def _latest_receipt(self, patient_id: str, request_id: str, kind: str,
+                        organization: str, purpose: str, *, disclose_source: bool, workspace_case_id: str | None) -> dict | None:
+        history = self._history(patient_id, request_id, kind, organization, purpose,
+                                verify_originals=disclose_source, workspace_case_id=workspace_case_id)
+        if not history:
+            return None
+        latest = history[-1]
+        state = ("binding_revoked_not_usable" if not latest["_binding_active"] else
+                 "source_current_unreviewed" if latest["_source_state"] == "current" else
+                 "source_superseded_reconciliation_required")
+        return {"receipt_status": state, "received_at": latest["occurred_at"],
+                "revision": latest["revision"],
+                "reference": latest["source_reference"]
+                if (disclose_source and latest["_binding_active"] and
+                    workspace_case_id in (None, latest["source_reference"]["case_id"])) else None}
+
+    def reconcile(self, patient_id: str, request_id: str, case_id: str, *,
+                  expected_source_id: str, replacement_source_id: str,
+                  request_key: str, reason_code: str, organization: str,
+                  actor: str, purpose: str, recheck_authority: Callable[[], None],
+                  prepare_response: Callable[[dict], PreparedResponse]) -> PreparedResponse:
+        """Append an explicit operational reconciliation, never rewrite a receipt."""
+        from .case_bindings import _case_id
+        from .sources import _source_id, PostgresSourceVersions
+        patient_id = _key(patient_id, "patient_id")
+        request_id = _key(request_id, "request_id")
+        case_id = _case_id(case_id)
+        expected_source_id = _source_id(expected_source_id)
+        replacement_source_id = _source_id(replacement_source_id)
+        request_key = _key(request_key, "request_key")
+        organization = _key(organization, "organization")
+        actor = _key(actor, "actor")
+        if purpose not in ("operations", "research") or reason_code != "source_amendment":
+            raise PatientRegistryError("Invalid reconciliation purpose")
+        digest = _digest({
+            "patient": patient_id, "request": request_id, "case": case_id,
+            "organization": organization, "actor": actor, "purpose": purpose,
+            "expected": expected_source_id, "replacement": replacement_source_id,
+            "reason": reason_code,
+        })
+
+        def result(metadata, duplicate):
+            return {"request_id": request_id,
+                    "reconciliation_id": metadata["reconciliation_id"],
+                    "previous_source_id": metadata["previous_source_id"],
+                    "source_id": metadata["source_id"], "version": metadata["source_version"],
+                    "duplicate": duplicate, "clinical_approval": False,
+                    "external_request_sent": False}
+
+        with self.patients.transaction():
+            self._active_patient(patient_id, organization)
+            row = self.patients._fetchone(
+                "SELECT kind,status,revision FROM coordination.record_requests "
+                "WHERE request_id=%s AND patient_id=%s AND origin_org=%s AND purpose=%s FOR UPDATE",
+                (request_id, patient_id, organization, purpose),
+            )
+            if row is None:
+                raise PatientRegistryDenied("Record request unavailable")
+            if tuple(row[1:]) != ("requested", 1):
+                raise PatientRegistryConflict("Record request not eligible")
+            initial = self._receipt_event(patient_id, request_id, organization, purpose)
+            if initial is not None and initial[0] != case_id:
+                raise PatientRegistryDenied("Record receipt case unavailable")
+            PostgresSourceVersions(self.patients)._binding(
+                patient_id, case_id, organization, purpose)
+            history = self._history(patient_id, request_id, row[0], organization, purpose)
+            if not history:
+                raise PatientRegistryConflict("Record request has no received original")
+            if history[0]["source_reference"]["case_id"] != case_id:
+                raise PatientRegistryDenied("Record receipt case unavailable")
+            for entry in history[1:]:
+                metadata = entry["_metadata"]
+                if metadata["request_key"] == request_key:
+                    if metadata["intent_sha256"] != digest:
+                        raise PatientRegistryConflict("Request key reused with changed intent")
+                    prepared = prepare_response(result(metadata, True))
+                    recheck_authority()
+                    return prepared
+            if len(history) >= 256:
+                raise PatientRegistryConflict("Record receipt history limit reached")
+            latest = history[-1]["source_reference"]
+            if latest["source_id"] != expected_source_id:
+                raise PatientRegistryConflict("Record receipt changed; refresh before reconciling")
+            # _history validated every version of this document under the case lock.
+            replacement = self.patients._fetchone(
+                "SELECT version,sha256 FROM clinical_source.source_versions "
+                "WHERE case_id=%s AND document_id=%s AND source_id=%s AND state='current' AND version>%s",
+                (case_id, history[-1]["_document_id"], replacement_source_id, latest["version"]),
+            )
+            if replacement is None:
+                raise PatientRegistryConflict("Replacement must be a current amendment descendant")
+            metadata = {
+                "request_id": request_id, "case_id": case_id,
+                "reconciliation_id": "RECON-" + uuid.uuid4().hex.upper(),
+                "previous_source_id": expected_source_id,
+                "source_id": replacement_source_id,
+                "source_sha256": replacement[1],
+                "source_version": replacement[0],
+                "request_key": request_key, "intent_sha256": digest,
+                "reason_code": reason_code, "organization": organization,
+                "actor": actor, "purpose": purpose, "revision": len(history) + 2,
+            }
+            prepared = prepare_response(result(metadata, False))
+            recheck_authority()
+            self.patients.append_event(patient_id, "record.request.reconciled", **metadata)
+            # An audit hook/provider may itself withdraw external authority.
+            recheck_authority()
+            return prepared
+
+    def receipt_history(self, patient_id: str, request_id: str, *, organization: str, workspace_case_id: str | None = None,
+                        actor: str, purpose: str, recheck_authority: Callable[[], None],
+                        prepare_response: Callable[[dict], PreparedResponse]) -> PreparedResponse:
+        from .sources import PostgresSourceVersions
+        patient_id = _key(patient_id, "patient_id")
+        request_id = _key(request_id, "request_id")
+        organization = _key(organization, "organization")
+        actor = _key(actor, "actor")
+        with self.patients.transaction():
+            self._active_patient(patient_id, organization)
+            row = self.patients._fetchone(
+                "SELECT kind FROM coordination.record_requests WHERE request_id=%s "
+                "AND patient_id=%s AND origin_org=%s AND purpose=%s FOR SHARE",
+                (request_id, patient_id, organization, purpose),
+            )
+            if row is None:
+                raise PatientRegistryDenied("Record request unavailable")
+            # Derive the case from the immutable original receipt, never caller input.
+            initial = self._receipt_event(patient_id, request_id, organization, purpose)
+            if workspace_case_id is not None and (initial is None or initial[0] != workspace_case_id):
+                raise PatientRegistryDenied("Record receipt case unavailable")
+            binding_revision = None
+            if initial is not None:
+                binding_revision = PostgresSourceVersions(self.patients)._binding(
+                    patient_id, initial[0], organization, purpose)
+            history = self._history(patient_id, request_id, row[0], organization, purpose)
+            receipt_id = "ACCESS-" + uuid.uuid4().hex.upper()
+            prepared = prepare_response({
+                "patient_id": patient_id, "request_id": request_id,
+                "receipts": [{k: v for k, v in entry.items() if not k.startswith("_")}
+                             for entry in history],
+                "access_receipt_id": receipt_id,
+            })
+            recheck_authority()
+            self.patients.append_event(
+                patient_id, "record.receipt_history.read_authorized",
+                request_id=request_id, receipt_id=receipt_id, actor=actor, purpose=purpose,
+                case_id=initial[0] if initial else None,
+                binding_revision=binding_revision, receipt_count=len(history),
+            )
+            recheck_authority()
+            return prepared

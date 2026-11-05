@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {RegistrySession,requestIndex} from '../.test-dist/registry-client.js';
-import {readRequests} from '../.test-dist/record-requests.js';
+import {readRequests,readReceiptHistory,replacementFor} from '../.test-dist/record-requests.js';
 import {cases,deferred,time} from './authored-evidence-fixtures.mjs';
 import {patientId,caseId,sourceId,response,sourceIndex,readyImages,transportForImages,token} from './source-images-fixtures.mjs';
 
@@ -70,7 +70,7 @@ test('only a listed requested item and an explicitly chosen current same-kind ve
   const sending=api.receive(index,requestId,sourceId);
   await api.receive(index,requestId,sourceId);await api.create(index,fields);await api.refresh(index);
   assert.equal(calls.length,2);assert.equal(calls[1][0],path+'/'+requestId+'/receive');
-  assert.deepEqual(JSON.parse(calls[1][1].body),{synthetic:true,case_id:caseId,source_id:sourceId});
+  assert.deepEqual(JSON.parse(calls[1][1].body),{synthetic:true,case_id:caseId,source_id:sourceId,expected_original:{version:1,sha256:index.sources[0].sha256}});
   gate.resolve(response({request_id:requestId,source_id:sourceId,version:1,duplicate:false},201));await sending;
   assert.equal(calls.length,3);assert.equal(view().rows[0].source.source_id,sourceId);
   assert.equal(view().rows[0].receipt_status,'source_current_unreviewed');
@@ -370,5 +370,30 @@ test('create and receive reload the source owner after a confirmed write and ret
     assert.match(s.snapshot().recordMessage,action==='create'?/Local request saved/:/Source receipt confirmed/);
     assert.match(s.snapshot().recordMessage,/Source versions changed/);
     assert.equal(requestIndex(s.snapshot()).sources.find(s=>s.source_id===sourceId).state,'superseded');
+  }
+});
+
+test('amendment selection requires an unbroken same-specimen chain and history pins both originals',()=>{
+  const index=sourceIndex(), old=index.sources[0];
+  old.state='superseded';
+  const next={...old,source_id:'SRC-'+'B'.repeat(32),version:2,sha256:'c'.repeat(64),supersedes_id:old.source_id,state:'current'};
+  index.sources.push(next);
+  const tracked=readRequests(list({...received(),receipt_status:'source_superseded_reconciliation_required'}),index)[0];
+  assert.equal(replacementFor(tracked,index),next);
+  for(const bad of [{specimen_id:'OTHER'},{version:3},{supersedes_id:null},{document_id:'OTHER'}]){
+    assert.equal(replacementFor(tracked,{...index,sources:[old,{...next,...bad}]}),null);
+  }
+  const pin=s=>({case_id:caseId,source_id:s.source_id,version:s.version,sha256:s.sha256});
+  const current=readRequests(list({...received(),revision:3,source_reference:pin(next)}),index)[0];
+  const common={actor:'ACTOR-FICTIONAL',occurred_at:time,clinical_approval:false,external_request_sent:false};
+  const a={...common,kind:'received',source_reference:pin(old),previous_source_id:null,reconciliation_id:null,reason_code:null,revision:2};
+  const b={...common,kind:'reconciled',source_reference:pin(next),previous_source_id:old.source_id,
+    reconciliation_id:'RECON-'+'C'.repeat(32),reason_code:'source_amendment',revision:3};
+  const history={synthetic:true,clinical_approval:false,external_request_sent:false,patient_id:patientId,request_id:requestId,
+    access_receipt_id:'ACCESS-'+'D'.repeat(32),receipts:[a,b]};
+  assert.deepEqual(readReceiptHistory(history,current,index).map(e=>e.source),[old,next]);
+  for(const invalid of [{patient_id:'PAT-WRONG'},{receipts:[b,a]},{receipts:[a]},{receipts:[a,{...b,clinical_approval:true}]},
+      {receipts:[a,{...b,source_reference:{...pin(next),sha256:old.sha256}}]}, {receipts:[a,{...b,previous_source_id:next.source_id}]}]){
+    assert.throws(()=>readReceiptHistory({...history,...invalid},current,index));
   }
 });
