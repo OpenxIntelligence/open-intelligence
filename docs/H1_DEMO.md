@@ -33,6 +33,8 @@ The first start downloads/builds the pinned backend. Package rights checks must 
 | Follow-up | On the same question, choose “Record follow-up work”; title it “Obtain the fictional final assay report”; enter an owner, a revisit trigger and a reason; record it | A persistent operational task, separate from the report and from unsent drafts |
 | Return | Open Overview and inspect the saved-question agenda; use “Inspect records and reports” | The exact question, report and recorded task can be rediscovered through fresh scoped reads |
 
+Overview shows up to three record-preparation prompts for the checked case. Under “Review unresolved source statements”, choose “Inspect source statements” to see the pending assay in Journey. The saved-question agenda links back to the report and follow-up task.
+
 The supplied laboratory file `examples/synthetic/fictional-fhir-r4-lab-bundle.json` can also be deliberately imported in Records for this case. Its patient reference matches the fictional case binding. Original JSON and typed values stay source-reported; no reference-range interpretation or laboratory-to-question creation is added.
 
 ## Stop, resume and inspect
