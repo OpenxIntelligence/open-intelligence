@@ -1,6 +1,6 @@
 import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import type {RegistrySession} from './registry-client';
-import {DocumentClient,passageLocation} from './reviewed-documents';
+import {DocumentClient} from './reviewed-documents';
 import type {Finding} from './reviewed-documents';
 import {QuestionPassageClient,decodeChosenPassage,passageReference,manualReportBinding} from './question-passages';
 import type {ManualPanelStatus,PassageScope} from './question-passages';
@@ -62,7 +62,7 @@ export function QuestionPassagesPanel({session,scope,busy,onContext,onSaved}:{se
    </li>)}</ul>}
    {displayed?.state==='current'&&latest&&<fieldset disabled={editingLocked||chosen.length>=20}><legend>Saved selections from {displayed.document_id}, revision {latest.revision}</legend>
     {latest.findings.length===0?<p>No saved passages in this revision. Select and save a passage in Records first.</p>:
-     latest.findings.map(f=><p key={f.key}><q>{f.quote}</q> · {passageLocation(displayed.preview,f.line)} <button type="button" data-testid="manual-context-add" onClick={()=>void select(f)}>Choose passage {f.key}</button></p>)}
+     latest.findings.map(f=><p key={f.key}><q>{f.quote}</q> · {displayed.preview.media_type==='application/pdf'?`Page ${displayed.preview.lines[f.line-1].page}, extraction line ${f.line}`:`Line ${f.line}`} <button type="button" data-testid="manual-context-add" onClick={()=>void select(f)}>Choose passage {f.key}</button></p>)}
    </fieldset>}
    <button type="button" className="primary" data-testid="manual-context-save" disabled={editingLocked||chosen.some(p=>p.selection_state!=='current_unreviewed_selection')} onClick={()=>void save()}>Save passage set ({chosen.length}/20)</button>
    <p className="muted">Saving an empty set removes attachments from current context while preserving earlier revisions and reports. Nothing here establishes clinical approval.</p>

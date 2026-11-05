@@ -2,7 +2,7 @@
 export type Finding={key:string;state:string;quote:string;line:number};
 export type Preview={filename:string;sha256:string;byte_count:number;media_type:string;text:string;lines:{line:number;text:string;page?:number;page_line?:number}[];extraction_sha256?:string;clinical_review:'not_performed'};
 export type Summary={source_id:string;document_id:string;version:number;state:'current'|'superseded';sha256:string;filename:string};
-export type Revision={revision_id:string;revision:number;findings:Finding[];reason:string;classification_origin:'user_selected';clinical_review:'not_performed'};
+export type Revision={revision_id:string;revision:number;findings:Finding[];reason:string;actor?:string;created_at?:string;review_sha256?:string;classification_origin:'user_selected';clinical_review:'not_performed'};
 export type Document=Summary&{preview:Preview;revisions:Revision[]};
 export type Saved={source_id:string;version:number;annotation_revision_id:string;duplicate:boolean};
 export type DocumentReply={status:number;body:unknown;headers?:Headers};
@@ -16,13 +16,6 @@ export async function documentByteHash(bytes:Uint8Array<ArrayBuffer>):Promise<st
  const digest=await crypto.subtle.digest('SHA-256',bytes);
  return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
 }
-export function passageLocation(preview:Preview,line:number){
- const anchor=preview.lines[line-1];
- return preview.media_type==='application/pdf'&&anchor?.page
-  ? `Page ${anchor.page}, page line ${anchor.page_line} (extraction line ${line})`
-  : `Line ${line}`;
-}
-
 export function parsePreview(x:unknown):Preview{
  if(!object(x)||typeof x.filename!=='string'||x.filename.length>120||!filename.test(x.filename)||x.filename.includes('..')||
     typeof x.sha256!=='string'||!hash.test(x.sha256)||!integer(x.byte_count,1,65536)||typeof x.text!=='string'||new TextEncoder().encode(x.text).length>65536||
@@ -30,8 +23,15 @@ export function parsePreview(x:unknown):Preview{
     !Array.isArray(x.lines)||x.lines.length>512||x.lines.length<1)throw Error('Invalid document preview');
  const pdf=x.media_type==='application/pdf';
  if(pdf&&(typeof x.extraction_sha256!=='string'||!hash.test(x.extraction_sha256)))throw Error('Missing extraction identity');
+ let previousPage=0,previousPageLine=0;
  x.lines.forEach((line,i)=>{if(!object(line)||line.line!==i+1||typeof line.text!=='string'||
-  (pdf&&(!integer(line.page,1,20)||!integer(line.page_line,1,512))))throw Error('Invalid extraction anchor');});
+  (pdf&&(!integer(line.page,1,20)||!integer(line.page_line,1,512))))throw Error('Invalid extraction anchor');
+  if(pdf){
+   const page=Number(line.page),pageLine=Number(line.page_line);
+   if(page<previousPage||pageLine!==(page===previousPage?previousPageLine+1:1))throw Error('Inconsistent PDF line location');
+   previousPage=page;previousPageLine=pageLine;
+  }
+ });
  return x as Preview;
 }
 function summary(x:unknown):Summary{

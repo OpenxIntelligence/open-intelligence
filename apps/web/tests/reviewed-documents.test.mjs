@@ -17,6 +17,17 @@ test('unknown writes retain exact payload for explicit retry only',async()=>{
  assert.equal(c.snapshot().phase,'uncertain');assert.equal(calls.length,1);fails=false;await c.retry();
  assert.equal(calls[0][1],calls[1][1]);assert.equal(c.snapshot().receipt.annotation_revision_id,ANN);assert.equal(c.snapshot().pending,null);
 });
+
+test('PDF line locations restart at one after blank pages and increment within each page',()=>{
+ const pdf={...preview,filename:'locations.pdf',media_type:'application/pdf',extraction_sha256:'c'.repeat(64)};
+ const lines=[{line:1,text:'Cover',page:1,page_line:1},{line:2,text:'Label',page:3,page_line:1},
+  {line:3,text:'Value',page:3,page_line:2}];
+ assert.deepEqual(parsePreview({...pdf,lines}).lines,lines);
+ for(const [index,change] of [[1,{page_line:7}],[2,{page_line:1}],[2,{page:2,page_line:1}]]){
+  const altered=lines.map((line,i)=>i===index?{...line,...change}:line);
+  assert.throws(()=>parsePreview({...pdf,lines:altered}),/PDF line location/);
+ }
+});
 test('malformed success remains uncertain and cannot be silently replaced',async()=>{
  const c=new DocumentClient(async()=>({status:201,body:{source_id:'forged'}}));await c.save('',{synthetic:true});
  const pending=c.snapshot().pending;await c.save('',{different:true});assert.equal(c.snapshot().pending,pending);assert.equal(c.snapshot().phase,'uncertain');

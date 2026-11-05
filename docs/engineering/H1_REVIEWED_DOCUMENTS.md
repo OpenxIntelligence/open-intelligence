@@ -61,10 +61,11 @@ The connected browser journey exercises a substituted hash on one real preview
 response, retries the selected file, corrects a selection on page two and
 checks the page locations on both saved revisions.
 
-When a reviewer chooses a saved passage in Investigations, the picker uses the
-same location label as Records. A fresh selection receipt must match the
+When a reviewer chooses a saved passage in Investigations, the picker shows the
+physical page and document-wide extraction line that its selection receipt carries. A fresh selection receipt must match the
 displayed document version, original and extraction hashes, selection revision,
-quotation, classification, extraction line and physical page. A difference asks
+reviewer label, review time, review digest, quotation, classification, extraction
+line and physical page. A second digest for the same saved selection is refused. A difference asks
 the reviewer to reopen the record before choosing the passage. The browser
 journey exercises this using a shortened, valid substring while the selection
 endpoint returns the original quotation. It then reopens the document and

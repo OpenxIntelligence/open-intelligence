@@ -119,7 +119,7 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
                 })()""")
                 cd.evaluate(open_document)
                 cd.wait("document.querySelector('[data-testid=question-manual-passages] fieldset q')?.textContent==='violet label'",'substituted substring displayed')
-                assert cd.evaluate("document.querySelector('[data-testid=question-manual-passages] fieldset').textContent.includes('Page 2, page line 1 (extraction line 2)')")
+                assert cd.evaluate("document.querySelector('[data-testid=question-manual-passages] fieldset').textContent.includes('Page 2, extraction line 2')")
                 click('[data-testid=manual-context-add]')
                 cd.wait("document.querySelector('[data-testid=manual-context-status]').textContent.includes('differs from the one displayed')",'different quotation withheld')
                 assert cd.evaluate("document.querySelectorAll('[data-testid=manual-context-selected] blockquote').length") == 1

@@ -66,7 +66,9 @@ export async function decodeChosenPassage(value:unknown,scope:PassageScope,doc:D
  const sameRendition=anchor.extraction_method===(pdf?'pypdf-text-v1':'utf8-plain-text-v1')
   &&anchor.extraction_sha256===(doc.preview.extraction_sha256??null);
  const sameLocation=line?.line===finding.line&&anchor.line===finding.line&&anchor.page===(pdf?line.page:null);
- if(!sameOriginal||!sameRendition||!sameLocation||anchor.annotation_revision!==revision.revision||
+ const sameReview=anchor.annotation_revision===revision.revision&&anchor.review_sha256===revision.review_sha256
+  &&anchor.selected_by===revision.actor&&anchor.selected_at===revision.created_at;
+ if(!sameOriginal||!sameRendition||!sameLocation||!sameReview||
     anchor.quote!==finding.quote||anchor.selected_state!==finding.state){
   throw Error('The saved passage differs from the one displayed. Reopen the record and check the quotation again.');
  }
@@ -123,7 +125,11 @@ export class QuestionPassageClient{
  }
  choose(passage:ResolvedPassage):boolean{
   if(passage.anchor.patient_id!==this.scope.patient_id||passage.anchor.case_id!==this.scope.case_id||passage.selection_state!=='current_unreviewed_selection')return false;
-  return this.#edit(this.#state.chosen.some(p=>p.anchor_sha256===passage.anchor_sha256)?this.#state.chosen:[...this.#state.chosen,passage]);
+  const {source_id,annotation_revision_id,selection_key}=passage.anchor;
+  const prior=this.#state.chosen.find(({anchor})=>anchor.source_id===source_id
+   &&anchor.annotation_revision_id===annotation_revision_id&&anchor.selection_key===selection_key);
+  if(prior&&prior.anchor_sha256!==passage.anchor_sha256)return false;
+  return this.#edit(prior?this.#state.chosen:[...this.#state.chosen,passage]);
  }
  remove(anchorSha:string):boolean{return this.#edit(this.#state.chosen.filter(p=>p.anchor_sha256!==anchorSha));}
  async discardDraft(){
