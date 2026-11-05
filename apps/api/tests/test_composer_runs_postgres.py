@@ -295,10 +295,44 @@ class ComposerRunsPostgresTests(source_fixture.SourceVersionFixture):
                 self.assertIsNotNone(claim)
                 self.assertEqual(claim['attempt_count'], attempt)
                 time.sleep(1.1)
-            self.assertIsNone(self.claim(patient))
+            self.assertEqual(self.work(patient), {'status': 'failed', 'attempt_count': 3})
+            self.assertEqual(self.work(patient), {'status': 'idle'})
             row, count, history = self.stored(run)
             self.assertEqual((row['state'], row['attempt_count'], count), ('failed', 3, 0))
             self.assertEqual(history[-1][2], 'attempts_exhausted')
+
+    def test_expiry_during_source_audit_cannot_publish_a_worker_result(self):
+        from oi_api.composer_runs import RunLeaseLost
+        from open_intelligence.postgres_registry import PostgresPatientRegistry
+
+        with running_server(create_app(self.settings)) as base:
+            patient, question, _, run = self.seeded_run(base)
+            claim = self.claim(patient, lease=2)
+            before, events = self.stored(run), self.events()
+            append = PostgresPatientRegistry.append_event
+            seen = []
+
+            def stall_after_audit(registry, pid, kind, **details):
+                result = append(registry, pid, kind, **details)
+                if kind == 'source.read_authorized':
+                    # Wait for the database's own lease clock to pass its deadline
+                    # after the tentative result and receipt have both been written.
+                    registry._fetchone(
+                        "SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM "
+                        "(CAST(%s AS timestamptz) - clock_timestamp())))::double precision + 0.05)",
+                        (claim['lease_expires_at'],))
+                    seen.append(kind)
+                return result
+
+            with patch.object(PostgresPatientRegistry, 'append_event', stall_after_audit):
+                with self.assertRaises(RunLeaseLost):
+                    self.complete(claim)
+            self.assertEqual(seen, ['source.read_authorized'])
+            self.assertEqual(self.stored(run), before)
+            self.assertEqual(self.events(), events)
+            self.assertEqual(self.status(base, patient, question, run, '/result')[0], 409)
+            self.assertEqual(self.work(patient), {'status': 'completed', 'attempt_count': 2})
+            self.assertEqual(self.stored(run)[1], 1)
 
     def test_prepared_result_authority_denial_rolls_back_result_and_events(self):
         with running_server(create_app(self.settings)) as base:
