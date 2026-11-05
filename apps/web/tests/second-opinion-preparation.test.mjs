@@ -79,3 +79,20 @@ test('source-amended laboratory question blocks an all-current second-opinion st
  assert.equal(view.state,'needs_reassessment');
  assert.deepEqual(view.laboratoryQuestions,{current:0,reassessment:1});
 });
+
+test('a current text question does not conceal an unreviewed laboratory question in second-opinion readiness',()=>{
+ const view=secondOpinionPreparation({...base(),worldModel:labModel(),recordsPhase:'ready',
+  sourceIndex:sourceIndex([source()]),questions:[question('current_unreviewed_question')],
+  labQuestionListPhase:'ready',labQuestionHistory:labHistory()});
+ assert.equal(view.state,'needs_laboratory_review');
+ assert.deepEqual(view.laboratoryQuestions,{current:1,reassessment:0});
+});
+
+test('unavailable laboratory history cannot make a known laboratory case fully prepared',()=>{
+ const view=secondOpinionPreparation({...base(),worldModel:labModel(),recordsPhase:'ready',
+  sourceIndex:sourceIndex([source()]),questions:[question('current_unreviewed_question')],
+  labQuestionListPhase:'error',labQuestionHistory:labHistory()});
+ assert.equal(view.state,'needs_check');
+ assert.equal(view.laboratoryAvailable,true);
+ assert.equal(view.laboratoryQuestions,null);
+});

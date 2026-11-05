@@ -64,7 +64,9 @@ export function secondOpinionPreparation(state:ViewState){
  if(records&&questions){
   preparationState=records.current===0?'needs_records':
    questions.reassessment>0||Boolean(laboratoryQuestions?.reassessment)?'needs_reassessment':
-   questions.current===0?(laboratoryQuestions?.current?'needs_laboratory_review':'needs_question'):'inputs_prepared';
+   continuity.laboratoryAvailable&&laboratoryQuestions===null?'needs_check':
+   Boolean(laboratoryQuestions?.current)?'needs_laboratory_review':
+   questions.current===0?'needs_question':'inputs_prepared';
  }
  return {patientId,caseId,records,questions,laboratoryQuestions,
   laboratoryAvailable:continuity.laboratoryAvailable,agenda,coordination,state:preparationState} as const;
