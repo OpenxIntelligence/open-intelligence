@@ -25,15 +25,30 @@ def upgrade():
                   AND e.metadata_json->>'encounter_id' = c.id::text
             )
         ) OR EXISTS (
-            SELECT 1 FROM ehr.clinical_note_headers h
+            SELECT 1 FROM ehr.clinical_note_versions v
+            JOIN ehr.clinical_note_headers h ON h.id = v.note_id
             JOIN ehr.clinical_encounters c ON c.id = h.encounter_id
             WHERE NOT EXISTS (
                 SELECT 1 FROM identity.identity_domain_events e
-                WHERE e.patient_id = c.patient_id AND e.event_type = 'clinical_note_draft_saved'
+                WHERE e.patient_id = c.patient_id
+                  AND e.event_type = CASE WHEN v.status IN ('attested','attested_correction')
+                                          THEN 'clinical_note_attestation_recorded'
+                                          ELSE 'clinical_note_draft_saved' END
                   AND e.metadata_json->>'note_id' = h.id::text
-                  AND e.metadata_json->>'version' = '1'
+                  AND e.metadata_json->>'version' = v.version::text
                   AND e.metadata_json->>'encounter_id' = c.id::text
             )
+        ) OR EXISTS (
+            -- A move followed by a move back can leave the header correctly
+            -- placed while an intervening patient's transition or draft survives.
+            SELECT 1 FROM identity.identity_domain_events e
+            LEFT JOIN ehr.clinical_encounters c ON c.id::text = e.metadata_json->>'encounter_id'
+            LEFT JOIN ehr.clinical_note_headers h ON h.id::text = e.metadata_json->>'note_id'
+            WHERE e.event_type IN ('clinical_encounter_scheduled','clinical_encounter_state_changed',
+                                   'clinical_note_draft_saved','clinical_note_attestation_recorded')
+              AND (c.patient_id IS DISTINCT FROM e.patient_id OR
+                   (e.event_type IN ('clinical_note_draft_saved','clinical_note_attestation_recorded')
+                    AND h.encounter_id IS DISTINCT FROM c.id))
         )
     """).scalar_one()
     if mismatch:

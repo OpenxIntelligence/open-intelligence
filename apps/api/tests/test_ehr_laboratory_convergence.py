@@ -160,7 +160,7 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
             self.assertTrue(retry["duplicate"])
             self.assertEqual(retry["link_id"], receipt["link_id"])
 
-    def test_encounter_and_note_ownership_survive_direct_reassignment_attempts(self):
+    def ownership_fixture(self):
         patient_a, _, _ = self.start_at("0021_lab_citation_freshness")
         note_url, note = self.seed_encounter(patient_a)
         encounter_a = int(note_url.split("/encounters/")[1].split("/")[0])
@@ -172,6 +172,10 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
                                            request_key="OWNERSHIP-SCHEDULE-B")["encounter_id"]
         self.creds[0]["patient_ids"].append(patient_b)
         self.write()
+        return patient_a, encounter_a, patient_b, encounter_b, note_url, note
+
+    def test_encounter_and_note_ownership_survive_direct_reassignment_attempts(self):
+        patient_a, encounter_a, patient_b, encounter_b, note_url, note = self.ownership_fixture()
         headers_b = f"/v1/patients/{patient_b}/encounters/{encounter_b}/notes"
         history_b = headers_b + "/JOIN-DRAFT/versions"
         move_header = text("UPDATE ehr.clinical_note_headers SET encounter_id=:owner WHERE id=:id")
@@ -207,6 +211,44 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
             self.assertEqual(status, 200, history)
             self.assertEqual(history["versions"], [])
             self.check_note(base, note_url, note)
+
+    def test_upgrade_refuses_a_note_moved_back_after_another_patient_appended_a_version(self):
+        patient_a, encounter_a, patient_b, encounter_b, _, note = self.ownership_fixture()
+        change = text("UPDATE ehr.clinical_note_headers SET encounter_id=:encounter WHERE id=:note")
+        with self.engine.begin() as conn:
+            conn.execute(change, {"encounter": encounter_b, "note": note["note_id"]})
+        access = {"actor": "ACTOR-ALPHA", "purpose": "operations"}
+        second_body = "Independently fictional draft for patient B."
+        with self.services() as registry:
+            service = PostgresClinicalEncounters(registry, registry.authorizer)
+            service.transition(patient_b, encounter_b, "in_progress", expected_revision=1,
+                               request_key="OWNERSHIP-START-B", **access)
+            service.write_note(patient_b, encounter_b, "JOIN-DRAFT", body=second_body,
+                               expected_version=1, request_key="OWNERSHIP-NOTE-B", **access)
+        with self.engine.begin() as conn:
+            conn.execute(change, {"encounter": encounter_a, "note": note["note_id"]})
+        with self.services() as registry:
+            history = PostgresClinicalEncounters(registry, registry.authorizer).note_history(
+                patient_a, encounter_a, "JOIN-DRAFT", **access)
+            self.assertEqual([v["body"] for v in history], [NOTE["body"], second_body])
+        with self.assertRaisesRegex(CommandError, "ownership requires explicit reconciliation"):
+            migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        self.assertEqual(self.heads(), {"0021_lab_citation_freshness"})
+
+    def test_upgrade_refuses_an_encounter_moved_back_after_a_foreign_transition(self):
+        patient_a, encounter_a, patient_b, _, _, _ = self.ownership_fixture()
+        change = text("UPDATE ehr.clinical_encounters SET patient_id=:patient WHERE id=:encounter")
+        with self.engine.begin() as conn:
+            conn.execute(change, {"patient": patient_b, "encounter": encounter_a})
+        with self.services() as registry:
+            PostgresClinicalEncounters(registry, registry.authorizer).transition(
+                patient_b, encounter_a, "completed", expected_revision=2, actor="ACTOR-ALPHA",
+                purpose="operations", request_key="OWNERSHIP-COMPLETE-B")
+        with self.engine.begin() as conn:
+            conn.execute(change, {"patient": patient_a, "encounter": encounter_a})
+        with self.assertRaisesRegex(CommandError, "ownership requires explicit reconciliation"):
+            migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        self.assertEqual(self.heads(), {"0021_lab_citation_freshness"})
 
     def upgrade(self, expected_heads):
         self.assertEqual(self.heads(), expected_heads)
