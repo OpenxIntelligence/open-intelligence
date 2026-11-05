@@ -18,6 +18,13 @@ def upgrade():
                 RETURN NEW;
             END IF;
 
+            -- A transaction-wide snapshot can predate a completed import
+            -- even after taking the binding lock. The supported writer uses
+            -- a fresh READ COMMITTED snapshot for this final check.
+            IF current_setting('transaction_isolation') <> 'read committed' THEN
+                RAISE EXCEPTION 'OI-LAB-CITATION-READ-COMMITTED-REQUIRED';
+            END IF;
+
             -- The earlier question_evidence_scope trigger takes the same case
             -- binding lock as every import. Event IDs give the order within
             -- that lock even when timestamps are equal or supplied externally.

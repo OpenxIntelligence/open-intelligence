@@ -90,14 +90,6 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
         scope = (patient, case, question)
         newer = evidence.ORIGINAL.replace("Document: DOC-ONE", "Document: DOC-TWO")
         key = "CITATION-AFTER-INDEPENDENT-IMPORT"
-        with self.services() as registry:
-            PostgresSourceVersions(registry).import_original(patient, case, newer.encode(), **evidence.OPTIONS)
-            owner = PostgresLaboratoryQuestionEvidence(registry)
-            self.assertEqual(owner.links(*scope, **evidence.OPTIONS)["source_context_state"],
-                             "source_reassessment_required")
-            with self.assertRaises(PatientRegistryConflict):
-                owner.create_link(*scope, **{**command, "request_key": key}, **evidence.OPTIONS)
-
         link = "EVIDENCE-LINK-" + uuid.uuid4().hex.upper()
         intent = _digest(dict(operation="evidence.link", patient_id=patient, case_id=case,
                               question_id=question, **evidence.COMMON, request_key=key,
@@ -127,6 +119,30 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
             self.assertEqual(conn.execute(text("SELECT count(*) FROM investigation.question_evidence_links "
                                                "WHERE link_id=:link"), params).scalar_one(), 1)
 
+        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        # A fresh new key is valid even for an anchor saved before upgrade.
+        with self.engine.connect() as conn:
+            write_directly(conn)
+            conn.rollback()
+
+        count_sources = text("SELECT count(*) FROM clinical_source.source_versions WHERE case_id=:case")
+        with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as conn:
+            at_start = conn.execute(count_sources, {"case": case}).scalar_one()
+            # Separate connection and committed import after the writer's snapshot.
+            with self.services() as registry:
+                PostgresSourceVersions(registry).import_original(
+                    patient, case, newer.encode(), **evidence.OPTIONS)
+            self.assertEqual(conn.execute(count_sources, {"case": case}).scalar_one(), at_start)
+            with self.assertRaisesRegex(DBAPIError, "OI-LAB-CITATION-READ-COMMITTED-REQUIRED"):
+                write_directly(conn)
+        with self.services() as registry:
+            owner = PostgresLaboratoryQuestionEvidence(registry)
+            self.assertEqual(owner.links(*scope, **evidence.OPTIONS)["source_context_state"],
+                             "source_reassessment_required")
+            with self.assertRaises(PatientRegistryConflict):
+                owner.create_link(*scope, **{**command, "request_key": key}, **evidence.OPTIONS)
+
+        migrate(self.admin, "downgrade", "0020_ehr_lab_convergence")
         # Demonstrate the old schema accepted this command, then roll it back.
         with self.engine.connect() as conn:
             with conn.begin_nested() as control:

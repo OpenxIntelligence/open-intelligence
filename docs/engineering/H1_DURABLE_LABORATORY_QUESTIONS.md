@@ -48,6 +48,7 @@ the revision tested, observed results, failure history and release status.
 
 A new laboratory citation requires the saved case source set to remain current.
 PostgreSQL compares the ordered question-created and source-import receipts under
-the case binding lock. A later independent document also requires reassessment,
+the case binding lock. New typed citation inserts require READ COMMITTED so a
+writer waiting for the lock sees sources committed during its wait. A later independent document also requires reassessment,
 even when the selected laboratory report is still current. Previously committed
 links retain their identity and remain subject to current read and retry grants.
