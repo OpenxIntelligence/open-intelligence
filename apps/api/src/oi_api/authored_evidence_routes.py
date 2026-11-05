@@ -121,6 +121,8 @@ def register_evidence_routes(router, *, principal, registry, records_authorized,
                 scope = dict(organization=context.organization, actor=context.actor, purpose=context.purpose,
                              recheck_authority=recheck)
 
+                evidence = PostgresQuestionEvidence(patients)
+
                 def return_from_current_report(value):
                     report = EvidenceReport.model_validate(value)
                     if report.state == "content_withheld":
@@ -129,7 +131,12 @@ def register_evidence_routes(router, *, principal, registry, records_authorized,
                             report.snapshot_sha256 != payload.expected_report_snapshot_sha256):
                         raise PatientRegistryConflict("Evidence report needs reassessment")
                     snapshot = report.snapshot
-                    # The immutable report snapshot identifies the comparisons, evidence versions and rights digests.
+                    def record_return(receipt):
+                        # Older receipts keep their original history on an exact retry.
+                        if not receipt["duplicate"]:
+                            evidence.record_passage_verification(report, receipt)
+                        return prepare_json(EvidenceRunReturnReceipt, receipt, write=True)
+
                     return return_verified_run(
                         patients, patient_id, case_id, question_id, run_id, **scope,
                         expected_result_sha256=payload.expected_result_sha256,
@@ -139,9 +146,9 @@ def register_evidence_routes(router, *, principal, registry, records_authorized,
                         report_id=report_id, report_snapshot_sha256=report.snapshot_sha256,
                         report_body_sha256=report.body_sha256, request_key=payload.request_key,
                         reason=payload.reason, expected_queue_fingerprint=payload.expected_queue_fingerprint,
-                        prepare_response=lambda receipt: prepare_json(EvidenceRunReturnReceipt, receipt, write=True))
+                        prepare_response=record_return)
 
-                return PostgresQuestionEvidence(patients).report(
+                return evidence.report(
                     patient_id, case_id, question_id, report_id, **scope, prepare_response=return_from_current_report,
                     recheck_original_authority=lambda: final_question_authority(
                         request, context, patients, patient_id, (*actions, "source_original_read")))

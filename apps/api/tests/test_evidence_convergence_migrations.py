@@ -48,7 +48,7 @@ class PublishedEvidenceFixture:
             connection.rollback()
             pooled.close()
 
-    def start_at(self, revision):
+    def start_with_source(self, revision):
         migrate(self.admin, "downgrade", "base")
         migrate(self.admin, "upgrade", revision)
         with self.engine.connect() as connection:
@@ -69,6 +69,15 @@ class PublishedEvidenceFixture:
                 patient, "CASE-ALPHA", ORIGINAL.encode("utf-8"), **OPTIONS)["source_id"]
             index = PostgresSourceVersions(registry).list(patient, "CASE-ALPHA", **OPTIONS)
             snapshot = project_source_world_model(index)["snapshot_fingerprint"]
+        self.creds[0]["patient_ids"].append(patient)
+        self.write()
+        return patient, source, snapshot
+
+    def start_at(self, revision):
+        # Several migration suites borrow start_at and services without
+        # inheriting this fixture's unittest methods.
+        patient, source, snapshot = PublishedEvidenceFixture.start_with_source(self, revision)
+        with self.services() as registry:
             question_text = "Which fictional continuity details require independent review?"
             prepared = PostgresSourceComposerPreflight(registry).preview(
                 patient, "CASE-ALPHA", **OPTIONS, expected_source_snapshot_sha256=snapshot,
@@ -77,7 +86,6 @@ class PublishedEvidenceFixture:
                 patient, "CASE-ALPHA", **OPTIONS, request_key="UPGRADE-QUESTION", source_id=source,
                 source_line=8, question=question_text, expected_source_snapshot_sha256=snapshot,
                 expected_preflight_sha256=prepared["preflight_sha256"])["question_id"]
-        self.creds[0]["patient_ids"].append(patient)
         self.creds[0]["actions"] = sorted(set(self.creds[0]["actions"]) | {
             "composer_context_read", "question_create", "question_read", "evidence_read", "evidence_link",
             "followthrough_read", "followthrough_create", *AUTHORED_ACTIONS,
