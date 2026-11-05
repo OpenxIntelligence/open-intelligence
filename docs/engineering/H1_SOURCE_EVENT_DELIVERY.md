@@ -36,8 +36,8 @@ Apply the explicit additive migration through the normal migration command:
 PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade head
 ```
 
-Readiness requires exactly `0020_source_event_delivery`, extending
-`0019_composer_runs`. The migration captures new source-import events and
+The application requires `0026_integrated_core`, joining the clinical
+execution head with `0020_source_event_delivery`. That historical revision captures new source-import events and
 strictly backfills selected historical source-import events against their
 canonical source/patient/case bindings. Malformed selected history fails the
 upgrade rather than being silently omitted or repaired. Existing originals and
@@ -47,9 +47,7 @@ downgrade.
 The construction baseline is
 `cd10a828e499bf65dbbe8eb4ca77207710a5f2b7`, joining verified worker source
 `2312755dc52260c3632c5801b1b7b68041671833` and accepted main
-`aad241e5cce9a1bcff3e431d63cecd16e948d731`. Separate laboratory/clinical candidate
-migration histories require their own reviewed reconciliation and combined
-acceptance; this guide does not qualify those combinations.
+`aad241e5cce9a1bcff3e431d63cecd16e948d731`. The combined laboratory, encounter and execution migrations and verification results are tracked in [draft #564](https://github.com/OpenxIntelligence/open-intelligence/pull/564).
 
 ## Run one bounded attempt
 

@@ -35,7 +35,7 @@ class LaboratoryCitationMigrationTests(SourceVersionFixture):
         self.assertEqual(self.snapshot()[0]["investigation.laboratory_citation_anchors"], [])
         migrate(self.admin, "downgrade", PREVIOUS)
         self.assertEqual(self.snapshot(), before)
-        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        migrate(self.admin, "upgrade", "0024_clinical_execution_join")
 
         qid = saved["question_id"]
         scope = (patient, "CASE-ALPHA", qid)
@@ -109,8 +109,10 @@ class LaboratoryCitationMigrationTests(SourceVersionFixture):
                     conn.execute(text(command))
         preserved = self.snapshot()
         with self.assertRaisesRegex(CommandError, "Stored laboratory citation history"):
-            migrate(self.admin, "downgrade", f"{CITATIONS}@{PREVIOUS}")
+            migrate(self.admin, "downgrade", PREVIOUS)
         self.assertEqual(self.snapshot(), preserved)
         with self.engine.connect() as conn:
             self.assertEqual(conn.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(),
-                             SCHEMA_REVISION)
+                             "0024_clinical_execution_join")
+        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        joined.LabManualPopulatedMigrationTests.assert_existing_history_preserved(self, preserved)

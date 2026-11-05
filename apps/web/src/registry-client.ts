@@ -18,8 +18,8 @@ import {decodeComposerPreflight,DEFAULT_SOURCE_QUESTION} from './composer-prefli
 import type {ComposerPreflight} from './composer-preflight-view.js';
 import {decodeSavedQuestion,decodeSourceQuestions,questionSaveBlocksSourceChange} from './source-questions-view.js';
 import type {SavedQuestion,SourceQuestion} from './source-questions-view.js';
-import {decodeReviewQueue,decodeReviewReturnResult,decodeEvidenceReturn,selectedReviewEvidence,validReturnReason,FICTIONAL_RETURN_REASON} from './review-queue-view.js';
-import type {ReviewQueue,ReviewReturnResult,ReviewEvidence} from './review-queue-view.js';
+import {decodeReviewQueue,decodeReviewReturnResult,decodeEvidenceRunReturn,openedReviewArtifacts,validReturnReason,FICTIONAL_RETURN_REASON,type ReviewArtifacts} from './review-queue-view.js';
+import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
 import {canPrepareSourceBrief,decodeSourceBrief} from './source-brief.js';
 import type {SourceBrief} from './source-brief.js';
 import {canRetryRun, readRunReceipt, readRunResult, readRunStatus} from './background-brief.js';
@@ -43,7 +43,7 @@ export type Patient = Readonly<{
 }>;
 export type CreatedPatient = Readonly<{patient_id: string; duplicate: boolean}>;
 export type ReviewReturnIntent=Readonly<{
-  patient_id:string;case_id:string;question_id:string;queue_fingerprint:string;reason:string; evidence?:ReviewEvidence;
+  patient_id:string;case_id:string;question_id:string;queue_fingerprint:string;reason:string;artifacts?:ReviewArtifacts;
 }>;
 export type QuestionDraft = Readonly<{case_id:string;source_id:string;source_line:number;
   snapshot_fingerprint:string;question:string}>;
@@ -719,16 +719,16 @@ export class RegistrySession {
   async retryReviewReturn():Promise<void>{
     const intent=this.#state.reviewReturnIntent;
     if(this.#state.reviewReturnPhase!=='unknown'||!intent)return;
-    await this.returnReviewQuestion(intent.question_id,intent.queue_fingerprint,intent.reason,Boolean(intent.evidence));
+    await this.returnReviewQuestion(intent.question_id,intent.queue_fingerprint,intent.reason,Boolean(intent.artifacts));
   }
 
   async returnReviewQuestion(questionId:string,fingerprint:string,
-                             reason:string=FICTIONAL_RETURN_REASON,withEvidence=false):Promise<void>{
+                             reason:string=FICTIONAL_RETURN_REASON,includeArtifacts=false):Promise<void>{
     if(this.#savingReview)return;
     const patientId=this.#state.patient?.patient_id;
     const previous=this.#state.reviewReturnIntent;
     const recovering=this.#state.reviewReturnPhase==='unknown'&&previous!==null&&this.#reviewKey!=='';
-    if(recovering&&(previous.question_id!==questionId||previous.queue_fingerprint!==fingerprint||previous.reason!==reason||Boolean(previous.evidence)!==withEvidence)){
+    if(recovering&&(previous.question_id!==questionId||previous.queue_fingerprint!==fingerprint||previous.reason!==reason||Boolean(previous.artifacts)!==includeArtifacts)){
       this.#publish({reviewReturnMessage:'Resolve the earlier uncertain return with its exact reason and source context before starting a different return.'});
       return;
     }
@@ -748,16 +748,15 @@ export class RegistrySession {
         'Select a current source question and a visible 10–600 character verification reason.'});
       return;
     }
-    const evidence=withEvidence?(recovering?previous.evidence:
-      item&&selectedReviewEvidence(item,this.#state.backgroundBrief,this.#state.evidenceReport)):null;
-    if(withEvidence&&!evidence){
-      this.#publish({reviewReturnMessage:'Reopen the completed brief and current evidence report for this question.'});
-      return;
+    const artifacts=recovering?previous.artifacts:includeArtifacts&&item?
+      openedReviewArtifacts(item,this.#state.backgroundBrief,this.#state.evidenceReport):null;
+    if(includeArtifacts&&!artifacts){
+      this.#publish({reviewReturnPhase:'error',reviewReturnMessage:'Reopen the completed brief and current comparison report for this question.'});return;
     }
-    const intent=JSON.stringify([patientId,caseId,questionId,fingerprint,reason,evidence]);
+    const intent=JSON.stringify([patientId,caseId,questionId,fingerprint,reason,artifacts??null]);
     if(this.#reviewIntent!==intent||!this.#reviewKey){this.#reviewKey=crypto.randomUUID();this.#reviewIntent=intent;}
     const requestKey=this.#reviewKey,query=++this.#reviewWrite,scope=this.#scope,selection=this.#read;
-    const captured=Object.freeze({patient_id:patientId,case_id:caseId,question_id:questionId,queue_fingerprint:fingerprint,reason,...(evidence?{evidence}:{})});
+    const captured=Object.freeze({patient_id:patientId,case_id:caseId,question_id:questionId,queue_fingerprint:fingerprint,reason,...(artifacts?{artifacts}:{})});
     const current=()=>query===this.#reviewWrite&&scope===this.#scope&&selection===this.#read&&
       this.#state.patient?.patient_id===patientId&&this.#reviewIntent===intent;
     const uncertain=()=>{
@@ -773,29 +772,32 @@ export class RegistrySession {
         'Rechecking the source fingerprint and separate return permission before recording…'});
     try{
       const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+
-        '/questions/'+encodeURIComponent(questionId)+(evidence?
-          '/evidence-reports/'+encodeURIComponent(evidence.report_id)+'/runs/'+encodeURIComponent(evidence.run_id)+'/return-for-verification':
-          '/return-for-verification');
+        '/questions/'+encodeURIComponent(questionId)+(artifacts?'/evidence-reports/'+encodeURIComponent(artifacts.report_id)+
+          '/runs/'+encodeURIComponent(artifacts.run_id):'')+'/return-for-verification';
       const res=await this.transport(url,this.#init(control,JSON.stringify({synthetic:true,
-        request_key:requestKey,expected_queue_fingerprint:fingerprint,reason,...(evidence?{
-          expected_result_sha256:evidence.result_sha256,expected_report_snapshot_sha256:evidence.report_snapshot_sha256}:{})})));
+        request_key:requestKey,expected_queue_fingerprint:fingerprint,reason,...(artifacts?{
+          expected_result_sha256:artifacts.result_sha256,expected_report_snapshot_sha256:artifacts.report_snapshot_sha256}:{})})));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status===408||res.status>=500){uncertain();return;}
       if(res.status!==200&&res.status!==201){
-        if(evidence){
-          this.dismissSourceBrief();
-          this.dismissQuestionEvidence();
+        if(artifacts){
+          this.#briefRead++;
+          const message=res.status===409?'The selected brief, comparison or review request changed. Reopen both documents before returning them.':
+            'The brief and comparison report were closed because the return could not be authorized.';
+          this.#publish({...emptyBrief(),...this.#evidenceSession.reset(caseId),briefPhase:'error',briefMessage:message});
+          if(recovering){
+            this.#publish({...this.#resetReview(caseId),reviewReturnMessage:
+              'The earlier return is still uncertain. Its original request can be retried after access is restored.'});return;
+          }
         }
-        this.#publish({...(evidence?{evidencePhase:'error' as const,evidenceMessage:res.status===409?
-          'The selected brief or report changed. Reopen both before preparing another return.':
-          'Review access is unavailable. Reopen the brief and evidence report to check current permissions.'}:{}),...this.#resetReview(),reviewReturnPhase:'error',reviewReturnMessage:res.status===409?
+        this.#publish({...this.#resetReview(),reviewReturnPhase:'error',reviewReturnMessage:res.status===409?
           'The source or return intent is no longer current. Refresh the inbox; no new request was created.':
           'Return permission or source context is unavailable. Prior review content is cleared.'});
         return;
       }
-      const wire=await json(res);
-      const saved=evidence?decodeEvidenceReturn(wire,questionId,evidence,res.status):decodeReviewReturnResult(wire,questionId);
+      const value=await json(res);
+      const saved=artifacts?decodeEvidenceRunReturn(value,questionId,artifacts,res.status):decodeReviewReturnResult(value,questionId);
       if(!current())return;
       this.#publish({reviewReturn:saved,reviewReturnPhase:'saved',reviewReturnMessage:saved.duplicate?
         'Original verification-return receipt recovered. The same request was not recorded twice.':

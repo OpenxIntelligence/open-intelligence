@@ -74,8 +74,10 @@ test('uncertain import retains exact command across same-case metadata refresh a
 });
 test('concurrent imports submit only once and malformed/failed success remains uncertain',async()=>{
  for(const response of [reply({},201),reply({},503),reply({...RECEIPT,original_sha256:'0'.repeat(64)},201)]){
-  const hold=deferred();const{session,calls}=await ready(()=>hold.promise);
-  const first=session.importLaboratory(CID,RAW,true);await new Promise(r=>setTimeout(r,10));
+  const hold=deferred(),started=deferred();
+  const{session,calls}=await ready(()=>{started.resolve();return hold.promise;});
+  const first=session.importLaboratory(CID,RAW,true);
+  await Promise.race([started.promise,first.then(()=>{throw Error('First import ended before transport');})]);
   await session.importLaboratory(CID,RAW,true);assert.equal(calls.filter(x=>x[1].method==='POST').length,1);
   hold.resolve(response);await first;assert.equal(session.snapshot().laboratoryPhase,'unknown');
  }

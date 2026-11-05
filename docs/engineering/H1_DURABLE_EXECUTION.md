@@ -93,9 +93,9 @@ unrecoverable.
 
 ## Persistence and lifecycle
 
-Readiness requires PostgreSQL 16 at **`0019_composer_runs`**, directly after
-`0018_laboratory_questions` in this candidate's migration graph. Startup does not
-apply migrations. The migration adds three owned tables:
+The combined application requires PostgreSQL 16 at `0025_clinical_source_events`.
+Run the explicit upgrade before startup. The original `0019_composer_runs`
+revision follows `0018_laboratory_questions` and adds three owned tables.
 
 | Table in `investigation` | Responsibility |
 | --- | --- |
@@ -203,7 +203,7 @@ the candidate's migration explicitly, using the same Python environment as the
 API:
 
 ```bash
-PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade 0019_composer_runs
+PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade head
 PYTHONPATH=apps/api/src:src python -m oi_api.migrate current
 ```
 

@@ -18,6 +18,7 @@
         "oi_api.migrate",
         "oi_api.request_limits",
         "oi_api.registry_context",
+        "oi_api.encounter_event_contract",
         "oi_api.source_event_delivery"
       ],
       "exports": {
@@ -55,6 +56,9 @@
         "oi_api.registry_context": [
           "registry_for_principal"
         ],
+        "oi_api.encounter_event_contract": [
+          "EncounterEvents"
+        ],
         "oi_api.source_event_delivery": [
           "EventLeaseLost",
           "PostgresSourceEventDelivery"
@@ -69,8 +73,7 @@
         "oi_api.__main__",
         "oi_api.app",
         "oi_api.patients",
-        "oi_api.encounter_routes",
-        "oi_api.encounter_relay"
+        "oi_api.encounter_routes"
       ],
       "exports": {},
       "depends_on": [
@@ -90,17 +93,10 @@
       "responsibility": "Existing patient-to-case bindings and operational record-request state, retaining the canonical PatientRegistry and its authorization and transaction semantics.",
       "modules": [
         "oi_api.case_bindings",
-        "oi_api.record_requests",
-        "oi_api.encounter_event_contract"
+        "oi_api.record_requests"
       ],
-      "exports": {
-        "oi_api.encounter_event_contract": [
-          "EncounterEvents"
-        ]
-      },
-      "depends_on": [
-        "platform"
-      ]
+      "exports": {},
+      "depends_on": []
     },
     {
       "id": "source-custody",
@@ -241,7 +237,8 @@
       "modules": [
         "oi_api.followthrough_contracts",
         "oi_api.followthrough_routes",
-        "oi_api.question_followthrough"
+        "oi_api.question_followthrough",
+        "oi_api.encounter_relay"
       ],
       "exports": {
         "oi_api.followthrough_routes": [

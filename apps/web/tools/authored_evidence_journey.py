@@ -68,7 +68,7 @@ _OBSERVE = r"""() => {
 
 
 def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
-             write_grants, directory, artifacts, restart_api, add_synthetic, on_report=None, manual_document=None, run_brief_worker=None):
+             write_grants, directory, artifacts, restart_api, add_synthetic, on_report=None, manual_document=None):
     artifacts = Path(artifacts)
     artifacts.mkdir(parents=True, exist_ok=True)
     directory = Path(directory)
@@ -76,8 +76,7 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
     credentials[0]['actions'] = sorted(set(previous_actions) | {
         'patient_read', 'source_read', 'question_read', 'authored_evidence_read',
         'authored_evidence_import', 'authored_evidence_assess', 'authored_evidence_withdraw',
-        'authored_evidence_original_read', 'evidence_report_export', 'source_original_read',
-        'source_brief_export', 'review_queue_read', 'review_return'})
+        'authored_evidence_original_read', 'evidence_report_export', 'source_original_read'})
     write_grants()
     cd.evaluate('(' + _OBSERVE + ')()')
     scope = f'/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}'
@@ -319,32 +318,6 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
                 + " && Boolean(document.querySelector('[data-testid=evidence-report-preview]'))",
                 'fresh authorized report inspection')
 
-    def return_opened_report(report_value):
-        click(row + ' [data-testid=run-open]')
-        status = 'document.querySelector(' + json.dumps(row + ' [data-testid=run-status]') + ')'
-        cd.wait(status + '?.dataset.state==="queued"', 'the report question has a queued brief')
-        run_id = cd.evaluate(status + '.dataset.runId')
-        run_brief_worker()
-        click(row + ' [data-testid=run-refresh]')
-        cd.wait(status + '?.dataset.state==="completed"', 'worker completed the report question')
-        click(row + ' [data-testid=run-result]')
-        control = '[data-testid=return-execution-evidence]'
-        cd.wait("Boolean(document.querySelector('[data-testid=evidence-review-check], [data-testid=return-execution-evidence]'))",
-                'review choices beside the opened report')
-        if cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-review-check]'))"):
-            click('[data-testid=evidence-review-check]')
-        cd.wait('Boolean(document.querySelector(' + json.dumps(control) + '))', 'live review queue in Investigations')
-        value('[data-testid=evidence-review-reason]', 'Independently review these two fictional comparisons.')
-        click(control)
-        cd.wait("Boolean(document.querySelector('[data-testid=evidence-review-receipt]'))",
-                'returned brief and report produced a canonical review receipt')
-        saved = last('/evidence-reports/' + report_value['report_id'] + '/runs/' + run_id + '/return-for-verification',
-                     'POST', 201)
-        assert saved['verification'] == 'matched_current_source_and_evidence' and not saved['clinical_approval']
-        assert saved['report_snapshot_sha256'] == report_value['snapshot_sha256']
-        assert saved['receipt_id'] == cd.evaluate("document.querySelector('[data-testid=evidence-review-receipt]').textContent")
-        print('PASS GOVERNED EVIDENCE RETURN: opened run and assessed report submitted to the existing review owner')
-
     def download(report_value):
         destination = artifacts / 'evidence-report-downloads' / report_value['report_id'] / report_value['state']
         destination.mkdir(parents=True, exist_ok=True)
@@ -396,8 +369,6 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         downloaded_path, downloaded, download_access = download(first_report)
         assert support['evidence_id'] in first_report['body'] and counter['evidence_id'] in first_report['body']
         assert cd.evaluate("document.querySelectorAll('[data-testid=evidence-report-body] script').length===0")
-        if run_brief_worker is not None:
-            return_opened_report(first_report)
         if on_report is not None:
             on_report(first_report, downloaded_path, downloaded)
 

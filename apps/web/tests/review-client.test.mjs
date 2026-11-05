@@ -530,27 +530,3 @@ test(operation+' '+outcome+' clears source previews with the correct uncertain-r
   assert.deepEqual(s.snapshot().reviewReturn,saved(true));
  }
 });
-
-test('review attachment requires both opened artifacts on this exact current question', async()=>{
- const {selectedReviewEvidence,decodeEvidenceReturn}=await import('../.test-dist/review-queue-view.js');
- const q=item(), runId='RUN-'+'1'.repeat(32), reportId='REPORT-'+'2'.repeat(32);
- const status={state:'completed',run_id:runId,result_sha256:'3'.repeat(64)};
- const run={status,busy:false,result:{brief:{question:q}}};
- const report={state:'current_unreviewed',report_id:reportId,snapshot_sha256:'4'.repeat(64),snapshot:{question:q}};
- const pins=selectedReviewEvidence(q,run,report);
- assert.deepEqual(pins,{run_id:runId,result_sha256:status.result_sha256,report_id:reportId,report_snapshot_sha256:report.snapshot_sha256});
- for(const changed of [{patient_id:'PAT-OTHER'},{case_id:'CASE-OTHER'},{question_id:'QUESTION-'+'F'.repeat(32)},
-                      {source_snapshot_sha256:'5'.repeat(64)},{preflight_sha256:'6'.repeat(64)}]){
-  const other={...q,...changed};
-  assert.equal(selectedReviewEvidence(q,run,{...report,snapshot:{question:other}}),null);
-  assert.equal(selectedReviewEvidence(q,{...run,result:{brief:{question:other}}},report),null);
- }
- assert.equal(selectedReviewEvidence(q,{...run,result:null},report),null);
- assert.equal(selectedReviewEvidence(q,run,{...report,state:'content_withheld',snapshot:null}),null);
- assert.equal(selectedReviewEvidence(q,run,{...report,state:'historical_reassessment_required'}),null);
- const bound={...pins,...saved(),verification:'matched_current_source_and_evidence',clinical_approval:false};
- assert.deepEqual(decodeEvidenceReturn(bound,questionId,pins,201),saved());
- for(const field of Object.keys(pins))assert.throws(()=>decodeEvidenceReturn({...bound,[field]:'invalid'},questionId,pins,201));
- assert.throws(()=>decodeEvidenceReturn({...bound,clinical_approval:true},questionId,pins,201));
- assert.throws(()=>decodeEvidenceReturn(bound,questionId,pins,200));
-});

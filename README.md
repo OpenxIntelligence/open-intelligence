@@ -18,8 +18,8 @@ The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) ident
 the retained contributions. This revision requires `0026_integrated_core` for
 [encounters and draft notes](apps/api/README.md#connected-encounter-and-note-service),
 [laboratory questions and citations](docs/engineering/H1_LABORATORY_CITATIONS.md),
-the actor-scoped [source-event relay](docs/engineering/H1_SOURCE_EVENT_DELIVERY.md),
 and the [durable source-question brief worker](docs/engineering/H1_DURABLE_EXECUTION.md).
+The [source-event worker](docs/engineering/H1_SOURCE_EVENT_DELIVERY.md) reconciles durable runs after a source changes.
 The Python/SQLite application is retained as a separate reference implementation.
 
 Use independently authored fictional data only. This application does not establish

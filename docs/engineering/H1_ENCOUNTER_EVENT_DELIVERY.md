@@ -1,6 +1,6 @@
 # Encounter change delivery
 
-Under [WS-08 / #104](https://github.com/OpenxIntelligence/open-intelligence/issues/104), the synthetic encounter writer, platform relay and an independent operations consumer share a reference-only event contract. The consumer answers an operational question: how many scheduled visits, encounter transitions and draft-note revisions has this receiver processed for its configured fictional patient?
+Under [WS-08 / #104](https://github.com/OpenxIntelligence/open-intelligence/issues/104), the synthetic encounter writer, platform relay and an independent operations consumer share a reference-only event contract. The receiver counts delivered changes and shows which current note revisions still await local intake acknowledgement for its configured fictional patient.
 
 ## Components and ownership
 
@@ -8,7 +8,7 @@ Under [WS-08 / #104](https://github.com/OpenxIntelligence/open-intelligence/issu
 | --- | --- |
 | EHR and canonical PostgreSQL journal | Persist the clinical command, retry receipt and event in one transaction. The existing per-patient writer lock makes the event cursor safe across committed commands. |
 | H1 encounter feed | Serve up to 25 ordered event references for one patient, with fresh patient, organization, purpose, encounter, note and integration checks and an audited read receipt. |
-| Loopback relay and independent activity consumer | Pull one authorized page. Commit event digests, producing read-receipt references, category totals and the resulting checkpoint in a private SQLite file. Report only aggregate counts after a successful fetch and commit. |
+| Loopback relay and independent activity consumer | Pull one authorized page. Commit event digests, producing read-receipt references, category totals and the resulting checkpoint in a private SQLite file. Return aggregate counts by default. The operations inbox below also supports exact-version local acknowledgement. |
 
 The existing PostgreSQL journal supplies the transactional outbox for this path. The recipient owns its derived operational counts. The checkpoint is its highest committed event ID. Journal IDs may have gaps from unrelated activity. Subsequent reads include the last accepted event as an anchor. A missing or changed anchor stops the relay, including when the producer has been restored behind the consumer. A retry uses a new read receipt but the same event identity and digest. Concurrent relays serialize only the receiving transaction and verify the overlapping events. An interrupted page rolls back both its receipt and count changes.
 

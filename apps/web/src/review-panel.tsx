@@ -85,7 +85,8 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,draf
     <details><summary>Recorded receipt</summary>
      <p><code data-testid="review-return-id">{state.reviewReturn.receipt_id}</code></p>
      <p>Question <code>{state.reviewReturn.question_id}</code></p>
-     {intent?.evidence&&<p>Brief <code>{intent.evidence.run_id}</code> · evidence report <code>{intent.evidence.report_id}</code></p>}
+     {state.reviewReturn.artifacts&&<p>Verified brief <code>{state.reviewReturn.artifacts.run_id}</code>
+       {' '}and comparison report <code>{state.reviewReturn.artifacts.report_id}</code></p>}
     </details>
    </section>}
    {queue&&<div data-testid="review-queue-result">
@@ -135,6 +136,7 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,draf
          onClick={()=>void session.returnReviewQuestion(item.question_id,item.queue_fingerprint!,draft)}>
          {returning&&captured?'Recording return…':'Record verification return'}
         </button>
+
        </div>}
       </li>;
      })}</ul>}

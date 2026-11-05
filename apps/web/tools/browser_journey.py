@@ -280,7 +280,7 @@ def main():
                     on_report=lambda report,path,body:exercise_evidence_continuity(cd,pid,case,
                         connected_question['question_id'],new_receipt['source_id'],credentials,
                         write_grants,questions.artifacts,report,path,body),
-                    manual_document=manual_document, run_brief_worker=run_brief_worker)
+                    manual_document=manual_document)
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()
