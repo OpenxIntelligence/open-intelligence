@@ -4,7 +4,7 @@ on:
     branches: [feat/h1-react-patient-entry-20261102, integration/h1-react-source-records-20261102, feat/h1-react-record-import-20261102]
   pull_request:
     # The API imports shared src; the browser harness imports tests/browser_journey.py.
-    paths: ['apps/web/**', 'apps/api/**', 'src/**', 'tests/**', 'tools/audit_ci_data_boundaries.py', 'tools/h1_demo.py', 'examples/synthetic/h1-demo-report.txt', 'examples/synthetic/demo-evidence.txt', '.github/workflows/h1-web.yml']
+    paths: ['apps/web/**', 'apps/api/**', 'src/**', 'tests/**', 'tools/audit_ci_data_boundaries.py', 'tools/h1_demo.py', 'tools/h1_build_inputs.py', 'examples/synthetic/h1-demo-report.txt', 'examples/synthetic/demo-evidence.txt', '.github/workflows/h1-web.yml']
 permissions:
   contents: read
 jobs:
@@ -68,6 +68,11 @@ jobs:
           python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
           python -m pip install --force-reinstall --no-deps --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
           python -m pip check
+      - name: Reconcile installed web notices and API SBOM with pinned build inputs
+        run: |
+          cp /tmp/oi-h1-sbom.json verification-web/api-sbom.json
+          python tools/h1_build_inputs.py --output verification-web/build-inputs.json
+          python tools/h1_build_inputs.py --verify verification-web/build-inputs.json --api-sbom verification-web/api-sbom.json --web-receipt apps/web/.licenses/inventory.json
       - name: Actual PostgreSQL API and built React browser journey
         shell: bash
         run: |

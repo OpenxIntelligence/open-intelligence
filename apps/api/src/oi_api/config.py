@@ -8,6 +8,8 @@ from typing import Mapping
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
+from .request_limits import DEFAULT_COMMANDS_PER_MINUTE
+
 
 class ConfigurationError(ValueError):
     """Invalid configuration; messages deliberately exclude supplied values."""
@@ -19,8 +21,11 @@ class Settings:
     environment: str = "synthetic"
     connect_timeout_seconds: float = 2.0
     access_file: str | None = field(default=None, repr=False)
+    patient_commands_per_minute: int = DEFAULT_COMMANDS_PER_MINUTE
 
     def __post_init__(self):
+        if type(self.patient_commands_per_minute) is not int or not 1 <= self.patient_commands_per_minute <= 60_000:
+            raise ConfigurationError("Invalid patient command rate limit")
         if self.environment != "synthetic":
             raise ConfigurationError("Only the synthetic environment is enabled")
         if not math.isfinite(self.connect_timeout_seconds) or not 0.1 <= self.connect_timeout_seconds <= 10:
@@ -45,7 +50,12 @@ class Settings:
             timeout = float(values.get("OI_API_CONNECT_TIMEOUT_SECONDS", "2"))
         except (ValueError, TypeError):
             raise ConfigurationError("Database timeout must be numeric") from None
+        try:
+            command_rate = int(values.get("OI_API_PATIENT_COMMANDS_PER_MINUTE", str(DEFAULT_COMMANDS_PER_MINUTE)))
+        except (TypeError, ValueError):
+            raise ConfigurationError("Invalid patient command rate limit") from None
         return cls(
+            patient_commands_per_minute=command_rate,
             database_url=values.get("OI_API_DATABASE_URL"),
             environment=values.get("OI_API_ENVIRONMENT", "synthetic"),
             connect_timeout_seconds=timeout,

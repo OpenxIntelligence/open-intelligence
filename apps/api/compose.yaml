@@ -15,6 +15,7 @@ x-api-common: &api-common
     OI_API_ENVIRONMENT: synthetic
     OI_API_DATABASE_URL: postgresql+pg8000://oi_api:oi_h1_synthetic_only@db:5432/oi_api_synthetic
     OI_API_CONNECT_TIMEOUT_SECONDS: "2"
+    OI_API_PATIENT_COMMANDS_PER_MINUTE: "${OI_API_PATIENT_COMMANDS_PER_MINUTE:-240}"
   read_only: true
   tmpfs:
     - /tmp
