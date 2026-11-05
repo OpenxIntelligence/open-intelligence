@@ -1,6 +1,8 @@
 import {readLaboratoryCitationReport} from './laboratory-citation-report.js';
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 export {patientContinuity} from './patient-continuity.js';
+import {RecordRequestSession,emptyRequests} from './record-requests.js';
+import type {RequestsView} from './record-requests.js';
 import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
 import {decodeQuestionSourcePacket} from './source-quote-review-packet.js';
 import type {QuestionSourceReviewPacket} from './source-quote-review-packet.js';
@@ -50,6 +52,7 @@ function questionCommand(prepared:ComposerPreflight){
     expected_preflight_sha256:prepared.preflight_sha256};
 }
 export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryImportState & LabQuestionView & {
+  requestsView:RequestsView;
   manualPassageDraftQuestionIds:readonly string[];
   connected: boolean; phase: 'disconnected' | 'idle' | 'reading' | 'creating' | 'ready' | 'error';
   patient: Patient | null; created: CreatedPatient | null; message: string;
@@ -129,7 +132,7 @@ const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerP
 const unconfirmedLabQuestion = {labQuestionWritePhase:'unknown',labQuestionWriteMessage:
   'The earlier save is unconfirmed. Retry its unchanged request after reopening this case.'} as const;
 
-const fresh = (): ViewState => Object.freeze({evidenceGeneration:0,...emptyLabQuestions(),manualPassageDraftQuestionIds:Object.freeze([]),connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
+const fresh = (): ViewState => Object.freeze({requestsView:emptyRequests(),evidenceGeneration:0,...emptyLabQuestions(),manualPassageDraftQuestionIds:Object.freeze([]),connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
 const emptyRecords=()=>({...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptySourceImages(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
@@ -164,6 +167,12 @@ function patient(value: unknown, expected: string): Patient {
 function created(value: unknown): CreatedPatient {
   if(!exact(value,['patient_id','duplicate']) || !boundedKey(value.patient_id) || typeof value.duplicate!=='boolean')throw Error('contract');
   return Object.freeze(value as CreatedPatient);
+}
+export function requestIndex(state:ViewState):SourceIndex|null{
+  const index=state.sourceIndex;
+  return state.connected && state.phase==='ready' && state.patient?.status==='active' && index &&
+    index.patient_id===state.patient.patient_id && (state.recordsPhase==='ready' || state.recordsPhase==='loading-original') &&
+    state.importOutcome!=='sending' && state.laboratoryPhase!=='sending' && state.cases?.some(c=>c.case_id===index.case_id && c.patient_id===index.patient_id && c.status==='active')?index:null;
 }
 export class RegistrySession {
   // Exact reference-only commands survive a transient panel or evidence refresh.
@@ -292,8 +301,15 @@ export class RegistrySession {
   #laboratoryWrite=0; #laboratoryWriting=false;
   #inspectionQuestionId:string|null=null;
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false; #uploading=false;
+  readonly recordRequests:RecordRequestSession;
   #evidenceSession:QuestionEvidenceSession;
   constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {
+    this.recordRequests=new RecordRequestSession({
+      index:()=>requestIndex(this.#state),view:()=>this.#state.requestsView,publish:requestsView=>this.#publish({requestsView}),
+      request:(path,controller,body)=>this.transport(path,this.#init(controller,body)),json,
+      denied:status=>status===401?this.#httpError(401):
+        this.#publish(this.#resetDeniedCaseSources('Record requests unavailable under current permissions. Reload case permissions.')),
+    });
     this.#evidenceSession=new QuestionEvidenceSession({snapshot:this.snapshot,
       publish:patch=>this.#publish(patch),scope:()=>[this.#scope,this.#read,this.#worldRead,this.#questionRead].join(':'),
       selectedQuestion:()=>this.#inspectionQuestionId,
@@ -342,6 +358,9 @@ export class RegistrySession {
     const ids=scoped?(next.questions??[]).filter(q=>q.patient_id===patient&&q.case_id===caseId&&
       this.#manualPassageDrafts.has(JSON.stringify([patient,caseId,q.question_id]))).map(q=>q.question_id):[];
     if(this.#labPending&&next.cases!==null&&!next.cases.some(c=>c.patient_id===this.#labPending?.patient&&c.case_id===this.#labPending?.caseId&&c.status==='active'))next={...next,...this.#resetLabQuestions()};
+    if(next.cases && next.cases!==this.#state.cases)this.recordRequests.checkBindings(next.cases);
+    const nextRequests=requestIndex(next);
+    if(nextRequests!==requestIndex(this.#state))next.requestsView=this.recordRequests.setContext(nextRequests);
     this.#state=Object.freeze({...next,evidenceGeneration:this.#evidenceRead,manualPassageDraftQuestionIds:Object.freeze(ids)});
     for(const listener of this.#listeners)listener();
   }
@@ -401,7 +420,7 @@ export class RegistrySession {
     this.#publish({...emptyWorld(),...this.#resetInvestigation(preserveReviewCase)});
   }
   #resetDeniedCaseSources(recordMessage='Source access must be rechecked. Reload case permissions to reopen records.'){
-    this.#records++;
+    this.recordRequests.reset();this.#records++;
     return {...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error' as const,recordMessage};
   }
   // A question endpoint combines source_read with an action-specific grant. Hide
@@ -471,6 +490,7 @@ export class RegistrySession {
       sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
   };
   #clearPatientSessionData(){
+    this.recordRequests.reset();
     this.#questionRetryKeys.clear();
     this.#manualPassageIntents.clear();
     this.#laboratoryWrite++;this.#laboratoryWriting=false;
@@ -494,10 +514,12 @@ export class RegistrySession {
     ...(body===undefined?{}:{body}),credentials:'omit',redirect:'error',cache:'no-store',signal:controller.signal,
   };}
   #httpError(status:number){
+    if(status===403||status===404)this.recordRequests.reset();
     if(status===401){this.disconnect();this.#publish({phase:'error',message:messages[401]});}
     else this.#publish({phase:'error',patient:null,message:messages[status] || 'Unexpected API response. No patient information is displayed.'});
   }
   async read(id:string):Promise<void>{
+    this.recordRequests.forgetOtherPatient(id);
     if(this.#state.patient?.patient_id!==id)this.#questionRetryKeys.clear();
     const scope=this.#scope, request=++this.#read;
     const lab=this.#state.laboratoryIntent;
@@ -583,7 +605,7 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
-        if([403,404].includes(res.status))this.#clearManualDrafts();
+        if([403,404].includes(res.status)){this.recordRequests.reset();this.#clearManualDrafts();}
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
           ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetLabQuestions(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           recordMessage:'Case mappings unavailable or permission changed. No records are shown.'});
@@ -627,7 +649,7 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
-        if([403,404].includes(res.status))this.#clearManualDrafts();
+        if([403,404].includes(res.status)){this.recordRequests.reset();this.#clearManualDrafts();}
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
           ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetLabQuestions(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           recordMessage:'Sources unavailable, denied or mapping revoked. Reload case permissions.'});
@@ -1832,7 +1854,7 @@ export class RegistrySession {
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources/'+encodeURIComponent(sourceId),this.#init(control));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
-      if(res.status!==200){this.#publish({original:null,recordsPhase:'error',recordMessage:'Original unavailable or permission denied. No previously opened text is retained.'});return;}
+      if(res.status!==200){if(res.status===403||res.status===404)this.recordRequests.reset();this.#publish({original:null,recordsPhase:'error',recordMessage:'Original unavailable or permission denied. No previously opened text is retained.'});return;}
       // A 64 KiB original can expand under JSON escaping. Keep the envelope bounded too.
       const subject=this.#state.cases?.find(item=>item.case_id===caseId&&item.status==='active')?.source_subject_ref;
       const original=await verifyOriginal(await json(res,524288),caseId,source,subject?'Patient/'+subject:undefined);
@@ -1899,6 +1921,7 @@ export class RegistrySession {
       if(!current())return;
       if(response.status===401){this.#httpError(401);return;}
       if([403,404].includes(response.status)){
+        this.recordRequests.reset();
         this.#publish({...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error',
           recordMessage:'Laboratory import permission or case binding unavailable. Reload current access.'});return;
       }
@@ -1943,7 +1966,7 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if([403,404,409,413,422].includes(res.status)){
-        if([403,404].includes(res.status))this.#clearManualDrafts();
+        if([403,404].includes(res.status)){this.recordRequests.reset();this.#clearManualDrafts();}
         this.#publish({cases:null,sourceIndex:null,original:null,recordsPhase:'error',importOutcome:'rejected',
           ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetLabQuestions(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           importMessage:'The server rejected this import. Reload current case permissions; no success is claimed.'});return;

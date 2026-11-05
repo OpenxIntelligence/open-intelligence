@@ -8,6 +8,8 @@ import hashlib
 import json
 from urllib.request import Request, urlopen
 
+from followthrough_journey import click, fill
+
 CASE = 'CASE-WEB-INTAKE'
 ORIGINAL = (f'OI-SYNTHETIC-REPORT/1\nPatient: {CASE}\nDocument: WEB-PATH\nType: pathology\n'
             'Event-Date: 2026-01-02\nIssued-At: 2026-01-03\nSpecimen: WEB-SPEC\n'
@@ -18,7 +20,10 @@ AMENDED = ORIGINAL.replace(b'Issued-At: 2026-01-03', b'Issued-At: 2026-01-04').r
 
 
 def exercise(cd, patient_id, directory, token, credentials, write_grants, screenshots):
-    credentials[0]['actions'] = sorted(set(credentials[0]['actions']) | {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read'})
+    credentials[0]['actions'] = sorted(set(credentials[0]['actions']) | {
+        'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read',
+        'record_request_create', 'record_request_read', 'record_request_receive',
+    })
     write_grants()
 
     def operator(path, payload=None):
@@ -119,9 +124,46 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
         assert cd.evaluate("document.querySelector('[data-testid=server-original]').textContent")==text.decode()
         assert cd.evaluate("document.querySelectorAll('[data-testid=server-original] script').length===0")
 
+    def refresh_requests():
+        disclosure = '[data-testid=record-requests-disclosure]'
+        if not cd.evaluate(f"document.querySelector('{disclosure}').open"):
+            click(cd, disclosure + '>summary')
+        click(cd, '[data-testid=requests-refresh]')
+
+    def select_value(test_id, value):
+        selector = json.dumps(f'[data-testid={test_id}]')
+        cd.evaluate("(()=>{const select=document.querySelector(" + selector + ");"
+                    "select.value=" + json.dumps(value) + ";"
+                    "select.dispatchEvent(new Event('change',{bubbles:true}));})()")
+
+    assert not cd.evaluate("document.querySelector('[data-testid=record-requests-disclosure]').open")
+    refresh_requests()
+    click(cd, '[data-testid=request-label]')
+    fill(cd, '[data-testid=request-label]', 'Fictional pathology report from North')
+    fill(cd, '[data-testid=request-organization]', 'Fictional North laboratory')
+    select_value('request-kind', 'pathology')
+    click(cd, '[data-testid=request-create]')
+    cd.wait("Boolean(document.querySelector('[data-testid=request-row][data-status=requested]'))",
+            'created local missing-record request')
+    tracked, = operator('/record-requests')['requests']
+    assert tracked['status'] == 'requested' and tracked['external_request_sent'] is False
+    assert tracked['kind'] == 'pathology' and tracked['source_reference'] is None
+
     upload(ORIGINAL,'original.txt','imported',1)
     first=operator(index_path)['sources'][0]
     assert first['sha256']==hashlib.sha256(ORIGINAL).hexdigest()
+    refresh_requests()
+    cd.wait("Boolean([...document.querySelectorAll('[data-testid=request-source] option')]"
+            ".find(o=>o.value===" + json.dumps(first['source_id']) + "))",
+            'current pathology original is available for the missing record')
+    select_value('request-source', first['source_id'])
+    click(cd, '[data-testid=request-receive]')
+    cd.wait("Boolean(document.querySelector('[data-testid=request-row][data-receipt-status=source_current_unreviewed]'))",
+            'receipt reopened after explicit original selection')
+    linked, = operator('/record-requests')['requests']
+    assert linked['request_id'] == tracked['request_id']
+    assert linked['source_reference'] == {'source_id': first['source_id'], 'case_id': CASE,
+                                         'sha256': first['sha256'], 'version': 1}
     original(1,ORIGINAL)
     upload(ORIGINAL,'duplicate.txt','duplicate',1)
     upload(AMENDED,'amended.txt','imported',2)
@@ -131,6 +173,17 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
     assert old['state']=='superseded' and old['sha256']==first['sha256']
     assert new['state']=='current' and new['sha256']==hashlib.sha256(AMENDED).hexdigest()
     assert new['supersedes_id']==old['source_id']
+    refresh_requests()
+    cd.wait("Boolean(document.querySelector('[data-testid=request-row][data-receipt-status=source_superseded_reconciliation_required]'))",
+            'amended source requires reconciliation against the original receipt')
+    after_amendment, = operator('/record-requests')['requests']
+    assert after_amendment['source_reference'] == linked['source_reference']
+    click(cd, '[data-testid=request-inspect-original]')
+    cd.wait("document.querySelector('[data-testid=server-original]')?.textContent===" +
+            json.dumps(ORIGINAL.decode()), 'receipt opens the exact historical original after amendment')
+    print('PASS RECORD ACQUISITION: created a missing-record request in Records, selected the '
+          'current original, then reopened its pinned v1 receipt after a v2 amendment.')
+
     original(1,ORIGINAL)
     original(2,AMENDED)
     assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('not established')")
@@ -146,6 +199,24 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
     assert cd.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
     image=cd.command('Page.captureScreenshot',{'format':'png'})
     (screenshots/'h1-records-mobile.png').write_bytes(base64.b64decode(image['data']))
+    # The actor, patient and action grants stay the same. Changing purpose alone
+    # must remove the previously open operations case and original from Records.
+    credentials[0]['purpose'] = 'research'
+    write_grants()
+    try:
+        cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
+        cd.wait("document.querySelector('[data-testid=records-cases]')"
+                " && !document.querySelector('[data-testid=load-cases]').disabled"
+                " && !document.querySelector('[data-testid=case-row]')",
+                'same patient has no research mappings')
+        assert not cd.evaluate("Boolean(document.querySelector('[data-testid=source-index], [data-testid=server-original]'))")
+    finally:
+        credentials[0]['purpose'] = 'operations'
+        write_grants()
+    records()
+    original(2, AMENDED)
+    print('PASS ACQUISITION PURPOSE: Records clears operations mappings and the opened original '
+          'after a research-purpose refresh. Restoring operations reopens the exact amended original.')
     # List grant must not confer original-text authority; previously read text must disappear.
     credentials[0]['actions'].remove('source_original_read');write_grants()
     cd.evaluate("[...document.querySelectorAll('[data-testid=open-original]')].find(e=>e.textContent==='Inspect original v2').click()")

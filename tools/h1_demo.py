@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CASE = 'CASE-DEMO'
 BASE = 'http://127.0.0.1:8000'
 ACTIONS = ['patient_create', 'patient_read', 'case_binding_create', 'case_binding_read',
+           'record_request_create', 'record_request_read', 'record_request_receive',
            'source_import', 'source_read', 'source_original_read', 'composer_context_read',
            'question_create', 'question_read', 'review_queue_read', 'review_return',
            'source_brief_export', 'review_packet_read', 'followthrough_read',

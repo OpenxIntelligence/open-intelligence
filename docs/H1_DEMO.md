@@ -53,6 +53,20 @@ Saved records, questions, reports and tasks persist. Unsubmitted text stays only
 
 If startup fails, inspect the Docker output and retry the same command/state directory. A missing or malformed state file, changed patient identity or missing original stops setup rather than silently resetting it. The launcher does not offer a destructive reset command.
 
+## Track a missing record
+
+In **Records**, inspect source versions for the demo case, open **Record requests**,
+and choose **Refresh requests**. Enter a label, source organization and kind to
+save a local request for this patient. When the original arrives, import it through
+Records. Select the matching current version in the request and choose **Link
+selected version**. The request records which version you selected. The organization
+field is the label you entered. Contacting that organization is a separate action
+outside this fictional workflow.
+
+After an amendment, refresh the requests. The existing receipt points to the
+earlier version and flags it for reconciliation. **Inspect linked original** opens
+that version when you have current access to its case and original bytes.
+
 ## Save a question about a laboratory result
 
 In Records, open the source versions for `CASE-DEMO`. Select
