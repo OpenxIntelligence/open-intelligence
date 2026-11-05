@@ -496,6 +496,20 @@ CREATE TABLE IF NOT EXISTS investigations (
   stale INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
+-- Slice 1 (program plan section 5.4): the per-agent write contract.
+-- Exactly one row per stored investigation, holding the full contract
+-- JSON; the investigations table itself is unchanged so pre-slice rows
+-- keep reading (their contract is NULL). The contract is the single
+-- attribution/replay record for the run; no second copy is kept.
+CREATE TABLE IF NOT EXISTS agent_writes (
+  id INTEGER PRIMARY KEY,
+  write_id TEXT NOT NULL UNIQUE,
+  investigation_id INTEGER NOT NULL REFERENCES investigations(id),
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  contract_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_writes_investigation ON agent_writes(investigation_id);
 -- Discovery-to-rights linkage: an item may be bound to one rights row at
 -- import (NULL means unlinked: rights unknown, never assumed permitted),
 -- and a link may cite broker links. Revocation/correction of a rights row
@@ -5889,13 +5903,34 @@ class CaseStore:
         }
 
     def save_investigation(self, case_id: str, question_id: int, template: str,
-                           validated, mode: str) -> int:
+                           validated, mode: str, write_contract: dict | None = None) -> int:
+        from .agent_writes import (
+            WriteContractRejected,
+            parse_route_id,
+            validate_write_contract,
+        )
         from .investigation import TEMPLATES
         self._case(case_id)
         if mode not in ("live", "replay"):
             raise InvalidInput("Mode must be live or replay")
         if template not in TEMPLATES:
             raise InvalidInput("Unknown investigation template")
+        # Slice 1 write contract (program plan section 5.4): no write is
+        # stored without a complete, validated contract bound to this run.
+        if write_contract is None:
+            raise WriteContractRejected("missing_write_contract")
+        contract = validate_write_contract(write_contract)
+        route_case, route_template, route_question = parse_route_id(contract["routeId"])
+        if (route_case, route_template, route_question) != (case_id, template, question_id):
+            raise WriteContractRejected(
+                "route_mismatch", "routeId",
+                "contract route does not match this investigation",
+            )
+        if contract["modelId"] != validated.model:
+            raise WriteContractRejected(
+                "contract_mismatch", "modelId",
+                "contract model does not match the validated output model",
+            )
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
             if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
@@ -5909,6 +5944,12 @@ class CaseStore:
                  json.dumps(validated.claims), json.dumps(validated.abstentions),
                  json.dumps(validated.dropped), now_utc()))
             investigation_id = int(cur.lastrowid)
+            self.db.execute(
+                """INSERT INTO agent_writes
+                (write_id,investigation_id,case_id,contract_json,created_at)
+                VALUES (?,?,?,?,?)""",
+                (contract["writeId"], investigation_id, case_id,
+                 json.dumps(contract, sort_keys=True), now_utc()))
             # An abstention states there is no answer: it must not hide the
             # question as addressed. Only a non-abstained result addresses
             # it here; human drafts address on acknowledgment instead.
@@ -5916,8 +5957,31 @@ class CaseStore:
                 self.db.execute("UPDATE questions SET state='addressed' WHERE id=? AND case_id=?",
                                 (question_id, case_id))
             self._event(case_id, "investigation_created", investigation_id=investigation_id,
-                        template=template, status=validated.status, mode=mode)
+                        template=template, status=validated.status, mode=mode,
+                        write_id=contract["writeId"])
             return investigation_id
+
+    def get_write_contract(self, case_id: str, investigation_id: int) -> dict | None:
+        """Return the stored write contract for an investigation, or None.
+
+        None means the investigation was stored before the write contract
+        existed (pre-slice rows); such rows keep reading, and replay
+        reports them as missing_write_contract rather than failing.
+        """
+        self._case(case_id)
+        if type(investigation_id) is not int:
+            raise InvalidInput("Investigation id must be an integer")
+        row = self.db.execute(
+            """SELECT contract_json FROM agent_writes
+            WHERE investigation_id=? AND case_id=?""",
+            (investigation_id, case_id)).fetchone()
+        if not row:
+            return None
+        try:
+            value = json.loads(row[0])
+        except (json.JSONDecodeError, TypeError):
+            return None
+        return value if isinstance(value, dict) else None
 
     def get_investigation(self, case_id: str, investigation_id: int) -> dict:
         self._case(case_id)
@@ -5933,6 +5997,7 @@ class CaseStore:
         data["dropped"] = json.loads(data.pop("dropped_json"))
         data["kind"] = "hypothesis"
         data["review_state"] = "pending"
+        data["write_contract"] = self.get_write_contract(case_id, investigation_id)
         data["disclaimer"] = ("Research demonstration only. Hypotheses are unreviewed, "
                               "fictional-data based, and not medical advice.")
         return data
@@ -5940,11 +6005,20 @@ class CaseStore:
     def list_investigations(self, case_id: str) -> list[dict]:
         self._case(case_id)
         rows = self._dicts(self.db.execute(
-            "SELECT id,question_id,template,status,mode,model,stale,created_at "
-            "FROM investigations WHERE case_id=? ORDER BY id DESC", (case_id,)).fetchall())
+            """SELECT i.id,i.question_id,i.template,i.status,i.mode,i.model,i.stale,i.created_at,
+            w.write_id,w.contract_json
+            FROM investigations i LEFT JOIN agent_writes w ON w.investigation_id=i.id
+            WHERE i.case_id=? ORDER BY i.id DESC""", (case_id,)).fetchall())
         for row in rows:
             row["kind"] = "hypothesis"
             row["review_state"] = "pending"
+            contract_json = row.pop("contract_json")
+            try:
+                contract = json.loads(contract_json) if contract_json else None
+            except (json.JSONDecodeError, TypeError):
+                contract = None
+            row["agent_role"] = contract.get("agentRole") if isinstance(contract, dict) else None
+            row["route_id"] = contract.get("routeId") if isinstance(contract, dict) else None
         return rows
 
     def state(self, case_id: str) -> dict:

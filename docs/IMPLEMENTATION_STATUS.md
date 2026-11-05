@@ -9,6 +9,48 @@ draft labels, schema heads and test counts are not current acceptance claims.
 
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
 
+## Provenance write contract (Slice 1) — 5 November 2026
+
+Branch `program/slice1-write-contract`, from main `4b13bc2`. Implements
+program-plan §5.4 (Notion OI-09 §5.4): the per-agent write contract, so
+every agent/model write is attributable and replayable, or it is rejected.
+
+New `src/open_intelligence/agent_writes.py` is the single owner of the
+contract: `writeId`, `agentId`, `agentRole` (A1–A6), `agentVersion`,
+`promptVersion`, `modelId`, `runId`, `routeId`, `snapshotAt` (L1 as-of:
+ledger event anchor plus timestamp), `inputs` (source versions,
+assertions, evidence assessments, each with a content hash), and
+`toolCalls`. `CaseStore.save_investigation` stores no write without a
+complete, validated contract bound to the same route and model, and
+records it in the new `agent_writes` table in the same transaction;
+`get_investigation` returns the full contract and `list_investigations`
+carries `write_id`/`agent_role`/`route_id`. Pre-slice rows keep reading
+with a null contract. `check_replay` re-reads every recorded input,
+requires exact content-hash matches with source versions still current,
+and re-validates the stored claims against the recorded input ids; a
+superseded source version, changed input, missing input, route mismatch,
+or tampered contract makes the replay not reproducible with a typed
+reason. The HTTP investigation route builds the contract from the
+ledger state the run read. New `tests/test_agent_writes.py` (24 tests):
+rejection on every missing field, full contract stored, replay
+reproduces the run, stale snapshot invalidates the replay.
+
+Slice-1 mappings recorded in the module, provisional until later
+slices: the single existing model call writes as A1 for every template;
+`routeId` is deterministic (`route:<case>:<template>:<question>`) because
+no `route.decided` record exists yet; `evidenceSnapshotId` carries an
+evidence-assessment id; `toolCalls` is empty (no toolsets exist yet).
+The case-packet builder does not yet surface the contract, and K-checks,
+the Skeptic, and parallel role agents are later slices.
+
+Local suite on the slice branch: 796 tests, FAILED with 9 failures and
+8 errors — the same 17 `test_pdf_intake` failures (12 test names) as the
+main baseline run on the same clone, caused by the missing local `pypdf`
+installation; zero new failures. The pre-slice guard
+`tests/test_case_switch_guards.py` passes on main (6 tests), confirming
+the guard gap is closed with no guard slice needed. This is fictional-only
+engineering, draft and undeployed.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)

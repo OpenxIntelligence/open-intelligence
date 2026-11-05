@@ -107,7 +107,8 @@ class SourceQuestionChecks:
         write_grants()
         count = self.cd.evaluate('window.__oiBriefChecks.reads.length')
         blobs = self.cd.evaluate('window.__oiBriefChecks.blobs')
-        downloads = sorted(self.artifacts.glob('source-brief-downloads/**/*'))
+        downloads = sorted(path for path in self.artifacts.glob('source-brief-downloads/**/*')
+                           if not path.name.endswith('.crdownload'))
         self.cd.evaluate("document.querySelector('[data-testid=brief-download]').click()")
         self.cd.wait("document.querySelector('[data-testid=brief-status]').textContent.includes('unavailable under current authority')",
                      'fresh download denies withdrawn export permission')
@@ -115,7 +116,14 @@ class SourceQuestionChecks:
         assert self.cd.evaluate('window.__oiBriefChecks.reads.at(-1).status') == 404
         assert self.cd.evaluate('window.__oiBriefChecks.blobs') == blobs
         assert not self.cd.evaluate("Boolean(document.querySelector('[data-testid=source-brief-preview]'))")
-        after_downloads = sorted(self.artifacts.glob('source-brief-downloads/**/*'))
+        # Wait for any in-progress Chromium download marker to settle before
+        # snapshotting, and compare completed artifacts only: a *.crdownload
+        # is a download still being written, not an artifact the revoked
+        # export produced.
+        wait_for(lambda: not list(self.artifacts.glob('source-brief-downloads/**/*.crdownload')),
+                 'denied export leaves no in-progress download')
+        after_downloads = sorted(path for path in self.artifacts.glob('source-brief-downloads/**/*')
+                                 if not path.name.endswith('.crdownload'))
         assert after_downloads == downloads, (
             'Revoked export changed the exact source-brief artifact inventory: '
             f"before={[str(path.relative_to(self.artifacts)) for path in downloads]!r}, "
