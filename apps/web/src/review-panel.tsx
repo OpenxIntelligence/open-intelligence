@@ -45,7 +45,7 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,draf
  const returning=state.reviewReturnPhase==='saving',uncertain=state.reviewReturnPhase==='unknown';
  return <section className="panel review-panel" aria-labelledby="review-heading" data-testid="review-workspace">
   <span className="step">SAVED QUESTIONS / VERIFICATION RETURN HISTORY</span>
-  <h2 id="review-heading">Questions for independent verification</h2>
+  <h2 id="review-heading" data-workspace-anchor="Verification queue">Questions for independent verification</h2>
   <p>Read saved questions in this patient’s source context, record why a source needs independent
    verification, and inspect the unchanged return history. Recording a return does not assign a
    clinician, send a notification or approve a clinical decision.</p>
@@ -93,7 +93,7 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,draf
      <p>Projection <code>{queue.contract}</code>. This receipt records source access for the inbox read;
       it is not a return authorization or clinical approval.</p>
     </details>
-    <h3>Saved questions and current source status</h3>
+    <h3 id="verification-questions" data-workspace-anchor="Saved questions">Saved questions and current source status</h3>
     {queue.items.length===0?<p>No source-linked questions are visible for this case.</p>:
      <ul className="review-items">{queue.items.map(item=>{
       const captured=intent?.question_id===item.question_id&&intent.case_id===item.case_id?intent:null;
@@ -137,7 +137,7 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,draf
        </div>}
       </li>;
      })}</ul>}
-    <h3>Immutable return history</h3>
+    <h3 id="verification-returns" data-workspace-anchor="Return history">Immutable return history</h3>
     {queue.receipts.length===0?<p>No verification-return receipts have been recorded.</p>:
      <ul className="review-history" data-testid="review-return-history">{queue.receipts.map(receipt=><li key={receipt.receipt_id}>
       <strong>Returned for independent verification</strong>

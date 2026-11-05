@@ -21,6 +21,8 @@ Open **http://127.0.0.1:4173**. In Overview, paste the synthetic fixture token i
 
 The first start downloads/builds the pinned backend. Package rights checks must pass; do not install optional packages as a workaround. The two omitted optional packages remain uninspected. The application's distribution license and release-wide rights are still separate decisions.
 
+Use **On this page** to jump to sections available in the current workspace. The menu updates when sections appear or close.
+
 ## Complete one journey
 
 | Step | Action | What should be visible |

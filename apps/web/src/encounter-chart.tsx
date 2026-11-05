@@ -231,7 +231,7 @@ export function EncounterChart({scope,dirtyRef,onRecords}:{scope:Scope;dirtyRef:
   }
   const writableVisit=visit?.status==='in_progress'||visit?.status==='completed';
   return <section className="panel encounter-chart" data-testid="encounter-chart" aria-labelledby="encounter-heading">
-    <h2 id="encounter-heading">Visit history</h2>
+    <h2 id="encounter-heading" data-workspace-anchor="Visit history">Visit history</h2>
     <p>Check this fictional patient’s visits, then open a visit to see its notes. Each read and change requires its own permission.</p>
     <button type="button" data-testid="encounter-load" disabled={busy||!!draft||(!!scope.pending&&!!visits)} onClick={()=>readVisits()}>
       {visits?'Refresh visits':'Check visits'}</button>
@@ -255,7 +255,7 @@ export function EncounterChart({scope,dirtyRef,onRecords}:{scope:Scope;dirtyRef:
         </li>)}</ul>}
       {visits.next!==null&&<button type="button" data-testid="encounter-visits-more" disabled={blocked||!!draft} onClick={()=>readVisits(visits.next!)}>Show more visits</button>}
       {visit&&<section className="encounter-detail" aria-labelledby="selected-visit-heading" data-testid="encounter-selected">
-        <h3 tabIndex={-1} ref={selectedHeading} id="selected-visit-heading">{label(visit.kind)} visit · {visit.service_date}</h3>
+        <h3 tabIndex={-1} ref={selectedHeading} id="selected-visit-heading" data-workspace-anchor="Selected visit">{label(visit.kind)} visit · {visit.service_date}</h3>
         <button type="button" data-testid="visit-inspect-records" disabled={blocked||!!draft} onClick={()=>onRecords(visit.id)}>Inspect linked records</button>
         <p><code>{visit.external_key}</code> · {label(visit.status)} · Revision {visit.revision}</p>
         <div className="actions">
@@ -268,7 +268,7 @@ export function EncounterChart({scope,dirtyRef,onRecords}:{scope:Scope;dirtyRef:
           <button type="button" disabled={blocked||!!draft||!!conflict} onClick={()=>{setCancelConfirm(false);transition('cancelled');}}>Confirm cancellation</button></div></div>}
         {conflict==='transition'&&<div className="encounter-conflict" role="alert" data-testid="encounter-conflict"><p>The visit may have changed. Check its current status before making another change.</p>
           <button type="button" disabled={blocked} onClick={()=>refreshVisit(visit.id)}>Check current visit</button></div>}
-        <h5>Notes for this visit</h5>
+        <h4 id="encounter-notes-heading" data-workspace-anchor="Visit notes">Notes for this visit</h4>
         <div className="actions">
           <button type="button" data-testid="encounter-notes-load" disabled={blocked||!!draft} onClick={()=>readNotes(visit.id)}>{notes?'Refresh notes':'Check notes'}</button>
           {writableVisit&&!draft&&<button type="button" data-testid="encounter-note-new" disabled={blocked||!!conflict} onClick={()=>{setDraft(emptyDraft());setHistory(null);setMessage('');}}>New draft note</button>}
@@ -280,7 +280,7 @@ export function EncounterChart({scope,dirtyRef,onRecords}:{scope:Scope;dirtyRef:
           </li>)}</ul>)}
         {notes&&notes.next!==null&&<button type="button" data-testid="encounter-notes-more" disabled={blocked||!!draft} onClick={()=>readNotes(visit.id,notes.next!)}>Show more notes</button>}
         {history&&<section aria-label="Saved note history">
-          <h5>Saved versions · {history.key}</h5>
+          <h5 id="encounter-history-heading" data-workspace-anchor="Note history">Saved versions · {history.key}</h5>
           {!history.items.length&&<p>No saved versions were returned.</p>}
           <ol className="case-list">{history.items.map(version=><li key={version.id} className="encounter-version" data-testid="encounter-version-row">
             <strong>Version {version.version}{version.version===1?' · Original':''}</strong> <span className="record-state">{label(version.status)}</span>
@@ -292,7 +292,7 @@ export function EncounterChart({scope,dirtyRef,onRecords}:{scope:Scope;dirtyRef:
           {writableVisit&&!draft&&latest&&isDraft(latest)&&<button type="button" data-testid="encounter-note-edit" disabled={blocked} onClick={editLatest}>Edit version {latest.version}</button>}
         </section>}
         {draft&&<form className="encounter-form" onSubmit={event=>{event.preventDefault();saveDraft();}}>
-          <h5 tabIndex={-1} ref={editorHeading}>{draft.base?'Edit draft · version '+draft.base:'New draft note'}</h5>
+          <h5 tabIndex={-1} ref={editorHeading} id="encounter-editor-heading" data-workspace-anchor="Draft editor">{draft.base?'Edit draft · version '+draft.base:'New draft note'}</h5>
           <p>Use independently fictional text only. Saving adds a draft version and preserves earlier versions.</p>
           <fieldset disabled={blocked}>
             <legend className="encounter-legend">Note details</legend>
@@ -318,7 +318,7 @@ export function EncounterChart({scope,dirtyRef,onRecords}:{scope:Scope;dirtyRef:
         event.preventDefault();if(blocked||draft)return;
         write({type:'schedule',body:Object.freeze({synthetic:true,request_key:crypto.randomUUID(),external_key:visitKey||'VISIT-'+crypto.randomUUID().replaceAll('-','').toUpperCase(),kind,service_date:date})});
       }}>
-        <h3 tabIndex={-1} ref={scheduleHeading}>Schedule a fictional visit</h3>
+        <h3 tabIndex={-1} ref={scheduleHeading} id="schedule-visit-heading" data-workspace-anchor="Schedule a visit">Schedule a fictional visit</h3>
         <fieldset disabled={blocked||!!draft}>
           <legend className="encounter-legend">Visit details</legend>
           <div className="encounter-fields">

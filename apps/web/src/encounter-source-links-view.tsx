@@ -113,7 +113,7 @@ export function EncounterSourceLinks({session,patientId,index,requestedVisit,onO
     } finally {finish(seq);}
   }
   return <section aria-labelledby="visit-records-heading" data-testid="encounter-source-links">
-    <h3 id="visit-records-heading">Visit records</h3>
+    <h3 id="visit-records-heading" data-workspace-anchor="Visit records">Visit records</h3>
     <p>Attach the exact version of a case record to the visit where it was used.</p>
     {requestedVisit!==undefined&&<button type="button" className="primary" data-testid="visit-records-handoff" disabled={busy} onClick={()=>void openRequestedVisit(requestedVisit)}>Check records for selected visit</button>}
     <button type="button" data-testid="encounter-link-visits" disabled={busy} onClick={()=>void loadVisits()}>

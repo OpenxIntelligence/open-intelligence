@@ -128,7 +128,7 @@ export function FollowthroughPanel({state,session,busy}:Props){
  const active=state.connected&&state.phase==='ready'&&state.cases?.some(row=>row.case_id===caseId&&row.status==='active');
  const receipt=state.followthroughReceipt;
  return <section data-testid="followthrough-panel" className="followthrough-panel" aria-labelledby="followthrough-heading">
-  <div className="question-history-heading"><div><h3 id="followthrough-heading">Follow-up work</h3>
+  <div className="question-history-heading"><div><h3 id="followthrough-heading" data-workspace-anchor="Follow-up work">Follow-up work</h3>
    <p>Owners, revisit dates and attributed history for saved source questions.</p></div>
    <button type="button" data-testid="followthrough-refresh" disabled={!active||busy||saving||state.followthroughPhase==='loading'}
     onClick={()=>void session.loadFollowthrough(caseId)}>{state.followthroughPhase==='loading'?'Checking recorded work…':'Refresh recorded work'}</button>

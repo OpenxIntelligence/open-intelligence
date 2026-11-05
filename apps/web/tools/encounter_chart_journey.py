@@ -78,7 +78,7 @@ def exercise(cd, patient_id, token, credentials, write_grants, case, source_id, 
         # Accept an automatically generated reference and confirm cancellation requires a separate action.
         fill('encounter-schedule-date', '2026-05-03')
         click('encounter-schedule')
-        cd.wait(element('encounter-open'), 'visit with generated reference visible')
+        cd.wait('Boolean('+element('encounter-open')+')', 'visit with generated reference visible')
         generated, = [v for v in operator()['encounters'] if v['service_date']=='2026-05-03']
         assert generated['external_key'].startswith('VISIT-')
         press(row_button('encounter-row', generated['external_key'], 'encounter-open'), 'open generated visit')
@@ -110,6 +110,12 @@ def exercise(cd, patient_id, token, credentials, write_grants, case, source_id, 
         cd.wait("document.querySelector('h1').textContent==='Records'", 'selected visit handed to Records')
         click('load-cases')
         press(row_button('case-row', case, 'load-sources'), 'original case in Records')
+        # Navigation focuses the mounted section without reading or writing a record.
+        cd.evaluate("document.querySelector('.page-contents summary').click()")
+        link='document.querySelector('+json.dumps('.page-contents a[href="#visit-records-heading"]')+')'
+        press(link,'Visit records in page contents')
+        cd.wait("document.activeElement.id==='visit-records-heading' && !document.querySelector('.page-contents details').open",
+                'contents navigation focuses the real current heading')
         click('visit-records-handoff')
         cd.wait(f'{element("encounter-link-visit")}?.value==="{visit_id}"', 'independently checked visit retained in Records')
         fill('encounter-link-source', source_id)
@@ -126,7 +132,7 @@ def exercise(cd, patient_id, token, credentials, write_grants, case, source_id, 
         click('encounter-note-new')
         fill('encounter-note-body', 'Fictional note with an automatic reference.')
         click('encounter-note-save')
-        cd.wait(element('encounter-note-row'), 'saved note with generated reference')
+        cd.wait('Boolean('+element('encounter-note-row')+')', 'saved note with generated reference')
         assert operator(f'/{visit_id}/notes')['notes'][0]['note_key'].startswith('NOTE-')
         click('encounter-note-new')
         fill('encounter-note-key', NOTE)

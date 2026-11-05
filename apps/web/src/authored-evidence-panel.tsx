@@ -87,7 +87,7 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
    </section>}
   {(packet||report)&&q&&<section data-testid="evidence-panel" aria-labelledby="question-evidence-heading">
    <div className="evidence-heading">
-    <div><span className="step">FICTIONAL EVIDENCE · HUMAN PROPOSALS</span><h3 id="question-evidence-heading">Evidence for this question</h3></div>
+    <div><span className="step">FICTIONAL EVIDENCE · HUMAN PROPOSALS</span><h3 id="question-evidence-heading" data-workspace-anchor="Question evidence">Evidence for this question</h3></div>
     <button type="button" data-testid="evidence-refresh" disabled={busy||state.evidencePhase==='loading'} onClick={()=>void session.loadQuestionEvidence(q.question_id)}>Refresh evidence and rights</button>
    </div>
    <p className="evidence-question"><strong>{q.question}</strong></p>
@@ -126,7 +126,7 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
      </li>)}</ul>}
     </section>
     {evidence&&<section className="evidence-assessment-editor" aria-labelledby="evidence-assessment-heading">
-     <h4 id="evidence-assessment-heading">Propose a comparison</h4><p>Selected <strong>{evidence.title??evidence.evidence_key}</strong>, version {evidence.version}. The relation below is your proposal, not a conclusion authored by the evidence source.</p>
+     <h4 id="evidence-assessment-heading" data-workspace-anchor="Compare evidence">Propose a comparison</h4><p>Selected <strong>{evidence.title??evidence.evidence_key}</strong>, version {evidence.version}. The relation below is your proposal, not a conclusion authored by the evidence source.</p>
      {evidence.statement!==null&&comparison?<>
       <label htmlFor="evidence-quote">Exact unique passage<textarea id="evidence-quote" data-testid="evidence-quote" rows={3} value={quote} disabled={locked||!current} onChange={e=>session.editEvidenceComparison({quote:e.target.value})}/></label>
       <p className="muted">Choose 1–400 characters appearing once in the stored statement. The original statement line and Unicode character offset are retained.</p>
@@ -159,7 +159,7 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
      <button type="button" className="primary" data-testid="evidence-report-prepare" disabled={locked||!current||chosen.length<1||chosen.length>20||currentManual?.blocked||inspectedManual?.state==='reassessment_required'} onClick={()=>void session.prepareEvidenceReport(q.question_id,chosen,inspectedManual?.revision_id?inspectedManual.context_sha256:undefined)}>Prepare selected comparison report ({chosen.length})</button>
      <p className="muted">Selection is explicit and limited to 20 current proposals. Excluded or missing counterevidence is not evidence of absence.</p>
     </section>
-    <section aria-labelledby="evidence-reports-heading"><h4 id="evidence-reports-heading">Saved report preparations ({packet.reports.length})</h4>
+    <section aria-labelledby="evidence-reports-heading"><h4 id="evidence-reports-heading" data-workspace-anchor="Saved reports">Saved report preparations ({packet.reports.length})</h4>
      {packet.reports.length===0?<p>No comparison report has been prepared.</p>:<ul className="evidence-cards">{packet.reports.map(r=><li key={r.report_id} data-testid="evidence-report-row" data-report-id={r.report_id}>
       <p><strong>{stateLabel[r.state]}</strong> · {r.prepared_at}</p><p>Report <code>{r.report_id}</code></p>
       <button type="button" data-testid="evidence-report-open" disabled={locked||state.evidenceReportPhase==='loading'} onClick={()=>void session.readEvidenceReport(q.question_id,r.report_id)}>Recheck and open report</button>
