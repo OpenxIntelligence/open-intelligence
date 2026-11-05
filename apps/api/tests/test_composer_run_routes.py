@@ -10,6 +10,7 @@ class ComposerRunRouteTests(unittest.TestCase):
         for suffix, method, expected in (
                 ('/brief', 'post', 'SourceQuestionBrief'),
                 ('/runs', 'post', 'ComposerRunReceipt'),
+                ('/runs', 'get', 'ComposerRunStatus'),
                 ('/runs/{run_id}', 'get', 'ComposerRunStatus'),
                 ('/runs/{run_id}/cancel', 'post', 'ComposerRunStatus'),
                 ('/runs/{run_id}/result', 'get', 'ComposerRunResult')):

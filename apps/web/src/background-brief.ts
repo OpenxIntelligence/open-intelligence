@@ -6,7 +6,7 @@ import type {SourceWorldModel} from './source-world-model.js';
 
 const states = ['queued', 'running', 'completed', 'blocked', 'stale', 'cancelled', 'failed'] as const;
 export type RunState = typeof states[number];
-export type RunAction = 'enqueue' | 'refresh' | 'cancel' | 'result' | 'retry';
+export type RunAction = 'latest' | 'enqueue' | 'refresh' | 'cancel' | 'result' | 'retry';
 export type RunStatus = Readonly<{
   run_id: string; state: RunState; revision: number; attempt_count: number; result_sha256: string | null;
 }>;

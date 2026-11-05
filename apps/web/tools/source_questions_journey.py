@@ -285,12 +285,25 @@ class SourceQuestionChecks:
         self.inspect_quote(self.original_question_id,current=True,
             expected_text='Fictional café <script>literal</script>.')
 
-    def after_amendment(self, replacement_source_id):
+    def after_amendment(self, replacement_source_id, stale_run):
         self.navigate('Investigations')
         history = self.history('Source changed')
         assert self.original_question_id in history and self.original_source_id in history
         assert replacement_source_id not in history
         self.overview_counts(current=0, reassessment=1)
+        row = f'.question-items li[data-question-id="{self.original_question_id}"]'
+        check = f'document.querySelector({json.dumps(row + " [data-testid=run-latest]")})'
+        self.cd.wait(f'{check}?.disabled === false', 'read-only historical run lookup')
+        self.cd.evaluate(f'{check}.click()')
+        panel = f'document.querySelector({json.dumps(row + " [data-testid=run-status]")})'
+        self.cd.wait(f'{panel}?.dataset.state === "stale"', 'relay marked the previous run stale')
+        assert self.cd.evaluate(f'{panel}.dataset.runId') == stale_run
+        assert 'reassessment required' in self.cd.evaluate(f'{panel}.textContent')
+        for control in ('run-open', 'run-result', 'run-result-body', 'run-retry'):
+            assert not self.cd.evaluate(f'Boolean(document.querySelector({json.dumps(row + " [data-testid=" + control + "]")}))')
+        print('PASS AMENDED BACKGROUND BRIEF: browser reopened the exact stale run after SIGKILL and relay restart; '
+              'one receipt and one stale transition after replaying the amendment; a second patient completed while the relay was down.')
+
         assert self.original_download.read_bytes() == self.original_download_bytes
         assert not self.cd.evaluate("Boolean(document.querySelector('[data-testid=source-brief-preview]'))")
         stale = f'.question-items li[data-question-id="{self.original_question_id}"] [data-testid=brief-prepare]'

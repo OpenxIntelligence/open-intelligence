@@ -59,6 +59,30 @@ class PostgresSourceQuestions:
             self.registry._allow(actor, patient_id, action, purpose)
         PostgresSourceVersions(self.registry)._binding(patient_id, case_id, organization, purpose)
 
+    def prepare_run_context_locked(self, patient_id: str, case_id: str, *,
+                                   organization: str, actor: str, purpose: str,
+                                   recheck_authority: Callable[[], None],
+                                   prepare_response: Callable[[dict], PreparedResponse]) -> PreparedResponse:
+        """Prepare current execution pins through the existing source owner.
+
+        The caller owns the transaction. Source content stays within its owner
+        and this projection; the consumer receives only contract/fingerprint.
+        The source owner's final audit and authority checks enclose all effects.
+        """
+        self.authorize_run_scope_locked(patient_id, case_id, organization=organization,
+                                        actor=actor, purpose=purpose)
+
+        def prepare(index):
+            world = project_source_world_model(index)
+            return prepare_response({
+                "source_snapshot_contract": SOURCE_SNAPSHOT_CONTRACT,
+                "source_snapshot_sha256": world["snapshot_fingerprint"],
+            })
+
+        return PostgresSourceVersions(self.registry).list_locked(
+            patient_id, case_id, organization=organization, actor=actor, purpose=purpose,
+            recheck_authority=recheck_authority, prepare_response=prepare)
+
     @staticmethod
     def _intent(patient_id: str, case_id: str, organization: str,
                 actor: str, purpose: str, key: str, source_id: str,

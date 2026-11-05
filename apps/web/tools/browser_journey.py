@@ -77,11 +77,11 @@ def main():
             # Add only operator-controlled fictional grants; no UI self-authorization.
             credentials[0]['actions'].extend(['case_binding_create','case_binding_read','source_import','source_read'])
             write_grants()
-            def add_synthetic(path,payload):
+            def add_synthetic(path,payload=None):
                 url='http://127.0.0.1:8000'+path
-                operation=Request(url,data=json.dumps(payload).encode('utf-8'),
+                operation=Request(url,data=json.dumps(payload).encode('utf-8') if payload is not None else None,
                     headers={'Authorization':'Bearer '+tokens[0],'Content-Type':'application/json',
-                             'Accept':'application/json'},method='POST')
+                             'Accept':'application/json'},method='POST' if payload is not None else 'GET')
                 with urlopen(operation,timeout=10) as response:
                     return response.status,json.load(response)
             root='/v1/patients/'+pid
@@ -163,10 +163,16 @@ def main():
                     'Specimen: SPECIMEN-ONE\nAmends: DOC-ONE@1\n'
                     'Finding: marker|negative|Amended fictional marker is reported negative.\n'
                 )
-                status,new_receipt=add_synthetic(root+'/cases/'+case+'/sources',{
-                    'synthetic':True,'original_text':amended})
-                assert status==201 and new_receipt['version']==2
-                questions.after_amendment(new_receipt['source_id'])
+                from background_brief_relay_journey import recover_amendment
+                with tempfile.NamedTemporaryFile(mode='w', dir=directory, encoding='ascii') as worker_token:
+                    worker_token.write(tokens[0])
+                    worker_token.flush()
+                    worker_env = {**env, 'OI_API_EVENT_WORKER_TOKEN_FILE': worker_token.name,
+                                  'OI_API_WORKER_TOKEN_FILE': worker_token.name}
+                    new_receipt, stale_run = recover_amendment(
+                        add_synthetic, pid, case, questions.original_question_id, original, amended,
+                        credentials[0], write_grants, worker_env)
+                questions.after_amendment(new_receipt['source_id'], stale_run)
                 reviews.after_amendment()
                 followthrough.after_amendment(new_receipt['source_id'])
                 cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")

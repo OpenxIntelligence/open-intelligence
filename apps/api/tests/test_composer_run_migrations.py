@@ -38,7 +38,8 @@ class ComposerMigrationGraphTests(unittest.TestCase):
     def test_composer_upgrade_is_the_single_ready_head_after_laboratory_questions(self):
         # Missing/sibling migration or a stale readiness literal must fail here.
         script = ScriptDirectory.from_config(Config(str(API_ROOT / "alembic.ini")))
-        self.assertEqual(script.get_heads(), [REVISION])
+        self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
+        self.assertIn(REVISION, [r.revision for r in script.walk_revisions()])
         self.assertEqual(script.get_revision(REVISION).down_revision, PARENT)
         self.assertEqual(SCHEMA_REVISION, script.get_current_head())
         self.assertEqual(DatabaseStatus(status="ready").required_revision,
@@ -160,9 +161,12 @@ class ComposerRunMigrationTests(SourceVersionFixture):
         self.upgrade_preserving(before)
         for table in TABLES:
             self.assertEqual(self.snapshot()[0][table], [])
-        migrate(self.admin, "downgrade", PARENT)
-        self.assertEqual(self.snapshot(), before)
-        migrate(self.admin, "upgrade", "head")
+        # The successor backfills immutable source-event history. Refuse to
+        # discard it, while preserving every inherited table and sequence.
+        after = self.snapshot()
+        with self.assertRaises(CommandError):
+            migrate(self.admin, "downgrade", PARENT)
+        self.assertEqual(self.snapshot(), after)
         run = self.queue(question)
         self.assertEqual((self.row(run)["state"], self.row(run)["attempt_count"]), ("queued", 0))
 
@@ -394,7 +398,10 @@ class ComposerRunMigrationTests(SourceVersionFixture):
         self.assertEqual(self.row(run)["state"], "completed")
 
     def test_populated_execution_history_refuses_downgrade_without_data_loss(self):
-        _, question = self.seed()
+        # Exercise the original execution migration's guard directly. At the
+        # current head, 0020 correctly refuses first because its outbox retains
+        # source history; that guard has its own populated downgrade regression.
+        _, question, _ = self.start_at(REVISION)
         run = self.queue(question)
         self.claim(run)
         self.complete(run)

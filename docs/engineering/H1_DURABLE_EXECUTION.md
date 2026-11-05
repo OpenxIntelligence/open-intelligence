@@ -194,6 +194,23 @@ The connected Chromium journey exercises queue, recovery after a history refresh
 replacement, real worker completion, result display and access withdrawal. Exact execution
 results for the workspace change belong to its stacked pull request.
 
+### Inspecting work after an amendment
+
+In Investigations, refresh the saved questions and choose **Check previous run** on an
+amended text-source question. The workspace calls `GET` on that question's `/runs`
+collection to read the most recently created run belonging to the current actor, organization
+and purpose. This lookup uses the existing status contract, current grants, case binding,
+read audit and no-store response. It reads status only. A question without a visible run
+returns the ordinary unavailable response. The workspace keeps the result body closed even
+when an older run completed before the amendment. A queued run retired by the relay shows
+**Source changed — reassessment required**.
+
+The amendment browser journey holds the affected run row in disposable PostgreSQL until the
+real relay has committed its claim, kills the relay, completes a second fictional patient's
+work and restarts the relay after database-clock lease expiry. It replays the same amendment,
+checks one consumer receipt and one stale transition, and reopens the exact run by question
+in Chromium. The source-reported question and its original pins remain owned by Investigations.
+
 ## Run one worker attempt
 
 Use the existing [API setup](../../apps/api/README.md) and

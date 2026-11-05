@@ -48,6 +48,18 @@ def register_composer_run_routes(router, *, principal, registry, records_authori
         except PatientRegistryDenied:
             raise HTTPException(404, "Composer run unavailable") from None
 
+    @router.get(prefix, response_model=ComposerRunStatus, responses=errors,
+                operation_id="read_latest_source_brief_run_v1")
+    def latest(request: Request, patient_id: str, case_id: str, question_id: str,
+               context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                return PostgresComposerRuns(patients).latest(
+                    patient_id, case_id, question_id, **scope(request, context, patients, patient_id),
+                    prepare_response=lambda value: _prepare(ComposerRunStatus, value))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Composer run unavailable") from None
+
     @router.get(prefix + "/{run_id}", response_model=ComposerRunStatus, responses=errors,
                 operation_id="read_source_brief_run_v1")
     def get(request: Request, patient_id: str, case_id: str, question_id: str, run_id: str,
