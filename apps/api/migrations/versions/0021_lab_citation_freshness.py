@@ -45,6 +45,7 @@ def upgrade():
             END IF;
             RETURN NEW;
         END;
+        $guard$;
         CREATE TRIGGER zzz_oi_lab_citation_current_sources
         BEFORE INSERT ON investigation.question_evidence_links
         FOR EACH ROW EXECUTE FUNCTION investigation.require_lab_citation_current_sources();
