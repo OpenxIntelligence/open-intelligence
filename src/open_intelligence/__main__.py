@@ -35,6 +35,7 @@ from .investigation import (
     validate_output,
 )
 from .kchecks import build_kcheck_context
+from .orchestrator import decide_route
 from .clinician_overview import build_clinician_overview
 from .mission import build_patient_mission
 from .patient_attention import case_patient_attention
@@ -1006,6 +1007,16 @@ class Handler(BaseHTTPRequestHandler):
                     if type(question_id) is not int:
                         raise InvalidInput("question_id must be an integer")
                     facts = store.investigation_facts(case_id, question_id)
+                    # Slice 3 assignment (program plan C3): the route is
+                    # decided before any agent event — the model call in
+                    # live mode, the fixture validation in replay mode.
+                    # The authority is the current account's role; the
+                    # case gate already denied patients and auditors here.
+                    account, _actor = self._current_actor(store)
+                    if account is None:
+                        return self._json(401, {"error": AUTH_REQUIRED_MESSAGE})
+                    decide_route(store, case_id, template, question_id,
+                                 account["role"])
                     # Slice 2 K-checks (program plan C2): the deterministic
                     # verification half. The vertical's own predicates are
                     # passed as explicit parameters; the condition-scope,
