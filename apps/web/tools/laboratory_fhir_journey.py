@@ -484,10 +484,17 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
                                   'expected_preflight_sha256':checked['preflight_sha256']})
         second_id = second_receipt['question_id']
         assert second_id != question_id
-        click(cd, '[data-testid=lab-questions-reopen]')
-        cd.wait("document.querySelectorAll('[data-testid=lab-saved-question]').length===2",
-                'same wording saved against two distinct laboratory results')
+        journey('1')
         navigate('Overview')
+        cd.wait("Boolean(document.querySelector('[data-testid=preparation-lab-refresh]'))",
+                'preparation can request laboratory history for the current case')
+        assert not cd.evaluate("Boolean(document.querySelector('[data-testid=preparation-lab-select]'))")
+        prior_history_reads = cd.evaluate('window.__oiLabHistoryCodes.length')
+        before = cd.evaluate('window.__oiLabMutations')
+        click(cd, '[data-testid=preparation-lab-refresh]')
+        cd.wait('window.__oiLabHistoryCodes.length>'+str(prior_history_reads),
+                'fresh laboratory history request from preparation')
+        assert cd.evaluate('window.__oiLabHistoryCodes.slice('+str(prior_history_reads)+')') == [200]
         picker = '[data-testid=preparation-lab-select]'
         row = '[data-testid=preparation-lab-question]'
         action = row + ' [data-testid=lab-citation-report-open]'
@@ -495,7 +502,6 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         cd.wait("document.querySelectorAll('[data-testid=preparation-lab-select] option').length===3",
                 'both authorized questions offered for preparation')
         assert not cd.evaluate('Boolean(document.querySelector('+json.dumps(report)+'))')
-        before = cd.evaluate('window.__oiLabMutations')
         for target,source,reference,value in (
                 (second_id,current,second['observation_reference'],'No value reported.'),
                 (question_id,first,committed['observation_reference'],'0 10*9/L')):
@@ -534,7 +540,8 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
             credentials[0]['actions'].append('review_packet_read');write_grants()
         (artifacts/'second-opinion-laboratory-results.json').write_text(json.dumps({
             'synthetic': True, 'historical_question': question_id, 'current_question': second_id,
-            'same_question_wording': True, 'historical_zero_and_current_absence_distinct': True,
+            'same_question_wording': True, 'history_read_from_preparation': True,
+            'historical_zero_and_current_absence_distinct': True,
             'restricted_title_withheld': True, 'report_refresh_denial': 404, 'inspection_writes': 0,
         }, indent=2)+'\n')
         reopen_patient()

@@ -97,4 +97,4 @@ The full integration workflow separately exercises wrong-scope and revoked acces
 
 ### Inspect a saved laboratory question while preparing for a second opinion
 
-In Journey, reopen the saved laboratory questions for the selected fictional case. On Overview, go to second-opinion preparation and choose the question by wording, Observation reference and source version. Select **Inspect result and citations together** for a fresh authorized report. After an amendment, the earlier question identifies its original version and displays its reassessment status. A newly selected question requires its own report read.
+For a fictional case with a laboratory report, open its case source view, then go to second-opinion preparation on Overview. Select **Check laboratory questions** and choose the saved question by wording, Observation reference and source version. Select **Inspect result and citations together** for a fresh authorized report. After an amendment, the earlier question identifies its original version and displays its reassessment status. A newly selected question requires its own report read.

@@ -148,10 +148,13 @@ test('second-opinion UI shows laboratory questions as a separate unreviewed sour
  assert.match(html,/data-state="needs_laboratory_review"/);
  assert.match(html,/data-testid="second-opinion-lab-questions"/);
  assert.match(html,/1 current · 0 needing source reassessment/);
+ assert.match(html,/Refresh laboratory questions/);
  assert.match(html,/data-testid="preparation-lab-select"/);
  assert.match(html,/Could we discuss &lt;fictional&gt; result\?/);
  assert.match(html,/Observation\/FICTIONAL-OBS/);
  assert.doesNotMatch(html,/data-testid="lab-citation-report(?:-open)?"/);
+ assert.match(render({...scope,labQuestionListPhase:'idle',labQuestionHistory:null}),/Check laboratory questions/);
+ assert.match(render({...scope,evidenceLinkPhase:'unknown'}),/data-testid="preparation-lab-refresh" disabled/);
  for(const patch of [
   {labQuestionListPhase:'loading'}, {labQuestionListPhase:'error'},
   {labQuestionHistory:{...scope.labQuestionHistory,case_id:'CASE-OTHER'}},

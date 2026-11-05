@@ -37,7 +37,7 @@ function PreparationLaboratoryQuestions({history,session,state,busy}:{
     {selected.source_context_state==='source_reassessment_required'?
      'Source changed. Recheck the original result.':'Source current at last check. Unreviewed.'}</p>
    <LaboratoryCitationReportPanel key={selected.question_id} session={session} state={state} question={selected}
-    busy={busy||questionSaveBlocksSourceChange(state)||['saving','unknown'].includes(state.labQuestionWritePhase)}/>
+    busy={busy}/>
   </div>}
  </section>;
 }
@@ -48,6 +48,10 @@ export function SecondOpinionPreparation({state,session,busy,onNavigate,onResume
 }){
  const view=secondOpinionPreparation(state);
  if(!view)return null;
+ const model=state.worldModel;
+ const laboratoryBusy=busy||questionSaveBlocksSourceChange(state)||
+  ['saving','unknown'].includes(state.labQuestionWritePhase)||
+  ['saving','unknown'].includes(state.evidenceLinkPhase)||state.evidenceWritePhase==='unknown';
  return <section className="panel second-opinion-preparation" data-testid="second-opinion-preparation" data-state={view.state} aria-labelledby="second-opinion-heading">
   <span className="step">SECOND OPINION · PREPARATION ONLY</span>
   <h2 id="second-opinion-heading">Prepare a focused second-opinion discussion</h2>
@@ -64,7 +68,12 @@ export function SecondOpinionPreparation({state,session,busy,onNavigate,onResume
    </div>
    {view.laboratoryAvailable&&<div data-testid="second-opinion-lab-questions">
     <dt>Saved laboratory questions</dt>
-    <dd>{view.laboratoryQuestions?<>{view.laboratoryQuestions.current} current · {view.laboratoryQuestions.reassessment} needing source reassessment. These unreviewed questions refer to individual laboratory observations.</>:'Not checked for this case, or independently unavailable. Do not infer zero.'}</dd>
+    <dd>{view.laboratoryQuestions?<>{view.laboratoryQuestions.current} current · {view.laboratoryQuestions.reassessment} needing source reassessment. These unreviewed questions refer to individual laboratory observations.</>:state.labQuestionListPhase==='loading'?'Checking saved laboratory questions…':'Saved laboratory questions have not been checked for this case.'}
+     {model&&<button type="button" data-testid="preparation-lab-refresh"
+      disabled={laboratoryBusy||state.labQuestionListPhase==='loading'} onClick={()=>void session.loadLabQuestions(model)}>
+      {view.laboratoryQuestions?'Refresh laboratory questions':'Check laboratory questions'}
+     </button>}
+    </dd>
    </div>}
    <div data-testid="second-opinion-coordination">
     <dt>Recorded coordination</dt>
@@ -73,7 +82,7 @@ export function SecondOpinionPreparation({state,session,busy,onNavigate,onResume
   </dl>
   {view.laboratoryQuestions&&state.labQuestionHistory&&state.labQuestionHistory.questions.length>0&&
    <PreparationLaboratoryQuestions key={state.labQuestionHistory.access_receipt_id} history={state.labQuestionHistory}
-    session={session} state={state} busy={busy}/>}
+    session={session} state={state} busy={laboratoryBusy}/>}
   <section className="second-opinion-agenda" aria-labelledby="second-opinion-agenda-heading" data-testid="second-opinion-agenda">
    <h3 id="second-opinion-agenda-heading">Text-source questions for discussion</h3>
    <p>Each saved question below refers to a line in a record. Source status reflects the last authorized read.</p>
