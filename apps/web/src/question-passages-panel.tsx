@@ -1,7 +1,8 @@
 import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import type {RegistrySession} from './registry-client';
-import {DocumentClient} from './reviewed-documents';
-import {QuestionPassageClient,decodeSelection,passageReference,manualReportBinding} from './question-passages';
+import {DocumentClient,passageLocation} from './reviewed-documents';
+import type {Finding} from './reviewed-documents';
+import {QuestionPassageClient,decodeChosenPassage,passageReference,manualReportBinding} from './question-passages';
 import type {ManualPanelStatus,PassageScope} from './question-passages';
 
 /** Additional record context never changes the primary structured observation. */
@@ -19,15 +20,15 @@ export function QuestionPassagesPanel({session,scope,busy,onContext,onSaved}:{se
  useEffect(()=>{const binding=manualReportBinding(state.packet,chosen,state.phase,state.draftStatus);onContext({scope,context:binding.context,blocked:binding.blocked});},[state.packet,state.phase,state.draftStatus,chosen,onContext,scope.patient_id,scope.case_id,scope.question_id]);
  useEffect(()=>{setMessage('');},[state.packet]);
  const editingLocked=locked||state.draftStatus==='conflict';
- const latest=docs.document?.revisions.at(-1);
- async function select(key:string){
-  if(editingLocked||!docs.document||!latest||!state.packet||chosen.length>=20)return;
-  const stamp=++generation.current,reference={source_id:docs.document.source_id,annotation_revision_id:latest.revision_id,selection_key:key};
+ const displayed=docs.document;
+ const latest=displayed?.revisions.at(-1);
+ async function select(finding:Finding){
+  if(editingLocked||!displayed||!latest||!state.packet||chosen.length>=20)return;
+  const stamp=++generation.current;
   setSelecting(true);setMessage('Rechecking the exact saved passage…');
-  try{const reply=await session.documentRequest(scope.case_id,'/'+reference.source_id+'/selections/'+reference.annotation_revision_id+'/'+key,undefined,scope.question_id);
+  try{const reply=await session.documentRequest(scope.case_id,'/'+displayed.source_id+'/selections/'+latest.revision_id+'/'+finding.key,undefined,scope.question_id);
    if(stamp!==generation.current)return;if(reply.status!==200)throw Error('Saved passage unavailable. Refresh document and permissions.');
-   const passage=await decodeSelection(reply.body,scope,reference);if(stamp!==generation.current)return;
-   if(passage.selection_state!=='current_unreviewed_selection')throw Error('This selection changed. Refresh the document before attaching it.');
+   const passage=await decodeChosenPassage(reply.body,scope,displayed,finding);if(stamp!==generation.current)return;
    if(!client.choose(passage))throw Error('Recheck the current passage context before selecting.');
    setMessage('Passage selected locally. Save the set to attach it to this question.');
   }catch(e){if(stamp===generation.current)setMessage(e instanceof Error?e.message:'Passage unavailable.');}
@@ -59,9 +60,9 @@ export function QuestionPassagesPanel({session,scope,busy,onContext,onSaved}:{se
    {docs.documents.length>0&&<ul>{docs.documents.filter(d=>d.state==='current').map(d=><li key={d.source_id}>
     <button type="button" disabled={editingLocked} data-testid="manual-context-document" onClick={()=>void documents.open(d.source_id)}>{d.document_id} v{d.version} · {d.filename}</button>
    </li>)}</ul>}
-   {docs.document?.state==='current'&&latest&&<fieldset disabled={editingLocked||chosen.length>=20}><legend>Saved selections from {docs.document.document_id}, revision {latest.revision}</legend>
+   {displayed?.state==='current'&&latest&&<fieldset disabled={editingLocked||chosen.length>=20}><legend>Saved selections from {displayed.document_id}, revision {latest.revision}</legend>
     {latest.findings.length===0?<p>No saved passages in this revision. Select and save a passage in Records first.</p>:
-     latest.findings.map(f=><p key={f.key}><q>{f.quote}</q> · line {f.line} <button type="button" data-testid="manual-context-add" onClick={()=>void select(f.key)}>Choose passage {f.key}</button></p>)}
+     latest.findings.map(f=><p key={f.key}><q>{f.quote}</q> · {passageLocation(displayed.preview,f.line)} <button type="button" data-testid="manual-context-add" onClick={()=>void select(f)}>Choose passage {f.key}</button></p>)}
    </fieldset>}
    <button type="button" className="primary" data-testid="manual-context-save" disabled={editingLocked||chosen.some(p=>p.selection_state!=='current_unreviewed_selection')} onClick={()=>void save()}>Save passage set ({chosen.length}/20)</button>
    <p className="muted">Saving an empty set removes attachments from current context while preserving earlier revisions and reports. Nothing here establishes clinical approval.</p>

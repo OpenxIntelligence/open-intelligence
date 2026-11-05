@@ -1,14 +1,7 @@
 import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
-import {DocumentClient,documentByteHash} from './reviewed-documents';
+import {DocumentClient,documentByteHash,passageLocation} from './reviewed-documents';
 import type {DocumentUpload,Finding,Preview} from './reviewed-documents';
 import type {RegistrySession} from './registry-client';
-
-function passageLocation(preview:Preview,line:number){
- const anchor=preview.lines[line-1];
- return preview.media_type==='application/pdf'&&anchor?.page
-  ? `Page ${anchor.page}, page line ${anchor.page_line} (extraction line ${line})`
-  : `Line ${line}`;
-}
 
 export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:RegistrySession;patientId:string;caseId:string}){
  const client=useMemo(()=>new DocumentClient((path,body)=>session.documentRequest(caseId,path,body)),[session,caseId,patientId]);

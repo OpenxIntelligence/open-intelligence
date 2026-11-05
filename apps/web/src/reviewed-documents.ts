@@ -16,6 +16,13 @@ export async function documentByteHash(bytes:Uint8Array<ArrayBuffer>):Promise<st
  const digest=await crypto.subtle.digest('SHA-256',bytes);
  return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
 }
+export function passageLocation(preview:Preview,line:number){
+ const anchor=preview.lines[line-1];
+ return preview.media_type==='application/pdf'&&anchor?.page
+  ? `Page ${anchor.page}, page line ${anchor.page_line} (extraction line ${line})`
+  : `Line ${line}`;
+}
+
 export function parsePreview(x:unknown):Preview{
  if(!object(x)||typeof x.filename!=='string'||x.filename.length>120||!filename.test(x.filename)||x.filename.includes('..')||
     typeof x.sha256!=='string'||!hash.test(x.sha256)||!integer(x.byte_count,1,65536)||typeof x.text!=='string'||new TextEncoder().encode(x.text).length>65536||

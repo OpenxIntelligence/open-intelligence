@@ -99,8 +99,35 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         click('[data-testid=manual-context-documents]')
         cd.wait("document.querySelectorAll('[data-testid=manual-context-document]').length===2",'saved text and PDF choices')
         for document_id,_,_ in fixtures:
-            cd.evaluate("[...document.querySelectorAll('[data-testid=manual-context-document]')].find(b=>b.textContent.includes("+json.dumps(document_id)+')).click()')
+            open_document="[...document.querySelectorAll('[data-testid=manual-context-document]')].find(b=>b.textContent.includes("+json.dumps(document_id)+')).click()'
+            if document_id=='MANUAL-PDF':
+                # Simulate a stale displayed substring. The independent selection
+                # endpoint still returns its actual, digest-verified full anchor.
+                cd.evaluate(r"""(() => {
+                    const previous=window.fetch;
+                    window.fetch=async(input,init)=>{
+                        const path=new URL(input instanceof Request?input.url:input,location.href).pathname;
+                        const parts=path.split('/');
+                        if(parts.at(-2)!=='documents'||!parts.at(-1).startsWith('SRC-'))return previous.call(window,input,init);
+                        window.fetch=previous;
+                        const response=await previous.call(window,input,init);
+                        const body=await response.json();
+                        if(response.status!==200||body.document_id!=='MANUAL-PDF')throw Error('Expected selected PDF');
+                        body.revisions.at(-1).findings[0].quote='violet label';
+                        return new Response(JSON.stringify(body),{status:200,headers:{'Content-Type':'application/json'}});
+                    };
+                })()""")
+                cd.evaluate(open_document)
+                cd.wait("document.querySelector('[data-testid=question-manual-passages] fieldset q')?.textContent==='violet label'",'substituted substring displayed')
+                assert cd.evaluate("document.querySelector('[data-testid=question-manual-passages] fieldset').textContent.includes('Page 2, page line 1 (extraction line 2)')")
+                click('[data-testid=manual-context-add]')
+                cd.wait("document.querySelector('[data-testid=manual-context-status]').textContent.includes('differs from the one displayed')",'different quotation withheld')
+                assert cd.evaluate("document.querySelectorAll('[data-testid=manual-context-selected] blockquote').length") == 1
+                assert cd.evaluate('window.__manualJourney.posts.length') == 0
+                assert operator(qpath+'/manual-passages')['passages'] == []
+            cd.evaluate(open_document)
             cd.wait("document.querySelector('[data-testid=question-manual-passages] legend')?.textContent.includes("+json.dumps(document_id)+')','exact saved document selection')
+            cd.wait("document.querySelector('[data-testid=question-manual-passages] fieldset q')?.textContent==='A fictional violet label is pending.'",'exact quotation visible before choosing')
             click('[data-testid=manual-context-add]')
             cd.wait("document.querySelector('[data-testid=manual-context-status]')?.textContent.includes('selected locally')",'exact passage resolved under authority')
         assert cd.evaluate("document.querySelectorAll('[data-testid=manual-context-selected] blockquote').length")==2
@@ -301,6 +328,7 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
             patient_id=patient_id,case_id=CASE,question_id=question_id,context=saved_context,
             report_id=report_id,report_body_sha256=report['body_sha256'],historical_state=historical['state'],
             exact_retry=True,download_bytes_equal=True,revoked_original_read_withholds=True,
+            different_displayed_quote_withheld=True,picker_pdf_page_location_verified=True,
             recovery_survives_refresh_and_denial=True,unsaved_removal_blocks_report=True,
             same_question_review_receipt_id=review_receipt['receipt_id'],
             same_question_followthrough_task_id=task_receipt['task_id'],

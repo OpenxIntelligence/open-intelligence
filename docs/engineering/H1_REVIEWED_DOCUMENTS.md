@@ -61,6 +61,15 @@ The connected browser journey exercises a substituted hash on one real preview
 response, retries the selected file, corrects a selection on page two and
 checks the page locations on both saved revisions.
 
+When a reviewer chooses a saved passage in Investigations, the picker uses the
+same location label as Records. A fresh selection receipt must match the
+displayed document version, original and extraction hashes, selection revision,
+quotation, classification, extraction line and physical page. A difference asks
+the reviewer to reopen the record before choosing the passage. The browser
+journey exercises this using a shortened, valid substring while the selection
+endpoint returns the original quotation. It then reopens the document and
+follows the exact wording and physical page into the preserved report.
+
 The draft PR records final commit-specific hosted results. Local verification
 covers strict wire contracts, isolated parser tests, client state and production
 build. The independent whole-change review found a too-small history response
