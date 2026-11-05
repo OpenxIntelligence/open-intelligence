@@ -67,8 +67,8 @@ class ProjectionAuthorityTests(SourceVersionFixture):
                     self.write()
                     previous_events = self.read_events()
 
-                    def withdraw(index):
-                        result = project_source_world_model(index)
+                    def withdraw(index, laboratory_observations=()):
+                        result = project_source_world_model(index, laboratory_observations)
                         self.creds[0].update(change)
                         self.write()
                         return result
@@ -92,8 +92,8 @@ class ProjectionAuthorityTests(SourceVersionFixture):
                     self.write()
                     previous_events = self.read_events()
 
-                    def withdraw(index):
-                        result = project_source_world_model(index)
+                    def withdraw(index, laboratory_observations=()):
+                        result = project_source_world_model(index, laboratory_observations)
                         if change == "credential_removed":
                             self.creds.pop(0)
                             self.write()
@@ -115,8 +115,8 @@ class ProjectionAuthorityTests(SourceVersionFixture):
             self.assertEqual(self.ingest(base, patient)[0], 201)
             previous_events = self.read_events()
 
-            def fail_after_projection(index):
-                project_source_world_model(index)
+            def fail_after_projection(index, laboratory_observations=()):
+                project_source_world_model(index, laboratory_observations)
                 raise RuntimeError("PRIVATE-PROJECTION-FAILURE")
 
             with patch.object(patient_routes, "project_source_world_model",
@@ -175,8 +175,8 @@ class ProjectionAuthorityTests(SourceVersionFixture):
 
             observed = {}
 
-            def observe_projection(index):
-                result = project_source_world_model(index)
+            def observe_projection(index, laboratory_observations=()):
+                result = project_source_world_model(index, laboratory_observations)
                 observed["receipts"] = self.read_events()
                 observed["locks"] = [(name, attempt_lock(sql, parameters))
                                      for name, sql, parameters in targets]

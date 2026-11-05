@@ -147,6 +147,7 @@ class HTTPContractTests(unittest.TestCase):
             "/v1/patients/{patient_id}/cases/{case_id}/documents/{source_id}/original",
             "/v1/patients/{patient_id}/cases/{case_id}/documents/{source_id}/selections/{revision_id}/{selection_key}",
             "/v1/patients/{patient_id}/cases/{case_id}/laboratory/fhir-r4/preview",
+            "/v1/patients/{patient_id}/cases/{case_id}/laboratory/fhir-r4/sources",
             "/v1/patients/{patient_id}/cases/{case_id}/followthrough",
             "/v1/patients/{patient_id}/cases/{case_id}/followthrough/{task_id}/transitions",
             "/v1/patients/{patient_id}/cases/{case_id}/questions",
