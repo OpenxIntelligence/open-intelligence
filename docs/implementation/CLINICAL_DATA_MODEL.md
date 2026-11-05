@@ -1,0 +1,15 @@
+# Clinical record ownership
+
+| Concept | Current owner and semantics | Phase 1 work |
+|---|---|---|
+| Patient / case | `identity.identity_patients` and `coordination.patient_case_bindings`. Access is patient-, organization- and purpose-scoped. | Reuse these identifiers and locks for all episode reads/writes. |
+| Source / correction | `clinical_source.source_versions` retains original bytes, digest, document version, source event/issue/receipt dates and predecessor. `clinical_source.assertions` retains the reported label, literal quote and line. | Reference a specific immutable version and assertion. Recompute freshness after an amendment. Never repoint historical evidence. |
+| Source episode attribution | The opt-in v2 fictional report gives a line a case-local episode label and primary/metastasis role. `source_integrity.py` checks original bytes before `source_world_model.py` projects the attribution. | Introduce a durable episode identity and explicit mapping from source labels. Multiple primaries, unknown origins, suspected links and historical disease must survive independently. |
+| Disagreement | Current source assertions compare only within matching specimen, event date, finding key and explicit role/episode, or within the legacy untyped group. Unknown specimens and unassigned typed episodes are excluded. A group requires both reported and negative labels. | Preserve all contributing anchors, including pending observations in a qualifying group. A human disposition has separate authorship, evidence and history. |
+| Investigation | Existing patient/source/question, review, report, task and command/event owners store the reviewable work. | Link affected proposals to source versions and recorded dispositions. An amended source invalidates freshness without rewriting a decision. |
+
+**Proposed episode fields.** Use separate fields for site, laterality, histology, grade, diagnosis date with precision, disease course, validity interval and recorded-at time. Keep a historical episode distinct from a new primary. Store a proposed secondary-to-primary relationship with its own evidence, uncertainty and review state. Preserve the as-recorded status through amendments and distinguish the reviewer from the author/extractor.
+
+**State axes.** Reported, extracted or model-proposed describes origin. Pending, unknown, inadequate, not tested or negative describes the observation. Reviewed, confirmed or rejected describes authority and disposition. Corrected or superseded describes version lineage. Avoid collapsing these into one enum. A model cannot issue the clinical confirmation command.
+
+**Migration constraint.** Migration 0005 includes unique keys on both `(source_id,finding_key)` and `(source_id,source_line)`. The same key recurring in multiple episodes within a single document needs an explicit parser/storage evolution and populated-upgrade tests. Never suffix a clinical key to bypass the constraint. Existing byte-exact quotes and historic question/report fingerprints must remain recoverable.

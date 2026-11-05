@@ -1,0 +1,11 @@
+# Clinical AI evaluation plan
+
+**Status: Not started** for independent oncology evaluation. Current H1 source comparisons and question briefs are deterministic. #141's provider adapter and #476's local runner/scorer are separate research inputs. #527 records reference-agent write provenance. None of these establishes that a claimant's source supports its statement.
+
+1. Freeze an independently authored synthetic development set, a held-out set and an amendment sequence for each longitudinal case. Include two primaries, ambiguous metastatic origin, inconclusive biopsy, specimen swaps, negation, missing vs negative results, conflicting assays, and out-of-order events. Link expected answers to exact versioned spans or record an explicit reason to abstain.
+2. Have independent oncology reviewers label claim support, contradiction, temporality, episode identity, status and clinically consequential errors. Record disagreements and adjudication separately from the first labels. Keep labels outside the model prompt. Existing [evaluation materials](../../validation/iv01/) provide a starting structure.
+3. Run deterministic extraction first. For any authorized model route, record immutable case/split hashes, prompt/model/tool/terminology versions, context cutoff, declared permitted inputs, output, abstention and missing-source reason. Respect current patient/case/source authority at retrieval and disclosure. Provider egress requires its own policy.
+4. Score extraction precision/recall, critically wrong episode/negation/stage, incorrect claim support despite valid citation, coverage, unsupported assertions and abstention against adjudicated labels. Distinguish transport/parser failure from deliberate abstention. Report numerators, denominators and subgroup case counts; show inconclusive small groups explicitly.
+5. Hold promotion until clinical owners set use-specific thresholds and independently evaluate held-out evidence. Preserve rejected outputs and audit receipts within governed retention. Models can propose reviewable claims; only an authorized human workflow may record a disposition.
+
+The current disagreement regression tests assert complete input-to-display accounting over supplied source lines. They do not measure inference accuracy, clinical sensitivity or coherence of an entire chart.
