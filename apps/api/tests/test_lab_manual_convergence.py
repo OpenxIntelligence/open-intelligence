@@ -26,14 +26,16 @@ from test_source_versions import SourceVersionFixture
 LAB = "0016_fhir_laboratory_sources"
 MANUAL = "0016_manual_task_dependency"
 JOIN = "0017_lab_manual_convergence"
+TYPED = "0018_typed_question_anchor"
 RAW = b"Independently fictional upgrade document.\nMarker pending.\n"
 
 
 class LabManualMigrationContractTests(unittest.TestCase):
     def test_one_join_preserves_both_published_parents(self):
         script = graph()
-        self.assertEqual(script.get_heads(), [JOIN])
-        self.assertEqual(SCHEMA_REVISION, JOIN)
+        self.assertEqual(script.get_heads(), [TYPED])
+        self.assertEqual(SCHEMA_REVISION, TYPED)
+        self.assertEqual(script.get_revision(TYPED).down_revision, JOIN)
         self.assertEqual(set(script.get_revision(JOIN).down_revision), {LAB, MANUAL})
         for revision in (LAB, MANUAL):
             self.assertEqual(script.get_revision(revision).down_revision,
@@ -102,7 +104,7 @@ class LabManualPopulatedMigrationTests(SourceVersionFixture):
 
     def upgrade_preserving(self, before):
         migrate(self.admin, "upgrade", "head")
-        self.assertEqual(self.heads(), {JOIN})
+        self.assertEqual(self.heads(), {SCHEMA_REVISION})
         self.assertEqual(self.snapshot(before[0]), before)
         self.readiness(True)
 

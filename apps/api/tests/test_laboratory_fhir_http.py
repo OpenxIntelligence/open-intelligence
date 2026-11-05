@@ -430,5 +430,126 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
             self.assertEqual(self.source_counts(), before)
             self.assertNotIn("4.20", json.dumps(body))
 
+
+    def enable_durable_question_grants(self):
+        for action in ("question_create", "question_read"):
+            if action not in self.creds[0]["actions"]:
+                self.creds[0]["actions"].append(action)
+        self.write_access()
+
+    def save_lab_question(self, base, patient, source_id, fingerprint, *,
+                          request_key="LAB-QUESTION-SAVE-ONE", question=None, token=TOKEN_A):
+        question = question or "What should I ask my care team about this source-reported result?"
+        code, prepared, _ = self.prepare_lab_question(base, patient, source_id, fingerprint, token=token)
+        self.assertEqual(code, 200, prepared)
+        return request(
+            base, f"/v1/patients/{patient}/cases/CASE-LAB-A/questions/laboratory",
+            token=token,
+            body={"synthetic": True, "request_key": request_key, "source_id": source_id,
+                  "observation_reference": "Observation/FICTIONAL-OBS-A",
+                  "question": question,
+                  "expected_source_snapshot_sha256": fingerprint,
+                  "expected_preflight_sha256": prepared["preflight_sha256"]})
+
+    def test_durable_laboratory_question_uses_typed_anchor_without_fake_line(self):
+        with running_server(self.app) as base:
+            patient, source, fingerprint = self.lab_question_fixture(base)
+            self.enable_durable_question_grants()
+            status, saved, headers = self.save_lab_question(base, patient, source, fingerprint)
+            self.assertEqual(status, 201, saved)
+            self.assertFalse(saved["duplicate"])
+            self.assertEqual(headers["Cache-Control"], "no-store")
+            question_id = saved["question_id"]
+            with self.engine.connect() as db:
+                row = db.execute(text(
+                    "SELECT question_id,anchor_kind,source_line,observation_reference,source_id "
+                    "FROM investigation.source_questions WHERE question_id=:q"), {"q": question_id}).one()
+            self.assertEqual(row[0], question_id)
+            self.assertEqual(row[1], "fhir_observation")
+            self.assertIsNone(row[2])
+            self.assertEqual(row[3], "Observation/FICTIONAL-OBS-A")
+            self.assertEqual(row[4], source)
+            listing = request(base, f"/v1/patients/{patient}/cases/CASE-LAB-A/questions/laboratory", token=TOKEN_A)
+            self.assertEqual(listing[0], 200, listing[1])
+            self.assertEqual(len(listing[1]["questions"]), 1)
+            item = listing[1]["questions"][0]
+            self.assertEqual(item["question_id"], question_id)
+            self.assertEqual(item["anchor_kind"], "fhir_observation")
+            self.assertEqual(item["observation_reference"], "Observation/FICTIONAL-OBS-A")
+            self.assertEqual(item["source_context_state"], "current_unreviewed_question")
+            self.assertFalse(item["clinical_review_connected"])
+            self.assertFalse(item["evidence_workflow_connected"])
+            self.assertFalse(item["followthrough_connected"])
+            self.assertNotIn("source_line", item)
+            legacy = request(base, f"/v1/patients/{patient}/cases/CASE-LAB-A/questions", token=TOKEN_A)
+            self.assertEqual(legacy[0], 200, legacy[1])
+            self.assertEqual(legacy[1]["questions"], [])
+            retry = self.save_lab_question(base, patient, source, fingerprint)
+            self.assertEqual((retry[0], retry[1]["question_id"], retry[1]["duplicate"]),
+                             (200, question_id, True))
+            changed = self.save_lab_question(
+                base, patient, source, fingerprint,
+                question="What different fictional question should not reuse this key?")
+            self.assertEqual(changed[0], 409)
+
+    def test_durable_laboratory_question_becomes_reassessment_required_after_amendment(self):
+        with running_server(self.app) as base:
+            patient, source, fingerprint = self.lab_question_fixture(base)
+            self.enable_durable_question_grants()
+            status, saved, _ = self.save_lab_question(base, patient, source, fingerprint)
+            self.assertEqual(status, 201, saved)
+            changed = example()
+            resource(changed, "Observation")["valueQuantity"]["value"] = 5
+            code, amended, _ = self.import_source(
+                base, patient, changed, request_key="LAB-QUESTION-DURABLE-AMEND",
+                expected_previous_source_id=source)
+            self.assertEqual(code, 201, amended)
+            status, listing, _ = request(
+                base, f"/v1/patients/{patient}/cases/CASE-LAB-A/questions/laboratory", token=TOKEN_A)
+            self.assertEqual(status, 200, listing)
+            self.assertEqual(listing["questions"][0]["source_context_state"],
+                             "source_reassessment_required")
+            self.assertEqual(listing["questions"][0]["source_id"], source)
+            self.assertEqual(self.save_lab_question(base, patient, source, fingerprint)[0], 200,
+                             "Exact retry must preserve the historical question identity")
+            world = request(base, f"/v1/patients/{patient}/cases/CASE-LAB-A/world-model", token=TOKEN_A)[1]
+            fresh = self.save_lab_question(
+                base, patient, amended["source_id"], world["snapshot_fingerprint"],
+                request_key="LAB-QUESTION-SAVE-TWO")
+            self.assertEqual(fresh[0], 201, fresh[1])
+            self.assertNotEqual(fresh[1]["question_id"], saved["question_id"])
+
+    def test_durable_laboratory_question_permissions_and_final_recheck_fail_closed(self):
+        from oi_api import laboratory_fhir_routes as routes
+        with running_server(self.app) as base:
+            patient, source, fingerprint = self.lab_question_fixture(base)
+            self.enable_durable_question_grants()
+            code, prepared, _ = self.prepare_lab_question(base, patient, source, fingerprint)
+            self.assertEqual(code, 200, prepared)
+            path = f"/v1/patients/{patient}/cases/CASE-LAB-A/questions/laboratory"
+            payload = {"synthetic": True, "request_key": "LAB-QUESTION-DENIAL",
+                       "source_id": source, "observation_reference": "Observation/FICTIONAL-OBS-A",
+                       "question": "What should I ask my care team about this source-reported result?",
+                       "expected_source_snapshot_sha256": fingerprint,
+                       "expected_preflight_sha256": prepared["preflight_sha256"]}
+            self.creds[0]["actions"].remove("question_create")
+            self.write_access()
+            self.assertEqual(request(base, path, token=TOKEN_A, body=payload)[0], 404)
+            self.creds[0]["actions"].append("question_create")
+            self.write_access()
+            real_response = routes.JSONResponse
+            def revoke_after_serialization(*args, **kwargs):
+                response = real_response(*args, **kwargs)
+                self.creds[0]["actions"].remove("question_create")
+                self.write_access()
+                return response
+            with patch.object(routes, "JSONResponse", revoke_after_serialization):
+                status, body, _ = request(base, path, token=TOKEN_A, body=payload)
+            self.assertEqual(status, 404, body)
+            with self.engine.connect() as db:
+                self.assertEqual(db.execute(text(
+                    "SELECT count(*) FROM investigation.source_questions WHERE anchor_kind='fhir_observation'"
+                )).scalar_one(), 0)
+
 if __name__ == "__main__":
     unittest.main()
