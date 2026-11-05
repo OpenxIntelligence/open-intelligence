@@ -7,6 +7,7 @@ consent. Missing, expired, ambiguous or unreadable configuration fails closed.
 from datetime import datetime, timezone
 import hashlib
 import hmac
+import json
 import re
 from pathlib import Path
 from typing import Literal, Protocol
@@ -118,8 +119,14 @@ class SyntheticFileAuthentication:
                 data = stream.read(65_537)
             if len(data) > 65_536:
                 raise ValueError("Access fixture exceeds its bound")
-            document = AccessDocument.model_validate_json(data)
-        except (OSError, ValueError, ValidationError):
+            # Validate the wire representation before model validation can
+            # discard duplicate keys (including escaped spellings). A policy
+            # with two scopes must not silently acquire last-member semantics.
+            parsed = json.loads(data.decode("utf-8"),
+                                object_pairs_hook=_unique_policy_object,
+                                parse_constant=_reject_nonfinite_policy_number)
+            document = AccessDocument.model_validate(parsed)
+        except (OSError, ValueError, ValidationError, RecursionError):
             raise AccessUnavailable() from None
         digest = hashlib.sha256(token.encode("ascii")).hexdigest()
         now = datetime.now(timezone.utc)
@@ -127,3 +134,16 @@ class SyntheticFileAuthentication:
             if hmac.compare_digest(candidate.token_sha256, digest) and candidate.expires_at > now:
                 return Principal.model_validate(candidate.model_dump(exclude={"token_sha256"}))
         return None
+
+
+def _unique_policy_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Ambiguous access policy")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_policy_number(_value):
+    raise ValueError("Invalid access policy number")
