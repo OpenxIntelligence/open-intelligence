@@ -26,6 +26,7 @@ from .case_bindings import _case_id
 from .composer_preflight import SOURCE_SNAPSHOT_CONTRACT
 from .source_world_model import project_source_world_model
 from .sources import PostgresSourceVersions
+from .source_questions import text_question_filter
 
 Packet = TypeVar("Packet")
 QUESTION_ID = re.compile(r"QUESTION-[0-9A-F]{32}\Z")
