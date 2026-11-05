@@ -4,6 +4,7 @@ The local pure checks do not emulate PostgreSQL. Database tests inherit the
 existing explicit disposable-PG16 gate and are never counted as local passes.
 """
 from concurrent.futures import ThreadPoolExecutor
+import base64
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import date, datetime, timezone
@@ -25,6 +26,8 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 from oi_api.app import create_app
 from oi_api.contracts import SCHEMA_REVISION
+from oi_api.reviewed_documents import fingerprint
+from test_reviewed_documents import RAW
 from oi_api.followthrough_contracts import ManualTaskDependency
 from oi_api.composer_preflight import SOURCE_SNAPSHOT_CONTRACT
 from oi_api.migrate import migrate
@@ -316,6 +319,103 @@ class FollowthroughPostgresTests(SourceVersionFixture):
         with self.assertRaises(PatientRegistryConflict):
             self.transition(created["task_id"], 4, "assigned", key="REOPEN-COMPLETED")
         self.assertEqual(self.rows(), before)
+
+    def test_optional_manual_dependency_storage_is_scoped_and_immutable(self):
+        # No dependency row is implicitly created for a source-only task.
+        task = self.create_task(key="SOURCE-ONLY-TASK")
+        table = "coordination.question_followthrough_manual_dependencies"
+        with self.engine.connect() as db:
+            self.assertEqual(db.execute(text("SELECT count(*) FROM " + table)).scalar_one(), 0)
+        with running_server(create_app(self.settings)) as base:
+            docs = self.url(self.patient).removesuffix("/sources") + "/documents"
+            payload = dict(synthetic=True,filename="fictional.txt",
+                           original_base64=base64.b64encode(RAW).decode())
+            status,preview,_ = request(base,docs+"/preview",token=TOKEN_A,body=payload)
+            self.assertEqual(status,200,preview)
+            payload.update(confirmed_case_id=CASE,expected_sha256=preview["sha256"],
+                metadata=dict(document_id="DOC-DEPENDENCY",kind="pathology",
+                              event_date="2026-01-10",issued_at="2026-01-11",
+                              manual_transcription_confirmed=True),
+                findings=[dict(key="marker",state="pending",quote="Marker pending.",line=2)])
+            status,doc,_=request(base,docs,token=TOKEN_A,body=payload)
+            self.assertEqual(status,201,doc)
+            select=docs+"/"+doc["source_id"]+"/selections/"+doc["annotation_revision_id"]+"/marker"
+            status,selection,_=request(base,select,token=TOKEN_A)
+            self.assertEqual(status,200,selection)
+            ref=dict(source_id=doc["source_id"],annotation_revision_id=doc["annotation_revision_id"],
+                     selection_key="marker",anchor_sha256=selection["anchor_sha256"])
+            manual=f"/v1/patients/{self.patient}/cases/{CASE}/questions/{self.question}/manual-passages"
+            status,current,_=request(base,manual,token=TOKEN_A)
+            self.assertEqual(status,200,current)
+            status,saved,_=request(base,manual,token=TOKEN_A,body=dict(
+                synthetic=True,request_key="TASK-MANUAL-DEPENDENCY",
+                expected_context_sha256=current["context_sha256"],references=[ref]))
+            self.assertEqual(status,201,saved)
+            second_question,_=create_question(self,base,self.patient,self.source_id,
+                request_key="TASK-MANUAL-DEPENDENCY-QUESTION-2")
+        values=dict(task_id=task["task_id"],question_id=self.question,
+                    revision_id=saved["revision_id"],patient_id=self.patient,
+                    case_id=CASE,origin_org="ORG-ALPHA",
+                    references_sha256=fingerprint([ref]))
+        statement=text("INSERT INTO "+table+" ("+",".join(values)+") VALUES ("+
+                       ",".join(":"+key for key in values)+")")
+        with self.engine.begin() as db:
+            db.execute(statement,values)
+        with self.engine.connect() as db:
+            row=db.execute(text("SELECT revision_id,references_sha256 FROM "+table),
+                           {}).one()
+            self.assertEqual(row[0],saved["revision_id"])
+            self.assertEqual(row[1],fingerprint([ref]))
+        # Scope fixtures: a revision with no references, and a revision owned
+        # by a second question, each copied from the saved revision so every
+        # other scope conjunct still holds; only the probed conjunct fails.
+        # (UPDATE on revisions is immutable, so new rows are inserted.)
+        empty_revision="PASSAGES-"+"E"*32
+        other_revision="PASSAGES-"+"F"*32
+        revision_columns=("revision_id,revision,patient_id,case_id,origin_org,"
+            "question_id,request_key,intent_sha256,references_json,command_json,"
+            "actor,purpose")
+        with self.engine.begin() as db:
+            db.execute(text(
+                "INSERT INTO investigation.question_passage_revisions ("
+                +revision_columns+") SELECT :empty_id,(SELECT coalesce(max(revision),0)+1 FROM "
+                "investigation.question_passage_revisions WHERE question_id=:question),"
+                "patient_id,case_id,origin_org,question_id,'TASK-MANUAL-DEPENDENCY-EMPTY',"
+                "intent_sha256,'[]'::jsonb,command_json,actor,purpose FROM "
+                "investigation.question_passage_revisions WHERE revision_id=:saved"),
+                {"empty_id":empty_revision,"question":self.question,
+                 "saved":saved["revision_id"]})
+            db.execute(text(
+                "INSERT INTO investigation.question_passage_revisions ("
+                +revision_columns+") SELECT :other_id,(SELECT coalesce(max(revision),0)+1 FROM "
+                "investigation.question_passage_revisions WHERE question_id=:other),"
+                "patient_id,case_id,origin_org,:other,'TASK-MANUAL-DEPENDENCY-OTHER',"
+                "intent_sha256,references_json,command_json,actor,purpose FROM "
+                "investigation.question_passage_revisions WHERE revision_id=:saved"),
+                {"other_id":other_revision,"other":second_question,
+                 "saved":saved["revision_id"]})
+        for label,change in (
+            ("wrong case",dict(case_id="CASE-WRONG")),
+            ("wrong patient",dict(patient_id="PATIENT-WRONG")),
+            ("wrong origin",dict(origin_org="ORG-BETA")),
+            ("empty references",dict(revision_id=empty_revision)),
+            ("other question revision",dict(revision_id=other_revision)),
+        ):
+            with self.subTest(label=label),self.assertRaises(DBAPIError) as caught:
+                with self.engine.begin() as db:
+                    db.execute(statement,{**values,**change})
+            self.assertIn("OI-MANUAL-TASK-DEPENDENCY-SCOPE",str(caught.exception))
+        for statement in (
+            "UPDATE "+table+" SET references_sha256='"+("f"*64)+"'",
+            "DELETE FROM "+table,
+        ):
+            with self.assertRaises(DBAPIError):
+                with self.engine.begin() as db:
+                    db.execute(text(statement))
+        with self.assertRaises(CommandError):
+            migrate(self.admin,"downgrade","0015_manual_report_context")
+        with self.engine.connect() as db:
+            self.assertEqual(db.execute(text("SELECT count(*) FROM "+table)).scalar_one(),1)
 
     def test_stale_revision_and_changed_request_intent_cannot_write(self):
         created = self.create_task()
