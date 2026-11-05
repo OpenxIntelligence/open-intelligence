@@ -84,6 +84,10 @@ def main():
                              'Accept':'application/json'},method='POST')
                 with urlopen(operation,timeout=10) as response:
                     return response.status,json.load(response)
+            from visits_journey import exercise_visits
+            visits_out=Path(os.environ.get('OI_WEB_ARTIFACT_DIR',str(directory/'screenshots')))
+            visits_out.mkdir(parents=True,exist_ok=True)
+            exercise_visits(cd,credentials,write_grants,pid,add_synthetic,visits_out)
             root='/v1/patients/'+pid
             case='CASE-ALPHA'
             status,mapping=add_synthetic(root+'/case-bindings',{

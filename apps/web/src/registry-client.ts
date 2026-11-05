@@ -1,3 +1,4 @@
+import {VisitClient, VisitHttpError} from './visits.js';
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 export {patientContinuity} from './patient-continuity.js';
 import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
@@ -269,6 +270,28 @@ export class RegistrySession {
       request:(url,control,body)=>this.transport(url,this.#init(control,body)),json,
       add:control=>this.#controllers.add(control),remove:control=>this.#controllers.delete(control),
       expire:()=>this.#httpError(401)});
+  }
+  visitClient(patient:Patient):VisitClient {
+    const scope=this.#scope,read=this.#read;
+    const current=()=>this.#scope===scope&&this.#read===read&&this.#state.patient===patient&&patient.status==='active'&&Boolean(this.#token);
+    return new VisitClient(patient.patient_id,async(suffix,body)=>{
+      if(!current())throw Error('Visit context changed');
+      const control=new AbortController();this.#controllers.add(control);
+      const timeout=setTimeout(()=>control.abort(),10000);
+      try{
+        const response=await this.transport('/v1/patients/'+encodeURIComponent(patient.patient_id)+'/encounters'+suffix,this.#init(control,body));
+        if(!current()||response.status!==200){
+          void response.body?.cancel().catch(()=>{});
+          if(!current())throw Error('Visit context changed');
+          if(response.status===401)this.#httpError(401);
+          throw new VisitHttpError(response.status);
+        }
+        // A page contains at most one note body, including JSON-escaped Unicode.
+        const data=await json(response,512*1024);
+        if(!current())throw Error('Visit context changed');
+        return data;
+      }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+    });
   }
   selectEvidenceComparison=(questionId:string,evidenceId:string)=>this.#evidenceSession.beginComparison(questionId,evidenceId);
   editEvidenceComparison=(patch:EvidenceDraftPatch)=>this.#evidenceSession.editComparison(patch);

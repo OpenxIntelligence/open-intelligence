@@ -37,6 +37,12 @@ Overview shows up to three record-preparation prompts for the checked case. Unde
 
 The supplied laboratory file `examples/synthetic/fictional-fhir-r4-lab-bundle.json` can also be deliberately imported in Records for this case. Its patient reference matches the fictional case binding. Original JSON and typed values stay source-reported; no reference-range interpretation or laboratory-to-question creation is added.
 
+## Visits and draft notes
+
+In **Visits**, choose **Schedule a visit**, enter its type and date, and save. Start the visit to write a fictional draft note. **Revise draft** saves another attributed version. Use **Previous version** and **Next version** to read the recorded text at each point. If another operator saved first, **Compare with current version** shows the latest stored text above your unsaved revision before you decide what to save.
+
+The local fixture grants these operations for its single fictional patient. An operator-managed credential needs visit and note grants separately. Scheduling records a local encounter. Professional signatures, real appointments, clinical orders and external scheduling are outside this workflow.
+
 ## Stop, resume and inspect
 
 Stop the frontend with Ctrl+C, then:

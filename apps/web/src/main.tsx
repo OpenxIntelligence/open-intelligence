@@ -12,8 +12,9 @@ import {SourceReading, emptySourceFilters} from './source-reading';
 import type {ReadingView} from './source-reading';
 import './styles.css';
 import './source-intake.css';
+import {VisitsPanel} from './visits-panel';
 const session=new RegistrySession();
-const navigation=['Overview','Journey','Records','Investigations','Review'];
+const navigation=['Overview','Journey','Records','Investigations','Review','Visits'];
 function WorkspaceContext({section,patientId,readiness,view,onViewChange}:{section:string;patientId:string|null;readiness:'checking'|'ready'|'unavailable';view:ReadingView;onViewChange:(view:ReadingView)=>void}){
  const header=useRef<HTMLElement>(null);
  useLayoutEffect(()=>{
@@ -51,6 +52,7 @@ function App(){
  const [token,setToken]=useState(''),[patientId,setPatientId]=useState(''),[confirmed,setConfirmed]=useState(false);
  const [requestKey,setRequestKey]=useState(()=>crypto.randomUUID());
  const [readiness,setReadiness]=useState<'checking'|'ready'|'unavailable'>('checking');
+ const visitsLeave=useRef<(()=>boolean)|null>(null);
  const [section,setSection]=useState('Overview');
  const [view,setView]=useState<ReadingView>('patient');
  const [sourceFilters,setSourceFilters]=useState({scope:state.sourceIndex,...emptySourceFilters});
@@ -113,7 +115,7 @@ function App(){
  useEffect(()=>{if(!state.connected){setPatientId('');setConfirmed(false)}},[state.connected]);
  useEffect(()=>{const clear=()=>session.disconnect();window.addEventListener('pagehide',clear);return()=>window.removeEventListener('pagehide',clear)},[]);
   const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||state.evidenceWritePhase==='saving';
- function navigate(nextSection:string){passageResume.current=null;sourceEntry.current=null;originalReturn.current=null;session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();session.dismissSourceImages();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
+ function navigate(nextSection:string){if(nextSection!==section&&section==='Visits'&&visitsLeave.current&&!visitsLeave.current())return;passageResume.current=null;sourceEntry.current=null;originalReturn.current=null;session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();session.dismissSourceImages();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
  function disconnect(){passageResume.current=null;sourceEntry.current=null;session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
  return <div className="app" onFocusCapture={()=>{if(sourceEntry.current&&document.activeElement!==sourceEntry.current.trigger)sourceEntry.current=null;}}>
   <a className="skip" href="#main">Skip to workspace</a>
@@ -125,9 +127,9 @@ function App(){
   </aside>
   <div className="body"><WorkspaceContext section={section} patientId={state.patient?.patient_id??null} readiness={readiness} view={view} onViewChange={setView}/>
    <main id="main" tabIndex={-1}>
-    <div className="heading"><div><p className="eyebrow">OPEN INTELLIGENCE · H1</p><h1 ref={heading} tabIndex={-1}>{section==='Overview'?'Start with the right patient.':section}</h1><p className="lede">{section==='Overview'?'A connected foundation for the patient’s story, evidence and care.':section==='Records'?'Inspect authorized fictional case mappings, original source history and unreviewed source statements.':section==='Journey'?'View source-linked chronology, uncertainty and disagreements without implying clinical assessment.':section==='Investigations'?'Prepare exact source context, save a question and inspect its current or reassessment status. No AI execution or clinical approval.':'Inspect saved questions, record a source verification return and preserve its history as sources change. Clinical approval remains unavailable.'}</p></div></div>
+    <div className="heading"><div><p className="eyebrow">OPEN INTELLIGENCE · H1</p><h1 ref={heading} tabIndex={-1}>{section==='Overview'?'Start with the right patient.':section}</h1><p className="lede">{section==='Overview'?'A connected foundation for the patient’s story, evidence and care.':section==='Visits'?'Schedule fictional visits, record their status and read or revise draft notes.':section==='Records'?'Inspect authorized fictional case mappings, original source history and unreviewed source statements.':section==='Journey'?'View source-linked chronology, uncertainty and disagreements without implying clinical assessment.':section==='Investigations'?'Prepare exact source context, save a question and inspect its current or reassessment status. No AI execution or clinical approval.':'Inspect saved questions, record a source verification return and preserve its history as sources change. Clinical approval remains unavailable.'}</p></div></div>
     <div className="boundary" role="note"><strong>Development workspace, not a clinical service.</strong> Use operator-issued synthetic credentials and fictional identities only. These are not patient accounts, verified consent or professional sign-off.</div>
-    {section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onRecords={caseId=>{navigate('Records');void session.loadSources(caseId);}} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
+    {section==='Visits'?(state.patient?.status==='active'?<VisitsPanel key={state.patient.patient_id} session={session} patient={state.patient} leaveGuard={visitsLeave}/>:<section className="panel"><h2>Open a patient to view visits</h2><p>Select an authorized, active fictional patient in Overview.</p><button onClick={()=>navigate('Overview')}>Go to patient overview</button></section>):section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onRecords={caseId=>{navigate('Records');void session.loadSources(caseId);}} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
      <span className="step">CANONICAL SOURCE OWNER / ORIGINALS</span>
      <h2 id="records-heading">{view==='patient'?'Records available to you':'Original source records'}</h2>
      <p>Shows source-reported information from the existing scoped PostgreSQL API. Original-text inspection and deliberate import require separate server permissions. AI interpretation, clinical decisions, verified identity and consent are not supplied by this screen. Information is current only at its last successful check.</p>
