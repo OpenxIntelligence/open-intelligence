@@ -21,8 +21,11 @@ from sqlalchemy.exc import DBAPIError
 
 from http_support import running_server
 from oi_api.app import create_app
+from oi_api.authored_evidence import PostgresQuestionEvidence as AuthoredEvidence
 from oi_api.contracts import SCHEMA_REVISION
 from oi_api.migrate import migrate
+import test_evidence_convergence_migrations as existing_upgrades
+from test_evidence_convergence_migrations import OPTIONS
 from test_patients import TOKEN_A, request
 from test_authored_evidence_postgres import (
     EvidenceFixture, PACKET_CONTRACT, REPORT_CONTRACT, PRIVATE_FAILURE,
@@ -60,6 +63,9 @@ def observe_evidence_encoding(matches, effect):
 
 
 class QuestionEvidenceAuthorityTests(EvidenceFixture):
+    services = existing_upgrades.EvidenceConvergenceMigrationTests.services
+    start_at = existing_upgrades.EvidenceConvergenceMigrationTests.start_at
+
     def operations(self, state):
         prefix = self.prefix(state["patient"], state["question"])
         return (
@@ -428,15 +434,27 @@ class QuestionEvidenceAuthorityTests(EvidenceFixture):
     def test_migration_downgrade_refuses_to_discard_authored_evidence_history(self):
         # Empty schema can return to the real existing migration, then forward.
         migrate(self.admin, "downgrade", "0008_review_convergence")
+        # Seed before the source-outbox owner so this probe must reach the
+        # original evidence guard. Current-head HTTP is exercised after upgrade.
+        p, q, _ = self.start_at("0019_composer_runs")
+        with self.services() as registry:
+            imported = AuthoredEvidence(registry).import_evidence(
+                p, "CASE-ALPHA", q, **OPTIONS, payload={
+                    "synthetic": True, "request_key": "IMPORT-SUPPORT", "original_text": evidence_text(),
+                    "content_item": "full_text", "permissions": permissions(),
+                })
+        self.assertFalse(imported["duplicate"])
+        before = self.persisted_state()
+        with self.assertRaisesRegex(CommandError, "Evidence history requires explicit reconciliation"):
+            migrate(self.admin, "downgrade", "0008_review_convergence")
+        self.assertEqual(self.persisted_state(), before)
+        with self.engine.connect() as db:
+            revision = db.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one()
+        self.assertEqual(revision, "0019_composer_runs")
         migrate(self.admin, "upgrade", "head")
+        self.assertEqual(self.persisted_state(), before)
+        with self.engine.connect() as db:
+            revision = db.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one()
+        self.assertEqual(revision, SCHEMA_REVISION)
         with running_server(create_app(self.settings)) as base:
-            p, q, _ = self.start(base)
-            self.assertEqual(self.imported(base, p, q)[0], 201)
-            before = self.persisted_state()
-            with self.assertRaisesRegex(CommandError, "Evidence history requires explicit reconciliation"):
-                migrate(self.admin, "downgrade", "0008_review_convergence")
-            self.assertEqual(self.persisted_state(), before)
-            with self.engine.connect() as db:
-                revision = db.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one()
-            self.assertEqual(revision, SCHEMA_REVISION)
             self.assertEqual(len(self.packet(base, p, q)["evidence"]), 1)

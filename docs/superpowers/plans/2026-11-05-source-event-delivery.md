@@ -15,6 +15,8 @@
 - Contract: `oi.h1-source-context-event/1`; producer: `source.original.imported`.
 - Migration: `0020_source_event_delivery` after `0019_composer_runs`.
 - Purpose: `operations`; actions: `patient_read`, `question_read`, `source_read`, `source_brief_export`.
+- Preserve canonical research source custody; validate both supported source
+  purposes before publishing only operations events to this Composer adapter.
 - Maximum **100** affected Composer runs per consume transaction.
 - Maximum **three** consecutive failures; successful progress resets that budget.
 - No global acknowledgment/cursor, stored bearer, service delegation or clinical authority.
