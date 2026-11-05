@@ -39,7 +39,8 @@ class EHRLaboratoryGraphTests(unittest.TestCase):
     def test_single_head_depends_on_both_published_owners(self):
         script = graph()
         self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
-        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0021_lab_citation_freshness")
+        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0022_lab_citation_source_scope")
+        self.assertEqual(script.get_revision("0022_lab_citation_source_scope").down_revision, "0021_lab_citation_freshness")
         self.assertEqual(script.get_revision("0021_lab_citation_freshness").down_revision,
                          "0020_ehr_lab_convergence")
         self.assertEqual(set(script.get_revision("0020_ehr_lab_convergence").down_revision), {EHR, LAB})
@@ -96,7 +97,7 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
         document_convergence.DocumentImageConvergenceMigrationTests.seed_document(self, document)
         before = self.snapshot()
         migrate(self.admin, "upgrade", SCHEMA_REVISION)
-        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.snapshot(), (before[0] | {"clinical_source.episode_drafts": []}, before[1]))
 
         with running_server(create_app(self.settings)) as base:
             status, page, _ = request(base, url, token=TOKEN_A)
@@ -160,11 +161,13 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
             conn.rollback()
         self.assertEqual(self.snapshot(), before)
         migrate(self.admin, "downgrade", previous)
-        self.assertEqual(self.snapshot(), before)
+        previous_tables = dict(before[0])
+        self.assertEqual(previous_tables.pop("clinical_source.episode_drafts"), [])
+        self.assertEqual(self.snapshot(), (previous_tables, before[1]))
         with self.assertRaisesRegex(DBAPIError, "OI-LAB-CITATION-CASE-SOURCES-CHANGED"):
             with self.engine.begin() as conn:
                 write_directly(conn)
-        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.snapshot(), (previous_tables, before[1]))
         migrate(self.admin, "upgrade", SCHEMA_REVISION)
         self.assertEqual(self.snapshot(), before)
         with self.engine.connect() as conn:

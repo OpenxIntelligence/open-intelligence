@@ -116,6 +116,8 @@ class RegistryMigrationTests(unittest.TestCase):
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.source_image_links"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.dicom_objects"))
             connection.execute(text("DROP FUNCTION IF EXISTS clinical_source.guard_image_source_link()"))
+            connection.execute(text("DROP TABLE IF EXISTS clinical_source.episode_drafts"))
+            connection.execute(text("DROP FUNCTION IF EXISTS clinical_source.check_episode_creation()"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.assertions"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.quarantine"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.source_versions"))

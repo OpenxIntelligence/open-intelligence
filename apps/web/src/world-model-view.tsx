@@ -1,3 +1,4 @@
+import {EpisodeDraftPanel} from './episode-draft-panel';
 import {SourceOncologyLabel} from './source-oncology-label';
 import type {WorldObservation} from './source-world-model';
 import {LaboratoryQuestionPanel,SavedLaboratoryQuestions} from './laboratory-question-panel';
@@ -118,6 +119,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
           {state.worldPhase==='ready'&&<LaboratoryQuestionPanel key={model.access_receipt_id} session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
         </section>}
         {state.worldPhase==='ready'&&<SavedLaboratoryQuestions session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
+        {!showQuestions&&state.worldPhase==='ready'&&<EpisodeDraftPanel key={model.access_receipt_id} session={session} world={model} busy={busy||loading}/>}
         {episodes.size>0&&<section aria-label="Source-reported cancer episodes">
           <h3>Source-reported cancer episodes</h3>
           <p>Reports are grouped by the episode identifier in the original finding. Each statement retains its reported status.</p>

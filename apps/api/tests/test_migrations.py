@@ -141,6 +141,8 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.execute(text("DROP TABLE IF EXISTS clinical_source.source_image_links"))
             conn.execute(text("DROP TABLE IF EXISTS clinical_source.dicom_objects"))
             conn.execute(text("DROP FUNCTION IF EXISTS clinical_source.guard_image_source_link()"))
+            conn.execute(text("DROP TABLE IF EXISTS clinical_source.episode_drafts"))
+            conn.execute(text("DROP FUNCTION IF EXISTS clinical_source.check_episode_creation()"))
             conn.execute(text("DROP TABLE IF EXISTS clinical_source.assertions"))
             conn.execute(text("DROP TABLE IF EXISTS clinical_source.quarantine"))
             conn.execute(text("DROP TABLE IF EXISTS clinical_source.source_versions"))
