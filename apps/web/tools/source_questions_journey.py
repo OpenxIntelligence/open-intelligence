@@ -131,7 +131,17 @@ class SourceQuestionChecks:
         assert self.cd.evaluate("document.querySelector('[data-testid=continuity-current]').textContent") == str(current)
         assert self.cd.evaluate("document.querySelector('[data-testid=continuity-reassessment]').textContent") == str(reassessment)
         assert 'last successful reads' in self.cd.evaluate("document.querySelector('[data-testid=patient-continuity]').textContent")
-        self.cd.evaluate("document.querySelector('[data-testid=continuity-open-questions]').click()")
+        # The same authorized patient question history now drives a bounded,
+        # nonclinical preparation shortcut. No new question or provider action.
+        if reassessment:
+            self.cd.wait("Boolean(document.querySelector('[data-testid=continuity-preparation-item][data-kind=question-recheck]'))",
+                         'reassessment prompt from the current authorized question history')
+            prompt = self.cd.evaluate("document.querySelector('[data-testid=continuity-preparation-item][data-kind=question-recheck]').textContent")
+            assert 'source reassessment' in prompt and 'Inspect affected questions' in prompt
+            self.cd.evaluate("document.querySelector('[data-testid=continuity-preparation-item][data-kind=question-recheck] button').click()")
+        else:
+            assert not self.cd.evaluate("Boolean(document.querySelector('[data-testid=continuity-preparation-item][data-kind=question-recheck]'))")
+            self.cd.evaluate("document.querySelector('[data-testid=continuity-open-questions]').click()")
         self.cd.wait("Boolean(document.querySelector('[data-view=investigations]'))", 'return to existing questions')
 
     def navigate(self, section):
