@@ -24,7 +24,7 @@ PYTHONPATH=apps/api/src:src python -m oi_api.encounter_relay \
   --token-file "$OI_RELAY_TOKEN_FILE" --database "$OI_RELAY_DATABASE"
 ```
 
-Use one dedicated file per source and patient. The API port is part of the source identity and must be stable. The receiver accepts only IPv4 loopback and does not follow redirects. An unavailable feed, revoked grant, contract mismatch or storage error returns exit code 2 and withholds counts. Operators can retry transient outages. For a changed source lineage, preserve the old store for reconciliation and replay the intended source into a separate empty store. A single anchor detects boundary divergence, not an exhaustive comparison of two histories. A database file backup is suitable while the receiver is stopped. For a running receiver use SQLite's backup API.
+Use one dedicated file per source and patient. The API port is part of the source identity and must be stable. The receiver accepts only IPv4 loopback and does not follow redirects. An unavailable feed, revoked grant, contract mismatch or storage error returns exit code 2 and withholds counts. Operators can retry transient outages. For a changed source lineage, preserve the old store for reconciliation and replay the intended source into a separate empty store. Ordinary delivery compares the boundary event. For a full comparison or a recoverable copy, use the commands below.
 
 ## Acceptance and scope
 
@@ -45,4 +45,22 @@ Use the same relay command and private store as above, with one additional argum
 
 Each invocation checks the live operations feed and applies one bounded page. If the receiver needs another page, it returns `catching_up` and withholds the inbox and acknowledgement. Retry while `has_more` is true. A denied read or invalid history returns exit code 2. The local private file and current operations read grant together delimit this single-operator tool. Two distinct clinical users must not share it as a personal inbox. Acknowledgement is current through the last authorized feed snapshot. A draft saved subsequently appears when next delivered.
 
-Receiver schema v2 preserves the original delivery receipts, authority references and totals. A v1 store backfills the inbox by re-reading pages from the beginning, verifying retained event hashes and order, and committing the projection cursor with each page. The absence of source history or a changed version stops the backfill. Original receipts are never counted again. The receiver keeps a hashed note key and encounter/version references, with no note text. Back up or restore the whole SQLite database with the existing procedure; the projection and acknowledgement history travel with the delivery receipts.
+Receiver schema v2 preserves the original delivery receipts, authority references and totals. A v1 store backfills the inbox by re-reading pages from the beginning, verifying retained event hashes and order, and committing the projection cursor with each page. The absence of source history or a changed version stops the backfill. Original receipts are never counted again. The receiver keeps a hashed note key and encounter/version references, with no note text.
+
+## Verify and recover a receiver
+
+Use the same patient, port, credential file and database arguments as for delivery.
+
+- Add `--verify-history` to check the receiver at a captured checkpoint. The relay releases the live database before replay so intake can continue. It requests each page with current authority, compares every event ID, digest and type, and checks the category totals. For a v2 receiver it reconstructs the latest draft for each encounter and hashed note key through the saved inbox checkpoint.
+- Add `--backup-to /private/operator/directory/recovery.sqlite` to create a recovery file. The directory must belong to the operator and be accessible only to that account. Choose an unused filename. The relay checks access before copying, takes a consistent snapshot of the receiver-owned columns, then verifies that copy against the feed before publishing it. Denied access, divergent history, invalid inbox state or an existing destination prevents publication.
+- To resume, use the recovery file as `--database` with the same patient and local API port. Run `--verify-history` against the intended producer, then `--pending-drafts-after 0` until catch-up completes. An acknowledged revision stays acknowledged. A subsequent revision opens a new pending item.
+
+A v1 snapshot retains its schema until the next delivery. A v2 snapshot taken during v1 backfill preserves both the full receipt history and the separate inbox checkpoint. Replay checks each local acknowledgement against a delivered draft revision and validates its access-receipt format. The local operator owns the acknowledgement itself. The producer feed has no record of an operator clicking acknowledge and cannot reconstruct acknowledgements made after the backup. In the paired restore exercise the recorded access receipts are also checked against the restored producer audit journal.
+
+This combines the replay and backup work from [#563](https://github.com/OpenxIntelligence/open-intelligence/pull/563) with the operations inbox from [#564](https://github.com/OpenxIntelligence/open-intelligence/pull/564). Synthetic operator testing only.
+
+### Local verification on the combined receiver
+
+The encounter suite ran 33 cases. Twenty-eight passed, including the loopback CLI, SIGKILL recovery, full replay, v1 and partial-v2 snapshots, acknowledgement preservation and rejection of a changed inbox. Five PostgreSQL cases skipped locally. The static boundary gate covered 60 H1 modules across 10 owners, with 86 recorded legacy imports. All 31 architecture tests passed.
+
+The full API suite collected 968 tests on the candidate and 955 on its parent, `f22bae55f10440e491f889505064be8d1d5c8f50`. Both runs reported the same 75 socket-permission errors and the same 576 skips. The local environment allows the relay's TCP loopback tests but blocks the Unix-domain sockets used by the archive tests. The paired PostgreSQL dump/restore and Compose restart exercise still needs an exact-revision run.

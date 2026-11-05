@@ -154,7 +154,7 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
         import sqlite3
         from urllib.parse import urlsplit
         import signal
-        from oi_api.encounter_relay import FeedUnavailable, receive_once
+        from oi_api.encounter_relay import FeedUnavailable, backup_receiver, receive_once, verify_history
         from test_encounter_relay import interrupt_receiver
 
         self.creds[0]["actions"].extend(["encounter.read", "encounter.schedule", "encounter.transition",
@@ -199,6 +199,10 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
             self.assertEqual((item["encounter_id"], item["note_version"]), (first["encounter_id"], 1))
             self.assertEqual(deliver(acknowledge=item["event_id"])["acknowledged_event"], item["event_id"])
             self.assertEqual(deliver(inbox_after=0)["pending_drafts"], [])
+            restored = receiver.with_suffix(".backup")
+            self.assertEqual(backup_receiver(receiver, restored, port, patient, lambda: TOKEN_A)["verified_events"], 3)
+            receiver = restored
+            self.assertEqual(deliver(inbox_after=0)["pending_drafts"], [])
             post(note, dict(draft, request_key="WRITE-TWO", expected_version=1, body="Fictional revision."))
             with self.assertRaises(FeedUnavailable):
                 deliver(TOKEN_B, inbox_after=0)
@@ -206,6 +210,8 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
             self.write()
             with self.assertRaises(FeedUnavailable):
                 deliver(acknowledge=item["event_id"])
+            with self.assertRaises(FeedUnavailable):
+                verify_history(receiver, port, patient, lambda: TOKEN_A)
             with closing(sqlite3.connect(receiver)) as db:
                 self.assertEqual(db.execute("SELECT count(*) FROM activity_receipts").fetchone()[0], 3)
             self.creds[0]["actions"].append("note.read")
@@ -215,4 +221,5 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
             revised, = deliver(inbox_after=0)["pending_drafts"]
             self.assertEqual(revised["note_version"], 2)
             self.assertGreater(revised["event_id"], item["event_id"])
+            self.assertEqual(verify_history(receiver, port, patient, lambda: TOKEN_A)["verified_events"], 4)
             self.assertNotIn(draft["body"].encode(), receiver.read_bytes())

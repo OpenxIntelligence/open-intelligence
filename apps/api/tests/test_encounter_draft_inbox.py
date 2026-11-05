@@ -23,12 +23,13 @@ class DraftInboxTests(unittest.TestCase):
         self.database = Path(temp.name) / "activity.sqlite"
         self.events = []
 
+    def fetch(self, port, patient, token, after):
+        rows = [row for row in self.events if row["id"] > after]
+        return page(*rows[:25], has_more=len(rows) > 25,
+                    resume_after_id=rows[min(len(rows), 25)-1]["id"] if rows else after)
+
     def sync(self, **options):
-        def fetch(port, patient, token, after):
-            rows = [row for row in self.events if row["id"] > after]
-            return page(*rows[:25], has_more=len(rows) > 25,
-                        resume_after_id=rows[min(len(rows), 25)-1]["id"] if rows else after)
-        with patch.object(relay, "read_page", side_effect=fetch):
+        with patch.object(relay, "read_page", side_effect=self.fetch):
             return relay.receive_once(self.database, 8000, PATIENT, lambda: "t"*32, **options)
 
     def test_acknowledgement_tracks_exact_revision_and_recovers_lost_response(self):
@@ -104,11 +105,82 @@ class DraftInboxTests(unittest.TestCase):
         self.events = [note(2, 1)]
         self.sync(acknowledge=2)
         backup = self.database.with_suffix(".backup")
-        backup.touch(mode=0o600)
-        with closing(sqlite3.connect(self.database)) as src, closing(sqlite3.connect(backup)) as dst:
-            src.backup(dst)
-        self.events.append(note(7, 2))
-        expected = self.sync(inbox_after=0)
+        with patch.object(relay, "read_page", side_effect=self.fetch):
+            summary = relay.backup_receiver(self.database, backup, 8000, PATIENT, lambda: "token")
+        self.assertEqual(summary["verified_events"], 1)
         self.database = backup
-        self.assertEqual(self.sync(inbox_after=0), expected)
+        self.assertEqual(self.sync(inbox_after=0)["pending_drafts"], [])
+        self.assertEqual(self.sync(acknowledge=2)["acknowledged_event"], 2)
+        self.events.append(note(7, 2))
+        pending = self.sync(inbox_after=0)
+        self.assertEqual(pending["pending_drafts"], [dict(event_id=7, encounter_id=3, note_version=2)])
         self.assertEqual(self.sync(acknowledge=2)["status"], "superseded_or_unknown")
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(db.execute("SELECT * FROM draft_acknowledgements").fetchall(), [(2, RECEIPT)])
+
+    def test_backup_preserves_v1_and_partial_v2_backfill_without_modifying_source(self):
+        self.events = [note(i, 1, encounter=i) for i in range(1, 31)]
+        self.create_v1_store()
+        for version, cursor in [(1, 0), (2, 25)]:
+            with self.subTest(version=version):
+                backup = self.database.with_suffix(f".v{version}")
+                before = self.database.read_bytes()
+                with patch.object(relay, "read_page", side_effect=self.fetch):
+                    result = relay.backup_receiver(self.database, backup, 8000, PATIENT, lambda: "token")
+                self.assertEqual(result["verified_events"], 30)
+                self.assertEqual(self.database.read_bytes(), before)
+                with closing(sqlite3.connect(backup)) as db:
+                    self.assertEqual(db.execute("PRAGMA user_version").fetchone(), (version,))
+                    if version == 2:
+                        self.assertEqual(db.execute("SELECT * FROM draft_checkpoint").fetchall(), [(cursor,)])
+                self.database = backup
+                progress = self.sync(inbox_after=0)
+                self.assertEqual(progress["applied"], 0)
+                if version == 1:
+                    self.assertEqual(progress["status"], "catching_up")
+                else:
+                    self.assertEqual(len(progress["pending_drafts"]), 25)
+                    self.assertEqual(len(self.sync(inbox_after=25)["pending_drafts"]), 5)
+
+    def test_inconsistent_inbox_or_acknowledgement_blocks_publication(self):
+        self.events = [event(1), note(3, 1)]
+        self.sync(acknowledge=3)
+        for sql in (
+            "DELETE FROM latest_drafts",
+            "UPDATE latest_drafts SET note_version=9",
+            "UPDATE latest_drafts SET note_key_hash='wrong'",
+            "UPDATE latest_drafts SET encounter_id=7",
+            "UPDATE draft_acknowledgements SET event_id=1",
+            "UPDATE draft_acknowledgements SET access_receipt='invalid'",
+            "INSERT INTO draft_checkpoint VALUES(3)",
+            "UPDATE draft_checkpoint SET through_id=2",
+        ):
+            with self.subTest(sql=sql):
+                damaged = self.database.with_suffix(".damaged")
+                damaged.touch(mode=0o600)
+                with closing(sqlite3.connect(self.database)) as src, closing(sqlite3.connect(damaged)) as dst, dst:
+                    src.backup(dst)
+                    dst.execute(sql)
+                destination = damaged.with_suffix(".recovery")
+                with patch.object(relay, "read_page", side_effect=self.fetch), self.assertRaises(ValueError):
+                    relay.backup_receiver(damaged, destination, 8000, PATIENT, lambda: "token")
+                self.assertFalse(destination.exists())
+                damaged.unlink()
+
+    def test_snapshot_is_consistent_when_new_draft_and_ack_arrive_during_replay(self):
+        self.events = [note(2, 1), note(3, 1, encounter=5)]
+        self.sync(acknowledge=2)
+        backup = self.database.with_suffix(".backup")
+
+        def pages():
+            yield self.fetch(8000, PATIENT, "token", 0)  # Authorization before the snapshot.
+            self.events.append(note(7, 2))
+            self.sync(acknowledge=3)
+            yield self.fetch(8000, PATIENT, "token", 0)
+
+        with patch.object(relay, "read_page", side_effect=pages()):
+            result = relay.backup_receiver(self.database, backup, 8000, PATIENT, lambda: "token")
+        self.assertEqual(result["through_event_id"], 3)
+        self.assertEqual([i["event_id"] for i in self.sync(inbox_after=0)["pending_drafts"]], [7])
+        self.database = backup
+        self.assertEqual([i["event_id"] for i in self.sync(inbox_after=0)["pending_drafts"]], [3, 7])
