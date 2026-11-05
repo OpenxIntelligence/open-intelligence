@@ -20,6 +20,7 @@ import test_evidence_convergence_migrations as evidence
 import test_image_report_convergence_migrations as migrations
 import test_lab_manual_convergence as laboratory
 import test_laboratory_question_migration as questions
+import test_document_image_convergence as document_convergence
 from test_document_image_convergence import graph
 from test_durable_laboratory_questions import LAB_HISTORY
 from test_patients import TOKEN_A, TOKEN_B, request
@@ -81,6 +82,99 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
             receipt = owner.create_link(*scope, **command, **evidence.OPTIONS)
         url = f"/v1/patients/{patient}/cases/CASE-ALPHA{LAB_HISTORY}/{saved['question_id']}/evidence-links"
         return patient, url, command, receipt
+
+    def test_reviewed_document_preserves_citation_through_guard_upgrade_and_downgrade(self):
+        patient, url, command, receipt = self.seed_citation()
+        previous = "0021_lab_citation_freshness"
+        migrate(self.admin, "upgrade", previous)
+        # Ordinary reviewed bytes and user selections are outside this saved
+        # laboratory question's canonical structured-source snapshot. Import
+        # them after the question, while the published guard is still present.
+        document = {"patient": patient}
+        document_convergence.DocumentImageConvergenceMigrationTests.seed_document(self, document)
+        before = self.snapshot()
+        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        self.assertEqual(self.snapshot(), before)
+
+        with running_server(create_app(self.settings)) as base:
+            status, page, _ = request(base, url, token=TOKEN_A)
+            self.assertEqual(status, 200, page)
+            self.assertEqual(page["source_context_state"], "current_unreviewed_question")
+            self.assertEqual([link["link_id"] for link in page["links"]], [receipt["link_id"]])
+            history_url = url.rsplit("/", 2)[0]
+            status, history, _ = request(base, history_url, token=TOKEN_A)
+            self.assertEqual(status, 200, history)
+            question, = history["questions"]
+            self.assertEqual(question["source_context_state"], "current_unreviewed_question")
+            self.assertEqual(question["source_snapshot_sha256"], command["expected_source_snapshot_sha256"])
+
+            new_command = {**command, "request_key": "CITATION-AFTER-REVIEWED-DOCUMENT"}
+            status, saved, _ = request(base, url, token=TOKEN_A, body={"synthetic": True, **new_command})
+            self.assertEqual(status, 201, saved)
+            self.assertFalse(saved["duplicate"])
+            self.assertNotEqual(saved["link_id"], receipt["link_id"])
+            self.assertEqual(request(base, url, token=TOKEN_A,
+                                     body={"synthetic": True, **new_command})[:2],
+                             (200, saved | {"duplicate": True}))
+            status, page, _ = request(base, url, token=TOKEN_A)
+            self.assertEqual(status, 200, page)
+            self.assertEqual(page["source_context_state"], "current_unreviewed_question")
+            self.assertEqual({link["link_id"] for link in page["links"]},
+                             {receipt["link_id"], saved["link_id"]})
+
+        key = "DIRECT-CITATION-AFTER-REVIEWED-DOCUMENT"
+        link_id = "EVIDENCE-LINK-" + uuid.uuid4().hex.upper()
+        intent = _digest(dict(operation="evidence.link", patient_id=patient, case_id="CASE-ALPHA",
+                              question_id=url.split("/")[-2], **evidence.COMMON, request_key=key,
+                              citation=command["citation"], metadata_sha256=command["expected_metadata_sha256"],
+                              source_snapshot_contract=command["source_snapshot_contract"],
+                              source_snapshot_sha256=command["expected_source_snapshot_sha256"],
+                              preflight_sha256=command["expected_preflight_sha256"]))
+
+        def write_directly(conn):
+            params = {"prior": receipt["link_id"], "link": link_id, "replacements": json.dumps(
+                {"link_id": link_id, "request_key": key, "intent_sha256": intent})}
+            conn.execute(text("""
+                INSERT INTO investigation.laboratory_citation_anchors
+                    (link_id,question_id,source_id,observation_reference,rights_decision_id)
+                SELECT :link,question_id,source_id,observation_reference,rights_decision_id
+                FROM investigation.laboratory_citation_anchors WHERE link_id=:prior
+            """), params)
+            conn.execute(text("""
+                INSERT INTO investigation.question_evidence_links
+                SELECT (jsonb_populate_record(NULL::investigation.question_evidence_links,
+                    to_jsonb(l) || CAST(:replacements AS jsonb))).*
+                FROM investigation.question_evidence_links l WHERE link_id=:prior
+            """), params)
+            conn.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
+            self.assertEqual(conn.execute(text("SELECT count(*) FROM investigation.question_evidence_links "
+                                               "WHERE link_id=:link"), params).scalar_one(), 1)
+
+        # The database boundary must agree with the API, including its deferred
+        # typed-anchor checks. These controls roll back their provisional row.
+        before = self.snapshot()
+        with self.engine.connect() as conn:
+            write_directly(conn)
+            conn.rollback()
+        self.assertEqual(self.snapshot(), before)
+        migrate(self.admin, "downgrade", previous)
+        self.assertEqual(self.snapshot(), before)
+        with self.assertRaisesRegex(DBAPIError, "OI-LAB-CITATION-CASE-SOURCES-CHANGED"):
+            with self.engine.begin() as conn:
+                write_directly(conn)
+        self.assertEqual(self.snapshot(), before)
+        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        self.assertEqual(self.snapshot(), before)
+        with self.engine.connect() as conn:
+            write_directly(conn)
+            conn.rollback()
+        self.assertEqual(self.snapshot(), before)
+        with running_server(create_app(self.settings)) as base:
+            status, restored, _ = request(base, url, token=TOKEN_A,
+                body={"synthetic": True, **command, "request_key": "CITATION-AFTER-GUARD-REUPGRADE"})
+            self.assertEqual(status, 201, restored)
+            self.assertFalse(restored["duplicate"])
+            self.assertNotIn(restored["link_id"], {receipt["link_id"], saved["link_id"]})
 
     def test_new_citation_refuses_an_independent_case_source_at_the_database_boundary(self):
         patient, url, command, receipt = self.seed_citation()
