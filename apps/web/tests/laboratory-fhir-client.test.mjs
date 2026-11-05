@@ -96,15 +96,17 @@ test('profile rejection is distinct from an unknown outcome and permits a correc
 });
 test('different case and disconnect clear pending original and prevent late resurrection',async()=>{
  for(const change of [s=>s.loadSources('CASE-OTHER'),s=>s.disconnect()]){
-  const hold=deferred();const{session}=await ready(()=>hold.promise);
-  const pending=session.importLaboratory(CID,RAW,true);await new Promise(r=>setTimeout(r,10));
+  const hold=deferred(), started=deferred();
+  const{session}=await ready(()=>{started.resolve();return hold.promise;});
+  const pending=session.importLaboratory(CID,RAW,true);await started.promise;
   await change(session);hold.resolve(reply(RECEIPT,201));await pending;
   assert.equal(session.snapshot().laboratoryReceipt,null);assert.equal(session.snapshot().laboratoryIntent,null);
  }
 });
 test('a same-case refresh during sending retains unknown command and suppresses old success',async()=>{
- const hold=deferred();const{session}=await ready(()=>hold.promise);
- const pending=session.importLaboratory(CID,RAW,true);await new Promise(r=>setTimeout(r,10));
+ const hold=deferred(), started=deferred();
+ const{session}=await ready(()=>{started.resolve();return hold.promise;});
+ const pending=session.importLaboratory(CID,RAW,true);await started.promise;
  await session.loadSources(CID);assert.equal(session.snapshot().laboratoryPhase,'unknown');
  hold.resolve(reply(RECEIPT,201));await pending;assert.equal(session.snapshot().laboratoryPhase,'unknown');
  assert.equal(session.snapshot().laboratoryReceipt,null);assert.ok(session.snapshot().laboratoryIntent);
@@ -142,9 +144,12 @@ test('explicit patient, source or case denial clears uncertain laboratory custod
  }
 });
 test('same-patient recheck during sending retains unknown request and late old reply cannot overwrite recovered success',async()=>{
- const hold=deferred();let attempt=0;
- const{session,calls}=await ready(()=>++attempt===1?hold.promise:reply({...RECEIPT,duplicate:true},200));
- const old=session.importLaboratory(CID,RAW,true);await new Promise(r=>setTimeout(r,10));
+ const hold=deferred(), started=deferred();let attempt=0;
+ const{session,calls}=await ready(()=>{
+  if(++attempt===1){started.resolve();return hold.promise;}
+  return reply({...RECEIPT,duplicate:true},200);
+ });
+ const old=session.importLaboratory(CID,RAW,true);await started.promise;
  const original=session.snapshot().laboratoryIntent.body;
  await session.read(PID);await session.loadCases();await session.loadSources(CID);
  assert.equal(session.snapshot().laboratoryPhase,'unknown');await session.retryLaboratoryImport();
@@ -154,8 +159,9 @@ test('same-patient recheck during sending retains unknown request and late old r
 });
 
 test('a blocked World Model read cannot strand an in-flight import without receipt or recovery',async()=>{
- const hold=deferred();const{session}=await ready(()=>hold.promise);
- const pending=session.importLaboratory(CID,RAW,true);await new Promise(r=>setTimeout(r,10));
+ const hold=deferred(), started=deferred();
+ const{session}=await ready(()=>{started.resolve();return hold.promise;});
+ const pending=session.importLaboratory(CID,RAW,true);await started.promise;
  await session.loadWorldModel(CID);hold.resolve(reply(RECEIPT,201));await pending;
  assert.equal(session.snapshot().laboratoryPhase,'saved');assert.equal(session.snapshot().laboratoryReceipt.source_id,SID);
 });
