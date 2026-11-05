@@ -8,7 +8,6 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from oi_api.composer_preflight import PostgresSourceComposerPreflight
-from oi_api.contracts import SCHEMA_REVISION
 from oi_api.laboratory_questions import MAX_LABORATORY_QUESTIONS, PostgresLaboratoryQuestions
 from oi_api.migrate import migrate
 from oi_api.source_world_model import project_source_world_model
@@ -18,6 +17,9 @@ import test_evidence_convergence_migrations as evidence
 import test_lab_manual_convergence as previous
 from test_laboratory_fhir_r4 import OBS
 from test_source_versions import SourceVersionFixture
+
+
+QUESTION_REVISION = "0018_laboratory_questions"
 
 
 class LaboratoryQuestionMigrationTests(SourceVersionFixture):
@@ -30,13 +32,13 @@ class LaboratoryQuestionMigrationTests(SourceVersionFixture):
         patient, text_question, _ = self.start_at(previous.JOIN)
         _, source = self.seed_lab(patient)
         history = self.snapshot()
-        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        migrate(self.admin, "upgrade", QUESTION_REVISION)
         self.assertEqual(self.snapshot(history[0]), history)
         self.assertEqual(self.snapshot()[0]["investigation.laboratory_question_anchors"], [])
         # A new empty typed owner is reversible without changing existing rows.
         migrate(self.admin, "downgrade", previous.JOIN)
         self.assertEqual(self.snapshot(), history)
-        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        migrate(self.admin, "upgrade", QUESTION_REVISION)
         with self.services() as registry:
             index = PostgresSourceVersions(registry).list(patient, "CASE-ALPHA", **evidence.OPTIONS)
             payload = dict(source_id=source["source_id"], observation_reference=OBS,
@@ -97,7 +99,7 @@ class LaboratoryQuestionMigrationTests(SourceVersionFixture):
         self.assertEqual(self.snapshot(), history)
         with self.engine.connect() as conn:
             self.assertEqual(conn.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(),
-                             SCHEMA_REVISION)
+                             QUESTION_REVISION)
 
     def test_full_history_remains_readable_and_exact_requests_recover(self):
         patient, _, payload, receipt = self.seed()

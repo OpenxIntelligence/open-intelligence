@@ -66,6 +66,18 @@ Reopen the history after an amendment to see which questions need reassessment.
 Question history requires an active patient/case binding and current source and
 question read grants. Text-based investigations use their existing source-line history.
 
+## Inspect citations for a laboratory question
+
+Reopen saved laboratory questions in Journey and select the question you want
+to investigate. Enter a search term for the seeded fictional catalog (for
+example, `continuity`). Inspect a result and explicitly attach its citation.
+Reopen the citation list to see the exact original Observation and linked
+metadata. If the original report has been amended, the list identifies the
+earlier question as needing reassessment. Open the result and citation report
+to inspect the original measured value or absence reason, specimen, dates and
+currently permitted citation metadata together. The catalog supplies independently
+authored fictional metadata for this workflow.
+
 ## Verification boundary
 
 `apps/web/tools/demo_journey.py` exercises these exact fixtures through a real built browser and a separately owned Docker/PostgreSQL application, then checks repeated setup and persistence after stopping and resuming. It deletes only its own newly created disposable test project. The ordinary launcher never deletes volumes.
