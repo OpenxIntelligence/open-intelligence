@@ -153,7 +153,9 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
         from pathlib import Path
         import sqlite3
         from urllib.parse import urlsplit
+        import signal
         from oi_api.encounter_relay import FeedUnavailable, receive_once
+        from test_encounter_relay import interrupt_receiver
 
         self.creds[0]["actions"].extend(["encounter.read", "encounter.schedule", "encounter.transition",
                                         "note.read", "note.write", "encounter.events.read"])
@@ -184,6 +186,13 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
             post(note, draft)
             expected = {"clinical_encounter_scheduled": 1, "clinical_encounter_state_changed": 1,
                         "clinical_note_draft_saved": 1}
+            token_file = Path(self.temp.name) / "relay-token"
+            token_file.write_text(TOKEN_A)
+            interrupted = interrupt_receiver(receiver, patient, port, token_file)
+            self.assertEqual(interrupted.returncode, -signal.SIGKILL, interrupted.stderr)
+            with closing(sqlite3.connect(receiver)) as db:
+                self.assertEqual(db.execute("SELECT count(*) FROM activity_receipts").fetchone(), (0,))
+                self.assertEqual(db.execute("SELECT count(*) FROM activity_totals").fetchone(), (0,))
             result = deliver()
             self.assertEqual((result["applied"], result["counts"]), (3, expected))
             self.assertEqual(deliver()["applied"], 0)

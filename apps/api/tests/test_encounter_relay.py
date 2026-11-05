@@ -2,7 +2,9 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pathlib import Path
+import json
 import os
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -125,74 +127,105 @@ class ReceiverTests(unittest.TestCase):
             self.deliver(page(resume_after_id=6))
         self.assertEqual(self.deliver(page(event(7, NOTE)))[0]["applied"], 0)
 
-    def test_mid_page_process_kill_replays_once(self):
-        self.deliver(page(event(3)))
-        script = """
-import os, signal, sqlite3, sys
-from pathlib import Path
-from unittest.mock import patch
-from test_encounter_relay import relay, event, page, PATIENT, CHANGED, NOTE
-connect = sqlite3.connect
-def instrument(*args, **kwargs):
-    db = connect(*args, **kwargs)
-    db.create_function('stop_receiver', 0, lambda: os.kill(os.getpid(), signal.SIGKILL))
-    db.execute('CREATE TEMP TRIGGER interrupt BEFORE INSERT ON activity_receipts '
-               'WHEN NEW.event_id=9 BEGIN SELECT stop_receiver(); END')
-    return db
-with patch.object(relay.sqlite3, 'connect', instrument), patch.object(relay, 'read_page',
-        return_value=page(event(3),event(6, CHANGED),event(9, NOTE))):
-    relay.receive_once(Path(sys.argv[1]), 8000, PATIENT, lambda:'t'*32)
-"""
-        env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
-        killed = subprocess.run([sys.executable, "-c", script, str(self.db)], env=env, timeout=15)
-        self.assertEqual(killed.returncode, -9)
-        after, cursor = self.deliver(page(event(3), event(6, CHANGED), event(9, NOTE)))
-        self.assertEqual((cursor, after["applied"], sum(after["counts"].values())), (2, 2, 3))
+
+def interrupt_receiver(database, patient, port, token_file):
+    """Kill the real command before its second new receipt, inside the page transaction."""
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
+    return subprocess.run(
+        [sys.executable, __file__, "--patient", patient, "--port", str(port),
+         "--database", str(database), "--token-file", str(token_file)],
+        env=env, timeout=15, capture_output=True,
+    )
 
 
 class RelayHTTPTests(unittest.TestCase):
-    def test_cli_uses_authorized_loopback_page_and_withholds_totals_after_denial(self):
+    def setUp(self):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-        import json
 
-        seen = []
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.token = Path(self.temp.name) / "token"
+        self.token.write_text("t" * 32)
+        self.db = Path(self.temp.name) / "activity.sqlite"
+        self.document = page(event(5))
+        self.status = 200
+        self.requests = []
+        fixture = self
+
         class Handler(BaseHTTPRequestHandler):
-            status = 200
-
             def do_GET(self):
-                seen.append((self.path, self.headers.get("Authorization")))
-                self.send_response(self.status)
+                fixture.requests.append((self.path, self.headers.get("Authorization")))
+                self.send_response(fixture.status)
                 self.send_header("Content-Type", "application/json")
-                if self.status == 302:
+                if fixture.status == 302:
                     self.send_header("Location", "/redirect-target")
                 self.end_headers()
-                self.wfile.write(json.dumps(page(event(5))).encode())
+                self.wfile.write(json.dumps(fixture.document).encode())
 
             def log_message(self, *_):
                 pass
 
-        with tempfile.TemporaryDirectory() as temp, ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
-            try:
-                token_path = Path(temp) / "token"
-                token_path.write_text("t" * 32)
-                db = Path(temp) / "activity.sqlite"
-                command = [sys.executable, "-m", "oi_api.encounter_relay", "--patient", PATIENT, "--port",
-                           str(server.server_port), "--database", str(db), "--token-file", str(token_path)]
-                for status, expected_code in ((200, 0), (302, 2), (403, 2), (200, 0)):
-                    Handler.status = status
-                    process = subprocess.run(command, text=True, capture_output=True, timeout=10)
-                    self.assertEqual(process.returncode, expected_code, process.stderr)
-                    body = json.loads(process.stdout)
-                    if status == 200:
-                        self.assertEqual(body["counts"], {SCHEDULED: 1})
-                    else:
-                        self.assertEqual(body, {"status": "unavailable"})
-                self.assertEqual(len(seen), 4)
-                self.assertTrue(all(path.startswith("/v1/patients/" + PATIENT + "/encounters/events?")
-                                    and auth == "Bearer " + "t"*32 for path, auth in seen))
-                self.assertNotIn(b"t"*32, db.read_bytes())
-            finally:
-                server.shutdown()
-                thread.join(5)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.addCleanup(server.server_close)
+        self.port = server.server_port
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join, 5)
+        self.addCleanup(server.shutdown)
+
+    def run_cli(self):
+        return subprocess.run(
+            [sys.executable, "-m", "oi_api.encounter_relay", "--patient", PATIENT, "--port", str(self.port),
+             "--database", str(self.db), "--token-file", str(self.token)],
+            text=True, capture_output=True, timeout=10,
+        )
+
+    def test_mid_page_process_kill_replays_once(self):
+        self.assertEqual(self.run_cli().returncode, 0)
+        self.document = page(event(5), event(6, CHANGED), event(9, NOTE))
+        killed = interrupt_receiver(self.db, PATIENT, self.port, self.token)
+        self.assertEqual(killed.returncode, -signal.SIGKILL, killed.stderr)
+        with closing(sqlite3.connect(self.db)) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM activity_receipts").fetchone(), (1,))
+            self.assertEqual(db.execute("SELECT sum(total) FROM activity_totals").fetchone(), (1,))
+        recovered = json.loads(self.run_cli().stdout)
+        self.assertEqual((recovered["applied"], sum(recovered["counts"].values())), (2, 3))
+        self.assertTrue(self.requests[-1][0].endswith("after_id=4"))
+
+    def test_cli_uses_authorized_loopback_page_and_withholds_totals_after_denial(self):
+        for status, expected_code in ((200, 0), (302, 2), (403, 2), (200, 0)):
+            self.status = status
+            process = self.run_cli()
+            self.assertEqual(process.returncode, expected_code, process.stderr)
+            body = json.loads(process.stdout)
+            if status == 200:
+                self.assertEqual(body["counts"], {SCHEDULED: 1})
+            else:
+                self.assertEqual(body, {"status": "unavailable"})
+        self.assertEqual(len(self.requests), 4)
+        self.assertTrue(all(path.startswith("/v1/patients/" + PATIENT + "/encounters/events?")
+                            and auth == "Bearer " + "t"*32 for path, auth in self.requests))
+        self.assertNotIn(b"t"*32, self.db.read_bytes())
+
+
+if __name__ == "__main__":
+    connect = sqlite3.connect
+
+    def interrupting_connection(*args, **kwargs):
+        db = connect(*args, **kwargs)
+        inserts = 0
+
+        def interrupt_second_insert():
+            nonlocal inserts
+            inserts += 1
+            if inserts == 2:
+                os.kill(os.getpid(), signal.SIGKILL)
+            return 0
+
+        db.create_function("interrupt_second_insert", 0, interrupt_second_insert)
+        db.execute("""CREATE TEMP TRIGGER interrupt BEFORE INSERT ON activity_receipts
+                      BEGIN SELECT interrupt_second_insert(); END""")
+        return db
+
+    with patch.object(relay.sqlite3, "connect", interrupting_connection):
+        raise SystemExit(relay.main())
