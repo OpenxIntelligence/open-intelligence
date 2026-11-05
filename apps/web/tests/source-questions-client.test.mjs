@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
+import {projection as laboratoryProjection} from './laboratory-projection-fixture.mjs';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {decodeComposerPreflight} from '../.test-dist/composer-preflight-view.js';
 import {decodeSavedQuestion,decodeSourceQuestions} from '../.test-dist/source-questions-view.js';
@@ -747,4 +748,42 @@ test('Late read after a patient switch cannot reopen an old source question',asy
  assert.equal(f.s.snapshot().patient?.patient_id,'PAT-OTHER');
  assert.equal(f.s.snapshot().questionDraft,null);
  assert.equal(f.s.snapshot().worldModel,null);
+});
+
+test('laboratory preparation preserves the exact key for a concurrent or uncertain text-question save',async()=>{
+ const lab=laboratoryProjection(), sourceId='SRC-'+'E'.repeat(32);
+ const world=worldFixture();
+ world.current_sources.push({...lab.current_sources[0],source_id:sourceId});
+ world.laboratory_observations=lab.laboratory_observations.map(o=>({...o,source_id:sourceId}));
+ world.laboratory_timeline=lab.laboratory_timeline.map(o=>({...o,source_id:sourceId}));
+ world.as_of_received_at=lab.as_of_received_at;
+ world.summary={...world.summary,current_sources:2,current_observations:4,current_laboratory_observations:3,unresolved_observations:2};
+ for(const labFirst of [false,true]){
+  const labReply=deferred(),writeReply=deferred(),writes=[];
+  let labRequests=0;
+  const session=newSession(async(url,init)=>{
+   if(url===sourcePreflightPath)return response(composerFixture());
+   if(url.endsWith('/composer/laboratory-preflight')){labRequests++;return labReply.promise;}
+   if(url===questionsPath){writes.push(init.body);return writes.length===1?writeReply.promise:response({question_id:savedQuestionId,duplicate:true},200);}
+   return response(url.endsWith('/world-model')?world:patient());
+  });
+  session.connect(token);await session.read(receiptPatient);await session.loadCases();await session.loadWorldModel(receiptCase);
+  await session.prepareSourceContext(receiptSource,8,composerQuestion);
+  const model=session.snapshot().worldModel;
+  const prepare=()=>session.prepareLabQuestion(model,sourceId,world.laboratory_observations[0].observation_reference,
+      'What does this laboratory report say?',new AbortController().signal);
+  const earlier=labFirst?prepare():null;
+  const writing=session.savePreparedQuestion();
+  const during=prepare();
+  writeReply.resolve(response({},503));await writing;
+  const uncertain=prepare();
+  labReply.resolve(response({},503));
+  for(const request of [earlier,during,uncertain])assert.equal(await request,null);
+  assert.equal(labRequests,labFirst?1:0);
+  assert.equal(session.snapshot().worldModel,model);
+  assert.match(session.snapshot().questionSaveMessage,/^Save outcome unknown/);
+  await session.savePreparedQuestion();
+  assert.equal(writes.length,2);assert.equal(writes[0],writes[1]);
+  assert.equal(session.snapshot().savedQuestion.duplicate,true);
+ }
 });
