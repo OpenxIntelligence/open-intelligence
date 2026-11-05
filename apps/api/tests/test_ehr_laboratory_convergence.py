@@ -38,7 +38,8 @@ class EHRLaboratoryGraphTests(unittest.TestCase):
     def test_single_head_depends_on_both_published_owners(self):
         script = graph()
         self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
-        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0020_ehr_lab_convergence")
+        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0021_lab_citation_freshness")
+        self.assertEqual(script.get_revision("0021_lab_citation_freshness").down_revision, "0020_ehr_lab_convergence")
         self.assertEqual(set(script.get_revision("0020_ehr_lab_convergence").down_revision), {EHR, LAB})
         for parent in (EHR, LAB):
             self.assertEqual(script.get_revision(parent).down_revision, COMMON)
@@ -158,6 +159,54 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
             retry = PostgresLaboratoryQuestionEvidence(registry).create_link(*scope, **command, **evidence.OPTIONS)
             self.assertTrue(retry["duplicate"])
             self.assertEqual(retry["link_id"], receipt["link_id"])
+
+    def test_encounter_and_note_ownership_survive_direct_reassignment_attempts(self):
+        patient_a, _, _ = self.start_at("0021_lab_citation_freshness")
+        note_url, note = self.seed_encounter(patient_a)
+        encounter_a = int(note_url.split("/encounters/")[1].split("/")[0])
+        with self.services() as registry:
+            patient_b = registry.create_patient(**evidence.COMMON, request_key="OWNERSHIP-PATIENT-B")["patient_id"]
+            service = PostgresClinicalEncounters(registry, registry.authorizer)
+            encounter_b = service.schedule(patient_b, "OWNERSHIP-VISIT-B", "outpatient", "2026-02-10",
+                                           actor="ACTOR-ALPHA", purpose="operations",
+                                           request_key="OWNERSHIP-SCHEDULE-B")["encounter_id"]
+        self.creds[0]["patient_ids"].append(patient_b)
+        self.write()
+        headers_b = f"/v1/patients/{patient_b}/encounters/{encounter_b}/notes"
+        history_b = headers_b + "/JOIN-DRAFT/versions"
+        move_header = text("UPDATE ehr.clinical_note_headers SET encounter_id=:owner WHERE id=:id")
+        move_visit = text("UPDATE ehr.clinical_encounters SET patient_id=:owner WHERE id=:id")
+        # Exhibit the old cross-patient read on populated records. The first
+        # upgrade must refuse to certify that pre-existing damaged ownership.
+        with self.engine.begin() as conn:
+            conn.execute(move_header, {"owner": encounter_b, "id": note["note_id"]})
+        with self.services() as registry:
+            service = PostgresClinicalEncounters(registry, registry.authorizer)
+            versions = service.note_history(patient_b, encounter_b, "JOIN-DRAFT",
+                                            actor="ACTOR-ALPHA", purpose="operations")
+            self.assertEqual(versions[0]["body"], NOTE["body"])
+        with self.assertRaisesRegex(CommandError, "ownership requires explicit reconciliation"):
+            migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        self.assertEqual(self.heads(), {"0021_lab_citation_freshness"})
+        with self.engine.begin() as conn:
+            conn.execute(move_header, {"owner": encounter_a, "id": note["note_id"]})
+            conn.execute(move_visit, {"owner": patient_b, "id": encounter_a})
+        with self.assertRaisesRegex(CommandError, "ownership requires explicit reconciliation"):
+            migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        with self.engine.begin() as conn:
+            conn.execute(move_visit, {"owner": patient_a, "id": encounter_a})
+        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        for statement, owner, row in ((move_header, encounter_b, note["note_id"]),
+                                      (move_visit, patient_b, encounter_a)):
+            with self.assertRaisesRegex(DBAPIError, "HISTORY-IMMUTABLE"):
+                with self.engine.begin() as conn:
+                    conn.execute(statement, {"owner": owner, "id": row})
+        with running_server(create_app(self.settings)) as base:
+            self.assertEqual(request(base, headers_b, token=TOKEN_A)[1]["notes"], [])
+            status, history, _ = request(base, history_b, token=TOKEN_A)
+            self.assertEqual(status, 200, history)
+            self.assertEqual(history["versions"], [])
+            self.check_note(base, note_url, note)
 
     def upgrade(self, expected_heads):
         self.assertEqual(self.heads(), expected_heads)
