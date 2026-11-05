@@ -23,6 +23,10 @@ MAX_BYTES = 256 * 1024
 # An intentionally conservative, ASCII-only subset of valid DOI syntax.
 DOI_PATTERN = re.compile(r"10\.[0-9]{4,9}/[A-Za-z0-9._;()/+\-]{1,200}\Z")
 CONTACT_PATTERN = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\Z")
+TIMESTAMP_PATTERN = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])"
+)
 
 
 class MetadataInputError(ValueError):
@@ -67,6 +71,43 @@ def _year(message: dict) -> int | None:
     return None
 
 
+def _retrieval_timestamp(value: str | None) -> str:
+    """Preserve a valid supplied instant; only omission generates a receipt time."""
+    if value is None:
+        return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if (not isinstance(value, str) or TIMESTAMP_PATTERN.fullmatch(value) is None
+            or value.endswith("-00:00")):
+        raise MetadataInputError("Invalid retrieval timestamp")
+    try:
+        # Shape validation above is required: fromisoformat normalizes some
+        # invalid offsets and accepts separators outside this receipt contract.
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise MetadataInputError("Invalid retrieval timestamp") from None
+    return value
+
+
+def _decode_payload(data: bytes) -> dict:
+    """Reject ambiguous JSON before dropping fields outside the rights boundary."""
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate JSON member")
+            result[key] = value
+        return result
+
+    def reject_constant(value):
+        raise ValueError("Nonstandard JSON constant")
+
+    try:
+        return json.loads(data.decode("utf-8"), object_pairs_hook=unique_object,
+                          parse_constant=reject_constant)
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        # Never echo upstream member names, values, or raw parser diagnostics.
+        raise MetadataInputError("Malformed Crossref JSON") from None
+
+
 def project_work(payload: dict, requested_doi: str, *, retrieved_at: str | None = None) -> dict:
     """Allowlist factual fields from one Crossref record, dropping every other key.
 
@@ -105,9 +146,7 @@ def project_work(payload: dict, requested_doi: str, *, retrieved_at: str | None 
         name = _short_text((" ".join([given.strip(), family.strip()])).strip(),
                            limit=150, field="author name")
         authors.append(name)
-    timestamp = retrieved_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
-    if not isinstance(timestamp, str) or len(timestamp) > 64:
-        raise MetadataInputError("Invalid retrieval timestamp")
+    timestamp = _retrieval_timestamp(retrieved_at)
     # Construct destinations only from the validated DOI, never source HTML/URLs.
     encoded = quote(doi, safe="")
     return {
@@ -155,17 +194,14 @@ def fetch_public_doi(doi: str, *, contact: str | None = None, opener=None) -> di
     try:
         with transport.open(request, timeout=8) as response:
             content_type = response.headers.get("Content-Type", "")
-            if "application/json" not in content_type.lower():
+            if content_type.split(";", 1)[0].strip().lower() != "application/json":
                 raise MetadataInputError("Crossref did not return JSON")
             data = response.read(MAX_BYTES + 1)
     except (HTTPError, URLError, TimeoutError) as error:
         raise MetadataInputError(f"Crossref metadata lookup unavailable ({type(error).__name__})") from None
     if len(data) > MAX_BYTES:
         raise MetadataInputError("Crossref response exceeds metadata size limit")
-    try:
-        payload = json.loads(data.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise MetadataInputError("Malformed Crossref JSON") from None
+    payload = _decode_payload(data)
     return project_work(payload, doi)
 
 
@@ -186,7 +222,7 @@ def main() -> None:
             raw = args.fixture.read_bytes()
             if len(raw) > MAX_BYTES:
                 raise MetadataInputError("Fixture exceeds size limit")
-            result = project_work(json.loads(raw.decode("utf-8")), args.doi)
+            result = project_work(_decode_payload(raw), args.doi)
     except (MetadataInputError, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True))

@@ -1,4 +1,6 @@
 import json
+import io
+from datetime import datetime
 import tempfile
 import threading
 import unittest
@@ -141,6 +143,50 @@ class HttpTests(unittest.TestCase):
                 status, error = self.request('/api/bibliography/lookup',
                                              {'doi': '10.5555/oi-synthetic-001'})
                 self.assertEqual(status, 429)
+        finally:
+            handler.allow_crossref_live = prior
+            handler.metadata_last_request = last_request
+
+    def test_bibliography_real_projection_rejects_ambiguity_and_recovers(self):
+        # Real local HTTP handler and parser; only the external provider is
+        # replaced with independently fictional metadata. No publisher call.
+        raw = (Path(__file__).resolve().parents[1] / 'examples' / 'synthetic' /
+               'crossref-metadata-fixture.json').read_bytes()
+        ambiguous = raw.replace(b'"DOI":', b'"DOI": "UNTRUSTED-UPSTREAM", "DOI":', 1)
+        requests = []
+
+        class Response(io.BytesIO):
+            headers = {'Content-Type': 'application/json; charset=utf-8'}
+
+        class Transport:
+            payload = ambiguous
+            def open(self, request, timeout):
+                requests.append(request.full_url)
+                return Response(self.payload)
+
+        transport = Transport()
+        handler = self.server.RequestHandlerClass
+        prior, last_request = handler.allow_crossref_live, handler.metadata_last_request
+        handler.allow_crossref_live = True
+        handler.metadata_last_request = 0.0
+        try:
+            with patch('tools.crossref_metadata.build_opener', return_value=transport):
+                status, error = self.request('/api/bibliography/lookup',
+                    {'doi': '10.5555/oi-synthetic-001', 'patient_id': 'DO-NOT-SEND'})
+                self.assertEqual(status, 422)
+                self.assertEqual(error, {'error': 'Malformed Crossref JSON'})
+                self.assertNotIn('UNTRUSTED-UPSTREAM', json.dumps(error))
+                transport.payload = raw
+                handler.metadata_last_request = 0.0
+                status, record = self.request('/api/bibliography/lookup',
+                    {'doi': '10.5555/oi-synthetic-001', 'patient_id': 'DO-NOT-SEND'})
+                self.assertEqual(status, 200)
+                self.assertEqual(record['doi'], '10.5555/oi-synthetic-001')
+                self.assertFalse(record['clinical_evidence_appraised'])
+                self.assertEqual(datetime.fromisoformat(record['source']['retrieved_at'])
+                                 .utcoffset().total_seconds(), 0)
+                self.assertNotIn('COPYRIGHTED ABSTRACT', json.dumps(record))
+                self.assertEqual(requests, ['https://api.crossref.org/works/10.5555%2Foi-synthetic-001'] * 2)
         finally:
             handler.allow_crossref_live = prior
             handler.metadata_last_request = last_request
