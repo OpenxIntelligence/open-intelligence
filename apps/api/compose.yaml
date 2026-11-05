@@ -1,7 +1,7 @@
 # Local synthetic-only composition root with the canonical identity ledger.
 # The public fixture password below is not an operator or production credential.
-# Image tags pin upstream patches, not immutable image digests. OS/container
-# layers require their own inventory and rights review before distribution.
+# Published OCI indices and their selected linux/amd64 identities are recorded
+# in container-image-pins.json. OS layers require separate distribution review.
 name: open-intelligence-h1-synthetic
 
 x-api-common: &api-common
@@ -28,7 +28,7 @@ x-api-common: &api-common
 services:
   db:
     # Official PostgreSQL 16.15 release: 2026-08-13. No host database port.
-    image: postgres:16.15-bookworm
+    image: postgres:16.15-bookworm@sha256:5264710be20f409750ac6dc4e5706dcef929c87e241605463f0f9aefa932a8d9
     platform: linux/amd64
     networks:
       - backend
