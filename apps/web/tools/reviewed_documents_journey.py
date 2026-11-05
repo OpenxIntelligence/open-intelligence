@@ -168,6 +168,12 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     initial_document=operator(prefix+'/'+first)
     initial_revision=initial_document['revisions'][0]
     initial_key=initial_revision['findings'][0]['key']
+    cd.evaluate("""document.querySelector('section[aria-label="Draft a passage question"] button').click()""")
+    cd.wait("Boolean(document.querySelector('[data-testid=passage-question-draft]'))",'fresh saved PDF passage opens question draft')
+    value('[data-testid=passage-question-draft]','What would resolve this pending fictional result?')
+    assert cd.evaluate("""document.querySelector('section[aria-label="Draft a passage question"] blockquote').textContent""")==initial_revision['findings'][0]['quote']
+    click('Discard question draft')
+    assert not cd.evaluate("Boolean(document.querySelector('[data-testid=passage-question-draft]'))")
     selection_path=prefix+'/'+first+'/selections/'+initial_revision['revision_id']+'/'+initial_key
     initial_selection=operator(selection_path)
     assert initial_selection['anchor']['quote']=='Marker pending.'

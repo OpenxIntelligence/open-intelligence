@@ -52,7 +52,7 @@ export async function decodeSelection(value:unknown,scope:Pick<PassageScope,'pat
  return p;
 }
 /** Bind the independently fetched anchor to the quotation that was on screen. */
-export async function decodeChosenPassage(value:unknown,scope:PassageScope,doc:Document,finding:Finding):Promise<ResolvedPassage>{
+export async function decodeChosenPassage(value:unknown,scope:Pick<PassageScope,'patient_id'|'case_id'>,doc:Document,finding:Finding):Promise<ResolvedPassage>{
  const revision=doc.revisions.at(-1);
  if(!revision||doc.state!=='current')throw Error('Refresh the saved record before choosing a passage.');
  const passage=await decodeSelection(value,scope,{
