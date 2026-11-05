@@ -10,7 +10,10 @@ const summary={
  inputs_prepared:'The currently loaded records and questions are organized for preparation.',
 } as const;
 
-export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion}:{state:ViewState;onNavigate:(section:string)=>void;onResumeQuestion:(questionId:string)=>void}){
+export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion,onCheckEvidence}:{
+ state:ViewState;onNavigate:(section:string)=>void;onResumeQuestion:(questionId:string)=>void;
+ onCheckEvidence:(questionId:string)=>void;
+}){
  const view=secondOpinionPreparation(state);
  if(!view)return null;
  return <section className="panel second-opinion-preparation" data-testid="second-opinion-preparation" data-state={view.state} aria-labelledby="second-opinion-heading">
@@ -50,6 +53,52 @@ export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion}:{st
         <button type="button" data-testid="second-opinion-resume-passages" onClick={()=>onResumeQuestion(item.questionId)}>Resume unsaved record passages</button>:
         <button type="button" data-testid="second-opinion-open-question" aria-label={'Inspect records and reports for: '+item.text} onClick={()=>onResumeQuestion(item.questionId)}>Inspect records and reports</button>}
        <p className="small">Primary source version {item.sourceVersion}, line {item.sourceLine}. <strong>{item.sourceContextState==='source_reassessment_required'?'Source changed: reassessment required before relying on earlier preparation.':'Primary source context is current; not clinically reviewed.'}</strong></p>
+       <section className="second-opinion-question-evidence" data-testid="second-opinion-question-evidence"
+        data-original-state={item.evidenceReadiness.original}
+        data-citation-state={item.evidenceReadiness.citations===null?'unchecked':'checked'}
+        aria-label="Evidence-readiness for this saved question">
+        <h4>What evidence should be checked?</h4>
+        {item.evidenceReadiness.original==='matched'?
+         <p data-testid="second-opinion-original-matched">The exact source version and hash matched the last authorized structured-record read, not an independent clinical review.</p>:
+         item.evidenceReadiness.original==='changed'?
+         <p data-testid="second-opinion-original-changed">The question needs source reassessment before relying on earlier preparation.</p>:
+         item.evidenceReadiness.original==='not_matched'?
+         <p data-testid="second-opinion-original-unmatched">The question's original version was not current in the last checked structured-record list. Review the original; separately reviewed documents are outside this count.</p>:
+         <p data-testid="second-opinion-original-unchecked">The exact original has not been checked in the current Records view.</p>}
+        {!item.evidenceReadiness.citations?
+         <p data-testid="second-opinion-citations-unchecked">Citation history has not been successfully checked under its separate permission for this question. Open Investigations to request a fresh read.</p>:
+         item.evidenceReadiness.citations.total===0?
+         <p data-testid="second-opinion-citations-empty">The authorized citation read returned zero links. This does not establish that no scientific evidence exists.</p>:
+         <p data-testid="second-opinion-citations-counts" data-count={item.evidenceReadiness.citations.total}>
+          {item.evidenceReadiness.citations.metadataOnly} available metadata link(s) · {item.evidenceReadiness.citations.restricted} rights restricted · {item.evidenceReadiness.citations.superseded} superseded · {item.evidenceReadiness.citations.unavailable} unavailable.
+         </p>}
+        <p className="small">Citation metadata has not been appraised for scientific support. Trial eligibility, treatment benefit and clinical decisions have not been assessed by this view.</p>
+       </section>
+       <section className="second-opinion-proposal-readiness" data-testid="second-opinion-proposal-readiness"
+        data-checked={item.comparisonReadiness!==null} aria-label="Human-authored evidence comparison status">
+        <h4>Proposed evidence relationships</h4>
+        <button type="button" data-testid="second-opinion-check-proposals"
+         disabled={state.evidencePhase==='loading'||state.evidenceWritePhase==='saving'||state.evidenceWritePhase==='unknown'}
+         onClick={()=>onCheckEvidence(item.questionId)}>
+         {state.evidencePhase==='loading'?'Checking evidence permission…':'Check authored comparisons'}
+        </button>
+        {item.comparisonReadiness===null?
+         <p data-testid="second-opinion-proposals-unchecked">Human-authored comparisons have not been freshly checked for this question and source snapshot. Use the button above to request an authorized read here, or inspect the question in Investigations.</p>:
+         <div data-testid="second-opinion-proposals-checked">
+          <p data-testid="second-opinion-proposals-counts">
+           {item.comparisonReadiness.proposed.support} proposed support · {item.comparisonReadiness.proposed.contradiction} proposed contradiction · {item.comparisonReadiness.proposed.context} context · {item.comparisonReadiness.proposed.unknown} relationship unknown.
+          </p>
+          <p data-testid="second-opinion-proposals-history">
+           {item.comparisonReadiness.reassessment} comparison(s) need reassessment · {item.comparisonReadiness.withheld} content withheld.
+           {' '}{item.comparisonReadiness.reports.currentUnreviewed} current unreviewed report(s) · {item.comparisonReadiness.reports.historical} historical report(s) · {item.comparisonReadiness.reports.withheld} report(s) withheld.
+          </p>
+          {Object.values(item.comparisonReadiness.proposed).every(count=>count===0)&&
+           item.comparisonReadiness.reassessment===0&&item.comparisonReadiness.withheld===0&&
+           Object.values(item.comparisonReadiness.reports).every(count=>count===0)&&
+           <p data-testid="second-opinion-proposals-empty">This authorized evidence read returned no authored comparisons or reports. It does not establish that no relevant research exists.</p>}
+         </div>}
+        <p className="small">All relationship labels are human-authored, unreviewed proposals—not a scientific evidence grade, AI conclusion, medical recommendation or clinician approval. Contents require a fresh rights check in Investigations.</p>
+       </section>
        <section className="second-opinion-question-work" data-testid="second-opinion-question-work" data-work-state={item.work===null?'unavailable':'ready'} aria-label="Recorded follow-up for this question">
         <h4>Recorded follow-up</h4>
         {!item.work?<p className="small" data-testid="second-opinion-question-work-unavailable">Follow-up work has not been checked or is unavailable for this case. No task count is implied.</p>:

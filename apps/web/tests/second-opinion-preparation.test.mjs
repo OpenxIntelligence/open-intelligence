@@ -51,3 +51,132 @@ test('organized inputs remain preparation only and coordination is descriptive',
  assert.equal(view.state,'inputs_prepared');assert.deepEqual(view.records,{current:1,historical:1});
  assert.deepEqual(view.coordination,{open:0,assigned:0,sourceChanged:0});
 });
+
+const checkedCitation=(status='available')=>({
+ contract:'oi.pg-question-evidence-links/1',patient_id:'PAT-ONE',case_id:'CASE-ONE',
+ question_id:'QUESTION-'+'C'.repeat(32),source_context_state:'current_unreviewed_question',
+ source_access_receipt_id:'ACCESS-'+'F'.repeat(32),synthetic:true,
+ model_executed:false,content_appraised:false,clinical_approval:false,
+ links:[{status,link_id:'EVIDENCE-LINK-'+'D'.repeat(32)}],
+});
+const preparedState=()=>({...base(),recordsPhase:'ready',sourceIndex:sourceIndex([source()]),
+ questions:[question('current_unreviewed_question')]});
+test('second-opinion source and citation checks are distinct, never inferred',()=>{
+ const s=preparedState(),id=s.questions[0].question_id;
+ let row=secondOpinionPreparation(s).agenda.preview[0];
+ assert.equal(row.evidenceReadiness.original,'matched');
+ assert.equal(row.evidenceReadiness.citations,null);
+ row=secondOpinionPreparation({...s,evidenceQuestionId:id,evidenceLinksPhase:'ready',
+  evidenceLinks:{...checkedCitation(),links:[]}}).agenda.preview[0];
+ assert.deepEqual(row.evidenceReadiness.citations,{total:0,metadataOnly:0,restricted:0,superseded:0,unavailable:0});
+});
+test('citation metadata counts are not scientific appraisals or eligibility',()=>{
+ const s=preparedState(),id=s.questions[0].question_id;
+ const links=['available','rights_restricted','superseded','unavailable'].map((status,n)=>({status,link_id:'LINK-'+n}));
+ const row=secondOpinionPreparation({...s,evidenceQuestionId:id,evidenceLinksPhase:'ready',
+  evidenceLinks:{...checkedCitation(),links}}).agenda.preview[0];
+ assert.deepEqual(row.evidenceReadiness.citations,{total:4,metadataOnly:1,restricted:1,superseded:1,unavailable:1});
+});
+test('stale, denied or wrong-case citation read cannot surface as evidence',()=>{
+ const s={...preparedState(),evidenceQuestionId:'QUESTION-'+'C'.repeat(32),
+  evidenceLinksPhase:'ready',evidenceLinks:checkedCitation()};
+ for(const patch of [{evidenceLinksPhase:'error'},{evidenceLinksPhase:'loading'},
+  {evidenceQuestionId:'QUESTION-'+'A'.repeat(32)},
+  {evidenceLinks:{...checkedCitation(),patient_id:'PAT-OTHER'}},
+  {evidenceLinks:{...checkedCitation(),case_id:'CASE-OTHER'}},
+  {evidenceLinks:{...checkedCitation(),source_context_state:'source_reassessment_required'}},
+  {evidenceLinks:{...checkedCitation(),content_appraised:true}}]){
+  assert.equal(secondOpinionPreparation({...s,...patch}).agenda.preview[0].evidenceReadiness.citations,null,JSON.stringify(patch));
+ }
+});
+test('changed original or missing exact source hash cannot be called a current match',()=>{
+ const s=preparedState();
+ assert.equal(secondOpinionPreparation({...s,questions:[question('source_reassessment_required')]}).agenda.preview[0].evidenceReadiness.original,'changed');
+ assert.equal(secondOpinionPreparation({...s,recordsPhase:'error'}).agenda.preview[0].evidenceReadiness.original,'unchecked');
+ assert.equal(secondOpinionPreparation({...s,sourceIndex:sourceIndex([{...source(),sha256:'b'.repeat(64)}])}).agenda.preview[0].evidenceReadiness.original,'not_matched');
+});
+
+const examplePacket=(q,patch={})=>({
+ contract:'oi.h1-question-evidence/1',patient_id:'PAT-ONE',case_id:'CASE-ONE',
+ question:q,source_snapshot_sha256:q.source_snapshot_sha256,
+ access_receipt_id:'ACCESS-'+'A'.repeat(32),packet_sha256:'e'.repeat(64),
+ evidence:[],assessments:[],reports:[],
+ synthetic:true,human_review_state:'not_performed',clinical_approval:false,model_executed:false,...patch
+});
+const comparisonState=(packet)=>({
+ worldModel:{...base().worldModel,snapshot_fingerprint:packet.source_snapshot_sha256},
+ evidencePhase:'ready',evidencePacket:packet,
+});
+test('comparison status separates not-read from authorized checked empty',()=>{
+ const q=question('current_unreviewed_question');
+ const prior=secondOpinionPreparation({...base(),questions:[q]}).agenda.preview[0];
+ assert.equal(prior.comparisonReadiness,null);
+ const packet=examplePacket(q),actual=secondOpinionPreparation({
+  ...base(),questions:[q],...comparisonState(packet)}).agenda.preview[0].comparisonReadiness;
+ assert.deepEqual(actual,{
+  proposed:{support:0,contradiction:0,context:0,unknown:0},
+  reassessment:0,withheld:0,reports:{currentUnreviewed:0,historical:0,withheld:0}
+ });
+});
+test('proposed support and contradiction are separate from historical and withheld comparisons',()=>{
+ const q=question('current_unreviewed_question');
+ const evidence=Array.from({length:6},(_,i)=>({
+  evidence_id:'EVIDENCE-'+String(i).padStart(32,'0'),sha256:'a'.repeat(64),
+  rights_sha256:'b'.repeat(64),state:'current',statement:'Independently fictional original statement.'
+ }));
+ const relations=['supports','contradicts','context','unknown','supports','contradicts'];
+ const statuses=['current_unreviewed','current_unreviewed','current_unreviewed','current_unreviewed',
+  'reassessment_required','content_withheld'];
+ const assessments=relations.map((relation,i)=>({
+  question_id:q.question_id,evidence_id:evidence[i].evidence_id,
+  evidence_sha256:evidence[i].sha256,rights_sha256:evidence[i].rights_sha256,
+  source_snapshot_sha256:q.source_snapshot_sha256,preflight_sha256:q.preflight_sha256,
+  relation,state:statuses[i]
+ }));
+ const reports=['current_unreviewed','historical_reassessment_required','content_withheld']
+  .map(state=>({question_id:q.question_id,state}));
+ const packet=examplePacket(q,{evidence,assessments,reports});
+ const result=secondOpinionPreparation({...base(),questions:[q],
+  ...comparisonState(packet)}).agenda.preview[0].comparisonReadiness;
+ assert.deepEqual(result,{
+  proposed:{support:1,contradiction:1,context:1,unknown:1},
+  reassessment:1,withheld:1,reports:{currentUnreviewed:1,historical:1,withheld:1}
+ });
+});
+test('comparison readback never survives an error, wrong patient, other question or model flag',()=>{
+ const q=question('current_unreviewed_question'),packet=examplePacket(q);
+ const state={...base(),questions:[q],...comparisonState(packet)};
+ assert.ok(secondOpinionPreparation(state).agenda.preview[0].comparisonReadiness);
+ for(const patch of [
+  {evidencePhase:'loading'},{evidencePhase:'error'},
+  {evidencePacket:{...packet,patient_id:'PAT-OTHER'}},
+  {evidencePacket:{...packet,case_id:'CASE-OTHER'}},
+  {evidencePacket:{...packet,question:{...q,question_id:'QUESTION-'+'D'.repeat(32)}}},
+  {evidencePacket:{...packet,question:{...q,source_sha256:'0'.repeat(64)}}},
+  {evidencePacket:{...packet,model_executed:true}},
+  {evidencePacket:{...packet,human_review_state:'performed'}},
+  {evidencePacket:{...packet,access_receipt_id:'ACCESS-BAD'}},
+  {worldModel:{...state.worldModel,snapshot_fingerprint:'0'.repeat(64)}},
+ ]){
+  assert.equal(secondOpinionPreparation({...state,...patch}).agenda.preview[0].comparisonReadiness,
+   null,JSON.stringify(patch));
+ }
+});
+test('evidence comparison with incompatible lineage or missing content is withheld',()=>{
+ const q=question('current_unreviewed_question');
+ const ev={evidence_id:'EVIDENCE-'+'F'.repeat(32),sha256:'a'.repeat(64),
+  rights_sha256:'b'.repeat(64),state:'current',statement:'Synthetic evidence original'};
+ const row={question_id:q.question_id,evidence_id:ev.evidence_id,evidence_sha256:ev.sha256,
+  rights_sha256:ev.rights_sha256,source_snapshot_sha256:q.source_snapshot_sha256,
+  preflight_sha256:q.preflight_sha256,state:'current_unreviewed',relation:'supports'};
+ const packet=examplePacket(q,{evidence:[ev],assessments:[row]});
+ const state={...base(),questions:[q],...comparisonState(packet)};
+ assert.equal(secondOpinionPreparation(state).agenda.preview[0].comparisonReadiness?.proposed.support,1);
+ for(const change of [
+  {evidence:[{...ev,statement:null}]},
+  {evidence:[{...ev,sha256:'f'.repeat(64)}]},
+  {assessments:[{...row,preflight_sha256:'0'.repeat(64)}]},
+  {assessments:[{...row,question_id:'QUESTION-'+'A'.repeat(32)}]},
+ ]) assert.equal(secondOpinionPreparation({...state,evidencePacket:{...packet,...change}})
+  .agenda.preview[0].comparisonReadiness,null,JSON.stringify(change));
+});

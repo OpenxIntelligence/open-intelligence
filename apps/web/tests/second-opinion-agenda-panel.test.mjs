@@ -29,7 +29,7 @@ function question(state='current_unreviewed_question'){
   question:'Could we discuss fictional marker & <unverified note>?',source_version:2,source_line:14,
   source_context_state:state};
 }
-const render=state=>renderToStaticMarkup(createElement(SecondOpinionPreparation,{state,onNavigate:()=>{},onResumeQuestion:()=>{}}));
+const render=state=>renderToStaticMarkup(createElement(SecondOpinionPreparation,{state,onNavigate:()=>{},onResumeQuestion:()=>{},onCheckEvidence:()=>{}}));
 
 test('saved agenda rows offer question-specific inspection and keep unsent passage recovery distinct',()=>{
  const saved=question(),draft={...question(),question_id:'QUESTION-'+'C'.repeat(32),question:'Another fictional question'};
@@ -132,4 +132,81 @@ test('historical-only task status is counted, never presented as an open action'
  assert.match(html,/data-open-count="0"[^>]*data-history-count="1"/);
  assert.doesNotMatch(html,/data-testid="second-opinion-question-task"/);
  assert.match(html,/Historical work remains available in Investigations/);
+});
+
+test('question-specific citation readiness distinguishes unchecked from checked empty',()=>{
+ const s={...base(),questions:[question()]};
+ assert.match(render(s),/data-testid="second-opinion-citations-unchecked"/);
+ const e={contract:'oi.pg-question-evidence-links/1',patient_id:patientId,case_id:caseId,
+  question_id:question().question_id,source_context_state:'current_unreviewed_question',
+  source_access_receipt_id:'ACCESS-'+'A'.repeat(32),synthetic:true,model_executed:false,
+  content_appraised:false,clinical_approval:false,links:[]};
+ const checked=render({...s,evidenceQuestionId:question().question_id,evidenceLinksPhase:'ready',evidenceLinks:e});
+ assert.match(checked,/data-testid="second-opinion-citations-empty"/);
+ assert.doesNotMatch(checked,/data-testid="second-opinion-citations-unchecked"/);
+ assert.match(checked,/does not establish that no scientific evidence exists/);
+ assert.match(checked,/Trial eligibility, treatment benefit and clinical decisions have not been assessed/);
+});
+test('citation denial hides prior counted links but preserves separately authorized question',()=>{
+ const s={...base(),questions:[question()]};
+ const e={contract:'oi.pg-question-evidence-links/1',patient_id:patientId,case_id:caseId,
+  question_id:question().question_id,source_context_state:'current_unreviewed_question',
+  source_access_receipt_id:'ACCESS-'+'A'.repeat(32),synthetic:true,model_executed:false,
+  content_appraised:false,clinical_approval:false,links:[{status:'available'}]};
+ const ready={...s,evidenceQuestionId:question().question_id,evidenceLinksPhase:'ready',evidenceLinks:e};
+ assert.match(render(ready),/data-testid="second-opinion-citations-counts"/);
+ const denied=render({...ready,evidenceLinksPhase:'error'});
+ assert.match(denied,/data-testid="second-opinion-citations-unchecked"/);
+ assert.doesNotMatch(denied,/data-testid="second-opinion-citations-counts"/);
+ assert.match(denied,/Could we discuss fictional marker/);
+ assert.doesNotMatch(render({...ready,questionListPhase:'error'}),/data-testid="second-opinion-question-evidence"/);
+});
+
+test('second-opinion proposal status distinguishes unread from verified no comparisons',()=>{
+ const s={...base(),questions:[question()]};
+ assert.match(render(s),/data-testid="second-opinion-proposals-unchecked"/);
+ const q=question();
+ const packet={contract:'oi.h1-question-evidence/1',patient_id:patientId,case_id:caseId,
+  question:q,source_snapshot_sha256:q.source_snapshot_sha256,
+  access_receipt_id:'ACCESS-'+'A'.repeat(32),packet_sha256:'e'.repeat(64),
+  evidence:[],assessments:[],reports:[],synthetic:true,
+  human_review_state:'not_performed',clinical_approval:false,model_executed:false};
+ const checked=render({...s,worldModel:{...s.worldModel,snapshot_fingerprint:q.source_snapshot_sha256},
+  evidencePhase:'ready',evidencePacket:packet});
+ assert.match(checked,/data-testid="second-opinion-proposals-checked"/);
+ assert.match(checked,/data-testid="second-opinion-proposals-empty"/);
+ assert.doesNotMatch(checked,/data-testid="second-opinion-proposals-unchecked"/);
+ assert.match(checked,/not a scientific evidence grade/);
+});
+test('separately revoked comparison access withholds old counts and keeps saved question',()=>{
+ const s={...base(),questions:[question()]},q=question();
+ const ev={evidence_id:'EVIDENCE-'+'F'.repeat(32),sha256:'a'.repeat(64),
+  rights_sha256:'b'.repeat(64),state:'current',statement:'Synthetic text'};
+ const packet={contract:'oi.h1-question-evidence/1',patient_id:patientId,case_id:caseId,
+  question:q,source_snapshot_sha256:q.source_snapshot_sha256,
+  access_receipt_id:'ACCESS-'+'A'.repeat(32),packet_sha256:'e'.repeat(64),
+  evidence:[ev],assessments:[{question_id:q.question_id,evidence_id:ev.evidence_id,
+   evidence_sha256:ev.sha256,rights_sha256:ev.rights_sha256,
+   source_snapshot_sha256:q.source_snapshot_sha256,preflight_sha256:q.preflight_sha256,
+   state:'current_unreviewed',relation:'contradicts'}],
+  reports:[],synthetic:true,human_review_state:'not_performed',clinical_approval:false,model_executed:false};
+ const ready={...s,worldModel:{...s.worldModel,snapshot_fingerprint:q.source_snapshot_sha256},
+  evidencePhase:'ready',evidencePacket:packet};
+ assert.match(render(ready),/1 proposed contradiction/);
+ const denied=render({...ready,evidencePhase:'error'});
+ assert.match(denied,/data-testid="second-opinion-proposals-unchecked"/);
+ assert.doesNotMatch(denied,/1 proposed contradiction/);
+ assert.match(denied,/Could we discuss fictional marker/);
+ assert.doesNotMatch(render({...ready,questionListPhase:'error'}),/data-testid="second-opinion-proposal-readiness"/);
+});
+
+test('authored comparisons require an explicit click and are disabled during uncertain writes',()=>{
+ const s={...base(),questions:[question()]};
+ const initial=render(s);
+ assert.match(initial,/data-testid="second-opinion-check-proposals"/);
+ assert.match(initial,/Use the button above to request an authorized read here/);
+ assert.match(initial,/data-checked="false"/);
+ const pending=render({...s,evidenceWritePhase:'unknown'});
+ assert.match(pending,/data-testid="second-opinion-check-proposals" disabled=""/);
+ assert.doesNotMatch(render({...s,questionListPhase:'error'}),/data-testid="second-opinion-check-proposals"/);
 });
