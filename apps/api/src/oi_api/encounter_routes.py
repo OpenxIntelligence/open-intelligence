@@ -14,6 +14,7 @@ from open_intelligence.store import InvalidInput
 
 from .access import Principal
 from .contracts import Contract
+from .encounter_event_contract import EncounterEvents
 
 Identifier = Annotated[int, Path(gt=0, le=2**63-1)]
 NoteKey = Annotated[str, Path(pattern=r"^[A-Z][A-Z0-9-]{1,39}$")]
@@ -110,25 +111,6 @@ class NoteHistory(Contract):
     note_key: str
     versions: list[NoteVersion]
     next_after_version: int | None
-    access_receipt_id: str
-
-
-class EncounterEvent(Contract):
-    id: int
-    event_type: Literal["clinical_encounter_scheduled", "clinical_encounter_state_changed",
-                        "clinical_note_draft_saved"]
-    occurred_at: str
-    encounter_id: int
-    encounter_revision: int | None
-    note_key: str | None
-    note_version: int | None
-
-
-class EncounterEvents(Contract):
-    patient_id: str
-    events: list[EncounterEvent]
-    resume_after_id: int
-    has_more: bool
     access_receipt_id: str
 
 
