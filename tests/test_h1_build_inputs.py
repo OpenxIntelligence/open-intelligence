@@ -99,6 +99,45 @@ class BuildInputsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 inputs.check_web(wrong, inventory)
 
+    def test_browser_bom_is_bound_to_installed_aliases_and_reviewed_archive_hashes(self):
+        raw = hashlib.sha512(b"fictional package").digest()
+        loc = "node_modules/alias"
+        row = {"location": loc, "name": "@group/implementation", "version": "1.2.3",
+               "integrity": "sha512-" + base64.b64encode(raw).decode(), "declared_license": "MIT",
+               "registry_tarball": "https://registry.npmjs.org/@group/implementation/-/implementation-1.2.3.tgz",
+               "dependency_flags": ["dev"], "expected_in_omit_optional_install": True}
+        omitted = dict(row, location="node_modules/absent", expected_in_omit_optional_install=False)
+        expected = {"inputs_sha256": {inputs.WEB + "package-lock.json": "a" * 64},
+                    "web_lock_locations": [row, omitted]}
+        app = {"type": "application", "name": "fictional-web", "version": "1.0.0"}
+        props = {"oi:package-lock-sha256": "a" * 64, "oi:absent-optional-count": "1",
+                 "oi:scope": "Installed npm build environment for fictional H1 development",
+                 "oi:license-evidence": "inventory.json"}
+        component = {"type": "library", "bom-ref": loc, "group": "@group", "name": "implementation",
+                     "version": row["version"], "purl": "pkg:npm/%40group/implementation@1.2.3",
+                     "licenses": [{"expression": "MIT"}],
+                     "externalReferences": [{"type": "distribution", "url": row["registry_tarball"],
+                                             "hashes": [{"alg": "SHA-512", "content": raw.hex()}]}],
+                     "properties": [{"name": "oi:development-dependency", "value": "true"}]}
+        bom = {"bomFormat": "CycloneDX", "specVersion": "1.6", "version": 1,
+               "metadata": {"component": app, "properties": [{"name": k, "value": v} for k, v in props.items()]},
+               "components": [component]}
+        inputs.check_web_bom(bom, expected, app["name"], app["version"])
+        for label, mutation in (
+            ("omission", lambda b: b["components"].clear()),
+            ("duplicate", lambda b: b["components"].append(component)),
+            ("absent optional", lambda b: b["components"][0].update({"bom-ref": omitted["location"]})),
+            ("alias", lambda b: b["components"][0].update(purl="pkg:npm/alias@1.2.3")),
+            ("digest", lambda b: b["components"][0]["externalReferences"][0]["hashes"][0].update(content="0" * 128)),
+            ("unscoped hash", lambda b: b["components"][0].update(hashes=component["externalReferences"][0]["hashes"])),
+            ("scope", lambda b: b["metadata"]["properties"].clear()),
+        ):
+            with self.subTest(label=label):
+                broken = copy.deepcopy(bom)
+                mutation(broken)
+                with self.assertRaises(ValueError):
+                    inputs.check_web_bom(broken, expected, app["name"], app["version"])
+
     def test_api_receipt_cannot_omit_supplier_components_or_replace_wheel_hash(self):
         source = inputs.read_json(inputs.ROOT / inputs.API / "dependency-license-inventory.json")
         sbom = inputs.wheel_gate.cyclonedx({"inventory": source})

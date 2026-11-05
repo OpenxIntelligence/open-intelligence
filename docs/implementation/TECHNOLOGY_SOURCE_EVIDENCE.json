@@ -1,0 +1,4804 @@
+{
+  "observed": "2026-11-05",
+  "scope": "Source-level screening for the technology catalog. Decisions and scored comparisons remain in TECHNOLOGY_INFRASTRUCTURE.md, TECHNOLOGY_CLINICAL.md and TECHNOLOGY_SCIENCE.md. Actual installed artifacts have separate rights registers.",
+  "method": "Commit and tag are source coordinates. Repository-reported SPDX is the upstream default-branch classifier and may differ from terms at the pinned revision. Resolve each license_evidence path at source_commit and verify its Git blob ID. DESCRIPTION is package metadata. Empty evidence or NOASSERTION requires manual qualification. Manifest counts refer only to the stated section, including workspace-root effects. They exclude transitive resolution, platform conditions, native linkage and deployment permission.",
+  "sources": [
+    {
+      "area": "API and persistence",
+      "upstream": "https://codeberg.org/tlocke/pg8000",
+      "version": "1.31.6",
+      "reviewed_wheel_sha256": "1ffe27af94fa5b37ce6885b98d591dc75562ff076859bf50ca7729af59345a80",
+      "wheel_license_expression": "BSD-3-Clause",
+      "wheel_license_evidence": [
+        {
+          "path_in_wheel": "pg8000-1.31.6.dist-info/licenses/LICENSE",
+          "sha256": "f63e001d98a1bff7a5ed37d87e3ecee239979b00b9176acc8cea8338f3bd0523",
+          "kind": "bundled_license_text"
+        }
+      ]
+    },
+    {
+      "area": "API and persistence",
+      "upstream": "https://github.com/fastapi/fastapi",
+      "source_commit": "7a0a3f0b286c6c865cf4398ea0e957a87b8bffa4",
+      "commit_date": "2026-10-23",
+      "tag": "0.162.0",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "3e92463e6bd522a2a21e5f0a80d8089d6c4be20d"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "847a55fece496d6e2887ca8b0515de4140db36fb",
+        "section": "project.dependencies",
+        "declared_entries": 6
+      }
+    },
+    {
+      "area": "API and persistence",
+      "upstream": "https://github.com/pgvector/pgvector",
+      "source_commit": "724588a5504b0e9c462e3126563370e8d50a01eb",
+      "commit_date": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "fc5f177fa5d9c0d20a949f4b4faa028999977008"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "API and persistence",
+      "upstream": "https://github.com/postgres/postgres",
+      "source_commit": "7d3e000c5961a544302072058a1184e9a588837b",
+      "commit_date": "2026-08-10",
+      "tag": "REL_16_15",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "COPYRIGHT",
+          "blob": "0a397648dcd3c2177acc58bd7daecd11ad64be62"
+        }
+      ],
+      "root_manifest_paths": [
+        "configure.ac",
+        "meson.build"
+      ],
+      "inspected_manifest": {
+        "path": "configure.ac",
+        "blob": "ea2b89c28302e109c646d777d6eb258a89b0ce63"
+      }
+    },
+    {
+      "area": "API and persistence",
+      "upstream": "https://github.com/pydantic/pydantic",
+      "source_commit": "b2212c787fb5c73386dc770681ec49cd09da8e73",
+      "commit_date": "2026-10-11",
+      "tag": "v2.14.1",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "488c6260c10f2e88fa1fae58a63fccec8d600cd1"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "caa1f687d0881ae7b24ee447c52f13ba7309a902",
+        "section": "project.dependencies",
+        "declared_entries": 4
+      }
+    },
+    {
+      "area": "API and persistence",
+      "upstream": "https://github.com/python/cpython",
+      "source_commit": "534605904dfa7db25bf19a1b959411b8562c2b80",
+      "commit_date": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "20cf39097c68baa17cc566b64e76d34ebf034044"
+        }
+      ],
+      "root_manifest_paths": [
+        "configure.ac"
+      ],
+      "inspected_manifest": {
+        "path": "configure.ac",
+        "blob": "753f997a20da4a2cea7b334f6267e9091a0992d8"
+      }
+    },
+    {
+      "area": "API and persistence",
+      "upstream": "https://github.com/sqlalchemy/alembic",
+      "source_commit": "47da01c856027876f4022b2da721a4edd6b4a0db",
+      "commit_date": "2026-10-22",
+      "tag": "rel_1_20_1",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-30",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "b03e235f9a94f5893b5d33eb8756eee57a26853f"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "bf695cf23bfc41c296cdd2c0bed37b6c1ad97875",
+        "section": "project.dependencies",
+        "declared_entries": 4
+      }
+    },
+    {
+      "area": "API and persistence",
+      "upstream": "https://github.com/sqlalchemy/sqlalchemy",
+      "source_commit": "1d116e2e0cd98e044a552a8cae8896c913f74e94",
+      "commit_date": "2026-10-16",
+      "tag": "rel_2_0_55",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "903d67495fc6c2017713c754cf16b8f179122ed2"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "9b15c757b706e20ce86479ec54a1bcc8187438de"
+      }
+    },
+    {
+      "area": "Artifact storage",
+      "upstream": "https://github.com/apache/arrow",
+      "source_commit": "9e5d6978e9acf372cc989aaaf94e863fe8582c90",
+      "commit_date": "2026-10-30",
+      "tag": "apache-arrow-26.0.1",
+      "release_published": "2026-11-03",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "c6616a5b4501aebf3836cf4e46219aeb236e81c2"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Artifact storage",
+      "upstream": "https://github.com/apache/parquet-format",
+      "source_commit": "04d56f291ff963e98bc37ab8100e2fc133ff583c",
+      "commit_date": "2026-09-07",
+      "tag": "apache-parquet-format-2.14.0",
+      "release_published": "2026-09-11",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-02",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "6b0b1270ff0ca8f03867efcd09ba6ddb6392b1e1"
+        }
+      ],
+      "root_manifest_paths": [
+        "pom.xml"
+      ],
+      "inspected_manifest": {
+        "path": "pom.xml",
+        "blob": "960c90e78c87cf23f8910e6b12d726b9f42e7a4a",
+        "section": "root dependencies (excluding managed and module entries)",
+        "declared_entries": 4
+      }
+    },
+    {
+      "area": "Artifact storage",
+      "upstream": "https://github.com/duckdb/duckdb",
+      "source_commit": "d54cbbe3df17e8e5ce68312f483b4155836112aa",
+      "commit_date": "2026-10-20",
+      "tag": "v2.0.0",
+      "release_published": "2026-10-21",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "2719c9a23d2a37c1dfb7402e79f03bd615701e53"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "3e69d9b32e4d273d05e7ce307f24d0562652aa09"
+      }
+    },
+    {
+      "area": "Artifact storage",
+      "upstream": "https://github.com/HDFGroup/hdf5",
+      "source_commit": "49df1b4e5ca4108d56e80f06321a749da1535268",
+      "commit_date": "2026-07-28",
+      "tag": "2.2.0",
+      "release_published": "2026-07-29",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "60abcc29ca67d24cee34ae67e045c041f3692b47"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "5cb582502156a848d09b9d3b80cd9c7a7f29f8eb"
+      }
+    },
+    {
+      "area": "Artifact storage",
+      "upstream": "https://github.com/minio/minio",
+      "source_commit": "9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a",
+      "commit_date": "2025-10-15",
+      "tag": "RELEASE.2025-10-15T17-29-55Z",
+      "release_published": "2025-10-16",
+      "repository_archived_at_observation": true,
+      "repository_last_push_at_observation": "2026-04-24",
+      "repository_reported_spdx": "AGPL-3.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "be3f7b28e564e7dd05eaf59d64adba1a4065ac0e"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "a957085237fdcff2cebd3640703dfa237a146d7f",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 95
+      }
+    },
+    {
+      "area": "Artifact storage",
+      "upstream": "https://github.com/seaweedfs/seaweedfs",
+      "source_commit": "984eac6a790be89e2a11de175a7413e1e3e32dd3",
+      "commit_date": "2026-11-02",
+      "tag": "4.52",
+      "release_published": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "c9c58bb50326065bd516d433f284cc865b97362a"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "a883daee0720530e0b2eb79ad0763c9df7f86b45",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 126
+      }
+    },
+    {
+      "area": "Artifact storage",
+      "upstream": "https://github.com/TileDB-Inc/TileDB",
+      "source_commit": "6ea48ca43f292c46a33925e1dd9659a1bd657c9a",
+      "commit_date": "2026-02-24",
+      "tag": "2.30.1",
+      "release_published": "2026-02-25",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-20",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "12c57948bebfb84be7f27ec512b7e9430b2cc296"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "6b315d14f90b401c2ee61cdadf23ba64da2ea12f"
+      }
+    },
+    {
+      "area": "Artifact storage",
+      "upstream": "https://github.com/treeverse/dvc",
+      "source_commit": "356dfa03278058b02df42124f243c2c345329dae",
+      "commit_date": "2026-03-31",
+      "tag": "3.67.1",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-02",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "c8413d4d91986ad37e6b83bbc5a8a3c92070419d"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "0e26314a69e8fe64d28c522ad3c5f49ae46cb3da",
+        "section": "project.dependencies",
+        "declared_entries": 42
+      }
+    },
+    {
+      "area": "Artifact storage",
+      "upstream": "https://github.com/treeverse/lakeFS",
+      "source_commit": "ef369be652b8110605ba19b770fddb8a337e8d20",
+      "commit_date": "2026-10-01",
+      "tag": "v1.88.0",
+      "release_published": "2026-10-01",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "22e155fa41eb63b09d4e6a58f7add216a16c5813"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "3d66445573fbf83ba585de9a3297f8bd978ad253",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 94
+      }
+    },
+    {
+      "area": "Artifact storage",
+      "upstream": "https://github.com/zarr-developers/zarr-python",
+      "source_commit": "a2f2415c86f7d35212ae8c0d5dc5e4a22a6c6191",
+      "commit_date": "2026-10-27",
+      "tag": "v3.4.2",
+      "release_published": "2026-10-27",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "1e8da4d2424241744037944bdf0a54ff458b3524"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "0df173f805d0af576741ef5bf3be8260a7490e25",
+        "section": "project.dependencies",
+        "declared_entries": 7
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/allenai/scispacy",
+      "source_commit": "ac03b40d5c82fb9c1c0ab084c440fd07c2f28cc6",
+      "commit_date": "2025-10-01",
+      "tag": "v0.6.2",
+      "release_published": "2025-10-01",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2025-12-04",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "requirements.in"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "af96815ad95a64c3303a52a1c6acfd4c573f81b8",
+        "section": "project.dependencies",
+        "declared_entries": 10
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/BerriAI/litellm",
+      "source_commit": "b48077ff9ef6b14dd3f188d020ee7f40e2c5ebca",
+      "commit_date": "2026-11-04",
+      "tag": "v1.108.0",
+      "release_published": "2026-11-04",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "3bfef5bae9b48c334acf426d5b7f21bc1913aab9"
+        },
+        {
+          "path": "license_cache.json",
+          "blob": "dc061b48f4f9634da6d30a792e0e4bf30efe6f73"
+        }
+      ],
+      "root_manifest_paths": [
+        "package-lock.json",
+        "package.json",
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "c26d9a7c6ec50eae053d5f9557a0bc570386f43c",
+        "section": "project.dependencies",
+        "declared_entries": 23
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/confident-ai/deepeval",
+      "source_commit": "da9b2c969f8a15e8aa4ef67c372157ce060cd63e",
+      "commit_date": "2026-09-22",
+      "tag": "python-v4.2.4",
+      "release_published": "2026-09-22",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE.md",
+          "blob": "a27de83203ab2f62f489794d0996e9c8704c5aa1"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "c2e721bdd2c7522550ccb938284d8ee306755322",
+        "section": "tool.poetry.dependencies",
+        "declared_entries": 31
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/deepset-ai/haystack",
+      "source_commit": "7f0ab62afb01c096557d5d69ec57276dd6583a57",
+      "commit_date": "2026-10-21",
+      "tag": "v3.4.1",
+      "release_published": "2026-10-21",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "6fb66d8d5fa55912ee80f4fdab94cab99140c448"
+        },
+        {
+          "path": "license-header.txt",
+          "blob": "df5ebe365dc137e24cbed45dfa4d2fff37531d2f"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "85c5ec3e9f043f854ff9366d825966fb8d202856",
+        "section": "project.dependencies",
+        "declared_entries": 19
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/explosion/spaCy",
+      "source_commit": "43311999028032fd81bef77a75fdb4fa96803c98",
+      "commit_date": "2026-10-26",
+      "tag": "release-v3.8.18",
+      "release_published": "2026-10-26",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-27",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "6cb7810c6ee4ca32c79e68b9f39fbbce2183243a"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "requirements.txt",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "eefc2a4e5332c489bdaf7c8986ff7486ab9041ca"
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/ggml-org/llama.cpp",
+      "source_commit": "cd959bae99ff4bed22bef2604f45241c09bbb8c8",
+      "commit_date": "2026-11-04",
+      "tag": "v0.9.0",
+      "release_published": "2026-11-04",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "e7dca554bcb802f98408383a864404e3aa4eacca"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt",
+        "pyproject.toml",
+        "requirements.txt"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "996529753e456438ac43b591d8457fbb7284a845",
+        "section": "project.dependencies",
+        "declared_entries": 7
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/huggingface/huggingface_hub",
+      "source_commit": "fd5dccbb731e212df4f1dfa53b8f406b866070d3",
+      "commit_date": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "de8ff66ab54a6fd2ac65f5d429538300f8f9bde5"
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/huggingface/text-generation-inference",
+      "source_commit": "b4adbf2f6e2e721280bd0ea5f91d70f7d033f5ed",
+      "commit_date": "2026-03-21",
+      "repository_archived_at_observation": true,
+      "repository_last_push_at_observation": "2026-03-21",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "7d0e80345c787d5080678c89b3834b50e399c3f5"
+        }
+      ],
+      "root_manifest_paths": [
+        "Cargo.toml"
+      ],
+      "inspected_manifest": {
+        "path": "Cargo.toml",
+        "blob": "f985d0a1356362ef4e74c80f6d8e6d520ba6a0ca",
+        "section": "workspace.dependencies (declarations for members)",
+        "declared_entries": 8
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/huggingface/transformers",
+      "source_commit": "446a570e62b04a89ea001604ada7366baac2ea67",
+      "commit_date": "2026-10-30",
+      "tag": "v5.22.1",
+      "release_published": "2026-10-30",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "68b7d66c97d66c58de883ed0c451af2b3183e6f3"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "2845e3b3ac0926d69fa41278af8cd393118f1ef2"
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/langchain-ai/langchain",
+      "source_commit": "b4aa7e7d00c452251720ce30b8bc2c41ca44e1f5",
+      "commit_date": "2026-11-05",
+      "tag": "langchain-core==1.7.6",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "3957738673765912ca83a0048f833e095d61e087"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/medspacy/medspacy",
+      "source_commit": "c9f7781f88256190d32eb06480fcea8c4a617382",
+      "commit_date": "2024-11-21",
+      "tag": "1.3.1",
+      "release_published": "2024-11-21",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-06-04",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "96a38657c978c7b4ff356b5bf7d961c51c36dfff"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "64710ac8336d92617b0033a0f7bcf64a3748c6de"
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/microsoft/onnxruntime",
+      "source_commit": "6af1a932e2286d5c58166085d24c68783033edee",
+      "commit_date": "2026-10-23",
+      "tag": "v1.31.1",
+      "release_published": "2026-10-26",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "48bc6bb4996ac924359e8e28b9ae88970e5ed3fc"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "requirements-dev.txt",
+        "requirements-doc.txt",
+        "requirements-lintrunner.txt",
+        "requirements-materialize-onnx-node-tests.txt",
+        "requirements-training.txt",
+        "requirements.txt",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "532e4bf0b8ccd02caff0337612989763e52aaebc"
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/mlflow/mlflow",
+      "source_commit": "ba41106d110b67096384da12b6b85473457598db",
+      "commit_date": "2026-11-03",
+      "tag": "v3.18.0",
+      "release_published": "2026-11-04",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "db7cb10b5e330d56b40370bc178974ccabe71458"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "604486f59e82621f226bf2366daaf780021a2350",
+        "section": "project.dependencies",
+        "declared_entries": 40
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/ollama/ollama",
+      "source_commit": "9a3e8177767245acc62b735eba7d5d8a553606d0",
+      "commit_date": "2026-11-03",
+      "tag": "v0.40.14",
+      "release_published": "2026-11-03",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "8e3dc978a7ca8c53f56bbedc5b558116140fc02e"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt",
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "ebd0a528c27108a1815d2c1e577e2653abd5e1b6",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 34
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/pytorch/pytorch",
+      "source_commit": "31a77fc9c0a7c6fff15a1ff58c743f53b1a9d457",
+      "commit_date": "2026-10-28",
+      "tag": "v2.15.0",
+      "release_published": "2026-10-28",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "c23172f7aff0254e4f0f163fb2e6e355cbaec5f4"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt",
+        "pyproject.toml",
+        "requirements-build.txt",
+        "requirements.txt",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "e7648b0fcb198697832a6aab3469719a9992a8ec"
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/run-llama/llama_index",
+      "source_commit": "f12d46acab73f5b2243ef49c2f00101617b38ce4",
+      "commit_date": "2026-09-21",
+      "tag": "v0.14.25",
+      "release_published": "2026-09-21",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "e6074042d0391061b7d7d45d21e6693ae108daec"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "c4caa6b47b763bc0fdb9aee140c6113e7cad82ee",
+        "section": "project.dependencies",
+        "declared_entries": 4
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/vibrantlabsai/ragas",
+      "source_commit": "4ecab384fda829ca50bec3f07cc49589d756e172",
+      "commit_date": "2026-01-13",
+      "tag": "v0.4.3",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-02-24",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "8bcca742ae3458aa4e74d0133d51a248df16f23b"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "28c2d172d529c33f1db8bbf235282758070d103d",
+        "section": "project.dependencies",
+        "declared_entries": 19
+      }
+    },
+    {
+      "area": "Clinical NLP and inference",
+      "upstream": "https://github.com/vllm-project/vllm",
+      "source_commit": "4ba787ec9959e566d3b587a796dff07673324da5",
+      "commit_date": "2026-10-31",
+      "tag": "v0.33.0rc3",
+      "release_published": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt",
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "46c836043ca248fc5b50cb5f7ea1b3392219bf7a"
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/ansible/ansible",
+      "source_commit": "9fe1b576a1087230f3748d0fdb2ee0284ca6b5f8",
+      "commit_date": "2026-11-02",
+      "tag": "v2.22.0",
+      "release_published": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "GPL-3.0",
+      "license_evidence": [
+        {
+          "path": "COPYING",
+          "blob": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "requirements.txt"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "be53043a7082caaeb33a11a70409597f69a1a1b5"
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/borgbackup/borg",
+      "source_commit": "1b7d3271d2e59e27c61815ff36a29e06a9767e13",
+      "commit_date": "2026-07-18",
+      "tag": "1.4.5",
+      "release_published": "2026-07-18",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "5a7bd76b98ad6514a9e769daba8c5020da08643e"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "c60d128bd3485cf7d523503f007cf4cb103649ff",
+        "section": "project.dependencies",
+        "declared_entries": 2
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/caddyserver/caddy",
+      "source_commit": "0d98caea58f794f88e709b1bef2880996a471bca",
+      "commit_date": "2026-11-04",
+      "tag": "v2.11.9",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "0673617f8f0143dad3ffbc458805d1d301eb2dd9",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 55
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/containers/podman-compose",
+      "source_commit": "0f6537e9cfa38f6035ac57c1716b6d55dbaf3ca4",
+      "commit_date": "2026-06-03",
+      "tag": "v1.6.0",
+      "release_published": "2026-06-03",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-03",
+      "repository_reported_spdx": "GPL-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "d159169d1050894d3ea3b98e1c965c4058208fe1"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "requirements.txt"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "b48ce32179780b7ac494bcfab25e3091650a7877",
+        "section": "project.dependencies",
+        "declared_entries": 2
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/docker/compose",
+      "source_commit": "5bceecf985347fcf6dd23029ce440b502a0d4301",
+      "commit_date": "2026-11-02",
+      "tag": "v5.7.0",
+      "release_published": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "7a4a3ea2424c09fbe48d455aed1eaa94d9124835"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "5cbae0b9a804c85f4ce490af760efcb6e4a22877",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 55
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/hashicorp/terraform",
+      "source_commit": "ff6329e4c2a159b46ec2b73d36bfa3d0ef6560c9",
+      "commit_date": "2026-10-28",
+      "tag": "v1.17.1",
+      "release_published": "2026-10-28",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "ad310798d99823e25b0f4b49707b2b2ce0261e14"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "ebae3d913e2ec457ecc794a5057347ba50b6674f",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 81
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/helm/helm",
+      "source_commit": "c0d08d0d6d9424d4a14febb5e8a3e51b0dd00dff",
+      "commit_date": "2026-10-15",
+      "tag": "v4.3.1",
+      "release_published": "2026-10-15",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-03",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "21c57fae21f7e9ab4112e99ddbf14e74528a0abc"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "ab081cec823b8bcabf0dc9edda425a99f6d664cb",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 47
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/kubernetes/kubernetes",
+      "source_commit": "c50e5395f1ae2d4a2c05f28fdcc38c0916cc1a32",
+      "commit_date": "2026-10-27",
+      "tag": "v1.37.2",
+      "release_published": "2026-10-28",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "9750a986436714632ff4d7a74f780651bd18cda4",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 112
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/moby/moby",
+      "source_commit": "b0e1abe2928fa2215cbdbe1673bfc4f397dfcf4b",
+      "commit_date": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "6d8d58fb676bbbcc9b4432da4951e4b438478306"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "b987ed07707723261953fc8801eab482c64794d0",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 113
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/nginx/nginx",
+      "source_commit": "140aa942711868a8daeb95810bc9a81f272ada72",
+      "commit_date": "2026-10-21",
+      "tag": "release-1.31.8",
+      "release_published": "2026-10-21",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "BSD-2-Clause",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "4366554533723cee5e155e317b0eb014867c1f0a"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/opentofu/opentofu",
+      "source_commit": "588cf35372e73b0f41a61e35056c8e8804400342",
+      "commit_date": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MPL-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "c8a8176e88741baf4f5dedd73e6bef0f6c7a003b"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "b6d572727312e4b30030831924d1049fa3abe99c",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 104
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/pgbackrest/pgbackrest",
+      "source_commit": "2e1c4f2ba727c45a0a23d4b326905088dc15b1a1",
+      "commit_date": "2026-10-18",
+      "tag": "release/2.60.0",
+      "release_published": "2026-10-18",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "4d59fcfd4306f29bdc5eb391907dd1036fd25265"
+        }
+      ],
+      "root_manifest_paths": [
+        "meson.build"
+      ],
+      "inspected_manifest": {
+        "path": "meson.build",
+        "blob": "15f94caa2ee322fa84394329afa5201d47e460e9"
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/podman-container-tools/podman",
+      "source_commit": "464c15fec06f0074c916f9eff87c4806869c2833",
+      "commit_date": "2026-10-12",
+      "tag": "v6.1.4",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "9b259bdfcf9022e7f4999a318ab7261300644e11"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum",
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "5a31279c6aeabcc0ab71f31e4f3d8c07d1adb543"
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/restic/restic",
+      "source_commit": "6aa3a516ce654808a1f28f9fa21e9b7c8e6e90bf",
+      "commit_date": "2026-07-05",
+      "tag": "v0.19.1",
+      "release_published": "2026-07-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "BSD-2-Clause",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "29b2ee55a92ff2c5516d7b916224c85fa7e9139a"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "00e1171de5d2a17f21d2d13f9024ef2956e6afaa",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 34
+      }
+    },
+    {
+      "area": "Deployment and backup",
+      "upstream": "https://github.com/traefik/traefik",
+      "source_commit": "04e8ccf84ada1dcb450cec06554fe27812903134",
+      "commit_date": "2026-10-29",
+      "tag": "v3.7.17",
+      "release_published": "2026-10-30",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE.md",
+          "blob": "50d2fa2c7069a50f44252b486f1430c9a7b23b4f"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "f3f4e65298d2826182adf377c55bd755781cc65c",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 121
+      }
+    },
+    {
+      "area": "Document processing",
+      "upstream": "https://github.com/apache/pdfbox",
+      "source_commit": "1994487cf97b1ae59722f24356cd1922e32d9be5",
+      "commit_date": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "2f72615e11147db91c087610cb5e73a5787832aa"
+        }
+      ],
+      "root_manifest_paths": [
+        "pom.xml"
+      ],
+      "inspected_manifest": {
+        "path": "pom.xml",
+        "blob": "f3837e6a45907af2520d40ea2b0e2f9b25f6f8ff",
+        "section": "root dependencies (excluding managed and module entries)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Document processing",
+      "upstream": "https://github.com/apache/tika",
+      "source_commit": "fbcf973274b3998f85009152257049de178a6b6d",
+      "commit_date": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "17ea384d6121cbed828375c12212c2db8a83a3ef"
+        }
+      ],
+      "root_manifest_paths": [
+        "pom.xml"
+      ],
+      "inspected_manifest": {
+        "path": "pom.xml",
+        "blob": "12a26f6059fc8bb72580dc7346cd5042fcd12b18",
+        "section": "root dependencies (excluding managed and module entries)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Document processing",
+      "upstream": "https://github.com/docling-project/docling",
+      "source_commit": "0fa0918d16de7769d942f9b06ca18cb673cbbc2e",
+      "commit_date": "2026-11-05",
+      "tag": "v2.148.0",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "6684a401bf0f700fd37104ab7c8da340036f7166"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "88a00acafa559b0760a407e3fbfc34ef3197d5b2",
+        "section": "project.dependencies",
+        "declared_entries": 9
+      }
+    },
+    {
+      "area": "Document processing",
+      "upstream": "https://github.com/jsvine/pdfplumber",
+      "source_commit": "7d4f2f582f2d99f9e60ba522fdf7afd2f6d54c62",
+      "commit_date": "2026-06-15",
+      "tag": "v0.11.10",
+      "release_published": "2026-06-15",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-15",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "3300ee1ec31dbb2beb6b516bbde4ce8db63d4169"
+        }
+      ],
+      "root_manifest_paths": [
+        "requirements-dev.txt",
+        "requirements.txt",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "requirements.txt",
+        "blob": "4eadb18be2d415d390fe4bbdab0b90219c0195fe"
+      }
+    },
+    {
+      "area": "Document processing",
+      "upstream": "https://github.com/ocrmypdf/OCRmyPDF",
+      "source_commit": "1a1cfb595b9a504a4689b23193a76bae7c3a156d",
+      "commit_date": "2026-09-28",
+      "tag": "v17.13.0",
+      "release_published": "2026-09-28",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-25",
+      "repository_reported_spdx": "MPL-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "a612ad9813b006ce81d1ee438dd784da99a54007"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "5c147eeee41b14ea8007f5f54badb29dcd09ecf8",
+        "section": "project.dependencies",
+        "declared_entries": 12
+      }
+    },
+    {
+      "area": "Document processing",
+      "upstream": "https://github.com/opencv/opencv",
+      "source_commit": "40738fb16ceddb5fb3fea747585f7ce6abb0605b",
+      "commit_date": "2026-06-05",
+      "tag": "5.0.0",
+      "release_published": "2026-06-06",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "COPYRIGHT",
+          "blob": "d3b233036b4a3a78a0813edd084061ae51ddb7b0"
+        },
+        {
+          "path": "LICENSE",
+          "blob": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "d6812aa76ee0d224bc4c138d7b748145d98ed3f6"
+      }
+    },
+    {
+      "area": "Document processing",
+      "upstream": "https://github.com/PaddlePaddle/PaddleOCR",
+      "source_commit": "b03f46425e8ff4442b268ce449e3eef758146cd4",
+      "commit_date": "2026-06-11",
+      "tag": "v3.7.0",
+      "release_published": "2026-06-11",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-09-16",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "430edfa0cfcb59f15b7aa5457427d0faf2e40dac"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "requirements.txt",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "184dec7f58fcb8ca40c06128adbba7cc1ea9af74",
+        "section": "project.dependencies",
+        "declared_entries": 5
+      }
+    },
+    {
+      "area": "Document processing",
+      "upstream": "https://github.com/py-pdf/pypdf",
+      "source_commit": "b2c3fa2ee689f582a0de256a45e30bd96c68f807",
+      "commit_date": "2026-10-28",
+      "tag": "6.21.4",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "ab327d0312875458ba74983867f1b2622b6de39d"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "ec733a00aa3eb1243a276f649f5cf3f8923333cd",
+        "section": "project.dependencies",
+        "declared_entries": 1
+      }
+    },
+    {
+      "area": "Document processing",
+      "upstream": "https://github.com/pymupdf/PyMuPDF",
+      "source_commit": "16c664fd456baca66ba1e72d53922a54fcfc997a",
+      "commit_date": "2026-11-02",
+      "tag": "2.1",
+      "release_published": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "AGPL-3.0",
+      "license_evidence": [
+        {
+          "path": "COPYING",
+          "blob": "dba13ed2ddf783ee8118c6a581dbf75305f816a3"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "f565ccc713e92557e818708ae375a7d4df9223eb"
+      }
+    },
+    {
+      "area": "Document processing",
+      "upstream": "https://github.com/tesseract-ocr/tesseract",
+      "source_commit": "7e548e6eff172f38f97664afe7f7ce40db36c8d6",
+      "commit_date": "2026-10-28",
+      "tag": "5.5.4",
+      "release_published": "2026-10-28",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-02",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt",
+        "configure.ac"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "bdd19c7d23495a4fe0fff8cd12b5d9ecaf03af5d"
+      }
+    },
+    {
+      "area": "Document processing",
+      "upstream": "https://github.com/Unstructured-IO/unstructured",
+      "source_commit": "9d9437d6094c1ffa3e6df72a38db5fb59216fe8f",
+      "commit_date": "2026-10-30",
+      "tag": "0.27.36",
+      "release_published": "2026-10-30",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE.md",
+          "blob": "b807bcb4281598fdb402807621127fad312b3f74"
+        }
+      ],
+      "root_manifest_paths": [
+        "environment.yml",
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "528abb47f0c99769a263631b42d62343bab606ca",
+        "section": "project.dependencies",
+        "declared_entries": 25
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/ag-grid/ag-grid",
+      "source_commit": "0bfa458d832add005365c62732d613f6dd34b544",
+      "commit_date": "2026-11-04",
+      "tag": "release-36.3.0",
+      "release_published": "2026-11-04",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "f1456e7c185b120949fb57793a98ee4d1f0d5ff8"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "yarn.lock"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "f8bfaeee43c4afe1d47f6fc0c1c315968eb57b60",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 3
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/colinhacks/zod",
+      "source_commit": "b500a2ee95134f81d74da7911d7378dd2853d042",
+      "commit_date": "2026-10-12",
+      "tag": "v4.6.7",
+      "release_published": "2026-10-12",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "c06579627b432d09779094cd0166b7f37fe51db8"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "pnpm-lock.yaml"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "49902219125593e3f650d6d713103bf62be7ecd4",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/microsoft/TypeScript",
+      "source_commit": "c63de15a992d37f0d6cec03ac7631872838602cb",
+      "commit_date": "2025-09-25",
+      "tag": "v5.9.3",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "8746124b277914d0f0fd9cf4aef2ed3b587143d9"
+        }
+      ],
+      "root_manifest_paths": [
+        "package-lock.json",
+        "package.json"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "f7f35370bc8ad447e488e01cd10acbc606549cd8",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/pmndrs/zustand",
+      "source_commit": "382d29c485e67018c06e75ec7235130d0968522c",
+      "commit_date": "2026-10-22",
+      "tag": "v5.0.16",
+      "release_published": "2026-10-22",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-03",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "a2c2649deec2aabf248294a60a6e2e63a58f4a2b"
+        }
+      ],
+      "root_manifest_paths": [
+        "package-lock.json",
+        "package.json",
+        "pnpm-lock.yaml"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "3aa9040a2b634712dcd8f8c7bd6a41931b2b42be",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/radix-ui/primitives",
+      "source_commit": "eb3a2b7091293e27df8f9ba906632d8daa3d81a3",
+      "commit_date": "2026-10-14",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-14",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "a18858fb7b014098cba85703e66609be66a26ef5"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "pnpm-lock.yaml"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "bc5b06cf31ab2cf0591794222494671cc7ef5990",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/react-hook-form/react-hook-form",
+      "source_commit": "de3c9469df8b28315265178b58909ee05aa57b74",
+      "commit_date": "2026-10-23",
+      "tag": "v7.91.0",
+      "release_published": "2026-10-23",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "139faf48e1b4926a8743bc7a5bd67287f43f0dd0"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "pnpm-lock.yaml"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "4b537ba8e8b0d18afc29fb251ac70a1879d9ec41",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/react/react",
+      "source_commit": "61aa00df822d0eb76d0362eb8b6fdd3527693efe",
+      "commit_date": "2026-10-14",
+      "tag": "v19.3.1",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "b93be90515ccd0b9daedaa589e42bf5929693f1f"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "yarn.lock"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "183a8ce8846090ea02744bc03b7f58c4003c9e12",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/reduxjs/redux-toolkit",
+      "source_commit": "ec4a1a1028e39fc001001a4e4c04de426a7cbc3f",
+      "commit_date": "2026-11-03",
+      "tag": "v2.14.0",
+      "release_published": "2026-11-03",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "1daa252487ffa02378254a6446a12b1507913baa"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "pnpm-lock.yaml"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "523ad78dd8e182108f191f9e5f09b37d4ec67b78",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/shadcn-ui/ui",
+      "source_commit": "96da9cc7f1aa10580a3741664e2a77c721206c00",
+      "commit_date": "2026-10-27",
+      "tag": "shadcn@4.23.0",
+      "release_published": "2026-10-27",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE.md",
+          "blob": "fad4d887a681dd49233e5ed01ee2c7a1513089a0"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "pnpm-lock.yaml"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "177db4e9e956405d9f8b09eb883eefbf0dde12d6",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 29
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/tailwindlabs/tailwindcss",
+      "source_commit": "2626ae6ceddf36069ab6d55c53a5857c1e2e360a",
+      "commit_date": "2026-11-02",
+      "tag": "v4.3.4",
+      "release_published": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "d6a82290738a9f78946cbcb4594535d6984086dd"
+        }
+      ],
+      "root_manifest_paths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "package.json",
+        "pnpm-lock.yaml"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "90fd42f031b5643d13c509d7b0d57f2a36c249ae",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/TanStack/query",
+      "source_commit": "284abac02d34f88ceb119c2af3fd3cf400b64a7a",
+      "commit_date": "2026-11-05",
+      "tag": "release-2026-11-05-0808",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "1869e21fc3c80b3010c3e60c5ab6dda077ce1f22"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "pnpm-lock.yaml"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "7071c7de7f7e087e7a11f5538c43c3ba0ce91eea",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/TanStack/router",
+      "source_commit": "6b9fe6d29552270836c511bc9b343d73541f4424",
+      "commit_date": "2026-10-22",
+      "tag": "release-2026-10-22-2011",
+      "release_published": "2026-10-22",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "1869e21fc3c80b3010c3e60c5ab6dda077ce1f22"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "pnpm-lock.yaml"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "5876d0893d97bdb1ea7768c5b1d356a9b8aa762a",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/TanStack/table",
+      "source_commit": "c14e0221b1e656c7bb35e7b3d4cdf188719a3599",
+      "commit_date": "2026-10-21",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-02",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "9fe1442eeb4881c516ae031f29c6c3a90446e9ec"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "9c36885489d094dab1cfe1742462e63480033d9c",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Frontend",
+      "upstream": "https://github.com/vitejs/vite",
+      "source_commit": "284f6b58d6b511cebdd52ab7731975f385bf3c6b",
+      "commit_date": "2026-10-06",
+      "tag": "v7.3.7",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "b7e97ecb6aa4dd70b3e3a637afa2ae16feb7cd12"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "pnpm-lock.yaml"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "cbe91e079b946dd19b764b489ed83c9e4e4a8e69",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Genomics",
+      "upstream": "https://github.com/BenLangmead/bowtie2",
+      "source_commit": "0c6a1c75e047ad8bf70c178fa3cb1528fba6adc2",
+      "commit_date": "2026-02-17",
+      "tag": "v2.5.5",
+      "release_published": "2026-02-17",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-28",
+      "repository_reported_spdx": "GPL-3.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "94a9ed024d3859793618152ea559a168bbcbb5e2"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "bea226e8b42506acf05b8c4a73f2c07421120557"
+      }
+    },
+    {
+      "area": "Genomics",
+      "upstream": "https://github.com/broadinstitute/gatk",
+      "source_commit": "0cde69eed30339f5978cbb1ac6e5cf3662f9e1f8",
+      "commit_date": "2026-08-18",
+      "tag": "4.7.0.0",
+      "release_published": "2026-08-18",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE.TXT",
+          "blob": "814463714a3a17572a54bda348b3c603f3c2b321"
+        }
+      ],
+      "root_manifest_paths": [
+        "build.gradle"
+      ],
+      "inspected_manifest": {
+        "path": "build.gradle",
+        "blob": "81186771e59ced951a0951e8f52e016e2c1a55d5"
+      }
+    },
+    {
+      "area": "Genomics",
+      "upstream": "https://github.com/Ensembl/ensembl-vep",
+      "source_commit": "f479099e2a9cd86887a48cf5c293fd7a208ddfb9",
+      "commit_date": "2026-10-09",
+      "tag": "release/116.3",
+      "release_published": "2026-10-09",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-03",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "a19f2ea62693add496a08bfd7127d58470f90045"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Genomics",
+      "upstream": "https://github.com/lh3/bwa",
+      "source_commit": "b92993c1161e73167181558856567ef2f367e3f0",
+      "commit_date": "2025-03-22",
+      "tag": "v0.7.19",
+      "release_published": "2025-03-22",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-08-07",
+      "repository_reported_spdx": "GPL-3.0",
+      "license_evidence": [
+        {
+          "path": "COPYING",
+          "blob": "94a9ed024d3859793618152ea559a168bbcbb5e2"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Genomics",
+      "upstream": "https://github.com/lh3/minimap2",
+      "source_commit": "3c28777e7e2dcc90f825de1b9f17a89cca7d4452",
+      "commit_date": "2026-05-19",
+      "tag": "v2.31",
+      "release_published": "2026-05-19",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-05-19",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "1a06f649097017b07e9a4aaef9cc78d0036eed8c"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "bc2be6730f09d097bf6af5350c4e8ff657dde3f8"
+      }
+    },
+    {
+      "area": "Genomics",
+      "upstream": "https://github.com/OpenGene/fastp",
+      "source_commit": "ee125a52fddae9d8189e13cd8a33ad04988a1351",
+      "commit_date": "2026-10-07",
+      "tag": "v1.4.0",
+      "release_published": "2026-10-07",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-07",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "4e6bd94f8a6717d3158913ceea855ea51a0640ad"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Genomics",
+      "upstream": "https://github.com/pcingola/SnpEff",
+      "source_commit": "1db15998ea6aad93a35848aca0f6cba81cd36738",
+      "commit_date": "2026-03-09",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-03-09",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE.md",
+          "blob": "0c75beb0294a80eaf612e23db695f4256340b87d"
+        }
+      ],
+      "root_manifest_paths": [
+        "pom.xml",
+        "requirements.txt"
+      ],
+      "inspected_manifest": {
+        "path": "pom.xml",
+        "blob": "c49e209bd68b0a4ee07380e99bacccca1d677552",
+        "section": "root dependencies (excluding managed and module entries)",
+        "declared_entries": 17
+      }
+    },
+    {
+      "area": "Genomics",
+      "upstream": "https://github.com/s-andrews/FastQC",
+      "source_commit": "da2674c2687d1e3296b34a696421b33b93cc8123",
+      "commit_date": "2026-10-02",
+      "tag": "v0.13.0",
+      "release_published": "2026-10-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-07",
+      "repository_reported_spdx": "GPL-3.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "94a9ed024d3859793618152ea559a168bbcbb5e2"
+        },
+        {
+          "path": "LICENSE_JHDF5.txt",
+          "blob": "f820d4bd3a6072ed03f22499937d1e0c62f806ea"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Genomics",
+      "upstream": "https://github.com/samtools/bcftools",
+      "source_commit": "09795cc2d3f9275e0ac2d0b44d837855b8aceee2",
+      "commit_date": "2026-10-27",
+      "tag": "1.25",
+      "release_published": "2026-10-27",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "dbe9739eaabfb196620fbbe5b4b353b5ec451add"
+        }
+      ],
+      "root_manifest_paths": [
+        "configure.ac"
+      ],
+      "inspected_manifest": {
+        "path": "configure.ac",
+        "blob": "18d25d11f3629a410a9a742d055cfbb38a91dbcd"
+      }
+    },
+    {
+      "area": "Genomics",
+      "upstream": "https://github.com/samtools/htslib",
+      "source_commit": "20b9f2a85371732a10f4ea285b9708ceb2dd41e2",
+      "commit_date": "2026-10-27",
+      "tag": "1.25",
+      "release_published": "2026-10-27",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "1b1d06d03266534c63e37b6042a5227c83ec67e2"
+        }
+      ],
+      "root_manifest_paths": [
+        "configure.ac"
+      ],
+      "inspected_manifest": {
+        "path": "configure.ac",
+        "blob": "399e506ded4f83a1c3c972475b44ba89f8346fea"
+      }
+    },
+    {
+      "area": "Genomics",
+      "upstream": "https://github.com/samtools/samtools",
+      "source_commit": "7162950d0988480faeddeb49f03520737e13a9c4",
+      "commit_date": "2026-10-27",
+      "tag": "1.25",
+      "release_published": "2026-10-27",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-03",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "a5c92ac1c5934c06768e53c94104d825f71a4f92"
+        }
+      ],
+      "root_manifest_paths": [
+        "configure.ac"
+      ],
+      "inspected_manifest": {
+        "path": "configure.ac",
+        "blob": "ff470edacaa6b04b1ff6d0f05b7edf89f783e342"
+      }
+    },
+    {
+      "area": "Identity and policy",
+      "upstream": "https://github.com/apache/casbin",
+      "source_commit": "e9df34e092f925e0031f7db4e062f2fbddf3dc86",
+      "commit_date": "2026-08-04",
+      "tag": "v3.11.0",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "487362a6bfcd4aeec5856da939ca7e6640e01117"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "c46f727d388655b35cb7de834831e22a3e4a9a55",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 3
+      }
+    },
+    {
+      "area": "Identity and policy",
+      "upstream": "https://github.com/goauthentik/authentik",
+      "source_commit": "4ec0d19b98da3c329781894cd550da95d3033954",
+      "commit_date": "2026-10-21",
+      "tag": "version/2026.8.5",
+      "release_published": "2026-10-21",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "66089a4c2afa9b024f52507c51e3413975670b3a"
+        }
+      ],
+      "root_manifest_paths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "go.mod",
+        "go.sum",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "23bf003db2a6bc39f4fc3215b533105f33a95f6e",
+        "section": "project.dependencies",
+        "declared_entries": 69
+      }
+    },
+    {
+      "area": "Identity and policy",
+      "upstream": "https://github.com/Infisical/infisical",
+      "source_commit": "d040ecd84bb7b1708929f31372331d7c4dc03fa0",
+      "commit_date": "2026-11-03",
+      "tag": "v0.167.6",
+      "release_published": "2026-11-03",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "35d53252fdf304d2f39c7d2496e71ae3f6709d22"
+        }
+      ],
+      "root_manifest_paths": [
+        "package-lock.json",
+        "package.json"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "6dbd74fb8f93e0e952091bfbfc6a68acdce3b9e1",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 2
+      }
+    },
+    {
+      "area": "Identity and policy",
+      "upstream": "https://github.com/keycloak/keycloak",
+      "source_commit": "e514445f9dcdabc5bdcf67cab56c1e49655de067",
+      "commit_date": "2026-11-05",
+      "tag": "26.8.2",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+        }
+      ],
+      "root_manifest_paths": [
+        "pom.xml"
+      ],
+      "inspected_manifest": {
+        "path": "pom.xml",
+        "blob": "da0d5bc5beabd21d848d7f811f39701a83c41532",
+        "section": "root dependencies (excluding managed and module entries)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Identity and policy",
+      "upstream": "https://github.com/open-policy-agent/opa",
+      "source_commit": "7fb317c46bd330665d81202c743d64f9a2e8faae",
+      "commit_date": "2026-11-05",
+      "tag": "v1.22.1",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "8f71f43fee3f78649d238238cbde51e6d7055c82"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "bb894fcce89f7f52f72d2a174711172a660451e0",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 52
+      }
+    },
+    {
+      "area": "Identity and policy",
+      "upstream": "https://github.com/openbao/openbao",
+      "source_commit": "9e0a0d3c3504a0a00b45e61355afac5e35c78379",
+      "commit_date": "2026-10-26",
+      "tag": "v2.7.2",
+      "release_published": "2026-10-26",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MPL-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "f4f97ee5853a2b2ba9121ea21589c706edf7a1cc"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "d28e6fc299a4f1cef4d6010e7c5b0b745948e1fd",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 120
+      }
+    },
+    {
+      "area": "Identity and policy",
+      "upstream": "https://github.com/openfga/openfga",
+      "source_commit": "44054f542f64e9b9589dd26a595081b3d2cfd942",
+      "commit_date": "2026-10-28",
+      "tag": "v1.22.1",
+      "release_published": "2026-10-28",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "4959a5e50d66e62e675d8d033d66cca0f390458d"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "f16711e242c1b0bdc8644e4d870dee5e51341b36",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 53
+      }
+    },
+    {
+      "area": "Imaging",
+      "upstream": "https://github.com/cornerstonejs/cornerstone3D",
+      "source_commit": "08d6211982efbf1c76267e569ecae74d1824993e",
+      "commit_date": "2026-11-03",
+      "tag": "v5.15.2",
+      "release_published": "2026-11-03",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "8341931e1ba8805629aa5c4c0d22934479864f34"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "pnpm-lock.yaml"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "f7e5709034191c133ffe8c148f9ef5a147eb09ed",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Imaging",
+      "upstream": "https://github.com/dcm4che/dcm4che",
+      "source_commit": "acbbb85eee1a2fcc441eb2d8e65023fece2b40ec",
+      "commit_date": "2026-10-07",
+      "tag": "5.35.2",
+      "release_published": "2026-10-15",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-03",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "7714141d154290f53e9e60c615a8edc9b51a8df7"
+        }
+      ],
+      "root_manifest_paths": [
+        "pom.xml"
+      ],
+      "inspected_manifest": {
+        "path": "pom.xml",
+        "blob": "d60afba12cceadbb125d5b2a509a1fa07c230a61",
+        "section": "root dependencies (excluding managed and module entries)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Imaging",
+      "upstream": "https://github.com/DCMTK/dcmtk",
+      "source_commit": "f9c66feb2ae03afda4d2825b342041d293964928",
+      "commit_date": "2026-11-03",
+      "tag": "latest-tmp",
+      "release_published": "2026-11-04",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "COPYRIGHT",
+          "blob": "cf8a547ba55aca02fad79fc274e818fe26fc234f"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "41062c1e3617a077f012c105a1be2a02e1f2aba4"
+      }
+    },
+    {
+      "area": "Imaging",
+      "upstream": "https://github.com/ImagingDataCommons/dicomweb-client",
+      "source_commit": "056ccd026465710273ad8b8de466b0edc0607a18",
+      "commit_date": "2026-08-17",
+      "tag": "v0.61.2",
+      "release_published": "2026-08-17",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-08-17",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "e2420f10fb8173b8a0043529b44980741625cc45"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "92377009c14528d145614978a287c23b46f0b6ae",
+        "section": "project.dependencies",
+        "declared_entries": 6
+      }
+    },
+    {
+      "area": "Imaging",
+      "upstream": "https://github.com/ImagingDataCommons/highdicom",
+      "source_commit": "847fea5946b4be9cf0c9939b8f9dcbf0bc60b24d",
+      "commit_date": "2026-10-06",
+      "tag": "v0.28.2",
+      "release_published": "2026-10-06",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "e2420f10fb8173b8a0043529b44980741625cc45"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "770d43c153a9c889d81ecb5bd3359fdb76355af6",
+        "section": "project.dependencies",
+        "declared_entries": 6
+      }
+    },
+    {
+      "area": "Imaging",
+      "upstream": "https://github.com/InsightSoftwareConsortium/ITK",
+      "source_commit": "4c49df934c316ff87dbbd971b89e63df6bbd1836",
+      "commit_date": "2026-07-21",
+      "tag": "v5.4.7",
+      "release_published": "2026-08-10",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "62589edd12a37dd28b6b6fed1e2d728ac9f05c8d"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt",
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "998fa3600b721745a149fff71715c74e77228549"
+      }
+    },
+    {
+      "area": "Imaging",
+      "upstream": "https://github.com/Kitware/VTK",
+      "source_commit": "a75ed01daaea0c239554a0c7f52321cee5210d83",
+      "commit_date": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "Copyright.txt",
+          "blob": "42f1028a1d075d437f0a23b247cdf52fcf14e886"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "0877ea8fff5a68a440a2da13546b196be0bcb40a"
+      }
+    },
+    {
+      "area": "Imaging",
+      "upstream": "https://github.com/OHIF/Viewers",
+      "source_commit": "e4cd86153a1aaa429ef749330eaeefd4df96a88a",
+      "commit_date": "2026-11-03",
+      "tag": "v3.13.14",
+      "release_published": "2026-11-03",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "19e20dd35ca8c964b30116a5fb7427aae485754c"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "pnpm-lock.yaml"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "d75fc5e1a8c6d41be84f3bbf971af38993857a88",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 1
+      }
+    },
+    {
+      "area": "Imaging",
+      "upstream": "https://github.com/Project-MONAI/MONAI",
+      "source_commit": "f2ec87ae9b536baaeca1d6bcc2b6349369e2af8f",
+      "commit_date": "2026-09-18",
+      "tag": "1.6.1",
+      "release_published": "2026-09-27",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "aa434b364fa375e1c54bd1aaf65ff8ad50562d6a",
+        "section": "project.dependencies",
+        "declared_entries": 2
+      }
+    },
+    {
+      "area": "Imaging",
+      "upstream": "https://github.com/pydicom/pydicom",
+      "source_commit": "20aa4b73aef76bffb6fbc46a8827588dfa9bb89d",
+      "commit_date": "2026-03-19",
+      "tag": "v3.0.2",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-03",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "8d756f0fae3eee798059e685d171abed10b42bc0"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "7e0ab4a200fad56ae010e102d573b9bae1d6f8de",
+        "section": "project.dependencies",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Imaging",
+      "upstream": "https://github.com/SimpleITK/SimpleITK",
+      "source_commit": "6f729513c34439f6bdc3f734d55436a2f0149a0e",
+      "commit_date": "2026-10-29",
+      "tag": "v2.5.7",
+      "release_published": "2026-10-30",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "86f9aa67fd150ffa39898600c8db29298dd328f1"
+      }
+    },
+    {
+      "area": "Interoperability",
+      "upstream": "https://github.com/FirelyTeam/firely-net-sdk",
+      "source_commit": "2f11c64540464e8ce5025ee30e2283880742f1df",
+      "commit_date": "2026-10-19",
+      "tag": "v6.8.0",
+      "release_published": "2026-10-19",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "bf263bae44692bab6108b883f1207682dcf9b862"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Interoperability",
+      "upstream": "https://github.com/hapifhir/hapi-fhir",
+      "source_commit": "9212c36a4c6828d982346beca93e9cb32423a90a",
+      "commit_date": "2026-10-30",
+      "tag": "v8.10.2",
+      "release_published": "2026-10-30",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "pom.xml"
+      ],
+      "inspected_manifest": {
+        "path": "pom.xml",
+        "blob": "1de9990f69728d53f5d534fe3a1c53f367ac3a07",
+        "section": "root dependencies (excluding managed and module entries)",
+        "declared_entries": 7
+      }
+    },
+    {
+      "area": "Interoperability",
+      "upstream": "https://github.com/hapifhir/hapi-hl7v2",
+      "source_commit": "43471df0d05f3c36aa23d9dc2dd03d5b7e8b22a2",
+      "commit_date": "2025-02-04",
+      "tag": "v2.6.0",
+      "release_published": "2025-02-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-03-26",
+      "repository_reported_spdx": null,
+      "license_evidence": [],
+      "root_manifest_paths": [
+        "pom.xml"
+      ],
+      "inspected_manifest": {
+        "path": "pom.xml",
+        "blob": "6736000da9a01e25bc17a2f1b7ecfee2d7485e5b",
+        "section": "root dependencies (excluding managed and module entries)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Interoperability",
+      "upstream": "https://github.com/hapifhir/org.hl7.fhir.core",
+      "source_commit": "26ac5363b3253e7651b55fa72a8076992c4aba1c",
+      "commit_date": "2026-10-31",
+      "tag": "7.0.4",
+      "release_published": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "pom.xml"
+      ],
+      "inspected_manifest": {
+        "path": "pom.xml",
+        "blob": "e04ed8f31d5ecea99266df835abbd3c53279305e",
+        "section": "root dependencies (excluding managed and module entries)",
+        "declared_entries": 2
+      }
+    },
+    {
+      "area": "Interoperability",
+      "upstream": "https://github.com/HL7/fhir",
+      "source_commit": "057fb3243817adc95953c06b6a974131a5a43f5f",
+      "commit_date": "2026-10-21",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "a9a83cd7e26ade2456383bac3d02128b081db355"
+        }
+      ],
+      "root_manifest_paths": [
+        "build.gradle.kts"
+      ]
+    },
+    {
+      "area": "Interoperability",
+      "upstream": "https://github.com/HL7/fhir-mCODE-ig",
+      "source_commit": "543477b5585f2dcc717820a2bea141ea85f03012",
+      "commit_date": "2025-01-24",
+      "tag": "4.0.0",
+      "release_published": "2025-02-17",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2025-08-20",
+      "repository_reported_spdx": null,
+      "license_evidence": [],
+      "root_manifest_paths": [
+        "pom.xml"
+      ],
+      "inspected_manifest": {
+        "path": "pom.xml",
+        "blob": "a9dc10b5f3d0d4c5a2b6310225e96e9a86b7be6b",
+        "section": "root dependencies (excluding managed and module entries)",
+        "declared_entries": 5
+      }
+    },
+    {
+      "area": "Interoperability",
+      "upstream": "https://github.com/HL7/US-Core",
+      "source_commit": "102b0322bfae184e8ead40b87991c79c35b88281",
+      "commit_date": "2026-05-26",
+      "tag": "9.0.0",
+      "release_published": "2026-06-01",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-02",
+      "repository_reported_spdx": null,
+      "license_evidence": [],
+      "root_manifest_paths": [
+        "package-lock.json"
+      ]
+    },
+    {
+      "area": "Interoperability",
+      "upstream": "https://github.com/smart-on-fhir/bulk-data-client",
+      "source_commit": "00e24152f594be58a9dc42cc8969157e249364f2",
+      "commit_date": "2026-10-23",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-23",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "package-lock.json",
+        "package.json"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "753dac90c678e09e40619f754ee6111d4ca71711",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 11
+      }
+    },
+    {
+      "area": "Interoperability",
+      "upstream": "https://github.com/smart-on-fhir/client-js",
+      "source_commit": "c878b14a3d14460b1865e562c0aa5f2952dbd66f",
+      "commit_date": "2025-09-26",
+      "tag": "v2.6.3",
+      "release_published": "2025-09-26",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-21",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "2169c47be466f0c004c11d729f3a7ccce0df37c7"
+        }
+      ],
+      "root_manifest_paths": [
+        "package-lock.json",
+        "package.json"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "a52705409fe90df60c2695996e83defe0ec4a69d",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 8
+      }
+    },
+    {
+      "area": "Literature and trials",
+      "upstream": "https://github.com/CrossRef/rest-api-doc",
+      "source_commit": "00b1cc2c90e62d49c82f5381710590a6d9ca53ff",
+      "commit_date": "2024-09-25",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2024-09-25",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "5f19d884aadeb183acfdb42e748a1bceefab6b70"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Literature and trials",
+      "upstream": "https://github.com/ourresearch/openalex-docs",
+      "source_commit": "8cec9dba1ee17af56e5de4666f63650a02fb798b",
+      "commit_date": "2026-05-04",
+      "repository_archived_at_observation": true,
+      "repository_last_push_at_observation": "2026-05-04",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "license.md",
+          "blob": "eb42d224f37aadc2e4346dab46103f08040eca6b"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Literature and trials",
+      "upstream": "https://github.com/ropensci/europepmc",
+      "source_commit": "86ccdfc262965d0d46ba0349a744208cc228b4f1",
+      "commit_date": "2023-11-20",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2024-07-01",
+      "repository_reported_spdx": null,
+      "license_evidence": [
+        {
+          "path": "DESCRIPTION",
+          "blob": "00e768aa50fb935c9097ce6cd476cdff83633ffd"
+        }
+      ],
+      "root_manifest_paths": [
+        "DESCRIPTION"
+      ],
+      "inspected_manifest": {
+        "path": "DESCRIPTION",
+        "blob": "00e768aa50fb935c9097ce6cd476cdff83633ffd"
+      }
+    },
+    {
+      "area": "Literature and trials",
+      "upstream": "https://github.com/sckott/habanero",
+      "source_commit": "f237199d50ad640f1a08ce6d5ca51724ee052ae7",
+      "commit_date": "2026-06-17",
+      "tag": "v2.9.2",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-25",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE.md",
+          "blob": "1675eb67a6bd20036d8fec061a7a984769547285"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "6dac24ff064b07ac27395f72286372073092bfd7",
+        "section": "project.dependencies",
+        "declared_entries": 4
+      }
+    },
+    {
+      "area": "Literature and trials",
+      "upstream": "https://github.com/zotero/zotero",
+      "source_commit": "2530b2f106ca288bdce49d2191b996ad592c163c",
+      "commit_date": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "COPYING",
+          "blob": "b14d531f57df630c8668473475c602966561c83e"
+        }
+      ],
+      "root_manifest_paths": [
+        "package-lock.json",
+        "package.json"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "8e650ed5d70c93f2b578603004e03067a57b9bec",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 12
+      }
+    },
+    {
+      "area": "Observability",
+      "upstream": "https://github.com/grafana/grafana",
+      "source_commit": "752e3462ff71a43a5c1fb62d00a482fa2dc0ee6a",
+      "commit_date": "2026-10-27",
+      "tag": "v13.3.0",
+      "release_published": "2026-10-27",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "AGPL-3.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "be3f7b28e564e7dd05eaf59d64adba1a4065ac0e"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum",
+        "package.json",
+        "yarn.lock"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "5966345b4599752f5f77861451bd7d9422f89aa5",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 157
+      }
+    },
+    {
+      "area": "Observability",
+      "upstream": "https://github.com/grafana/loki",
+      "source_commit": "d3b4a2f76bfc5625abee7ceb00b8896fa3c31549",
+      "commit_date": "2026-10-20",
+      "tag": "v3.7.9",
+      "release_published": "2026-10-20",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "AGPL-3.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "be3f7b28e564e7dd05eaf59d64adba1a4065ac0e"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "6a34ab22040f7bb147bcaab8fdaaee6c0307eebd",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 170
+      }
+    },
+    {
+      "area": "Observability",
+      "upstream": "https://github.com/jaegertracing/jaeger",
+      "source_commit": "d723f91447f29a345c288f37eb8d1ce7807bc0be",
+      "commit_date": "2026-11-04",
+      "tag": "v2.23.0",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "a5ea9a3a08603e8156a225857ae793ac9fa92003",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 127
+      }
+    },
+    {
+      "area": "Observability",
+      "upstream": "https://github.com/open-telemetry/opentelemetry-collector",
+      "source_commit": "f532e15ef29b6ed7fefad2b23a0fefd27120ef9b",
+      "commit_date": "2026-10-26",
+      "tag": "v0.164.0",
+      "release_published": "2026-10-26",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "1790f8ef4d615afc21d071486972823ad2201536",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Observability",
+      "upstream": "https://github.com/prometheus/prometheus",
+      "source_commit": "e2e28adeee2c5883d000fc82aca6008cfbf7e96d",
+      "commit_date": "2026-11-05",
+      "tag": "v3.16.0",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "1755c3e93ade33f029f966c5df498e95886ca91c",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 109
+      }
+    },
+    {
+      "area": "Scientific orchestration",
+      "upstream": "https://github.com/galaxyproject/galaxy",
+      "source_commit": "391641a4e121216de4764ffd12b8c666859460ea",
+      "commit_date": "2026-10-25",
+      "tag": "v26.1.2",
+      "release_published": "2026-10-25",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "c7cd73da4fd88b69b261081344e58b84e91cd375"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "requirements.txt"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "e4a23b504df7890840283f0f8191e08feb4d657b",
+        "section": "project.dependencies",
+        "declared_entries": 103
+      }
+    },
+    {
+      "area": "Scientific orchestration",
+      "upstream": "https://github.com/nextflow-io/nextflow",
+      "source_commit": "de707574a458f4f762310e9563b8c245f9be054f",
+      "commit_date": "2026-11-02",
+      "tag": "v26.10.5",
+      "release_published": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "COPYING",
+          "blob": "68c771a099958211169377d766a7389422f5573d"
+        }
+      ],
+      "root_manifest_paths": [
+        "build.gradle"
+      ],
+      "inspected_manifest": {
+        "path": "build.gradle",
+        "blob": "06d8794abe8779ff24a18d2a429821e108b48233"
+      }
+    },
+    {
+      "area": "Scientific orchestration",
+      "upstream": "https://github.com/nf-core/rnaseq",
+      "source_commit": "a1fcdddd3b826fe46eb46f0479f2ff8a7815af05",
+      "commit_date": "2026-09-23",
+      "tag": "3.27.0",
+      "release_published": "2026-09-23",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-03",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "d720749d3382f5f8cd4505af8908bb4577f1f240"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Scientific orchestration",
+      "upstream": "https://github.com/snakemake/snakemake",
+      "source_commit": "f79d9eb5e2b679e1191818f24335907b041578be",
+      "commit_date": "2026-10-21",
+      "tag": "v9.27.1",
+      "release_published": "2026-10-21",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE.md",
+          "blob": "6cbb06b496a924eaabc9a3dd14e7738ebbdc0b22"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "0a4413210ff2fccacca741be129430a0d124a42a",
+        "section": "project.dependencies",
+        "declared_entries": 31
+      }
+    },
+    {
+      "area": "Sequencing and quantification",
+      "upstream": "https://github.com/bioc/Rsubread",
+      "source_commit": "782507abca1ef2223906ed327d4e27ae4d93bb52",
+      "commit_date": "2026-10-18",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-18",
+      "repository_reported_spdx": null,
+      "license_evidence": [
+        {
+          "path": "DESCRIPTION",
+          "blob": "1fe1d1cc5b9ef307369ee247540957b2d871b3d9"
+        }
+      ],
+      "root_manifest_paths": [
+        "DESCRIPTION"
+      ],
+      "inspected_manifest": {
+        "path": "DESCRIPTION",
+        "blob": "1fe1d1cc5b9ef307369ee247540957b2d871b3d9"
+      }
+    },
+    {
+      "area": "Sequencing and quantification",
+      "upstream": "https://github.com/BUStools/bustools",
+      "source_commit": "d4d7a283dbe9d34d2106e9ba31e2566413be6a70",
+      "commit_date": "2025-05-27",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2025-05-27",
+      "repository_reported_spdx": "BSD-2-Clause",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "3abe986b8cc60a77aebceae1f11a968765b72a1f"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "9c2fdd6b2a91ef334946e284fa6d7ff552f98943"
+      }
+    },
+    {
+      "area": "Sequencing and quantification",
+      "upstream": "https://github.com/nf-core/scrnaseq",
+      "source_commit": "1136d995c7a6477de437bc8581cbb7bf34905ed9",
+      "commit_date": "2026-10-08",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-01",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "fbd4795c8e523e860caee68616422cc980f87a96"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Single-cell and multi-omics",
+      "upstream": "https://github.com/bioFAM/MOFA2",
+      "source_commit": "072bf792a17118a39d3ad040ead1468b7a9f9214",
+      "commit_date": "2020-03-20",
+      "tag": "v1.0.0",
+      "release_published": "2020-03-31",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-09-10",
+      "repository_reported_spdx": "LGPL-3.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "0a041280bd00a9d068f503b8ee7ce35214bd24a1"
+        }
+      ],
+      "root_manifest_paths": [
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "setup.py",
+        "blob": "ff2b7467440aa725f2ce966da2c06c9c4ce34b0b"
+      }
+    },
+    {
+      "area": "Single-cell and multi-omics",
+      "upstream": "https://github.com/mixOmics-org/mixOmics",
+      "source_commit": "bb16add50feb46929688baa84b20f4100e06df5d",
+      "commit_date": "2026-05-25",
+      "tag": "6.36.0",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": null,
+      "license_evidence": [
+        {
+          "path": "DESCRIPTION",
+          "blob": "456bd4fb5fc67d33b0fc7dfa9e2fe1cc35462ef0"
+        }
+      ],
+      "root_manifest_paths": [
+        "DESCRIPTION"
+      ],
+      "inspected_manifest": {
+        "path": "DESCRIPTION",
+        "blob": "456bd4fb5fc67d33b0fc7dfa9e2fe1cc35462ef0"
+      }
+    },
+    {
+      "area": "Single-cell and multi-omics",
+      "upstream": "https://github.com/satijalab/seurat",
+      "source_commit": "75dfa8603befe31505e6287d32dc86c607732bd6",
+      "commit_date": "2026-10-02",
+      "tag": "v5.6.0",
+      "release_published": "2026-10-03",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-28",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "95c337c6555965ede702827cfb2dd0d8b9bc6a55"
+        },
+        {
+          "path": "LICENSE.md",
+          "blob": "3d63d994cf06c2b7ac783ab26615bafcb381dce7"
+        }
+      ],
+      "root_manifest_paths": [
+        "DESCRIPTION"
+      ],
+      "inspected_manifest": {
+        "path": "DESCRIPTION",
+        "blob": "f199045b786e2bdcdf6ab2548607b8443db42f9f"
+      }
+    },
+    {
+      "area": "Single-cell and multi-omics",
+      "upstream": "https://github.com/scverse/anndata",
+      "source_commit": "a487b81d38d4bfe7c7d76f01eed72a8622665c65",
+      "commit_date": "2026-09-18",
+      "tag": "0.13.4",
+      "release_published": "2026-09-18",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "BSD-3-Clause",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "09a1f6f3dde3e3e62707995e6e56b12646fb0c8d"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "e8d5a43cd27fa8ba7d3cffcbfc482df7d889239b",
+        "section": "project.dependencies",
+        "declared_entries": 11
+      }
+    },
+    {
+      "area": "Single-cell and multi-omics",
+      "upstream": "https://github.com/scverse/scanpy",
+      "source_commit": "02513e1ac31a7e8fb4b0349ff9039cc66812f40c",
+      "commit_date": "2026-10-29",
+      "tag": "1.12.5",
+      "release_published": "2026-10-29",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "BSD-3-Clause",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "18ecd20ca492e7e344c3deb58b9461cc3ce0e891"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "15a08d1150173473cb2a1248edf9e724dd1a962f",
+        "section": "project.dependencies",
+        "declared_entries": 24
+      }
+    },
+    {
+      "area": "Single-cell and multi-omics",
+      "upstream": "https://github.com/scverse/scvi-tools",
+      "source_commit": "857385851ef02d68764e38f8a348fcb3c4d7c5c6",
+      "commit_date": "2026-10-28",
+      "tag": "1.5.2",
+      "release_published": "2026-10-28",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "BSD-3-Clause",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "61278463eea5b7eb92e0e201600a9e2c3d8a889e"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "7cfb5b13a4cfd0f463a00f15fbcee71911d80f6b",
+        "section": "project.dependencies",
+        "declared_entries": 20
+      }
+    },
+    {
+      "area": "Single-cell and multi-omics",
+      "upstream": "https://github.com/swolock/scrublet",
+      "source_commit": "67f8ecbad14e8e1aa9c89b43dac6638cebe38640",
+      "commit_date": "2020-12-29",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2020-12-29",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "42323bdbfea63c800e9f50ed2bde81ce2d1e5926"
+        }
+      ],
+      "root_manifest_paths": [
+        "requirements.txt",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "requirements.txt",
+        "blob": "6595be229c58ef284a61c3bf97f25137f0e6b6e8"
+      }
+    },
+    {
+      "area": "Single-cell and multi-omics",
+      "upstream": "https://github.com/waldronlab/MultiAssayExperiment",
+      "source_commit": "ba0c8d3777c522c9361620f7dbdbc760d5f7f2ce",
+      "commit_date": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": null,
+      "license_evidence": [
+        {
+          "path": "DESCRIPTION",
+          "blob": "0560866b824a7d2d66ae7a477a666598f44f6f90"
+        }
+      ],
+      "root_manifest_paths": [
+        "DESCRIPTION"
+      ],
+      "inspected_manifest": {
+        "path": "DESCRIPTION",
+        "blob": "0560866b824a7d2d66ae7a477a666598f44f6f90"
+      }
+    },
+    {
+      "area": "Supply chain",
+      "upstream": "https://github.com/anchore/grype",
+      "source_commit": "b99e19b96962b1190ad1bd5685acc74f420c1014",
+      "commit_date": "2026-11-02",
+      "tag": "v0.121.1",
+      "release_published": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "COPYRIGHT",
+          "blob": "de40a28ac36e7baf7ed3906662dcbec3de75bbc8"
+        },
+        {
+          "path": "LICENSE",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "6bd62d313df4473b5f5b87e8bec0f858cc30d006",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 74
+      }
+    },
+    {
+      "area": "Supply chain",
+      "upstream": "https://github.com/anchore/syft",
+      "source_commit": "173055c39e9752f7b450ea404cd1801695277426",
+      "commit_date": "2026-11-02",
+      "tag": "v1.56.0",
+      "release_published": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "COPYRIGHT",
+          "blob": "de40a28ac36e7baf7ed3906662dcbec3de75bbc8"
+        },
+        {
+          "path": "LICENSE",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "cfb556be1a89857548ec82294e5f89b0a5c3b76b",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 98
+      }
+    },
+    {
+      "area": "Supply chain",
+      "upstream": "https://github.com/aquasecurity/trivy",
+      "source_commit": "3f6334d223b52188324af3b9923b4249cd206652",
+      "commit_date": "2026-11-05",
+      "tag": "v0.76.2",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "7cc6f65f72b6bf2a68171c67d56a4a17bcbc58e6",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 125
+      }
+    },
+    {
+      "area": "Supply chain",
+      "upstream": "https://github.com/cdxgen/cdxgen",
+      "source_commit": "e0078793c05291a4cb4dc890d8f8f7769180beab",
+      "commit_date": "2026-10-31",
+      "tag": "v13.6.0",
+      "release_published": "2026-10-31",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "8dada3edaf50dbc082c9a125058f25def75e625a"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "pnpm-lock.yaml",
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "a1b144f4835c56efbfa0e8345257405571514053",
+        "section": "project.dependencies",
+        "declared_entries": 3
+      }
+    },
+    {
+      "area": "Supply chain",
+      "upstream": "https://github.com/CycloneDX/cyclonedx-node-npm",
+      "source_commit": "3dbc1f2cc4689d9f0729e3930778a054a346b677",
+      "commit_date": "2026-08-11",
+      "tag": "v6.0.1",
+      "release_published": "2026-08-11",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-03",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "65e1fb6fe8efc9ddb07f26bc1d7bae5accd3a7d2",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 6
+      }
+    },
+    {
+      "area": "Supply chain",
+      "upstream": "https://github.com/DependencyTrack/dependency-track",
+      "source_commit": "e6c887c0207baeec1f1346e28bf90000b4b45eda",
+      "commit_date": "2026-10-25",
+      "tag": "5.2.1",
+      "release_published": "2026-10-25",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "8dada3edaf50dbc082c9a125058f25def75e625a"
+        }
+      ],
+      "root_manifest_paths": [
+        "pom.xml"
+      ],
+      "inspected_manifest": {
+        "path": "pom.xml",
+        "blob": "bd09b991fe61fbda392d8cfe1387331779ac6f3e",
+        "section": "root dependencies (excluding managed and module entries)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Supply chain",
+      "upstream": "https://github.com/google/osv-scanner",
+      "source_commit": "bfe2f84abd2f09fe0b83ba7f6dad40d296762f40",
+      "commit_date": "2026-10-12",
+      "tag": "v2.7.0",
+      "release_published": "2026-10-12",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "44b5a2a8b1469a98fcfb3f53d6020b1fb2bdd6e8",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 28
+      }
+    },
+    {
+      "area": "Supply chain",
+      "upstream": "https://github.com/PyCQA/bandit",
+      "source_commit": "92ae8b82fb422a639f0ed8d99e96cea769594e08",
+      "commit_date": "2026-02-23",
+      "tag": "1.9.4",
+      "release_published": "2026-02-25",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-02",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "67db8588217f266eb561f75fae738656325deac9"
+        }
+      ],
+      "root_manifest_paths": [
+        "requirements.txt",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "requirements.txt",
+        "blob": "3bc89154a11d36e12959dbcd2d2b71b2c9ff381f"
+      }
+    },
+    {
+      "area": "Supply chain",
+      "upstream": "https://github.com/pypa/pip-audit",
+      "source_commit": "8894eb8cee033531a1fbd9f2fb160892531c14e3",
+      "commit_date": "2026-06-10",
+      "tag": "v2.10.1",
+      "release_published": "2026-06-10",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-30",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "f433b1a53f5b830a205fd2df78e2b34974656c7b"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "eac1682ad1b0f279411e4a13f41eb7db86e0ad76",
+        "section": "project.dependencies",
+        "declared_entries": 10
+      }
+    },
+    {
+      "area": "Supply chain",
+      "upstream": "https://github.com/renovatebot/renovate",
+      "source_commit": "69c19deff3b1f7b548e9b8f26d25eacf7697836a",
+      "commit_date": "2026-11-05",
+      "tag": "44.221.0",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "AGPL-3.0",
+      "license_evidence": [
+        {
+          "path": "license",
+          "blob": "0ad25db4bd1d86c452db3f9602ccdbe172438f52"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "pnpm-lock.yaml",
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "7b90dbebf941f11edc16a392903cbc3769ebbfd6",
+        "section": "project.dependencies",
+        "declared_entries": 2
+      }
+    },
+    {
+      "area": "Supply chain",
+      "upstream": "https://github.com/semgrep/semgrep",
+      "source_commit": "ac37d1f6e47b17648b8f854d6e2f2d72fade2567",
+      "commit_date": "2026-11-05",
+      "tag": "v1.184.0",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "LGPL-2.1",
+      "license_evidence": [
+        {
+          "path": "COPYRIGHT",
+          "blob": "058869ccbffd61f236a95e370c3e6f5694bdf74c"
+        },
+        {
+          "path": "LICENSE",
+          "blob": "8000a6faacf471c537530805ab29523c7732e11a"
+        }
+      ],
+      "root_manifest_paths": [
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "setup.py",
+        "blob": "c2bb217e55b22a7eeb428b42b50749bbe52f643f"
+      }
+    },
+    {
+      "area": "Supply chain",
+      "upstream": "https://github.com/sigstore/cosign",
+      "source_commit": "0e48502cf5ef34e2e60bbd3617aa19945712f705",
+      "commit_date": "2026-10-20",
+      "tag": "v3.1.4",
+      "release_published": "2026-10-20",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "COPYRIGHT.txt",
+          "blob": "7a01c84986423e740cae3be6db386f27a0347a25"
+        },
+        {
+          "path": "LICENSE",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "4cacff2152baf14df52735b96f142a2362e5b3b0",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 60
+      }
+    },
+    {
+      "area": "Synthetic data",
+      "upstream": "https://github.com/synthetichealth/synthea",
+      "source_commit": "bd8a52ba0a54ad8c6a1004b74787a14d8c25dbcc",
+      "commit_date": "2026-10-21",
+      "tag": "master-branch-latest",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-21",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "8dada3edaf50dbc082c9a125058f25def75e625a"
+        }
+      ],
+      "root_manifest_paths": [
+        "build.gradle"
+      ],
+      "inspected_manifest": {
+        "path": "build.gradle",
+        "blob": "35e5e185a01365cfce11e479c6e285aa2b941431"
+      }
+    },
+    {
+      "area": "Terminology",
+      "upstream": "https://github.com/biocommons/hgvs",
+      "source_commit": "cebb44a93c5dc60a816d6253520d7e0881fdb1d9",
+      "commit_date": "2026-11-03",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-03",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "fb1ab0e3bf59612dd53623d718b61fbeda0229d0"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "cd4267d7a85f059626b1ae04be688fb32bc495b5",
+        "section": "project.dependencies",
+        "declared_entries": 9
+      }
+    },
+    {
+      "area": "Terminology",
+      "upstream": "https://github.com/cBioPortal/oncotree",
+      "source_commit": "4735811bba15901bd171c34579747abd9023934e",
+      "commit_date": "2026-11-04",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "CC-BY-4.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE.md",
+          "blob": "0bc8d95e90ecf454884ed3e0518d96e4f1b7c92c"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Terminology",
+      "upstream": "https://github.com/DiseaseOntology/HumanDiseaseOntology",
+      "source_commit": "99e76f3e562bce63ca929607b37cc175fd9951b6",
+      "commit_date": "2026-10-29",
+      "tag": "v2026-10-29",
+      "release_published": "2026-10-30",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "CC0-1.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "0e259d42c996742e9e3cba14c677129b2c1b6311"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Terminology",
+      "upstream": "https://github.com/geneontology/go-ontology",
+      "source_commit": "02520f8b4d2c8c89df38463ddee7c6c485ebc7ce",
+      "commit_date": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "CC-BY-4.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "10fabd90118f7ce38bb2e4753e105e744442a429"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Terminology",
+      "upstream": "https://github.com/griffithlab/civic-v2",
+      "source_commit": "3667eb345bf9de35ea62492d0e8d8d1cd33b58d4",
+      "commit_date": "2026-10-17",
+      "tag": "v2.8.0",
+      "release_published": "2026-10-17",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "0848f68432b49705fc0714350d96353ff08c9d0b"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Terminology",
+      "upstream": "https://github.com/IHTSDO/snowstorm",
+      "source_commit": "4135da2075ad45dc5a3dd253aa3e6fb62e7d3839",
+      "commit_date": "2026-07-31",
+      "tag": "11.0.0",
+      "release_published": "2026-09-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-03",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE.md",
+          "blob": "25656a5b6ed6376bff7239d7fb742c76aa425edb"
+        }
+      ],
+      "root_manifest_paths": [
+        "pom.xml"
+      ],
+      "inspected_manifest": {
+        "path": "pom.xml",
+        "blob": "51dfd1f5360d85929eb311b560396c889738cef1",
+        "section": "root dependencies (excluding managed and module entries)",
+        "declared_entries": 51
+      }
+    },
+    {
+      "area": "Terminology",
+      "upstream": "https://github.com/monarch-initiative/mondo",
+      "source_commit": "377bd6acd30eb18faf3c847de7a036bc1dfdafe4",
+      "commit_date": "2026-11-03",
+      "tag": "v2026-11-03",
+      "release_published": "2026-11-03",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "CC-BY-4.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "10fabd90118f7ce38bb2e4753e105e744442a429"
+        }
+      ],
+      "root_manifest_paths": [
+        "requirements-unlocked.txt",
+        "requirements.txt"
+      ],
+      "inspected_manifest": {
+        "path": "requirements.txt",
+        "blob": "cf2c11d1c2ab8060ba904cd3d8276f2a3146946d"
+      }
+    },
+    {
+      "area": "Terminology",
+      "upstream": "https://github.com/obophenotype/human-phenotype-ontology",
+      "source_commit": "920d4eb3608b50a2c19ddb10290224ab35a759c5",
+      "commit_date": "2026-09-02",
+      "tag": "v2026-09-01",
+      "release_published": "2026-09-03",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-03",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE.md",
+          "blob": "3e270f020f85b98c43b1e54951596bab3d27de9c"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/biopython/biopython",
+      "source_commit": "49fefbc675e08f3ab6741896d08397952ce4dd9c",
+      "commit_date": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-02",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "bf2a4e004d006afb95bdfcb052fd7919f78fa822"
+        },
+        {
+          "path": "LICENSE.rst",
+          "blob": "24531b760a67ee91af123311cfe17a516f3f73f2"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "094efbac49377201e2b8c46543133dfb322f9bb3",
+        "section": "project.dependencies",
+        "declared_entries": 1
+      }
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/biotite-dev/biotite",
+      "source_commit": "67df9a418908a21f727ffd2d65a3897489e10ed7",
+      "commit_date": "2026-10-18",
+      "tag": "v2.0.0",
+      "release_published": "2026-10-18",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-31",
+      "repository_reported_spdx": "BSD-3-Clause",
+      "license_evidence": [
+        {
+          "path": "LICENSE.rst",
+          "blob": "71ed97bbe0777a324adf63335e03a8340402caa3"
+        }
+      ],
+      "root_manifest_paths": [
+        "Cargo.toml",
+        "environment.yml",
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "16a8b47da8139383c62c10c4405a2d263d3776a4",
+        "section": "project.dependencies",
+        "declared_entries": 6
+      }
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/cytoscape/cytoscape",
+      "source_commit": "a862253f06e9bf6cada370787d3b702bf0eb9cc3",
+      "commit_date": "2026-08-18",
+      "tag": "3.10.5",
+      "release_published": "2026-09-29",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-09",
+      "repository_reported_spdx": null,
+      "license_evidence": [],
+      "root_manifest_paths": [
+        "pom.xml"
+      ],
+      "inspected_manifest": {
+        "path": "pom.xml",
+        "blob": "f1756c17a7fe26f6d45a60199d748926d739daf9",
+        "section": "root dependencies (excluding managed and module entries)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/deepchem/deepchem",
+      "source_commit": "455d07f3e17e880a4d980b5b0365e4a02b417e14",
+      "commit_date": "2026-08-20",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-08-20",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "ae6d3f79e8c5ec3c12af39ce80b56705b276b2b5"
+        }
+      ],
+      "root_manifest_paths": [
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "setup.py",
+        "blob": "1011e9c9a7e7d952ec37278b88ad06727c89479e"
+      }
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/forlilab/AutoDock-Vina",
+      "source_commit": "8eb40404f4f45608acb3b01427587ac049f27c1f",
+      "commit_date": "2025-02-26",
+      "tag": "v1.2.7",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-15",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/molecularsets/moses",
+      "source_commit": "dd7ed6ab38e23afd3ef5371d67939a1760bd8599",
+      "commit_date": "2023-06-22",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2024-07-08",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "34c091f2df0c2216e99ef6464e7e619a3a3cf15e"
+        }
+      ],
+      "root_manifest_paths": [
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "setup.py",
+        "blob": "c018f04836e39eee4c45a204536c4af6a59090ba"
+      }
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/molstar/molstar",
+      "source_commit": "d4dbac43fc2839d6d59c222a428893be465d0cbe",
+      "commit_date": "2026-10-04",
+      "tag": "v5.13.0",
+      "release_published": "2026-10-04",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "28cd5a5a9fa4ddcf561eaab15bfcd47b0d0b71cc"
+        }
+      ],
+      "root_manifest_paths": [
+        "package-lock.json",
+        "package.json"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "7eccc6b859db201a35abf085595d14b56516af20",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 19
+      }
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/networkx/networkx",
+      "source_commit": "49ca2290b80c1389eb4d8d8e49dcba73f8fec016",
+      "commit_date": "2026-09-21",
+      "tag": "networkx-3.7",
+      "release_published": "2026-09-21",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "02547fc890c22287c5cacfc4ec6bfc384e6ce785"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "1ed9bd5c144c34a435dcd293d9381646246588b1",
+        "section": "project.dependencies",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/openbabel/openbabel",
+      "source_commit": "9be528bcdb31a219637ae3d1699170a8aaa5be6d",
+      "commit_date": "2026-09-14",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-09-14",
+      "repository_reported_spdx": "GPL-2.0",
+      "license_evidence": [
+        {
+          "path": "COPYING",
+          "blob": "b6e1c33e04992b94fa949bda034017a9aff42bf0"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt",
+        "pyproject.toml"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "e0f3330fd17882458c2923c8d987f32b397eda36"
+      }
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/opencobra/cobrapy",
+      "source_commit": "c5594d0483ad2ef2357516f2f170b19941a01f44",
+      "commit_date": "2026-08-11",
+      "tag": "0.32.1",
+      "release_published": "2026-08-11",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "GPL-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "99cec1bcf54cca8f851f76600e02b1ec92ae689d"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "a64cb9736743dd750022f694a3239f29bee4709a"
+      }
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/openmm/openmm",
+      "source_commit": "b399af4725573963b46d6c1083fdcf7a37615857",
+      "commit_date": "2026-09-03",
+      "tag": "8.6.1",
+      "release_published": "2026-09-11",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": null,
+      "license_evidence": [
+        {
+          "path": "docs-source/licenses/Licenses.txt",
+          "blob": "e87905a0f3a46cc8a3c3b2cd0cba6405b5ae5516"
+        },
+        {
+          "path": "docs-source/licenses/GPL.txt",
+          "blob": "94a9ed024d3859793618152ea559a168bbcbb5e2"
+        },
+        {
+          "path": "docs-source/licenses/LGPL.txt",
+          "blob": "cca7fc278f5c81ce23a2687208f0d63a6ea44009"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "3c6bcdeecbd654abd9bec2892bc701277160bc01"
+      }
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/openvax/mhcflurry",
+      "source_commit": "3f1bcd8f177cc9f0f656142f1cdf94a54af9c73b",
+      "commit_date": "2026-10-20",
+      "tag": "2.3.16",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "8f71f43fee3f78649d238238cbde51e6d7055c82"
+        }
+      ],
+      "root_manifest_paths": [
+        "requirements.txt",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "requirements.txt",
+        "blob": "3444851acbb54fac1ef542b3e27088e19adc9b23"
+      }
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/rdkit/rdkit",
+      "source_commit": "f86b7dc9b31e2531200bbd1f54589bcbd968bb05",
+      "commit_date": "2026-11-05",
+      "tag": "Release_2026_09_2",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "BSD-3-Clause",
+      "license_evidence": [
+        {
+          "path": "license.txt",
+          "blob": "a44b4f5514d036de96f06f3cded34f634fd14cde"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "78433d67ab4f9cfd93081b3bc9785b539dab4861"
+      }
+    },
+    {
+      "area": "Therapeutic discovery",
+      "upstream": "https://github.com/zqfang/GSEApy",
+      "source_commit": "6d0498ec2bc5efe34014cc92dec3363b6aae9242",
+      "commit_date": "2026-10-29",
+      "tag": "v1.3.2",
+      "release_published": "2026-10-29",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-29",
+      "repository_reported_spdx": "BSD-3-Clause",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "0b41ff25f78459f8b966a46a675aff2f786208be"
+        }
+      ],
+      "root_manifest_paths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "pyproject.toml",
+        "requirements.txt",
+        "setup.py",
+        "uv.lock"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "523528d05b214a7f5c5538b846e38bcedf404b93",
+        "section": "project.dependencies",
+        "declared_entries": 5
+      }
+    },
+    {
+      "area": "Transcriptomics",
+      "upstream": "https://github.com/alexdobin/STAR",
+      "source_commit": "b1edc1208d91a53bf40ebae8669f71d50b994851",
+      "commit_date": "2024-01-25",
+      "tag": "2.7.11b",
+      "release_published": "2024-01-26",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2025-03-18",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "7f2dabd2a18e9613e57818c07cf6bce63737786a"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Transcriptomics",
+      "upstream": "https://github.com/bioc/DESeq2",
+      "source_commit": "4ba3e3a159da872566d825609a119a7615069663",
+      "commit_date": "2026-10-30",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-10-30",
+      "repository_reported_spdx": null,
+      "license_evidence": [
+        {
+          "path": "DESCRIPTION",
+          "blob": "9ff1b3b09d4fc30c997535b7b57a8269a2fc3a9f"
+        }
+      ],
+      "root_manifest_paths": [
+        "DESCRIPTION"
+      ],
+      "inspected_manifest": {
+        "path": "DESCRIPTION",
+        "blob": "9ff1b3b09d4fc30c997535b7b57a8269a2fc3a9f"
+      }
+    },
+    {
+      "area": "Transcriptomics",
+      "upstream": "https://github.com/bioc/edgeR",
+      "source_commit": "c483b95042073b88571d5b084dbab39951d04611",
+      "commit_date": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-02",
+      "repository_reported_spdx": null,
+      "license_evidence": [
+        {
+          "path": "DESCRIPTION",
+          "blob": "65254bb1b6ac1390fc2cf0cce23a9f596f22fd81"
+        }
+      ],
+      "root_manifest_paths": [
+        "DESCRIPTION"
+      ],
+      "inspected_manifest": {
+        "path": "DESCRIPTION",
+        "blob": "65254bb1b6ac1390fc2cf0cce23a9f596f22fd81"
+      }
+    },
+    {
+      "area": "Transcriptomics",
+      "upstream": "https://github.com/bioc/limma",
+      "source_commit": "498f86398f0cb3ad2f74fa3d3588155c0d1f51c9",
+      "commit_date": "2026-11-01",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-01",
+      "repository_reported_spdx": null,
+      "license_evidence": [
+        {
+          "path": "DESCRIPTION",
+          "blob": "38919d753a1ca6a904cdaf3b188637584cab72b2"
+        }
+      ],
+      "root_manifest_paths": [
+        "DESCRIPTION"
+      ],
+      "inspected_manifest": {
+        "path": "DESCRIPTION",
+        "blob": "38919d753a1ca6a904cdaf3b188637584cab72b2"
+      }
+    },
+    {
+      "area": "Transcriptomics",
+      "upstream": "https://github.com/COMBINE-lab/salmon",
+      "source_commit": "13a170dcd3d04ecfaaf140db80158fad6d58a837",
+      "commit_date": "2026-11-03",
+      "tag": "v2.11.0",
+      "release_published": "2026-11-03",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-03",
+      "repository_reported_spdx": "BSD-3-Clause",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "cbc21684de6151be18581c46500b171831e4fdf6"
+        }
+      ],
+      "root_manifest_paths": [
+        "Cargo.lock",
+        "Cargo.toml"
+      ],
+      "inspected_manifest": {
+        "path": "Cargo.toml",
+        "blob": "da54d9f93ac5f36a41507c1987d4d61a5c8868b4",
+        "section": "workspace.dependencies (declarations for members)",
+        "declared_entries": 39
+      }
+    },
+    {
+      "area": "Transcriptomics",
+      "upstream": "https://github.com/DaehwanKimLab/hisat2",
+      "source_commit": "0d244324f98de541bce04d45c75e83bc3522f7f4",
+      "commit_date": "2026-07-31",
+      "tag": "v2.2.3",
+      "release_published": "2026-07-31",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-07-31",
+      "repository_reported_spdx": "GPL-3.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "94a9ed024d3859793618152ea559a168bbcbb5e2"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "ecadcc6759f7b630a4e721d8d64333f844650e14"
+      }
+    },
+    {
+      "area": "Transcriptomics",
+      "upstream": "https://github.com/pachterlab/kallisto",
+      "source_commit": "4e9f29cf3b021260415430c057a22469ca081391",
+      "commit_date": "2026-01-20",
+      "tag": "v0.52.0",
+      "release_published": "2026-02-25",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-07-12",
+      "repository_reported_spdx": "BSD-2-Clause",
+      "license_evidence": [
+        {
+          "path": "license.txt",
+          "blob": "3afac17c45d0a1fbf86162e4fc705f308dc99c38"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "8a7c700b12b50d0a1f21f4ea25042996dd159fc5"
+      }
+    },
+    {
+      "area": "Verification",
+      "upstream": "https://github.com/microsoft/playwright",
+      "source_commit": "a1f35e1955976e84411f9c10358228a80b763ebe",
+      "commit_date": "2026-11-05",
+      "tag": "v1.65.0",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "df112373eb2e23e459bf93ec412be1764dc5a38b"
+        }
+      ],
+      "root_manifest_paths": [
+        "package-lock.json",
+        "package.json"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "34927803bf2f25303620ba3a22ff88f136404aa1",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Verification",
+      "upstream": "https://github.com/storybookjs/storybook",
+      "source_commit": "a3bc279181352e1d636883f40a50632bd86d4c33",
+      "commit_date": "2026-11-05",
+      "tag": "v10.6.6",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "c471193f579c9932de81221ec10008b5c68b2260"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "yarn.lock"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "bc408a5d70d51b09687a6583d19ade594aa8357e",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Verification",
+      "upstream": "https://github.com/testing-library/react-testing-library",
+      "source_commit": "20ce75f2907ca0e5c5a8ae595c0e9a4e368c7800",
+      "commit_date": "2026-08-27",
+      "tag": "v16.3.3",
+      "release_published": "2026-08-27",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-08-27",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "ca399d5706c30a9ff7b8ba8277423d9c34ac228c"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "ff6dd2276d723f4d419b50a64d5c285f0a5656a1",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 1
+      }
+    },
+    {
+      "area": "Verification",
+      "upstream": "https://github.com/vitest-dev/vitest",
+      "source_commit": "7a3844954d8753fc0d5bed76a96ffd3a21716c22",
+      "commit_date": "2026-11-02",
+      "tag": "v5.1.0",
+      "release_published": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "0e5771dddf4e96ebc77c349f53fc763b910e63c0"
+        }
+      ],
+      "root_manifest_paths": [
+        "package.json",
+        "pnpm-lock.yaml"
+      ],
+      "inspected_manifest": {
+        "path": "package.json",
+        "blob": "6d02cec245b747795241d1d7eacc64398fe51b7d",
+        "section": "dependencies (root workspace only)",
+        "declared_entries": 0
+      }
+    },
+    {
+      "area": "Workflow and messaging",
+      "upstream": "https://github.com/apache/kafka",
+      "source_commit": "4ee4df57a8833337f4a8fe454d775372d08b2521",
+      "commit_date": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+        },
+        {
+          "path": "LICENSE-binary",
+          "blob": "fdcbcbcd321cf90ed53ab651ae2c517c1696b350"
+        }
+      ],
+      "root_manifest_paths": [
+        "build.gradle"
+      ],
+      "inspected_manifest": {
+        "path": "build.gradle",
+        "blob": "528eb4438c5d5896c65336ae62a8bf981983bebd"
+      }
+    },
+    {
+      "area": "Workflow and messaging",
+      "upstream": "https://github.com/Bogdanp/dramatiq",
+      "source_commit": "3ccb3562cf4169b7eb6fd64746790c9a88d1cb89",
+      "commit_date": "2026-09-02",
+      "tag": "v2.2.1",
+      "release_published": "2026-09-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-04",
+      "repository_reported_spdx": "LGPL-3.0",
+      "license_evidence": [
+        {
+          "path": "COPYING",
+          "blob": "87b46933a9e6792ee18e6248e6292cd9214feff8"
+        },
+        {
+          "path": "COPYING.LESSER",
+          "blob": "02bbb60bc49afc2d6a1bedf96288eab236d80fbd"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "03eb154379245df6bed8b35982ab8e9a84f95132"
+      }
+    },
+    {
+      "area": "Workflow and messaging",
+      "upstream": "https://github.com/celery/celery",
+      "source_commit": "6fcdbf904d410749ad7676d8ff6b1b25d6e19675",
+      "commit_date": "2026-11-05",
+      "tag": "v5.7.0",
+      "release_published": "2026-11-05",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "93411068ab7db9401ec4d5c9d52ca14f77e794fc"
+        }
+      ],
+      "root_manifest_paths": [
+        "pyproject.toml",
+        "setup.py"
+      ],
+      "inspected_manifest": {
+        "path": "pyproject.toml",
+        "blob": "0c5c1450acf23660e0874f4604dddd2637a60a89"
+      }
+    },
+    {
+      "area": "Workflow and messaging",
+      "upstream": "https://github.com/nats-io/nats-server",
+      "source_commit": "5a815f11a911efa2c88fd1dbfb18ed89a449bfc1",
+      "commit_date": "2026-10-26",
+      "tag": "v2.15.2",
+      "release_published": "2026-10-26",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "Apache-2.0",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "5c0538ad934c66f5de5820d1a9111f503b149837",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 11
+      }
+    },
+    {
+      "area": "Workflow and messaging",
+      "upstream": "https://github.com/rabbitmq/rabbitmq-server",
+      "source_commit": "24d5157cd415ef396c8ecd40a2d08c4d7ad3da9f",
+      "commit_date": "2026-10-17",
+      "tag": "v4.4.0",
+      "release_published": "2026-10-19",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "f11c11ba8822950d709f1b69d883d6e2db19a6af"
+        },
+        {
+          "path": "LICENSE-APACHE2",
+          "blob": "012c24c00992b5f24b2d794da892b09aba1e3039"
+        },
+        {
+          "path": "LICENSE-MPL-RabbitMQ",
+          "blob": "14e2f777f6c395e7e04ab4aa306bbcc4b0c1120e"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Workflow and messaging",
+      "upstream": "https://github.com/redis/redis",
+      "source_commit": "1a2574ce1551d3de6e0b4a56756c0fdbc6659e4f",
+      "commit_date": "2026-10-26",
+      "tag": "8.10.3",
+      "release_published": "2026-10-26",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "NOASSERTION",
+      "license_evidence": [
+        {
+          "path": "LICENSE.txt",
+          "blob": "4657905cf699d1d5ac96a07d0969bc79e27c4eec"
+        }
+      ],
+      "root_manifest_paths": []
+    },
+    {
+      "area": "Workflow and messaging",
+      "upstream": "https://github.com/temporalio/temporal",
+      "source_commit": "6d085822273f4336796e6959c73ab1d14a23eb77",
+      "commit_date": "2026-10-31",
+      "tag": "v1.32.2",
+      "release_published": "2026-11-02",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "MIT",
+      "license_evidence": [
+        {
+          "path": "LICENSE",
+          "blob": "3349f76795f4409cba6ae18ea56adf9fbd8346f3"
+        }
+      ],
+      "root_manifest_paths": [
+        "go.mod",
+        "go.sum"
+      ],
+      "inspected_manifest": {
+        "path": "go.mod",
+        "blob": "2764781b932725248aaf49a7d930466370fe11f1",
+        "section": "require entries without an indirect annotation",
+        "declared_entries": 79
+      }
+    },
+    {
+      "area": "Workflow and messaging",
+      "upstream": "https://github.com/valkey-io/valkey",
+      "source_commit": "29173b67508b2de4c0f0ed551f3b47cf19fc3ca8",
+      "commit_date": "2026-10-26",
+      "tag": "9.1.3",
+      "release_published": "2026-10-26",
+      "repository_archived_at_observation": false,
+      "repository_last_push_at_observation": "2026-11-05",
+      "repository_reported_spdx": "BSD-3-Clause",
+      "license_evidence": [
+        {
+          "path": "COPYING",
+          "blob": "2254cb05c4434c5d2ec74282eca5b0d00323e228"
+        }
+      ],
+      "root_manifest_paths": [
+        "CMakeLists.txt"
+      ],
+      "inspected_manifest": {
+        "path": "CMakeLists.txt",
+        "blob": "3c7c1b8a352ab0ce773670f833d03a893f85e1a4"
+      }
+    }
+  ]
+}

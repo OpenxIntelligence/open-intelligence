@@ -2,6 +2,10 @@
 
 **What can be exercised:** the merged H1 application supports a fictional patient, immutable originals and amendments, laboratory observations and questions, exact-source reading, reports and follow-through. This **draft integration candidate** adds shared ingress and build verification to the combined encounter/note and laboratory code from #542. It retains that candidate's single migration head, `0022_lab_citation_source_scope`. The first-party clinical system, production governance, clinical AI validation, scientific execution and discovery program each have substantial work ahead.
 
+## Reproducible build increment
+
+The candidate based on [#552](https://github.com/OpenxIntelligence/open-intelligence/pull/552) adds the installed frontend CycloneDX export and binds both build environments to immutable Python/PostgreSQL image inputs. The package verifier checks the web BOM alongside the existing API BOM and web notice receipt. The [source register](TECHNOLOGY_SOURCE_EVIDENCE.json) supplements the existing technology comparisons. The draft PR records exact-revision integration and recovery results.
+
 ## Audit reconciliation
 
 | November 4 benchmark | State observed on November 5 | Evidence or next acceptance |

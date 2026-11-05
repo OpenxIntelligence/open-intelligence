@@ -22,7 +22,8 @@ python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom
 npm --prefix apps/web run rights
 python tools/h1_build_inputs.py --output /tmp/oi-h1-build-inputs.json
 python tools/h1_build_inputs.py --verify /tmp/oi-h1-build-inputs.json \
-  --api-sbom /tmp/oi-h1-sbom.json --web-receipt apps/web/.licenses/inventory.json
+  --api-sbom /tmp/oi-h1-sbom.json --web-receipt apps/web/.licenses/inventory.json \
+  --web-sbom apps/web/.licenses/web.cdx.json
 ```
 
 Keep the original receipts alongside the combined JSON. To reproduce its deterministic bytes, rerun the generator against the same checkout. A successful package check or generated clinical answer is not a validation result. A missing PostgreSQL service, denied Unix socket or skipped dependency is a named test limitation.

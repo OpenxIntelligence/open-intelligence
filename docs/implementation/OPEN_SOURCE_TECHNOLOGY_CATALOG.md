@@ -8,6 +8,18 @@
 | C, D, E, G, J — clinical interoperability, terminology, documents, imaging and literature | [Clinical technology and content review](TECHNOLOGY_CLINICAL.md). Pinned source licenses, manifest observations, versioned standards and separate content/API terms. | Retain the limited R4 lab importer, original-source custody, qualified pypdf use and code-only DICOM profile. Evaluate validators, OCR and viewing in isolated synthetic tasks. Preserve unsupported/ambiguous inputs and their precise provenance. |
 | F, H, I — AI, genomics, scientific workflow and discovery | [69 technology comparisons, three biomedical model examples, and 13 data-source reviews](TECHNOLOGY_SCIENCE.md). Includes DNA, RNA, single-cell, multi-omics and candidate research orchestrators. | Keep first-party evidence and review contracts. Compare local extraction against deterministic human-inspectable baselines. Qualify one reproducible scientific task before selecting a general engine. Use separate decisions for software, weights, reference data and patients' data. |
 
+## Recheck an upstream decision
+
+The [machine-readable source register](TECHNOLOGY_SOURCE_EVIDENCE.json) adds dated evidence for 193 projects. It identifies 192 exact source commits and the separate reviewed pg8000 wheel. For 168 entries it records a byte-verified dependency manifest. For 109 it also counts declarations in a named section. Workspace roots, target conditions, optional modules and unresolved dependency trees require separate inspection. Empty license evidence identifies a gap. The default-branch SPDX label is recorded separately from the license files at the selected commit.
+
+For the current npm build, the existing installed-notice gate already observes the package location, upstream identity and reviewed notices. Export its results directly in [CycloneDX 1.6](https://cyclonedx.org/docs/1.6/json/). This keeps the active package set fixed.
+
+| Alternative screened | Intended use and acceptance condition | Decision |
+|---|---|---|
+| [Syft v1.56.0](https://github.com/anchore/syft/tree/173055c39e9752f7b450ea404cd1801695277426) | Scan a built OCI image. Compare OS packages and native provenance against the pinned image index and platform manifest. | Evaluate for the separate image-layer inventory. |
+| [CycloneDX for npm v6.0.1](https://github.com/CycloneDX/cyclonedx-node-npm/tree/3dbc1f2cc4689d9f0729e3930778a054a346b677) | Independently reproduce installed aliases, nested locations, optional omissions and archive identities if external interoperability requires another producer. | Defer installation. |
+| [cdxgen v13.6.0](https://github.com/cdxgen/cdxgen/tree/e0078793c05291a4cb4dc890d8f8f7769180beab) | Compare mixed-language and image coverage if a cross-ecosystem dependency graph is required. First qualify its exact tool, enabled analyzers, network behavior and artifact terms. | Defer installation. |
+
 ## Retain, add, replace or defer
 
 | Component | Existing pin or source | Decision for the synthetic H1 profile |

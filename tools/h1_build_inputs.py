@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 import re
 import sys
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -24,7 +25,7 @@ INPUTS = (
     API + "THIRD_PARTY_NOTICES.md", API + "tools/pydicom-upstream.lock",
     API + "tools/pydicom-runtime.json", API + "tools/pydicom_runtime.py",
     API + "tools/prepare_dependencies.py", API + "tools/check_dependencies.py",
-    API + "Dockerfile", API + "compose.yaml",
+    API + "Dockerfile", API + "compose.yaml", API + "container-image-pins.json",
     WEB + "package.json", WEB + "package-lock.json", WEB + "tools/license-gate.mjs",
 )
 NPM_NAME = re.compile(r"(?:@[a-zA-Z0-9_][\w.-]*/)?[a-zA-Z0-9_][\w.-]*", re.ASCII)
@@ -133,7 +134,8 @@ def build(root):
         "outside_package_coverage": {
             "python_base_image_and_os_layers": API + "Dockerfile",
             "postgres_image_and_os_layers": API + "compose.yaml",
-            "not_inventoried": ["image digests and layer contents", "host and CI toolchains",
+            "pinned_image_identities": API + "container-image-pins.json",
+            "not_inventoried": ["packages within image layers", "host and CI toolchains",
                                 "browser and browser bundle contents", "native linkage", "models, data and services"],
             "commercial_distribution_cleared": False,
         },
@@ -173,7 +175,43 @@ def check_web(receipt, expected):
             require(digest == notice["sha256"], f"notice text/digest mismatch: {loc}")
 
 
-def check_gates(root, expected, api_sbom, web_receipt):
+def check_web_bom(bom, expected, app_name, app_version):
+    """Cross-check the build-environment BOM with independently resolved lock inputs."""
+    require((bom["bomFormat"], bom["specVersion"], bom["version"]) == ("CycloneDX", "1.6", 1),
+            "unexpected web BOM format")
+    rows = expected["web_lock_locations"]
+    installed = {row["location"]: row for row in rows if row["expected_in_omit_optional_install"]}
+    metadata = bom["metadata"]
+    require(metadata["component"] == {"type": "application", "name": app_name, "version": app_version},
+            "web BOM application mismatch")
+    properties = {p["name"]: p["value"] for p in metadata["properties"]}
+    require(len(properties) == len(metadata["properties"]) and properties == {
+        "oi:scope": "Installed npm build environment for fictional H1 development",
+        "oi:package-lock-sha256": expected["inputs_sha256"][WEB + "package-lock.json"],
+        "oi:absent-optional-count": str(len(rows) - len(installed)),
+        "oi:license-evidence": "inventory.json",
+    }, "web BOM scope or lock mismatch")
+    parts = {part["bom-ref"]: part for part in bom["components"]}
+    require(len(parts) == len(bom["components"]) and parts.keys() == installed.keys(),
+            "web BOM installed locations differ")
+    for loc, row in installed.items():
+        group, _, name = row["name"].rpartition("/")
+        digest = base64.b64decode(row["integrity"][7:], validate=True).hex()
+        identity = quote(row["name"], safe="/") + "@" + quote(row["version"], safe="")
+        wanted = {
+            "type": "library", "bom-ref": loc, "name": name, "version": row["version"],
+            "purl": "pkg:npm/" + identity, "licenses": [{"expression": row["declared_license"]}],
+            "externalReferences": [{"type": "distribution", "url": row["registry_tarball"],
+                                    "hashes": [{"alg": "SHA-512", "content": digest}]}],
+            "properties": [{"name": "oi:development-dependency",
+                            "value": "true" if "dev" in row["dependency_flags"] else "false"}],
+        }
+        if group:
+            wanted["group"] = group
+        require(parts[loc] == wanted, f"web BOM identity or archive evidence differs: {loc}")
+
+
+def check_gates(root, expected, api_sbom, web_receipt, web_sbom=None):
     inventory = read_json(root / API / "dependency-license-inventory.json")
     wanted = wheel_gate.cyclonedx({"inventory": inventory})
     got = read_json(api_sbom)
@@ -183,6 +221,9 @@ def check_gates(root, expected, api_sbom, web_receipt):
         del record["metadata"]["timestamp"]
     require(got == wanted, "API gate SBOM differs from the current reviewed components or scope")
     check_web(read_json(web_receipt), expected)
+    if web_sbom is not None:
+        package = read_json(root / WEB / "package.json")
+        check_web_bom(read_json(web_sbom), expected, package["name"], package["version"])
 
 
 def main(argv=None):
@@ -192,8 +233,9 @@ def main(argv=None):
     mode.add_argument("--verify", type=Path)
     parser.add_argument("--api-sbom", type=Path)
     parser.add_argument("--web-receipt", type=Path)
+    parser.add_argument("--web-sbom", type=Path, help="also verify the installed-location CycloneDX JSON")
     args = parser.parse_args(argv)
-    if (args.api_sbom or args.web_receipt) and not (args.verify and args.api_sbom and args.web_receipt):
+    if (args.api_sbom or args.web_receipt or args.web_sbom) and not (args.verify and args.api_sbom and args.web_receipt):
         parser.error("provide both gate outputs with --verify")
     try:
         expected = build(ROOT)
@@ -203,7 +245,7 @@ def main(argv=None):
         else:
             require(args.verify.read_bytes() == data, "inventory differs from current build inputs")
             if args.api_sbom:
-                check_gates(ROOT, expected, args.api_sbom, args.web_receipt)
+                check_gates(ROOT, expected, args.api_sbom, args.web_receipt, args.web_sbom)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         print(f"Build input check failed: {exc}", file=sys.stderr)
         return 1
