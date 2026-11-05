@@ -88,7 +88,13 @@ class RegistryMigrationTests(unittest.TestCase):
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_evidence_report()"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.question_review_receipts"))
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_review_return_insert()"))
+            # Release the 0018 observation anchor before its question and source parents.
+            connection.execute(text("DROP TABLE IF EXISTS investigation.laboratory_question_anchors"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.source_questions"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.require_lab_question_child()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_lab_question_child()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_lab_question_insert()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.require_text_question_target()"))
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_insert()"))
             connection.execute(text("DROP SCHEMA IF EXISTS investigation"))
             connection.execute(text("DROP TABLE IF EXISTS clinical_source.fhir_laboratory_commands"))
