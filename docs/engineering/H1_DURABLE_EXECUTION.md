@@ -173,6 +173,27 @@ authorized saved-question context. Cancellation requires `synthetic: true`.
 The caller does not supply an executable module, arbitrary prompt, output body
 or another actor's credentials. Denied run access is reported as unavailable.
 
+## Using the worker from a saved question
+
+In **Investigations**, open a current saved text-source question and choose **Queue or reopen
+background brief**. The browser sends the question's immutable source and preflight fingerprints
+to the existing enqueue route. The operator runs the worker separately as described below. Use
+**Check status**, then **Open completed brief**. The displayed text is the stored artifact.
+The UI verifies both its literal body hash and its canonical result hash and displays the current
+access receipt separately from the receipt inside the historical brief.
+
+The first browser request key derives from the immutable question ID. A lost response, reload,
+or second tab can therefore recover the original run under the same actor, organization and
+purpose. After a cancelled, failed or blocked run, **Queue or reopen a replacement** uses its
+predecessor's run ID as the key suffix. Reopening from the question follows the same chain.
+The browser keeps credentials and displays in memory and clears a result before a new check.
+A changed source requires reassessment before the workspace will request another brief.
+The synchronous preparation/download control remains available.
+
+The connected Chromium journey exercises queue, recovery after a history refresh, cancellation,
+replacement, real worker completion, result display and access withdrawal. Exact execution
+results for the workspace change belong to its stacked pull request.
+
 ## Run one worker attempt
 
 Use the existing [API setup](../../apps/api/README.md) and
