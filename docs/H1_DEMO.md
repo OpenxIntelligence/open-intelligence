@@ -93,3 +93,8 @@ authored fictional metadata for this workflow.
 `apps/web/tools/demo_journey.py` exercises these exact fixtures through a real built browser and a separately owned Docker/PostgreSQL application, then checks repeated setup and persistence after stopping and resuming. It deletes only its own newly created disposable test project. The ordinary launcher never deletes volumes.
 
 The full integration workflow separately exercises wrong-scope and revoked access, text/PDF passages, immutable reports, uncertain saves, images, laboratory sources, keyboard/mobile flows, migration history, and seven backup/recovery stages. Final acceptance belongs to the exact candidate revision and its CI receipts in the PR; this guide alone is not a passing test or a deployment claim.
+
+
+### Inspect a saved laboratory question while preparing for a second opinion
+
+In Journey, reopen the saved laboratory questions for the selected fictional case. On Overview, go to second-opinion preparation and choose the question by wording, Observation reference and source version. Select **Inspect result and citations together** for a fresh authorized report. After an amendment, the earlier question identifies its original version and displays its reassessment status. A newly selected question requires its own report read.

@@ -29,7 +29,7 @@ function question(state='current_unreviewed_question'){
   question:'Could we discuss fictional marker & <unverified note>?',source_version:2,source_line:14,
   source_context_state:state};
 }
-const render=state=>renderToStaticMarkup(createElement(SecondOpinionPreparation,{state,onNavigate:()=>{},onResumeQuestion:()=>{},onCheckEvidence:()=>{}}));
+const render=state=>renderToStaticMarkup(createElement(SecondOpinionPreparation,{state,session:new RegistrySession(),busy:false,onNavigate:()=>{},onResumeQuestion:()=>{},onCheckEvidence:()=>{}}));
 
 test('saved agenda rows offer question-specific inspection and keep unsent passage recovery distinct',()=>{
  const saved=question(),draft={...question(),question_id:'QUESTION-'+'C'.repeat(32),question:'Another fictional question'};
@@ -142,13 +142,24 @@ test('second-opinion UI shows laboratory questions as a separate unreviewed sour
   source_id:sid,observation_reference:'Observation/FICTIONAL-OBS'}]},labQuestionListPhase:'ready',
   labQuestionHistory:{patient_id:patientId,case_id:caseId,checked_source_snapshot_sha256:snapshot,
    access_receipt_id:'ACCESS-'+'D'.repeat(32),questions:[{question_id:'QUESTION-'+'F'.repeat(32),
+   question:'Could we discuss <fictional> result?',observation_reference:'Observation/FICTIONAL-OBS',
    source_id:sid,source_version:1,source_sha256:sha,source_context_state:'current_unreviewed_question'}]}};
- const html=renderToStaticMarkup(createElement(SecondOpinionPreparation,
-  {state:scope,onNavigate(){},onResumeQuestion(){}}));
+ const html=render(scope);
  assert.match(html,/data-state="needs_laboratory_review"/);
  assert.match(html,/data-testid="second-opinion-lab-questions"/);
  assert.match(html,/1 current · 0 needing source reassessment/);
- assert.match(html,/Open saved laboratory questions in Journey to inspect the original result/);
+ assert.match(html,/data-testid="preparation-lab-select"/);
+ assert.match(html,/Could we discuss &lt;fictional&gt; result\?/);
+ assert.match(html,/Observation\/FICTIONAL-OBS/);
+ assert.doesNotMatch(html,/data-testid="lab-citation-report(?:-open)?"/);
+ for(const patch of [
+  {labQuestionListPhase:'loading'}, {labQuestionListPhase:'error'},
+  {labQuestionHistory:{...scope.labQuestionHistory,case_id:'CASE-OTHER'}},
+  {labQuestionHistory:{...scope.labQuestionHistory,checked_source_snapshot_sha256:'earlier'}},
+  {labQuestionHistory:{...scope.labQuestionHistory,questions:[]}},
+ ]){
+  assert.doesNotMatch(render({...scope,...patch}),/preparation-lab-select|Could we discuss &lt;fictional&gt; result/);
+ }
  assert.match(html,/No text-anchored questions were returned/);
  assert.doesNotMatch(html,/Primary source version 1, line 0/);
 });

@@ -112,13 +112,16 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     raw = fictional_bundle()
     records()
     cd.evaluate('''(() => {
-      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];window.__oiLabQuestionPosts=[];window.__oiLabHistoryCodes=[];window.__oiLabCatalog=[];
+      window.__oiLabReports=[];window.__oiLabMutations=0;window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];window.__oiLabQuestionPosts=[];window.__oiLabHistoryCodes=[];window.__oiLabCatalog=[];
       window.fetch=async(input,init)=>{
         window.__oiLabRequests++;
+        const method=init?.method??input?.method??'GET';
+        if(['POST','PUT','PATCH','DELETE'].includes(method))window.__oiLabMutations++;
         const laboratory=String(input).endsWith('/laboratory/fhir-r4/sources')&&init?.method==='POST';
         if(laboratory)window.__oiLabWrites.push(JSON.parse(init.body));
         const response=await window.__oiLabFetch(input,init);
         const path=String(input);
+        if(path.endsWith('/source-citation-report'))window.__oiLabReports.push({path,method,status:response.status});
         if(path.includes('/composer/laboratory-questions/')&&(path.endsWith('/evidence-links')||path.endsWith('/evidence-search'))){
           const item={path,method:init.method,body:init.body??null,status:response.status,result:await response.clone().json()};
           window.__oiLabCatalog.push(item);
@@ -469,6 +472,76 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
             'amended_question_state':historical_links['source_context_state'],'withdrawn_metadata_state':redacted['status'],
             'report_original_observation_preserved':True,'report_withdrawn_metadata_withheld':True,
         },indent=2)+'\n')
+        # Use the same wording on a different Observation in the amended report.
+        # Selecting a question in preparation must use its identity, not its text.
+        case_path = '/cases/' + CASE
+        context = operator(case_path + '/world-model')
+        second = dict(synthetic=True, source_id=current['source_id'],
+                      observation_reference='Observation/FICT-WEB-ABSENT', question=question,
+                      expected_source_snapshot_sha256=context['snapshot_fingerprint'])
+        checked = operator(case_path + '/composer/laboratory-preflight', second)
+        second_receipt = operator(laboratory_history, {**second, 'request_key':'PREPARATION-ABSENT',
+                                  'expected_preflight_sha256':checked['preflight_sha256']})
+        second_id = second_receipt['question_id']
+        assert second_id != question_id
+        click(cd, '[data-testid=lab-questions-reopen]')
+        cd.wait("document.querySelectorAll('[data-testid=lab-saved-question]').length===2",
+                'same wording saved against two distinct laboratory results')
+        navigate('Overview')
+        picker = '[data-testid=preparation-lab-select]'
+        row = '[data-testid=preparation-lab-question]'
+        action = row + ' [data-testid=lab-citation-report-open]'
+        report = row + ' [data-testid=lab-citation-report]'
+        cd.wait("document.querySelectorAll('[data-testid=preparation-lab-select] option').length===3",
+                'both authorized questions offered for preparation')
+        assert not cd.evaluate('Boolean(document.querySelector('+json.dumps(report)+'))')
+        before = cd.evaluate('window.__oiLabMutations')
+        for target,source,reference,value in (
+                (second_id,current,second['observation_reference'],'No value reported.'),
+                (question_id,first,committed['observation_reference'],'0 10*9/L')):
+            read_count = cd.evaluate('window.__oiLabReports.length')
+            request_count = cd.evaluate('window.__oiLabRequests')
+            cd.evaluate("(()=>{const e=document.querySelector("+json.dumps(picker)+");e.value="+json.dumps(target)+
+                        ";e.dispatchEvent(new Event('change',{bubbles:true}));})()")
+            cd.wait('document.querySelector('+json.dumps(row)+')?.dataset.questionId==='+json.dumps(target),
+                    'exact selected question is active')
+            assert not cd.evaluate('Boolean(document.querySelector('+json.dumps(report)+'))')
+            assert cd.evaluate('window.__oiLabRequests') == request_count
+            click(cd,action)
+            cd.wait('Boolean(document.querySelector('+json.dumps(report)+'))','fresh protected preparation report')
+            calls = cd.evaluate('window.__oiLabReports.slice('+str(read_count)+')')
+            assert calls == [dict(path=root+laboratory_history+'/'+target+'/source-citation-report',method='GET',status=200)]
+            contents = cd.evaluate('document.querySelector('+json.dumps(report)+').textContent')
+            assert all(token in contents for token in (question,target,reference,source['sha256'],value))
+            if target == question_id:
+                assert 'Needs reassessment' in contents and CITATION in contents
+                assert catalog_record['title'] not in contents and 'not-performed' not in contents
+            else:
+                assert 'not-performed' in contents and CITATION not in contents and first['sha256'] not in contents
+        cd.command('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
+        cd.evaluate('document.querySelector('+json.dumps(report)+').scrollIntoView({block:"center"})')
+        assert cd.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+        (artifacts/'second-opinion-laboratory-result.png').write_bytes(base64.b64decode(
+            cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+        credentials[0]['actions'].remove('review_packet_read');write_grants()
+        try:
+            click(cd,action)
+            cd.wait("window.__oiLabReports.at(-1)?.status===404 && !document.querySelector('[data-testid=preparation-lab-select]')",
+                    'withdrawing report access removes the report and saved laboratory questions')
+            assert question not in cd.evaluate('document.body.innerText')
+            assert cd.evaluate('window.__oiLabMutations') == before
+        finally:
+            credentials[0]['actions'].append('review_packet_read');write_grants()
+        (artifacts/'second-opinion-laboratory-results.json').write_text(json.dumps({
+            'synthetic': True, 'historical_question': question_id, 'current_question': second_id,
+            'same_question_wording': True, 'historical_zero_and_current_absence_distinct': True,
+            'restricted_title_withheld': True, 'report_refresh_denial': 404, 'inspection_writes': 0,
+        }, indent=2)+'\n')
+        reopen_patient()
+        journey('1')
+        click(cd, '[data-testid=lab-questions-reopen]')
+        cd.wait("document.querySelectorAll('[data-testid=lab-saved-question]').length===2",
+                'questions reopened after explicit reauthorization')
     finally:
         if fixture_rights.rights_revoked:
             fixture_rights.set_fixture_rights(False)
