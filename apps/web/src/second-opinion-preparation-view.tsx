@@ -1,4 +1,8 @@
-import type {ViewState} from './registry-client';
+import {useState} from 'react';
+import type {RegistrySession,ViewState} from './registry-client';
+import type {LabQuestionList} from './laboratory-question';
+import {LaboratoryCitationReportPanel} from './laboratory-citation-report-panel';
+import {questionSaveBlocksSourceChange} from './source-questions-view';
 import {secondOpinionPreparation} from './second-opinion-preparation';
 import './second-opinion-agenda.css';
 
@@ -6,17 +10,50 @@ const summary={
  needs_check:'Check the case inputs before preparing a second-opinion discussion.',
  needs_records:'No current original source version is loaded for this case.',
  needs_question:'Original records are available, but no current text-anchored question is loaded in this agenda. Laboratory questions are checked separately.',
- needs_laboratory_review:'Open saved laboratory questions in Journey to inspect the original result and any citations you have permission to view.',
+ needs_laboratory_review:'Choose a saved laboratory question to inspect its original result and permitted citations.',
  needs_reassessment:'A source changed. Reassess affected questions before relying on earlier preparation.',
  inputs_prepared:'The currently loaded records and questions are organized for preparation.',
 } as const;
 
-export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion,onCheckEvidence}:{
- state:ViewState;onNavigate:(section:string)=>void;onResumeQuestion:(questionId:string)=>void;
+function PreparationLaboratoryQuestions({history,session,state,busy}:{
+ history:LabQuestionList; session:RegistrySession; state:ViewState; busy:boolean;
+}){
+ const [questionId,setQuestionId]=useState('');
+ const selected=history.questions.find(row=>row.question_id===questionId);
+ const sources=[...(state.worldModel?.current_sources??[]),...(state.worldModel?.history??[])];
+ const reportNames=new Map(sources.map(source=>[source.source_id,source.document_id]));
+ return <section className="second-opinion-agenda preparation-lab" aria-labelledby="preparation-lab-heading">
+  <h3 id="preparation-lab-heading">Laboratory questions for discussion</h3>
+  <label>Choose a saved laboratory question
+   <select data-testid="preparation-lab-select" value={questionId}
+    onChange={event=>setQuestionId(event.currentTarget.value)}>
+    <option value="">Choose a question</option>
+    {history.questions.map(row=><option key={row.question_id} value={row.question_id}>
+     {row.question} · {reportNames.get(row.source_id)} v{row.source_version} · {row.observation_reference}
+    </option>)}
+   </select>
+  </label>
+  {selected&&<div data-testid="preparation-lab-question" data-question-id={selected.question_id}>
+   <p className="second-opinion-agenda-question"><strong>{selected.question}</strong></p>
+   <p>{reportNames.get(selected.source_id)} · version {selected.source_version} · {selected.observation_reference}.{' '}
+    {selected.source_context_state==='source_reassessment_required'?
+     'Needs reassessment. Review the original result.':'Source context current at last check. Unreviewed.'}</p>
+   <LaboratoryCitationReportPanel key={selected.question_id} session={session} state={state} question={selected}
+    busy={busy}/>
+  </div>}
+ </section>;
+}
+
+export function SecondOpinionPreparation({state,session,busy,onNavigate,onResumeQuestion,onCheckEvidence}:{
+ state:ViewState;session:RegistrySession;busy:boolean;onNavigate:(section:string)=>void;onResumeQuestion:(questionId:string)=>void;
  onCheckEvidence:(questionId:string)=>void;
 }){
  const view=secondOpinionPreparation(state);
  if(!view)return null;
+ const model=state.worldModel;
+ const laboratoryBusy=busy||questionSaveBlocksSourceChange(state)||
+  ['saving','unknown'].includes(state.labQuestionWritePhase)||
+  ['saving','unknown'].includes(state.evidenceLinkPhase)||state.evidenceWritePhase==='unknown';
  return <section className="panel second-opinion-preparation" data-testid="second-opinion-preparation" data-state={view.state} aria-labelledby="second-opinion-heading">
   <span className="step">SECOND OPINION · PREPARATION ONLY</span>
   <h2 id="second-opinion-heading">Prepare a focused second-opinion discussion</h2>
@@ -33,13 +70,21 @@ export function SecondOpinionPreparation({state,onNavigate,onResumeQuestion,onCh
    </div>
    {view.laboratoryAvailable&&<div data-testid="second-opinion-lab-questions">
     <dt>Saved laboratory questions</dt>
-    <dd>{view.laboratoryQuestions?<>{view.laboratoryQuestions.current} current · {view.laboratoryQuestions.reassessment} needing source reassessment. These unreviewed questions refer to individual laboratory observations.</>:'Not checked for this case, or independently unavailable. Do not infer zero.'}</dd>
+    <dd>{view.laboratoryQuestions?<>{view.laboratoryQuestions.current} current · {view.laboratoryQuestions.reassessment} needing source reassessment. These unreviewed questions refer to individual laboratory observations.</>:state.labQuestionListPhase==='loading'?'Checking saved laboratory questions…':'Saved laboratory questions have not been checked for this case.'}
+     {model&&<button type="button" data-testid="preparation-lab-refresh"
+      disabled={laboratoryBusy||state.labQuestionListPhase==='loading'} onClick={()=>void session.loadLabQuestions(model)}>
+      {view.laboratoryQuestions?'Refresh laboratory questions':'Check laboratory questions'}
+     </button>}
+    </dd>
    </div>}
    <div data-testid="second-opinion-coordination">
     <dt>Recorded coordination</dt>
     <dd>{view.coordination?<>{view.coordination.open} open · {view.coordination.assigned} with a recorded owner{view.coordination.sourceChanged>0?' · '+view.coordination.sourceChanged+' source-changed':''}</>:'Follow-up work has not been checked or is unavailable.'}</dd>
    </div>
   </dl>
+  {view.laboratoryQuestions&&state.labQuestionHistory&&state.labQuestionHistory.questions.length>0&&
+   <PreparationLaboratoryQuestions key={state.labQuestionHistory.access_receipt_id} history={state.labQuestionHistory}
+    session={session} state={state} busy={laboratoryBusy}/>}
   <section className="second-opinion-agenda" aria-labelledby="second-opinion-agenda-heading" data-testid="second-opinion-agenda">
    <h3 id="second-opinion-agenda-heading">Text-source questions for discussion</h3>
    <p>Each saved question below refers to a line in a record. Source status reflects the last authorized read.</p>
