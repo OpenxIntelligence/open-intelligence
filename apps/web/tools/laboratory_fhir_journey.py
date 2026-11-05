@@ -115,6 +115,10 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
       window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];window.__oiLabQuestionPosts=[];window.__oiLabHistoryCodes=[];window.__oiLabCatalog=[];
       window.fetch=async(input,init)=>{
         window.__oiLabRequests++;
+        if(window.__oiLabPreviewOffline && String(input).endsWith('/laboratory/fhir-r4/preview')){
+          window.__oiLabPreviewOffline=false;
+          return new Response('{}',{status:503,headers:{'Content-Type':'application/json'}});
+        }
         const laboratory=String(input).endsWith('/laboratory/fhir-r4/sources')&&init?.method==='POST';
         if(laboratory)window.__oiLabWrites.push(JSON.parse(init.body));
         const response=await window.__oiLabFetch(input,init);
@@ -222,6 +226,36 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.evaluate('document.querySelector("[data-testid=laboratory-local-original]").style.removeProperty("font-size")')
     cd.command('Emulation.setDeviceMetricsOverride', {**viewport,'deviceScaleFactor':1,'mobile':False})
     print('PASS LABORATORY PREVIEW KEYBOARD: native Tab/PageDown/Tab; named visible reader at 390px and 320x256; exact local JSON; unchecked confirmation; zero requests and no source writes.')
+    preview_button = 'document.querySelector("[data-testid=laboratory-preview]")'
+    preview_results = 'document.querySelector("[data-testid=laboratory-preview-results]")'
+    cd.evaluate('window.__oiLabPreviewOffline=true')
+    cd.evaluate(preview_button + '.click()')
+    cd.wait('document.querySelector("[data-testid=laboratory-intake]").textContent.includes("Preview unavailable.")',
+            'a temporary preview outage is visible')
+    cd.evaluate('document.querySelector("[data-testid=laboratory-confirm]").click()')
+    assert cd.evaluate('!document.querySelector("[data-testid=laboratory-import]").disabled'), 'direct import remains available'
+    assert cd.evaluate('window.__oiLabWrites.length') == 0
+    cd.evaluate(preview_button + '.click()')
+    cd.wait('Boolean(' + preview_results + ')', 'server preview shows the selected specimen and results')
+    rendered = cd.evaluate(preview_results + '.textContent')
+    assert all(item in rendered for item in (
+        'Specimen/FICT-WEB-SPEC', 'DiagnosticReport/FICT-WEB-REPORT',
+        '0 10*9/L (UCUM)', '-4.25 10*9/L (UCUM)', 'Result absent · source reason: not-performed',
+    )), rendered
+    assert cd.evaluate(preview_results + '.querySelectorAll("script").length') == 0
+    assert cd.evaluate('document.querySelector("[data-testid=laboratory-import]").disabled')
+    assert operator(source_path)['sources'] == []
+    wrong_subject = raw.replace(('Patient/' + SUBJECT).encode(), b'Patient/FICT-OTHER')
+    select(wrong_subject, 'fictional-unmatched-lab.json')
+    assert cd.evaluate(preview_results + '===null')
+    cd.evaluate(preview_button + '.click()')
+    cd.wait('document.querySelector("[data-testid=laboratory-intake]").textContent.includes("does not match the supported laboratory format or the case mapping")',
+            'unmatched subject rejected on preview')
+    assert cd.evaluate(preview_results + '===null')
+    assert cd.evaluate('document.querySelector("[data-testid=laboratory-confirm]").disabled')
+    assert operator(source_path)['sources'] == [] and cd.evaluate('window.__oiLabWrites.length') == 0
+    select(raw, 'fictional-lab.json')
+    print('PASS STRUCTURED LAB PREVIEW: authorized values and specimen, unmatched case refused, zero original writes before confirmation.')
     cd.evaluate('document.querySelector("[data-testid=laboratory-confirm]").click();document.querySelector("[data-testid=laboratory-import]").click()')
     cd.wait('Boolean(document.querySelector("[data-testid=laboratory-retry]"))', 'unknown outcome exposes exact manual retry')
     first, = operator(source_path)['sources']
