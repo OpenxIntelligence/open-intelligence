@@ -154,7 +154,7 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
         import sqlite3
         from urllib.parse import urlsplit
         import signal
-        from oi_api.encounter_relay import FeedUnavailable, receive_once
+        from oi_api.encounter_relay import FeedUnavailable, receive_once, verify_history
         from test_encounter_relay import interrupt_receiver
 
         self.creds[0]["actions"].extend(["encounter.read", "encounter.schedule", "encounter.transition",
@@ -195,6 +195,13 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
                 self.assertEqual(db.execute("SELECT count(*) FROM activity_totals").fetchone(), (0,))
             result = deliver()
             self.assertEqual((result["applied"], result["counts"]), (3, expected))
+            self.assertEqual(deliver()["applied"], 0)
+            def workload():
+                return receive_once(receiver, port, patient, lambda: TOKEN_A, visit_workload=True)
+            self.assertEqual(workload()["visit_workload"], {"in_progress": 1})
+
+            verification = verify_history(receiver, port, patient, lambda: TOKEN_A)
+            self.assertEqual(verification["verified_events"], 3)
             item, = deliver(inbox_after=0)["pending_drafts"]
             self.assertEqual((item["encounter_id"], item["note_version"]), (first["encounter_id"], 1))
             self.assertEqual(deliver(acknowledge=item["event_id"])["acknowledged_event"], item["event_id"])
@@ -206,6 +213,10 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
             self.write()
             with self.assertRaises(FeedUnavailable):
                 deliver(acknowledge=item["event_id"])
+            with self.assertRaises(FeedUnavailable):
+                workload()
+            with self.assertRaises(FeedUnavailable):
+                verify_history(receiver, port, patient, lambda: TOKEN_A)
             with closing(sqlite3.connect(receiver)) as db:
                 self.assertEqual(db.execute("SELECT count(*) FROM activity_receipts").fetchone()[0], 3)
             self.creds[0]["actions"].append("note.read")
@@ -215,4 +226,11 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
             revised, = deliver(inbox_after=0)["pending_drafts"]
             self.assertEqual(revised["note_version"], 2)
             self.assertGreater(revised["event_id"], item["event_id"])
+            verification = verify_history(receiver, port, patient, lambda: TOKEN_A)
+            self.assertEqual(verification["verified_events"], 4)
+            self.assertEqual(verification["local_acknowledgements"]["count"], 1)
+            post(visit + "/transitions", {"synthetic": True, "request_key": "FINISH-ONE",
+                 "target": "completed", "expected_revision": 2})
+            self.assertEqual(workload()["visit_workload"], {"completed": 1})
+            self.assertEqual(workload()["applied"], 0)
             self.assertNotIn(draft["body"].encode(), receiver.read_bytes())

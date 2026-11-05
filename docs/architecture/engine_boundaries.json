@@ -57,7 +57,10 @@
           "registry_for_principal"
         ],
         "oi_api.encounter_event_contract": [
-          "EncounterEvents"
+          "EncounterEvents",
+          "VisitEvent",
+          "VisitEvents",
+          "VisitState"
         ],
         "oi_api.source_event_delivery": [
           "EventLeaseLost",
@@ -238,7 +241,8 @@
         "oi_api.followthrough_contracts",
         "oi_api.followthrough_routes",
         "oi_api.question_followthrough",
-        "oi_api.encounter_relay"
+        "oi_api.encounter_relay",
+        "oi_api.encounter_workload"
       ],
       "exports": {
         "oi_api.followthrough_routes": [
@@ -390,9 +394,10 @@
       "symbols": [
         "ClinicalAuthorizationError",
         "ClinicalConflict",
-        "EncounterNotFound"
+        "EncounterNotFound",
+        "TRANSITIONS"
       ],
-      "reason": "The H1 encounter routes translate errors from the canonical clinical encounter owner."
+      "reason": "The H1 routes translate canonical encounter errors. The operations projection reuses the same transition rules."
     },
     {
       "module": "open_intelligence.postgres_encounters",
