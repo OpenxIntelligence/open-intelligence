@@ -160,7 +160,9 @@ def main():
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
                 assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
                 from reading_convergence_journey import exercise as exercise_reading
-                exercise_reading(cd)
+                assert cd.evaluate("Boolean(document.querySelector('[data-testid=reviewed-document-disclosure]')) && !document.querySelector('[data-testid=reviewed-document-disclosure]').open"), 'Reviewed originals start collapsed beside the structured import'
+                assert cd.evaluate("!document.querySelector('[data-testid=reviewed-file]').checkVisibility()"), 'Closed reviewed intake preserves the reading-first workspace'
+                exercise_reading(cd,credentials,write_grants)
                 # The new Records action must recheck the canonical source before
                 # offering a question draft; no implicit question save or Composer call.
                 cd.evaluate("""(() => {
@@ -220,10 +222,31 @@ def main():
                     replacement_question_id=replacement_question_id,
                     authored_question_id=authored_question_id)
                 followthrough.finish(new_receipt['source_id'],credentials,write_grants,
-                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')))
+                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')),
+                    current_question_id=authored_question_id)
                 evidence.finish(credentials,write_grants,
                     Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')),
                     current_question_id=authored_question_id)
+                # Add one reviewed manual record before the connected question is
+                # created so its source membership is already part of that question's
+                # canonical World Model snapshot. Manual selections remain separate
+                # from source-authored observations.
+                manual_record=b'\xef\xbb\xbfIndependently fictional record\r\nManual context marker pending.\r\n'
+                manual_sha=hashlib.sha256(manual_record).hexdigest()
+                status,manual_document_receipt=add_synthetic(root+'/cases/'+case+'/documents',{
+                    'synthetic':True,'filename':'fictional-manual-context.txt',
+                    'original_base64':base64.b64encode(manual_record).decode('ascii'),
+                    'confirmed_case_id':case,'expected_sha256':manual_sha,
+                    'metadata':{'document_id':'DOC-MANUAL-BROWSER','kind':'pathology',
+                        'event_date':'2026-01-12','issued_at':'2026-01-12',
+                        'manual_transcription_confirmed':True},
+                    'findings':[{'key':'manual-marker','state':'pending',
+                        'quote':'Manual context marker pending.','line':2}]})
+                assert status==201 and manual_document_receipt['duplicate'] is False
+                manual_document={'document_id':'DOC-MANUAL-BROWSER','selection_key':'manual-marker',
+                                 'quote':'Manual context marker pending.',
+                                 'source_id':manual_document_receipt['source_id'],
+                                 'annotation_revision_id':manual_document_receipt['annotation_revision_id']}
                 # Add the fourth question only after both three-question checks.
                 connected_question = exercise_connected_question_review(cd,pid,case,new_receipt['source_id'],amended,
                     credentials,write_grants,questions)
@@ -238,10 +261,11 @@ def main():
                 from authored_evidence_journey import exercise as exercise_evidence
                 from evidence_continuity_journey import exercise as exercise_evidence_continuity
                 exercise_evidence(cd,pid,case,connected_question['question_id'],new_receipt['source_id'],
-                    credentials,write_grants,directory,questions.artifacts,restart_api,
+                    credentials,write_grants,directory,questions.artifacts,restart_api,add_synthetic,
                     on_report=lambda report,path,body:exercise_evidence_continuity(cd,pid,case,
                         connected_question['question_id'],new_receipt['source_id'],credentials,
-                        write_grants,questions.artifacts,report,path,body))
+                        write_grants,questions.artifacts,report,path,body),
+                    manual_document=manual_document)
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()
@@ -272,6 +296,21 @@ def main():
             exercise(cd,pid,directory,tokens[0],credentials,write_grants,out)
             exercise_case_switch(cd,pid,case,'CASE-WEB-INTAKE',credentials,write_grants,out,
                 current_question_id=connected_question['question_id'])
+            # Review boundaries exercise the two existing cases before the
+            # document journey deliberately creates its third fictional case.
+            from connected_question_review_journey import exercise_draft_boundaries
+            exercise_draft_boundaries(cd,pid,case,'CASE-WEB-INTAKE',connected_question['question_id'],
+                credentials,write_grants,connect,out)
+            from reviewed_documents_journey import exercise as exercise_reviewed_documents
+            exercise_reviewed_documents(cd,pid,directory,tokens[0],credentials,write_grants,out,restart_api)
+            from question_manual_passages_journey import exercise as exercise_question_manual_passages
+            exercise_question_manual_passages(cd,pid,tokens[0],credentials,write_grants,out)
+            cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith('Overview')).click()")
+            cd.wait("Boolean(document.querySelector('#patient-id'))",'Overview restored after reviewed document journey')
+            from image_evidence_journey import exercise as exercise_image_evidence
+            exercise_image_evidence(cd,pid,tokens[0],credentials,write_grants,directory,out,restart_api)
+            from laboratory_fhir_journey import exercise as exercise_laboratory
+            exercise_laboratory(cd,pid,directory,tokens[0],credentials,write_grants,out)
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()

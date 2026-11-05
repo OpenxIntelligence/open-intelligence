@@ -1,0 +1,8 @@
+OI-SYNTHETIC-REPORT/1
+Patient: CASE-DEMO
+Document: DOC-DEMO-PATHOLOGY
+Type: pathology
+Event-Date: 2026-04-03
+Issued-At: 2026-04-04
+Specimen: SPECIMEN-DEMO-A
+Finding: assay-status|pending|This independently fictional report records an assay as pending; no final result or clinical interpretation is available.

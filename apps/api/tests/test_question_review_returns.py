@@ -19,6 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from http_support import running_server
 from oi_api.app import create_app
 from oi_api.config import Settings
+from oi_api.contracts import SCHEMA_REVISION
 from oi_api.migrate import migrate
 from oi_api.request_limits import PatientRequestLimit
 from oi_api import patients as patient_routes
@@ -560,7 +561,7 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
         with self.engine.connect() as conn:
             self.assertEqual(conn.execute(text(
                 "SELECT version_num FROM public.alembic_version"
-            )).scalar_one(), "0011_evidence_convergence")
+            )).scalar_one(), SCHEMA_REVISION)
 
 
 if __name__=="__main__":

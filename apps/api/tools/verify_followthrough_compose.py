@@ -18,6 +18,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 import uuid
 
+from oi_api.contracts import SCHEMA_REVISION
 from verify_reviews_compose import AMENDED, CASE, ORIGINAL, SOURCE_CONTRACT
 
 
@@ -225,7 +226,7 @@ def main():
             business = [event for event in after['events']
                         if event['event_type'].startswith('coordination.followthrough.')]
             assert len(business) == 9, 'Replay duplicated a task business event'
-            assert after['revision'] == '0011_evidence_convergence'
+            assert after['revision'] == SCHEMA_REVISION
             for row, raw in zip(after['sources'], (ORIGINAL, AMENDED)):
                 assert row['sha256'] == row['raw_sha256'] == hashlib.sha256(raw.encode('utf-8')).hexdigest()
             encoded = json.dumps(after['events'], ensure_ascii=False)

@@ -24,7 +24,10 @@ from open_intelligence.store import InvalidInput, parse_report
 
 from .case_bindings import _case_id
 from .record_requests import PostgresRecordRequests
-from .source_integrity import SourceIntegrityError, validate_original, validate_snapshot
+from .source_integrity import (
+    SourceIntegrityError, validate_fhir_laboratory_original,
+    validate_original, validate_snapshot,
+)
 
 _TIMESTAMP_JSON = TypeAdapter(datetime)
 PreparedResponse = TypeVar("PreparedResponse")
@@ -44,6 +47,17 @@ class PostgresSourceVersions:
         if not isinstance(registry, PostgresPatientRegistry):
             raise TypeError("Canonical patient registry required")
         self.registry = registry
+
+    def _document_filter(self) -> str:
+        # Direct migration fixtures legitimately seed old structured-only
+        # schemas. HTTP separately requires the exact current migration head.
+        exists = self.registry._fetchone("SELECT to_regclass('clinical_source.document_intakes')")[0]
+        return ("AND source_id NOT IN (SELECT source_id FROM clinical_source.document_intakes) "
+                if exists is not None else "")
+
+    def _is_reviewed(self, source_id: str) -> bool:
+        return bool(self._document_filter() and self.registry._fetchone(
+            "SELECT source_id FROM clinical_source.document_intakes WHERE source_id=%s", (source_id,)))
 
     def _binding(self, patient_id: str, case_id: str, organization: str, purpose: str) -> int:
         PostgresRecordRequests(self.registry)._active_patient(patient_id, organization)
@@ -75,6 +89,10 @@ class PostgresSourceVersions:
             actor=_key(actor, "actor"), purpose=purpose,
             binding_revision=binding_revision, **references,
         )
+        # The event append can perform SQL I/O while the external grant changes.
+        # Reauthenticate after persistence and before the transaction commits;
+        # denial rolls back the event and withholds the prepared source/document.
+        recheck_authority()
         return receipt_id
 
     def _sources(self, case_id: str) -> list[dict]:
@@ -82,6 +100,7 @@ class PostgresSourceVersions:
             "SELECT source_id,document_id,version,sha256,kind,event_date,issued_at,"
             "received_at,specimen_id,state,supersedes_id "
             "FROM clinical_source.source_versions WHERE case_id=%s "
+            + self._document_filter() +
             "ORDER BY document_id,version", (case_id,),
         )
         return self._source_metadata(rows)
@@ -106,6 +125,7 @@ class PostgresSourceVersions:
             "SELECT source_id,document_id,version,sha256,kind,event_date,issued_at,"
             "received_at,specimen_id,state,supersedes_id,raw "
             "FROM clinical_source.source_versions WHERE case_id=%s "
+            + self._document_filter() +
             "ORDER BY document_id,version", (case_id,),
         )
         if self._source_metadata(rows) != sources:
@@ -113,7 +133,42 @@ class PostgresSourceVersions:
         fields = ("source_id", "document_id", "version", "sha256", "kind", "event_date",
                   "issued_at", "received_at", "specimen_id", "state", "supersedes_id", "raw")
         originals = [dict(zip(fields, row), case_id=case_id) for row in rows]
-        validate_snapshot(originals, assertions, requested_case_id=case_id)
+        fhir_sources = {}
+        fhir_observations = {}
+        table = self.registry._fetchone(
+            "SELECT to_regclass('clinical_source.fhir_laboratory_sources')")[0]
+        if table is not None:
+            metadata_rows = self.registry._fetchall(
+                "SELECT f.source_id,f.source_organization,f.source_system,f.subject_reference,"
+                "f.specimen_reference,f.specimen_type_text,f.specimen_collected_at,"
+                "f.report_reference,f.report_effective_at,f.report_issued_at,f.fhir_release,"
+                "f.profile_contract,f.observation_count "
+                "FROM clinical_source.fhir_laboratory_sources f "
+                "JOIN clinical_source.source_versions s ON s.source_id=f.source_id "
+                "WHERE s.case_id=%s ORDER BY s.document_id,s.version", (case_id,))
+            metadata_fields = (
+                "source_id","source_organization","source_system","subject_reference",
+                "specimen_reference","specimen_type_text","specimen_collected_at",
+                "report_reference","report_effective_at","report_issued_at","fhir_release",
+                "profile_contract","observation_count")
+            fhir_sources = {row[0]: dict(zip(metadata_fields, row)) for row in metadata_rows}
+            observation_rows = self.registry._fetchall(
+                "SELECT o.source_id,o.observation_reference,o.position,o.loinc_code,"
+                "o.effective_at,o.issued_at,o.status,o.value_text,o.unit_code,o.absent_reason,"
+                "o.source_reported,o.clinical_review "
+                "FROM clinical_source.fhir_laboratory_observations o "
+                "JOIN clinical_source.source_versions s ON s.source_id=o.source_id "
+                "WHERE s.case_id=%s ORDER BY s.document_id,s.version,o.position", (case_id,))
+            observation_fields = (
+                "source_id","observation_reference","position","loinc_code","effective_at",
+                "issued_at","status","value_text","unit_code","absent_reason",
+                "source_reported","clinical_review")
+            for row in observation_rows:
+                item = dict(zip(observation_fields, row))
+                fhir_observations.setdefault(row[0], []).append(item)
+        validate_snapshot(
+            originals, assertions, requested_case_id=case_id,
+            fhir_sources=fhir_sources, fhir_observations=fhir_observations)
 
     def list(self, patient_id: str, case_id: str, *, organization: str,
              actor: str, purpose: str, recheck_authority: Callable[[], None],
@@ -200,30 +255,12 @@ class PostgresSourceVersions:
         organization = _key(organization, "organization")
         with self.registry.transaction():
             binding_revision = self._binding(patient_id, case_id, organization, purpose)
-            row = self.registry._fetchone(
-                "SELECT raw,sha256,document_id,version,state,source_id,case_id,"
-                "kind,event_date,issued_at,specimen_id,supersedes_id "
-                "FROM clinical_source.source_versions "
-                "WHERE case_id=%s AND source_id=%s", (case_id, source_id),
-            )
-            if row is None:
-                raise PatientRegistryDenied("Source unavailable")
-            stored = dict(zip(("raw", "sha256", "document_id", "version", "state", "source_id",
-                               "case_id", "kind", "event_date", "issued_at", "specimen_id", "supersedes_id"), row))
-            predecessor = None
-            if stored["supersedes_id"] is not None:
-                previous = self.registry._fetchone(
-                    "SELECT source_id,case_id,document_id,version,kind,event_date,specimen_id,state "
-                    "FROM clinical_source.source_versions WHERE source_id=%s AND case_id=%s",
-                    (stored["supersedes_id"], case_id),
-                )
-                if previous is not None:
-                    predecessor = dict(zip(("source_id", "case_id", "document_id", "version", "kind",
-                                            "event_date", "specimen_id", "state"), previous))
-            raw = validate_original(stored, requested_case_id=case_id, predecessor=predecessor)
+            if self._is_reviewed(source_id):
+                raise PatientRegistryDenied("Use the reviewed-document original endpoint")
+            stored, raw = self._validated_original(case_id, source_id)
             result = {"source_id": source_id, "case_id": case_id,
-                    "document_id": row[2], "version": row[3],
-                    "state": row[4], "sha256": row[1],
+                    "document_id": stored["document_id"], "version": stored["version"],
+                    "state": stored["state"], "sha256": stored["sha256"],
                     "original_text": raw.decode("utf-8"),
                     "synthetic": True, "clinical_review_state": "not_established"}
             result["access_receipt_id"] = "ACCESS-" + uuid.uuid4().hex.upper()
@@ -233,9 +270,68 @@ class PostgresSourceVersions:
                 binding_revision=binding_revision, event="source.original_read_authorized",
                 receipt_id=result["access_receipt_id"],
                 recheck_authority=recheck_authority, source_id=source_id,
-                sha256=row[1], source_version=row[3], source_state=row[4],
+                sha256=stored["sha256"], source_version=stored["version"], source_state=stored["state"],
             )
             return prepared
+
+    def _validated_original(self, case_id: str, source_id: str) -> tuple[dict, bytes]:
+        """Reuse exact-original validation inside the caller's locked transaction.
+
+        No authorization or transaction is opened here. Both report and image
+        owners first acquire the canonical patient/case locks through _binding.
+        Historical report access remains valid; the image owner adds freshness.
+        """
+        row = self.registry._fetchone(
+            "SELECT raw,sha256,document_id,version,state,source_id,case_id,"
+            "kind,event_date,issued_at,specimen_id,supersedes_id "
+            "FROM clinical_source.source_versions WHERE case_id=%s AND source_id=%s",
+            (case_id, source_id),
+        )
+        if row is None:
+            raise PatientRegistryDenied("Source unavailable")
+        stored = dict(zip(("raw", "sha256", "document_id", "version", "state", "source_id",
+                           "case_id", "kind", "event_date", "issued_at", "specimen_id", "supersedes_id"), row))
+        predecessor = None
+        if stored["supersedes_id"] is not None:
+            previous = self.registry._fetchone(
+                "SELECT source_id,case_id,document_id,version,kind,event_date,specimen_id,state "
+                "FROM clinical_source.source_versions WHERE source_id=%s AND case_id=%s",
+                (stored["supersedes_id"], case_id),
+            )
+            if previous is not None:
+                predecessor = dict(zip(("source_id", "case_id", "document_id", "version", "kind",
+                                        "event_date", "specimen_id", "state"), previous))
+        lab_table = self.registry._fetchone(
+            "SELECT to_regclass('clinical_source.fhir_laboratory_sources')")[0]
+        if lab_table is not None:
+            metadata_row = self.registry._fetchone(
+                "SELECT source_id,source_organization,source_system,subject_reference,"
+                "specimen_reference,specimen_type_text,specimen_collected_at,"
+                "report_reference,report_effective_at,report_issued_at,fhir_release,"
+                "profile_contract,observation_count "
+                "FROM clinical_source.fhir_laboratory_sources WHERE source_id=%s",
+                (source_id,))
+            if metadata_row is not None:
+                metadata_fields = (
+                    "source_id","source_organization","source_system","subject_reference",
+                    "specimen_reference","specimen_type_text","specimen_collected_at",
+                    "report_reference","report_effective_at","report_issued_at","fhir_release",
+                    "profile_contract","observation_count")
+                metadata = dict(zip(metadata_fields, metadata_row))
+                observation_rows = self.registry._fetchall(
+                    "SELECT source_id,observation_reference,position,loinc_code,effective_at,"
+                    "issued_at,status,value_text,unit_code,absent_reason,source_reported,"
+                    "clinical_review FROM clinical_source.fhir_laboratory_observations "
+                    "WHERE source_id=%s ORDER BY position", (source_id,))
+                observation_fields = (
+                    "source_id","observation_reference","position","loinc_code","effective_at",
+                    "issued_at","status","value_text","unit_code","absent_reason",
+                    "source_reported","clinical_review")
+                observations = [dict(zip(observation_fields, row)) for row in observation_rows]
+                return stored, validate_fhir_laboratory_original(
+                    stored, metadata, observations, requested_case_id=case_id,
+                    predecessor=predecessor)
+        return stored, validate_original(stored, requested_case_id=case_id, predecessor=predecessor)
 
     def import_original(self, patient_id: str, case_id: str, original: bytes, *,
                         organization: str, actor: str, purpose: str,
@@ -298,6 +394,8 @@ class PostgresSourceVersions:
                 "WHERE case_id=%s AND document_id=%s "
                 "ORDER BY version DESC LIMIT 1", (case_id, parsed.document_id),
             )
+            if old and self._is_reviewed(old[0]):
+                raise PatientRegistryConflict("Document format cannot change across intake owners")
             previously_seen = self.registry._fetchone(
                 "SELECT source_id,version FROM clinical_source.source_versions "
                 "WHERE case_id=%s AND document_id=%s AND sha256=%s",

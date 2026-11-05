@@ -46,7 +46,7 @@ Prefer deterministic software for authorization, source identity, validation, ve
 
 The complete first-party healthcare ecosystem remains the destination: EHR, oncology, LIS/LIMS, pathology, RIS/PACS, genomics, pharmacy, research, care operations and enterprise services. The patient-centered intelligence experience is the first implementation priority. An initial adapter to an existing hospital does not reduce that scope.
 
-The latest bounded H1 engineering decision selects Python/FastAPI/PostgreSQL and React/Vite/TypeScript. **Next.js is excluded.** The currently implemented prototype is Python/SQLite with browser JavaScript; do not claim the target-stack migration has happened. Exact dependencies, production suitability and clinical release still require their own evidence. See the [H1 decision register](https://docs.google.com/document/d/1YrORrdNxzT6MN-WuKVdk2vWVtVXVw9OSo0z5ARvMypg/edit).
+The bounded H1 engineering decision selects Python/FastAPI/PostgreSQL and React/Vite/TypeScript. **Next.js is excluded.** The connected fictional application is in `apps/api` and `apps/web`; use `docs/H1_DEMO.md` and the exact-revision acceptance receipts in [consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481). The Python/SQLite prototype remains a separate reference implementation. This does not establish migration of the complete planned platform, production suitability or clinical release. Exact dependencies and those release claims still require their own evidence. See the [H1 decision register](https://docs.google.com/document/d/1YrORrdNxzT6MN-WuKVdk2vWVtVXVw9OSo0z5ARvMypg/edit).
 
 ## Completion reports
 

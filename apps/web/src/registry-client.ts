@@ -6,6 +6,8 @@ import type {QuestionSourceReviewPacket} from './source-quote-review-packet.js';
 import type {CaseBinding, SourceIndex} from './source-contracts.js';
 import {prepareSource,parseImportReceipt,verifyOriginal} from './source-intake.js';
 import type {ImportReceipt,OriginalSource} from './source-intake.js';
+import {emptyLaboratory,prepareLaboratoryFile,parseLaboratoryReceipt} from './laboratory-fhir.js';
+import type {LaboratoryImportState,LaboratoryIntent} from './laboratory-fhir.js';
 import {parseSourceWorldModel} from './source-world-model.js';
 import type {SourceWorldModel} from './source-world-model.js';
 import {decodeComposerPreflight,DEFAULT_SOURCE_QUESTION} from './composer-preflight-view.js';
@@ -25,7 +27,9 @@ import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,decodeQuestionE
 import type {QuestionEvidenceSearch,QuestionEvidenceLinks,QuestionEvidenceIntent,
   QuestionEvidenceReceipt} from './question-evidence-view.js';
 import {QuestionEvidenceSession,emptyEvidenceState} from './authored-evidence-session.js';
-import type {EvidenceState} from './authored-evidence-session.js';
+import {decodeSourceImages,readSourceImageOriginal,emptySourceImages} from './source-images.js';
+import type {SourceImagesState} from './source-images.js';
+import type {EvidenceState,EvidenceDraftPatch} from './authored-evidence-session.js';
 import type {ContentItem,Permissions,Relation,Applicability} from './authored-evidence.js';
 export type Patient = Readonly<{
   patient_id: string; origin_org: string; created_at: string;
@@ -37,7 +41,8 @@ export type ReviewReturnIntent=Readonly<{
 }>;
 export type QuestionDraft = Readonly<{case_id:string;source_id:string;source_line:number;
   snapshot_fingerprint:string;question:string}>;
-export type ViewState = Readonly<EvidenceState & {
+export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryImportState & {
+  manualPassageDraftQuestionIds:readonly string[];
   connected: boolean; phase: 'disconnected' | 'idle' | 'reading' | 'creating' | 'ready' | 'error';
   patient: Patient | null; created: CreatedPatient | null; message: string;
   cases: ReadonlyArray<CaseBinding> | null; sourceIndex: SourceIndex | null;
@@ -113,8 +118,8 @@ const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerP
   questionListMessage:'Open an authorized case to inspect saved source questions.',
   ...emptyEvidenceState(),...emptyBrief(),sourceQuotePacket:null,sourceQuotePhase:'idle' as const,
   sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
-const fresh = (): ViewState => Object.freeze({connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence()});
-const emptyRecords=()=>({...emptyIntake(),...emptyWorld(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
+const fresh = (): ViewState => Object.freeze({manualPassageDraftQuestionIds:Object.freeze([]),connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
+const emptyRecords=()=>({...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptySourceImages(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
     Object.keys(value).length===fields.length && fields.every(k=>Object.hasOwn(value,k));
@@ -122,6 +127,9 @@ function exact(value: unknown, fields: string[]): value is Record<string,unknown
 function boundedKey(value: unknown): value is string { return typeof value==='string' && KEY.test(value); }
 async function json(response: Response, limit=65536): Promise<unknown> {
   if(!/^application\/json(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '')) throw Error('contract');
+  return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await boundedBytes(response,limit)));
+}
+async function boundedBytes(response:Response,limit:number):Promise<Uint8Array>{
   const declared=response.headers.get('Content-Length');
   if(declared && (!/^\d+$/.test(declared) || Number(declared)>limit)) throw Error('contract');
   // Bounded streaming read also covers absent or dishonest Content-Length.
@@ -132,7 +140,7 @@ async function json(response: Response, limit=65536): Promise<unknown> {
       if(size>limit){await reader.cancel();throw Error('contract');}parts.push(value); }
   } finally {reader.releaseLock();}
   const all=new Uint8Array(size);let offset=0;for(const p of parts){all.set(p,offset);offset+=p.length;}
-  return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(all));
+  return all;
 }
 function patient(value: unknown, expected: string): Patient {
   if(!exact(value,['patient_id','origin_org','created_at','status','revision']) ||
@@ -147,6 +155,89 @@ function created(value: unknown): CreatedPatient {
   return Object.freeze(value as CreatedPatient);
 }
 export class RegistrySession {
+  // Exact reference-only commands survive a transient panel or evidence refresh.
+  // Scope checks withhold recovery controls from another patient/case/question;
+  // explicit disconnect clears this in-memory session just like other drafts.
+  #manualPassageIntents=new Map<string,string>();
+  #manualPassageDrafts=new Map<string,import('./question-passages').ManualSelectionDraft>();
+  #manualDraftEpoch=0;
+  #manualDraftCase:string|null=null;
+  #clearManualDrafts(preserveCase?:string){
+    // Invalidate old panel callbacks on every reset. Same-case refresh may keep
+    // references, but never quotations or permission to display them.
+    this.#manualDraftEpoch++;
+    if(!preserveCase||this.#manualDraftCase!==preserveCase){this.#manualPassageDrafts.clear();this.#manualDraftCase=null;}
+  }
+  manualPassageDraftStore=(scope:import('./question-passages').PassageScope):import('./question-passages').ManualDraftStore=>{
+    const key=JSON.stringify([scope.patient_id,scope.case_id,scope.question_id]),epoch=this.#manualDraftEpoch,session=this.#scope;
+    const current=()=>epoch===this.#manualDraftEpoch&&session===this.#scope&&this.#state.connected&&
+      this.#state.patient?.patient_id===scope.patient_id&&this.#state.questionsCaseId===scope.case_id&&this.#state.questionListPhase==='ready'&&
+      Boolean(this.#state.questions?.some(q=>q.question_id===scope.question_id&&q.case_id===scope.case_id&&q.patient_id===scope.patient_id));
+    return {read:()=>current()?this.#manualPassageDrafts.get(key)??null:null,
+      write:draft=>{if(!current())return;if(draft===null)this.#manualPassageDrafts.delete(key);else{this.#manualDraftCase=scope.case_id;this.#manualPassageDrafts.set(key,draft);}this.#publish({});}};
+  };
+  manualPassageIntentStore=(scope:import('./question-passages').PassageScope):import('./question-passages').ManualIntentStore=>{
+    const key=JSON.stringify([scope.patient_id,scope.case_id,scope.question_id]);
+    const current=()=>this.#state.patient?.patient_id===scope.patient_id&&this.#state.questionsCaseId===scope.case_id&&
+      Boolean(this.#state.questions?.some(q=>q.question_id===scope.question_id&&q.case_id===scope.case_id&&q.patient_id===scope.patient_id));
+    return {read:()=>current()?this.#manualPassageIntents.get(key)??null:null,
+      write:body=>{if(body===null)this.#manualPassageIntents.delete(key);else if(current())this.#manualPassageIntents.set(key,body);}};
+  };
+  async documentRequest(caseId:string,path:string,body?:string,questionId?:string):Promise<import('./reviewed-documents').DocumentReply>{
+    if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations)|\/selections\/ANN-[A-F0-9]{32}\/[a-z][a-z0-9_-]{0,59})?$/.test(path))throw Error('Invalid document path');
+    if(questionId!==undefined&&!/^QUESTION-[A-F0-9]{32}$/.test(questionId))throw Error('Invalid question scope');
+    return this.#caseContentRequest(caseId,'/documents'+path,body,questionId);
+  }
+  async questionPassageRequest(caseId:string,questionId:string,body?:string):Promise<import('./reviewed-documents').DocumentReply>{
+    if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^QUESTION-[A-F0-9]{32}$/.test(questionId))throw Error('Invalid question passage path');
+    const q=this.#state.questions?.find(q=>q.question_id===questionId&&q.case_id===caseId);
+    if(!q||q.patient_id!==this.#state.patient?.patient_id)throw Error('Recheck current question access');
+    return this.#caseContentRequest(caseId,'/questions/'+questionId+'/manual-passages',body,questionId);
+  }
+  async #caseContentRequest(caseId:string,path:string,body?:string,questionId?:string):Promise<import('./reviewed-documents').DocumentReply>{
+    const scope=this.#scope,read=this.#read,records=this.#records,patient=this.#state.patient?.patient_id;
+    const caseContext=()=>questionId!==undefined?
+      this.#state.questionListPhase==='ready'&&this.#state.questionsCaseId===caseId&&this.#state.worldPhase==='ready'&&this.#state.worldModel?.case_id===caseId&&
+       Boolean(this.#state.questions?.some(q=>q.question_id===questionId&&q.case_id===caseId&&q.patient_id===patient)):
+      this.#state.sourceIndex?.case_id===caseId;
+    const current=()=>scope===this.#scope&&read===this.#read&&records===this.#records&&patient===this.#state.patient?.patient_id&&caseContext();
+    if(!patient||!this.#token||!current())throw Error('Recheck patient and case access');
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=questionId!==undefined?setTimeout(()=>control.abort(),10000):undefined;
+    try{
+      const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+path,this.#init(control,body));
+      if(!current()){
+        void response.body?.cancel().catch(()=>{});
+        throw Error('Patient or case changed');
+      }
+      // A denied endpoint cannot leave the shared case looking authorized.
+      // Status is authoritative even when a proxy returns a non-JSON body.
+      if([401,403,404].includes(response.status)){
+        if(response.status===401)this.#httpError(401);
+        else{
+          this.#records++;
+          this.#publish({...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error',
+            recordMessage:'Document access unavailable or mapping changed. Reload case permissions.'});
+        }
+        void response.body?.cancel().catch(()=>{});
+        return{status:response.status,body:null,headers:response.headers};
+      }
+      let value:unknown;
+      if(path.endsWith('/original')&&response.status===200){
+        value=await boundedBytes(response,65536);
+      }else{
+        // 64 revisions × 30 quotes × 1200 code points × at most 12 JSON bytes
+        // (escaped surrogate pairs), plus bounded findings metadata and 64 KiB rendition.
+        // 32 MiB covers the complete permitted history; streaming still limits bad peers.
+        value=await json(response,32*1024*1024);
+      }
+      if(!current())throw Error('Patient or case changed');
+      const contentScope=path.includes('/selections/')&&value&&typeof value==='object'?(value as {anchor?:unknown}).anchor:value;
+      if(body===undefined&&response.status===200&&path!=='/documents/preview'&&!path.endsWith('/original')&&
+        (!contentScope||typeof contentScope!=='object'||(contentScope as {patient_id?:string}).patient_id!==patient||(contentScope as {case_id?:string}).case_id!==caseId))throw Error('Wrong document scope');
+      return{status:response.status,body:value,headers:response.headers};
+    }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
   #token=''; #scope=0; #read=0; #records=0; #state:ViewState=fresh();
   #worldRead=0; #composerRead=0; #questionRead=0; #questionWrite=0; #briefRead=0;
   #questionKey=''; #questionFingerprint=''; #savingQuestion=false;
@@ -154,6 +245,8 @@ export class RegistrySession {
   #followRead=0; #followWrite=0; #savingFollowthrough=false;
   #evidenceRead=0; #evidenceWrite=0; #savingEvidence=false;
   #quoteRead=0;
+  #imageRead=0; #imageDownload=0;
+  #laboratoryWrite=0; #laboratoryWriting=false;
   #inspectionQuestionId:string|null=null;
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false; #uploading=false;
   #evidenceSession:QuestionEvidenceSession;
@@ -165,19 +258,49 @@ export class RegistrySession {
       add:control=>this.#controllers.add(control),remove:control=>this.#controllers.delete(control),
       expire:()=>this.#httpError(401)});
   }
+  selectEvidenceComparison=(questionId:string,evidenceId:string)=>this.#evidenceSession.beginComparison(questionId,evidenceId);
+  editEvidenceComparison=(patch:EvidenceDraftPatch)=>this.#evidenceSession.editComparison(patch);
+  discardEvidenceComparison=()=>this.#evidenceSession.discardComparison();
+  saveEvidenceComparison=()=>this.#evidenceSession.saveComparison();
   dismissQuestionEvidence=()=>this.#evidenceSession.dismiss();
   dismissEvidenceMetadata=()=>this.#publish(this.#resetEvidence(this.#state.evidenceLinkIntent?.case_id??this.#state.questionsCaseId??undefined));
   loadQuestionEvidence=(questionId:string)=>{this.#focusSavedQuestion(questionId);return this.#evidenceSession.load(questionId);};
   importQuestionEvidence=(questionId:string,text:string,item:ContentItem,permissions:Permissions)=>this.#evidenceSession.import(questionId,text,item,permissions);
   assessQuestionEvidence=(questionId:string,evidenceId:string,quote:string,relation:Relation,applicability:Applicability,rationale:string)=>this.#evidenceSession.assess(questionId,evidenceId,quote,relation,applicability,rationale);
   withdrawQuestionEvidence=(questionId:string,evidenceId:string,reason:string)=>this.#evidenceSession.withdraw(questionId,evidenceId,reason);
-  prepareEvidenceReport=(questionId:string,assessmentIds:readonly string[])=>this.#evidenceSession.prepareReport(questionId,assessmentIds);
+  prepareEvidenceReport=(questionId:string,assessmentIds:readonly string[],manualContextSha256?:string)=>this.#evidenceSession.prepareReport(questionId,assessmentIds,manualContextSha256);
   readEvidenceReport=(questionId:string,reportId:string)=>this.#evidenceSession.readReport(questionId,reportId);
   loadEvidenceOriginal=(questionId:string,evidenceId:string)=>this.#evidenceSession.original(questionId,evidenceId);
   retryEvidenceWrite=()=>this.#evidenceSession.retry();
   snapshot=():ViewState=>this.#state;
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
-  #publish(patch:Partial<ViewState>){this.#state=Object.freeze({...this.#state,...patch});for(const listener of this.#listeners)listener();}
+  #publish(patch:Partial<ViewState>){
+    let next={...this.#state,...patch};
+    const prior=this.#state.laboratoryIntent,intent=next.laboratoryIntent;
+    let invalidated=prior!==null&&intent===null;
+    if(intent&&(next.patient!==null&&next.patient.patient_id!==intent.patient_id||
+       next.sourceIndex!==null&&next.sourceIndex.case_id!==intent.case_id||
+       next.cases!==null&&!next.cases.some(row=>row.case_id===intent.case_id&&row.status==='active'))){
+      next={...next,...emptyLaboratory()};invalidated=true;
+    }else if(intent&&next.laboratoryPhase==='sending'&&patch.recordsPhase?.startsWith('loading')){
+      // A metadata refresh can interrupt the read of a write's response, not undo its commit.
+      next={...next,laboratoryPhase:'unknown',laboratoryReceipt:null,
+        laboratoryMessage:'Import outcome unknown after context refresh. Reopen this case and retry the exact saved request.'};
+      invalidated=true;
+    }else if(this.#state.laboratoryPhase==='sending'&&next.laboratoryPhase==='unknown'){
+      invalidated=true;
+    }
+    if(invalidated){this.#laboratoryWrite++;
+      if(this.#laboratoryWriting){this.#laboratoryWriting=false;this.#uploading=false;}}
+    const patient=next.patient?.patient_id,caseId=next.questionsCaseId;
+    const scoped=next.connected&&next.phase==='ready'&&next.patient?.status==='active'&&next.questionListPhase==='ready'&&
+      next.worldPhase==='ready'&&next.worldModel?.patient_id===patient&&next.worldModel?.case_id===caseId&&
+      next.cases?.some(c=>c.patient_id===patient&&c.case_id===caseId&&c.status==='active');
+    const ids=scoped?(next.questions??[]).filter(q=>q.patient_id===patient&&q.case_id===caseId&&
+      this.#manualPassageDrafts.has(JSON.stringify([patient,caseId,q.question_id]))).map(q=>q.question_id):[];
+    this.#state=Object.freeze({...next,manualPassageDraftQuestionIds:Object.freeze(ids)});
+    for(const listener of this.#listeners)listener();
+  }
   #resetEvidence(preserveCase?:string){
     this.#evidenceRead++;this.#evidenceWrite++;this.#savingEvidence=false;
     const intent=this.#state.evidenceLinkIntent;
@@ -215,11 +338,12 @@ export class RegistrySession {
     this.#reviewKey='';this.#reviewIntent='';
     return emptyReview();
   }
-  #resetInvestigation(preserveReviewCase?:string,preserveFollowthroughCase=preserveReviewCase,preserveEvidenceCase=preserveReviewCase,preserveAuthoredEvidenceCase=preserveReviewCase){
+  #resetInvestigation(preserveReviewCase?:string,preserveFollowthroughCase=preserveReviewCase,preserveEvidenceCase=preserveReviewCase,preserveAuthoredEvidenceCase=preserveReviewCase,preserveManualCase=preserveReviewCase){
+    this.#clearManualDrafts(preserveManualCase);
     this.#inspectionQuestionId=null;
     this.#worldRead++;this.#composerRead++;this.#questionRead++;this.#questionWrite++;this.#briefRead++;this.#quoteRead++;
     this.#questionKey='';this.#questionFingerprint='';this.#savingQuestion=false;
-    return {...emptyInvestigation(),...this.#resetReview(preserveReviewCase),...this.#resetFollowthrough(preserveFollowthroughCase),
+    return {...emptyInvestigation(),...this.#resetSourceImages(),...this.#resetReview(preserveReviewCase),...this.#resetFollowthrough(preserveFollowthroughCase),
       ...this.#resetEvidence(preserveEvidenceCase),...this.#evidenceSession.reset(preserveAuthoredEvidenceCase)};
   }
   #resetWorld(preserveReviewCase?:string){
@@ -248,6 +372,8 @@ export class RegistrySession {
       sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
   };
   disconnect=()=>{
+    this.#manualPassageIntents.clear();
+    this.#laboratoryWrite++;this.#laboratoryWriting=false;
     this.#scope++;this.#read++;this.#records++;this.#token='';this.#creating=false;this.#uploading=false;
     this.#resetInvestigation();
     for(const c of this.#controllers)c.abort();this.#controllers.clear();
@@ -268,10 +394,14 @@ export class RegistrySession {
   }
   async read(id:string):Promise<void>{
     const scope=this.#scope, request=++this.#read;
+    const lab=this.#state.laboratoryIntent;
+    const preserveLaboratory=lab?.patient_id===id&&['sending','unknown'].includes(this.#state.laboratoryPhase)?lab:null;
     const pendingEvidence=this.#state.evidenceWriteIntent;
     const preserveEvidence=pendingEvidence?.patient_id===id&&
       ['saving','unknown'].includes(this.#state.evidenceWritePhase)?pendingEvidence:null;
     this.#records++;this.#publish({patient:null,...emptyRecords(),...this.#resetInvestigation(),
+      ...(preserveLaboratory?{laboratoryIntent:preserveLaboratory,laboratoryPhase:'unknown' as const,
+        laboratoryMessage:'The earlier laboratory import remains uncertain. Recheck this case, then retry its exact saved request.'}:{}),
       ...(preserveEvidence?{evidenceWriteIntent:preserveEvidence,evidenceWritePhase:'unknown' as const,
         evidenceWriteMessage:'The same patient is being rechecked. The earlier evidence write remains uncertain; reload its case authority before exact receipt recovery.'}:{})});
     if(!this.#token){this.#publish({message:'Connect an authorized synthetic credential first.'});return;}
@@ -286,7 +416,7 @@ export class RegistrySession {
       if(res.status!==200){
         // A temporary recheck failure cannot establish the earlier write's
         // outcome. Explicit patient denial does withdraw this shared scope.
-        if([403,404].includes(res.status))this.#publish(this.#resetInvestigation());
+        if([403,404].includes(res.status))this.#publish({...this.#resetInvestigation(),...emptyLaboratory()});
         this.#httpError(res.status);return;
       }
       const value=patient(await json(res),id); if(!current())return;
@@ -324,25 +454,28 @@ export class RegistrySession {
       retainedFollowthroughCase=this.#state.followthroughIntent?.case_id??Object.values(this.#state.followthroughDrafts)[0]?.case_id??
         Object.values(this.#state.followthroughTransitionDrafts)[0]?.case_id,
       retainedEvidenceCase=this.#state.evidenceLinkIntent?.case_id,
-      retainedAuthoredEvidenceCase=this.#state.evidenceWriteIntent?.case_id;
+      retainedAuthoredEvidenceCase=this.#state.evidenceWriteIntent?.case_id,
+      retainedManualCase=this.#manualDraftCase??undefined;
     const scope=this.#scope,read=this.#read,request=++this.#records;
     const current=()=>scope===this.#scope && read===this.#read &&
       request===this.#records && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(retainedCase,retainedFollowthroughCase,retainedEvidenceCase,retainedAuthoredEvidenceCase),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
+    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(retainedCase,retainedFollowthroughCase,retainedEvidenceCase,retainedAuthoredEvidenceCase,retainedManualCase),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/case-bindings',this.#init(control));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
+        if([403,404].includes(res.status))this.#clearManualDrafts();
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
-          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
+          ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           recordMessage:'Case mappings unavailable or permission changed. No records are shown.'});
         return;
       }
       const mappings=parseCaseBindingList(await json(res),patientId);
       if(!current())return;
+      if(retainedManualCase&&!mappings.some(item=>item.case_id===retainedManualCase&&item.status==='active'))this.#clearManualDrafts();
       const pendingCase=this.#state.followthroughIntent?.case_id??Object.values(this.#state.followthroughDrafts)[0]?.case_id??
         Object.values(this.#state.followthroughTransitionDrafts)[0]?.case_id;
       this.#publish({...((pendingCase&&!mappings.some(item=>item.case_id===pendingCase&&item.status==='active'))?this.#resetFollowthrough():{}),
@@ -378,8 +511,9 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
+        if([403,404].includes(res.status))this.#clearManualDrafts();
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
-          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
+          ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           recordMessage:'Sources unavailable, denied or mapping revoked. Reload case permissions.'});
         return;
       }
@@ -577,6 +711,7 @@ export class RegistrySession {
     if(!this.#token||!patientId||this.#state.phase!=='ready'||this.#uploading||
        !/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||
        !this.#state.cases?.some(x=>x.case_id===caseId&&x.status==='active')){
+      this.#clearManualDrafts();
       this.#records++;
       this.#publish({...emptyWorld(),...inquiry,...this.#resetReview(),worldPhase:'error',
         worldMessage:'Open an authorized fictional patient and active case first.'});
@@ -596,7 +731,8 @@ export class RegistrySession {
       if(!current())return;
       if(response.status===401){this.#httpError(401);return;}
       if(response.status!==200){
-        this.#publish({...emptyWorld(),...([403,404].includes(response.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),worldPhase:'error',
+        if([403,404].includes(response.status))this.#clearManualDrafts();
+        this.#publish({...emptyWorld(),...([403,404].includes(response.status)?{...emptyLaboratory(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),worldPhase:'error',
           worldMessage:'World Model source scope unavailable or revoked. Previous snapshot cleared.'});
         return;
       }
@@ -869,6 +1005,7 @@ export class RegistrySession {
   }
 
   async loadSavedQuestions(caseId:string):Promise<void>{
+    if(this.#manualDraftCase!==null&&this.#manualDraftCase!==caseId)this.#clearManualDrafts();
     if(this.#state.followthroughCaseId&&this.#state.followthroughCaseId!==caseId)this.#publish(this.#resetFollowthrough(caseId));
     this.#publish(this.#resetEvidence(caseId));
     this.dismissQuestionEvidence();
@@ -896,6 +1033,7 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(res.status);return;}
       if(res.status!==200){
+        if([403,404].includes(res.status))this.#clearManualDrafts();
         this.#publish({...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset(),reviewPhase:'error' as const,
           reviewMessage:'Question or source access is unavailable. Previous review content is cleared.'}:{}),
           questions:null,questionListPhase:'error',
@@ -1341,6 +1479,71 @@ export class RegistrySession {
   }
 
   /** Original is an independently permission-checked read; hash verification is not clinical validation. */
+  #resetSourceImages(){this.#imageRead++;this.#imageDownload++;return emptySourceImages();}
+  dismissSourceImages=()=>this.#publish(this.#resetSourceImages());
+  async loadSourceImages(sourceId:string):Promise<void>{
+    const patientId=this.#state.patient?.patient_id,index=this.#state.sourceIndex;
+    const source=index?.sources.find(item=>item.source_id===sourceId);
+    this.#publish(this.#resetSourceImages());
+    if(!this.#token||!patientId||this.#state.phase!=='ready'||!index||!source||
+       source.kind!=='imaging'||source.state!=='current'||this.#uploading||
+       !this.#state.cases?.some(item=>item.case_id===index.case_id&&item.status==='active')){
+      this.#publish({sourceImagesPhase:'error',sourceImagesMessage:'Choose a current imaging report in the authorized case first.'});return;
+    }
+    const scope=this.#scope,read=this.#read,request=this.#imageRead,caseId=index.case_id;
+    const current=()=>scope===this.#scope&&read===this.#read&&request===this.#imageRead&&
+      this.#state.patient?.patient_id===patientId&&this.#state.sourceIndex===index;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>{control.abort();if(current())this.#publish({sourceImages:null,
+      sourceImagesPhase:'error',sourceImagesMessage:'Image metadata request timed out. Recheck the source and try again.'});},10000);
+    this.#publish({sourceImagesSourceId:sourceId,sourceImagesPhase:'loading',sourceImagesMessage:'Checking linked image metadata and its current permission…'});
+    try{
+      const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources/'+encodeURIComponent(sourceId)+'/images',this.#init(control));
+      if(!current()||control.signal.aborted)return;
+      if(res.status===401){this.#httpError(401);return;}
+      if(res.status!==200){this.#publish({sourceImages:null,sourceImagesPhase:'error',sourceImagesMessage:'Linked images unavailable or permission denied. No earlier image list is retained.'});return;}
+      const sourceImages=decodeSourceImages(await json(res,524288),patientId,caseId,source);
+      if(!current()||control.signal.aborted)return;
+      this.#publish({sourceImages,sourceImagesPhase:'ready',sourceImagesMessage:'Linked original metadata checked for this source. Original bytes require a separate fresh read; images have not been interpreted.'});
+    }catch(_){if(current()&&!control.signal.aborted)this.#publish({sourceImages:null,sourceImagesPhase:'error',sourceImagesMessage:'Image metadata could not be verified or the service is unavailable. Recheck the source before retrying.'});}
+    finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+  async downloadSourceImage(sourceId:string,imageId:string):Promise<void>{
+    const patientId=this.#state.patient?.patient_id,index=this.#state.sourceIndex,images=this.#state.sourceImages;
+    const source=index?.sources.find(item=>item.source_id===sourceId),image=images?.images.find(item=>item.image_id===imageId);
+    const request=++this.#imageDownload;
+    this.#publish({sourceImageDownload:null,sourceImageDownloadPhase:'idle',sourceImageDownloadMessage:''});
+    if(!this.#token||!patientId||this.#state.phase!=='ready'||!index||!source||
+       source.kind!=='imaging'||source.state!=='current'||!images||!image||this.#uploading||
+       images.patient_id!==patientId||images.case_id!==index.case_id||images.source_id!==sourceId||
+       this.#state.sourceImagesPhase!=='ready'||!this.#state.cases?.some(item=>item.case_id===index.case_id&&item.status==='active')){
+      this.#publish({sourceImageDownloadPhase:'error',sourceImageDownloadMessage:'Inspect the exact current source image list before requesting original bytes.'});return;
+    }
+    const scope=this.#scope,read=this.#read,imageRead=this.#imageRead,caseId=index.case_id;
+    const current=()=>scope===this.#scope&&read===this.#read&&request===this.#imageDownload&&imageRead===this.#imageRead&&
+      this.#state.patient?.patient_id===patientId&&this.#state.sourceIndex===index&&this.#state.sourceImages===images;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>{control.abort();if(current())this.#publish({sourceImageDownload:null,
+      sourceImageDownloadPhase:'error',sourceImageDownloadMessage:'Original image request timed out. Nothing was downloaded. Recheck and try again.'});},10000);
+    this.#publish({sourceImageDownloadPhase:'loading',sourceImageDownloadMessage:'Rechecking original-image permission and exact bytes before download…'});
+    try{
+      const init=this.#init(control);init.headers={...init.headers,Accept:'application/dicom'};
+      const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/sources/'+encodeURIComponent(sourceId)+'/images/'+encodeURIComponent(imageId),init);
+      if(!current()||control.signal.aborted)return;
+      if(res.status===401){this.#httpError(401);return;}
+      if(res.status!==200){this.#publish({sourceImageDownload:null,sourceImageDownloadPhase:'error',sourceImageDownloadMessage:'Original image unavailable or permission denied. No cached bytes were downloaded.'});return;}
+      const verified=await readSourceImageOriginal(res,image);
+      if(!current()||control.signal.aborted)return;
+      const url=URL.createObjectURL(new Blob([verified.bytes],{type:'application/dicom'}));
+      try{const link=document.createElement('a');link.href=url;link.download='open-intelligence-original-'+imageId+'.dcm';
+        document.body.append(link);link.click();link.remove();}
+      finally{URL.revokeObjectURL(url);}
+      this.#publish({sourceImageDownload:Object.freeze({patient_id:patientId,case_id:caseId,source_id:sourceId,image_id:imageId,
+        sha256:image.sha256,byte_count:image.byte_count,access_receipt_id:verified.accessReceiptId}),sourceImageDownloadPhase:'ready',
+        sourceImageDownloadMessage:'Exact original bytes verified and offered for download. This read receipt is not continuing access or clinical approval.'});
+    }catch(_){if(current()&&!control.signal.aborted)this.#publish({sourceImageDownload:null,sourceImageDownloadPhase:'error',sourceImageDownloadMessage:'Original image failed byte verification or could not be downloaded. No previous original is reused.'});}
+    finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
   dismissOriginal=()=>{
     this.#records++;
     this.#publish({...(this.#state.worldPhase==='loading'?emptyWorld():{}),original:null,recordsPhase:'ready'});
@@ -1363,11 +1566,89 @@ export class RegistrySession {
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){this.#publish({original:null,recordsPhase:'error',recordMessage:'Original unavailable or permission denied. No previously opened text is retained.'});return;}
       // A 64 KiB original can expand under JSON escaping. Keep the envelope bounded too.
-      const original=await verifyOriginal(await json(res,524288),caseId,source);
+      const subject=this.#state.cases?.find(item=>item.case_id===caseId&&item.status==='active')?.source_subject_ref;
+      const original=await verifyOriginal(await json(res,524288),caseId,source,subject?'Patient/'+subject:undefined);
       if(!current())return;
       this.#publish({original,recordsPhase:'ready',recordMessage:'Exact original bytes verified against the selected source hash. Clinical review remains not established.'});
     }catch(_){if(current())this.#publish({original:null,recordsPhase:'error',recordMessage:'Original failed verification or service unavailable. Reload metadata before trying again.'});}
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+  /** Preserve one exact in-memory command until its receipt is known or this patient/case is withdrawn. */
+  async importLaboratory(caseId:string,text:string,confirmed:boolean,previousSourceId:string|null=null):Promise<void>{
+    if(this.#laboratoryWriting||this.#uploading)return;
+    if(this.#state.laboratoryPhase==='unknown'){
+      this.#publish({laboratoryMessage:'Resolve the uncertain import with Retry exact import before choosing another original.'});return;
+    }
+    const patientId=this.#state.patient?.patient_id,index=this.#state.sourceIndex;
+    if(!patientId||!this.#token||this.#state.phase!=='ready'||index?.case_id!==caseId||
+       !this.#state.cases?.some(row=>row.case_id===caseId&&row.status==='active')||confirmed!==true||
+       (previousSourceId!==null&&!index.sources.some(row=>row.source_id===previousSourceId&&row.kind==='laboratory'&&row.state==='current'))){
+      this.#publish({laboratoryPhase:'error',laboratoryReceipt:null,laboratoryMessage:'Choose the authorized case, inspect the fictional original and confirm its source version.'});return;
+    }
+    const scope=this.#scope,read=this.#read,records=this.#records,preparing=++this.#laboratoryWrite;
+    this.#laboratoryWriting=true;
+    try{
+      const file=await prepareLaboratoryFile(new TextEncoder().encode(text),'original.json');
+      if(file.text!==text)throw Error('changed bytes');
+      if(preparing!==this.#laboratoryWrite||scope!==this.#scope||read!==this.#read||records!==this.#records||this.#state.sourceIndex!==index)return;
+      const body=JSON.stringify({synthetic:true,request_key:crypto.randomUUID(),
+        expected_previous_source_id:previousSourceId,bundle_json:file.text});
+      if(new TextEncoder().encode(body).length>524288)throw Error('envelope');
+      const intent=Object.freeze({patient_id:patientId,case_id:caseId,body,sha256:file.sha256});
+      this.#laboratoryWriting=false;
+      await this.#sendLaboratory(intent);
+    }catch(_){if(scope===this.#scope&&read===this.#read&&records===this.#records)
+      this.#publish({laboratoryPhase:'error',laboratoryReceipt:null,laboratoryMessage:'Unsupported original JSON. Nothing was sent.'});}
+    finally{if(preparing===this.#laboratoryWrite&&scope===this.#scope)this.#laboratoryWriting=false;}
+  }
+  async retryLaboratoryImport():Promise<void>{
+    if(this.#state.laboratoryPhase!=='unknown'||!this.#state.laboratoryIntent)return;
+    await this.#sendLaboratory(this.#state.laboratoryIntent);
+  }
+  async #sendLaboratory(intent:LaboratoryIntent):Promise<void>{
+    if(this.#laboratoryWriting||this.#uploading)return;
+    if(!this.#token||this.#state.phase!=='ready'||this.#state.patient?.patient_id!==intent.patient_id||
+       this.#state.sourceIndex?.case_id!==intent.case_id||
+       !this.#state.cases?.some(row=>row.case_id===intent.case_id&&row.status==='active')){
+      this.#publish({laboratoryMessage:'Recheck this patient and case before recovering the exact import.'});return;
+    }
+    const write=++this.#laboratoryWrite,scope=this.#scope,read=this.#read;
+    this.#records++;
+    // The command's generation and selected scope govern its response. A blocked
+    // World Model read can advance the metadata counter without changing this command.
+    const current=()=>write===this.#laboratoryWrite&&scope===this.#scope&&read===this.#read&&
+      this.#state.patient?.patient_id===intent.patient_id&&this.#state.sourceIndex?.case_id===intent.case_id;
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);this.#laboratoryWriting=true;this.#uploading=true;
+    this.#publish({...emptyWorld(),...this.#resetInvestigation(intent.case_id),original:null,
+      laboratoryPhase:'sending',laboratoryIntent:intent,laboratoryReceipt:null,
+      laboratoryMessage:'Saving the exact fictional laboratory original under current source-import permission…'});
+    const uncertain=()=>this.#publish({laboratoryPhase:'unknown',laboratoryReceipt:null,
+      laboratoryMessage:'Import outcome unknown. It may have been saved. Retry the exact saved request to recover its receipt; nothing was automatically retried.'});
+    try{
+      const response=await this.transport('/v1/patients/'+encodeURIComponent(intent.patient_id)+'/cases/'+
+        encodeURIComponent(intent.case_id)+'/laboratory/fhir-r4/sources',this.#init(control,intent.body));
+      if(!current())return;
+      if(response.status===401){this.#httpError(401);return;}
+      if([403,404].includes(response.status)){
+        this.#publish({...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error',
+          recordMessage:'Laboratory import permission or case binding unavailable. Reload current access.'});return;
+      }
+      if([409,413,422].includes(response.status)){
+        this.#publish({laboratoryPhase:'error',laboratoryIntent:null,laboratoryReceipt:null,
+          laboratoryMessage:'This request was rejected. Inspect the supported format and current predecessor before a new import.'});return;
+      }
+      if(![200,201].includes(response.status)){uncertain();return;}
+      const receipt=parseLaboratoryReceipt(await json(response),intent.sha256,response.status);
+      if(!current())return;
+      this.#publish({laboratoryPhase:'saved',laboratoryReceipt:receipt,
+        laboratoryMessage:receipt.duplicate?'Original import receipt recovered; no duplicate source version was created.':
+          'Laboratory original saved. Results remain source-reported and unreviewed.'});
+      // A new original invalidates cached clinical context. Refresh only the same live case.
+      await this.loadSources(intent.case_id);
+    }catch(_){if(current())uncertain();}
+    finally{clearTimeout(timeout);this.#controllers.delete(control);
+      if(write===this.#laboratoryWrite&&scope===this.#scope){this.#laboratoryWriting=false;this.#uploading=false;}}
   }
   /** Only the existing server decides import/duplicate/quarantine. No retry or inferred rollback. */
   async importSource(caseId:string,text:string,confirmed:boolean):Promise<void>{
@@ -1394,8 +1675,9 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if([403,404,409,413,422].includes(res.status)){
+        if([403,404].includes(res.status))this.#clearManualDrafts();
         this.#publish({cases:null,sourceIndex:null,original:null,recordsPhase:'error',importOutcome:'rejected',
-          ...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
+          ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           importMessage:'The server rejected this import. Reload current case permissions; no success is claimed.'});return;
       }
       if(![200,201].includes(res.status))throw Error('unconfirmed');

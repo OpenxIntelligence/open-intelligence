@@ -1,8 +1,15 @@
 # Open Intelligence — current project state
 
+**Current connected application:** [consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
+maintains the current revision, verification receipts and landing status.
+Use the [persistent fictional demo](../H1_DEMO.md) and
+[convergence record](../engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md).
+The dated assessment below is preserved historical evidence. Its former main,
+draft labels, schema heads and test counts do not describe current acceptance.
+
 Assessment date: 3 November 2026. Initial assessment recorded before this branch's product changes.
 
-## Latest verified continuation — draft #307
+## Historical verified continuation — #307
 
 [PR #307](https://github.com/OpenxIntelligence/open-intelligence/pull/307) joins the
 existing #298 metadata/follow-through and #300 authored-evidence/Overview owners,

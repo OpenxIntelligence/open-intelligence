@@ -19,7 +19,7 @@ UNRESOLVED = frozenset((
 ))
 
 
-def project_source_world_model(index: dict) -> dict:
+def project_source_world_model(index: dict, laboratory_observations: list[dict] | tuple = ()) -> dict:
     """Project a single transactionally read source index without a second ledger.
 
     The caller obtains the index from PostgresSourceVersions.list() after
@@ -109,6 +109,44 @@ def project_source_world_model(index: dict) -> dict:
         key=lambda o: (o["event_date"], o["document_id"],
                        o["document_version"], o["source_line"], o["source_id"]),
     )
+    if type(laboratory_observations) not in (list, tuple) or len(laboratory_observations) > 4096:
+        raise PatientRegistryError("Invalid laboratory projection")
+    laboratory = []
+    seen_labs = set()
+    required_lab = {
+        "source_id","document_id","document_version","source_sha256",
+        "observation_reference","loinc_code","effective_at","issued_at",
+        "specimen_reference","specimen_type_text","specimen_collected_at",
+        "report_reference","status","value_text","unit_code","absent_reason",
+        "source_reported","review_state","clinical_review","clinical_meaning",
+    }
+    for item in laboratory_observations:
+        if type(item) is not dict or set(item) != required_lab:
+            raise PatientRegistryError("Invalid laboratory observation projection")
+        source = by_id.get(item["source_id"])
+        identity = (item["source_id"], item["observation_reference"])
+        if (source is None or source["state"] != "current" or source["kind"] != "laboratory"
+                or identity in seen_labs
+                or (item["document_id"], item["document_version"], item["source_sha256"])
+                   != (source["document_id"], source["version"], source["sha256"])
+                or item["status"] not in ("reported_value", "reported_absent")
+                or item["source_reported"] is not True
+                or item["review_state"] != "not_established"
+                or item["clinical_review"] != "not_performed"
+                or item["clinical_meaning"] is not None):
+            raise PatientRegistryError("Invalid laboratory observation projection")
+        if item["status"] == "reported_value":
+            if item["value_text"] is None or item["unit_code"] is None or item["absent_reason"] is not None:
+                raise PatientRegistryError("Invalid laboratory value projection")
+        else:
+            if item["value_text"] is not None or item["unit_code"] is not None or item["absent_reason"] not in (
+                    "unknown", "not-performed", "error", "masked"):
+                raise PatientRegistryError("Invalid laboratory absence projection")
+        seen_labs.add(identity)
+        laboratory.append(dict(item))
+    laboratory.sort(key=lambda o: (
+        o["effective_at"], o["document_id"], o["document_version"],
+        o["observation_reference"], o["source_id"]))
     grouped: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
     for item in observations:
         if item["specimen_id"] is not None:
@@ -141,6 +179,9 @@ def project_source_world_model(index: dict) -> dict:
         "patient_id": patient_id,
         "case_id": case_id,
         "current_sources": current,
+        # The canonical source rows already commit to FHIR raw bytes via SHA-256.
+        # Keep this fingerprint source-based so every investigation/review caller
+        # obtains the same snapshot identity without needing a second derived read.
         "observations": observations,
     }
     digest = hashlib.sha256(json.dumps(
@@ -163,13 +204,26 @@ def project_source_world_model(index: dict) -> dict:
         "summary": {
             "current_sources": len(current),
             "historical_sources": len(history),
-            "current_observations": len(observations),
-            "unresolved_observations": len(unresolved_refs),
+            "current_observations": len(observations) + len(laboratory),
+            "current_laboratory_observations": len(laboratory),
+            "unresolved_observations": len(unresolved_refs)
+                + sum(1 for item in laboratory if item["status"] == "reported_absent"),
             "source_disagreements": len(conflicts),
         },
         "current_sources": current,
         "history": history,
         "observations": observations,
+        "laboratory_observations": laboratory,
+        "laboratory_timeline": [{
+            "source_id": item["source_id"],
+            "observation_reference": item["observation_reference"],
+            "loinc_code": item["loinc_code"],
+            "effective_at": item["effective_at"],
+            "issued_at": item["issued_at"],
+            "specimen_reference": item["specimen_reference"],
+            "status": item["status"],
+            "clinical_interpretation": "not_performed",
+        } for item in laboratory],
         "unresolved_refs": unresolved_refs,
         "conflicts": conflicts,
         "limitations": [
@@ -178,6 +232,7 @@ def project_source_world_model(index: dict) -> dict:
             "No clinical identity proof, consent, professional review or real PHI support.",
             "Absent specimens cannot be assumed to be identical; different dates are not conflicts.",
             "No inferred diagnosis, staging, treatment response, trial eligibility or recommendations.",
+            "Typed FHIR laboratory rows remain source-reported and unreviewed; no reference-range or normal/abnormal inference.",
             "No biomedical evidence, Composer execution, human-review queue or outcomes integrated.",
             "Fingerprint is not signed, a permission grant or a safe execution authorization.",
         ],

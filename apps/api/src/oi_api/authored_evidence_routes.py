@@ -41,9 +41,11 @@ def register_evidence_routes(router, *, principal, registry, records_authorized,
                 options = {"organization": context.organization, "actor": context.actor, "purpose": context.purpose,
                            "prepare_response": lambda result: prepare_json(model, result, write=write),
                            "recheck_authority": lambda: final_question_authority(
-                               request, context, patients, patient_id, actions)}
+                               request, context, patients, patient_id, actions),
+                           "recheck_original_authority": lambda: final_question_authority(
+                               request, context, patients, patient_id, (*actions, 'source_original_read'))}
                 if payload is not None:
-                    options["payload"] = payload.model_dump(mode="json")
+                    options["payload"] = payload.model_dump(mode="json", exclude_none=True)
                 positional = (patient_id, case_id, question_id) + ((reference,) if reference is not None else ())
                 return getattr(owner, method)(*positional, **options)
         except PatientRegistryDenied:

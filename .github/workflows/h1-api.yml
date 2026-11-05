@@ -20,7 +20,9 @@ concurrency:
 jobs:
   synthetic-postgres-contract:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # Verified #469 run 41883746990 took nearly 30 minutes with all seven
+    # recovery gates. Preserve them and allow populated migration acceptance.
+    timeout-minutes: 40
     env:
       PYTHONDONTWRITEBYTECODE: '1'
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
@@ -74,19 +76,28 @@ jobs:
           python-version: '3.12.16'
       - name: Check the inherited synthetic-data boundary
         run: python tools/audit_ci_data_boundaries.py
-      - name: Download only hash-locked wheels
-        run: >-
-          python -m pip download --require-hashes --only-binary=:all:
-          --dest /tmp/oi-h1-wheels -r apps/api/requirements.lock
+      - name: Prepare hash-locked runtime wheels with code-only pydicom
+        run: python apps/api/tools/prepare_dependencies.py --wheel-dir /tmp/oi-h1-wheels
       - name: Verify wheel rights and write the resolved package inventory
         run: python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
       - name: Install verified wheels without network resolution
         run: |
-          python -m pip install --require-hashes --no-index --find-links /tmp/oi-h1-wheels -r apps/api/requirements.lock
+          python -m pip install --force-reinstall --no-deps --require-hashes --no-index --find-links /tmp/oi-h1-wheels -r apps/api/requirements.lock
           python -m pip check
           python --version
       - name: Apply the explicit migration to the disposable database
         run: python -m oi_api.migrate upgrade head
+      - name: Verify both populated laboratory and manual-task upgrade paths first
+        run: |
+          python - <<'PYTEST'
+          import unittest
+          suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_lab_manual_convergence.py')
+          suite.addTests(unittest.defaultTestLoader.loadTestsFromName(
+              'test_document_image_convergence.DocumentImageConvergenceContractTests.'
+              'test_single_join_preserves_both_published_document_and_image_histories'))
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(0 if result.wasSuccessful() and result.testsRun == 5 and not result.skipped else 1)
+          PYTEST
       - name: Run contracts and real PostgreSQL migration tests
         run: |
           python - <<'PY'
@@ -111,7 +122,13 @@ jobs:
       - name: Verify actual patient HTTP, restart, backup restore and access revocation
         run: python apps/api/tools/verify_registry_compose.py
       - name: Verify source HTTP, fresh authority, source receipts and restored originals
+        env:
+          OI_SOURCE_ACCEPTANCE_FILE: verification-api/source-document-recovery.json
         run: python apps/api/tools/verify_sources_compose.py
+      - name: Verify native FHIR laboratory custody, amendments and recovery
+        run: python apps/api/tools/verify_fhir_laboratory_compose.py
+      - name: Verify exact image originals, source amendments, image grants and restored custody
+        run: python apps/api/tools/verify_images_compose.py
       - name: Verify canonical review returns, history, retry recovery and backup restore
         run: python apps/api/tools/verify_reviews_compose.py
       - name: Verify canonical question follow-through, exact retries and restored history
