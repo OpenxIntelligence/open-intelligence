@@ -55,6 +55,9 @@ class DemoSetupTests(unittest.TestCase):
             grant = document['credentials'][0]
             self.assertEqual(grant['patient_ids'], ['PAT-' + 'A' * 32])
             self.assertEqual(grant['purpose'], 'operations')
+            self.assertEqual({a for a in grant['actions'] if a.startswith(('encounter.', 'note.'))},
+                             {'encounter.read', 'encounter.schedule', 'encounter.transition',
+                              'encounter.source.link', 'note.read', 'note.write'})
             self.assertNotIn('case_binding_revoke', grant['actions'])
             self.assertNotIn('authored_evidence_withdraw', grant['actions'])
 

@@ -1,3 +1,4 @@
+import {createEncounterChart, EncounterHttpError, type EncounterChart} from './encounter-client.js';
 import {readLaboratoryCitationReport} from './laboratory-citation-report.js';
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 export {patientContinuity} from './patient-continuity.js';
@@ -223,6 +224,60 @@ export class RegistrySession {
       if(!current()||control.signal.aborted)throw Error('Report scope changed');
       return {report,generation};
     }finally{signal.removeEventListener('abort',stop);clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+  #encounterScope(patientId:string){
+    const scope=this.#scope,read=this.#read,patient=this.#state.patient;
+    return ()=>scope===this.#scope&&read===this.#read&&!!this.#token&&this.#state.connected&&
+      this.#state.phase==='ready'&&patient?.status==='active'&&patient.patient_id===patientId&&this.#state.patient===patient;
+  }
+  /** A chart handle belongs to one successful patient selection, including when an ID is reopened. */
+  encounterChart(patientId:string):EncounterChart{
+    const current=this.#encounterScope(patientId);
+    return createEncounterChart(patientId,(suffix,body,limit,decode)=>
+      this.#encounterRequest(patientId,suffix,current,body,limit,decode));
+  }
+  async encounterSourceRequest(patientId:string,id:number,caseId:string,after:number|null,body?:string):Promise<unknown>{
+    const patientCurrent=this.#encounterScope(patientId),index=this.#state.sourceIndex,records=this.#records;
+    const current=()=>patientCurrent()&&records===this.#records&&index!==null&&this.#state.sourceIndex===index&&
+      index.patient_id===patientId&&index.case_id===caseId&&this.#state.recordsPhase==='ready';
+    if(!current()||!Number.isSafeInteger(id)||id<1||!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||
+      (body===undefined?after===null||!Number.isSafeInteger(after)||after<0:after!==null))throw Error('Recheck patient and case access');
+    if(body!==undefined){
+      let intent:unknown;try{intent=body.length<=1024?JSON.parse(body):null;}catch{intent=null;}
+      if(!exact(intent,['synthetic','request_key','source_id','expected_version','expected_sha256'])||intent.synthetic!==true||
+        typeof intent.request_key!=='string'||!/^[A-Za-z0-9_.:-]{8,100}$/.test(intent.request_key)||
+        !index?.sources.some(s=>s.source_id===intent.source_id&&s.version===intent.expected_version&&s.sha256===intent.expected_sha256))
+        throw Error('Recheck the exact source version');
+    }
+    const suffix='/'+id+'/cases/'+encodeURIComponent(caseId)+'/source-links'+(after===null?'':'?after_id='+after+'&limit=25');
+    return this.#encounterRequest(patientId,suffix,current,body,65536,x=>x,body!==undefined);
+  }
+  async #encounterRequest<T>(patientId:string,suffix:string,current:()=>boolean,body:string|undefined,limit:number,
+      decode:(data:unknown)=>T|Promise<T>,allowCreated=false):Promise<T>{
+    if(!current())throw Error('Reopen the authorized patient');
+    const control=new AbortController();this.#controllers.add(control);
+    const timer=setTimeout(()=>control.abort(),10000);
+    const live=()=>current()&&!control.signal.aborted;
+    try{
+      const response=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/encounters'+suffix,this.#init(control,body));
+      if(!live()){void response.body?.cancel().catch(()=>{});throw Error();}
+      if(response.status!==200&&!(allowCreated&&response.status===201)){
+        void response.body?.cancel().catch(()=>{});
+        if(response.status===401)this.#httpError(401);
+        else if(response.status===403||response.status===404){
+          this.#clearPatientSessionData();
+          this.#publish({connected:true,phase:'error',message:'Visit access is unavailable. Reopen the patient to check current access.'});
+        }
+        throw new EncounterHttpError(response.status);
+      }
+      const data=await json(response,limit);if(!live())throw Error();
+      const verified=await decode(data);if(!live())throw Error();
+      return verified;
+    }catch(error){
+      if(error instanceof EncounterHttpError)throw error;
+      // Network exceptions and invalid JSON may include credentials or response excerpts.
+      throw Error('Encounter response unavailable or could not be verified');
+    }finally{clearTimeout(timer);this.#controllers.delete(control);}
   }
   async documentRequest(caseId:string,path:string,body?:string,questionId?:string):Promise<import('./reviewed-documents').DocumentReply>{
     if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations)|\/selections\/ANN-[A-F0-9]{32}\/[a-z][a-z0-9_-]{0,59})?$/.test(path))throw Error('Invalid document path');

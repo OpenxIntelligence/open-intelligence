@@ -59,6 +59,8 @@ class RegistryMigrationTests(unittest.TestCase):
         # Remove only known test-owned objects. RESTRICT is intentional: an
         # unexpected dependent object must stop cleanup rather than be erased.
         with self.engine.begin() as connection:
+            connection.execute(text("DROP TABLE IF EXISTS ehr.encounter_source_links"))
+            connection.execute(text("DROP FUNCTION IF EXISTS ehr.guard_encounter_source_insert()"))
             connection.execute(text("ALTER TABLE IF EXISTS ehr.clinical_note_headers DROP CONSTRAINT IF EXISTS latest_note_version_exists"))
             connection.execute(text("DROP TABLE IF EXISTS ehr.clinical_note_versions"))
             connection.execute(text("DROP TABLE IF EXISTS ehr.clinical_note_headers"))
@@ -75,6 +77,7 @@ class RegistryMigrationTests(unittest.TestCase):
             connection.execute(text("DROP TABLE IF EXISTS investigation.laboratory_citation_anchors"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_links"))
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_citation_question_target()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.require_lab_citation_current_sources()"))
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_evidence_insert()"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.evidence_rights_decisions"))
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_evidence_rights_insert()"))
@@ -178,7 +181,7 @@ class RegistryMigrationTests(unittest.TestCase):
         self.assertFalse(schemas & {"auth", "platform"})
         self.assertEqual(set(inspect(self.engine).get_table_names(schema="ehr")), {
             "clinical_encounters", "clinical_note_headers",
-            "clinical_note_versions", "clinical_encounter_commands",
+            "clinical_note_versions", "clinical_encounter_commands", "encounter_source_links",
         })
         self.assertEqual(inspect(self.engine).get_table_names(schema="public"), ["alembic_version"])
         self.assertEqual(self._scalar("SELECT version_num FROM public.alembic_version"), REGISTRY_REVISION)
