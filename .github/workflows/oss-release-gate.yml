@@ -1,0 +1,16 @@
+name: OSS release declaration gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  rights-receipts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # project-approved pinned action
+      - name: Test fail-closed manifest validation (stdlib only)
+        run: python3 -m unittest discover -s tests -p test_oss_release_gate.py -v
+      - name: Check adopted dependency evidence declarations
+        run: python3 tools/oss_release_gate.py
