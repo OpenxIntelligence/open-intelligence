@@ -224,6 +224,42 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
             self.assertEqual(world["laboratory_timeline"][0]["clinical_interpretation"],
                              "not_performed")
 
+    def test_text_amendment_cannot_displace_a_fhir_result_in_the_patient_record(self):
+        with running_server(self.app) as base:
+            patient = self.make_patient(base)
+            case = f"/v1/patients/{patient}/cases/CASE-LAB-A"
+            status, first, _ = self.import_source(base, patient)
+            self.assertEqual(status, 201, first)
+            counts = (self.lab_counts(), self.source_counts())
+            # All ordinary amendment fields match, including document and specimen.
+            # Only the input format and its responsible source owner differ.
+            amendment = (
+                "OI-SYNTHETIC-REPORT/1\nPatient: CASE-LAB-A\nDocument: FICTIONAL-REPORT-A\n"
+                "Type: laboratory\nEvent-Date: 2026-04-03\nIssued-At: 2026-04-05\n"
+                "Specimen: FICTIONAL-SPECIMEN-A\nAmends: FICTIONAL-REPORT-A@1\n"
+                "Finding: marker|pending|Fictional follow-up report pending.\n"
+            )
+            for _ in range(2):
+                status, body, _ = request(base, case + "/sources", token=TOKEN_A,
+                    body={"synthetic": True, "original_text": amendment})
+                self.assertEqual(status, 409, body)
+            self.assertEqual((self.lab_counts(), self.source_counts()), counts)
+            status, world, _ = request(base, case + "/world-model", token=TOKEN_A)
+            self.assertEqual(status, 200, world)
+            self.assertEqual(world["observations"], [])
+            self.assertEqual([(r["source_id"], r["value_text"]) for r in world["laboratory_observations"]],
+                             [(first["source_id"], "4.20")])
+
+            corrected = example()
+            resource(corrected, "Observation")["valueQuantity"]["value"] = 5
+            status, second, _ = self.import_source(base, patient, corrected,
+                request_key="LAB-CORRECT-SAME-OWNER", expected_previous_source_id=first["source_id"])
+            self.assertEqual((status, second["version"]), (201, 2))
+            status, historical, _ = request(base, case + "/sources/" + first["source_id"], token=TOKEN_A)
+            self.assertEqual(status, 200, historical)
+            self.assertEqual((historical["state"], historical["original_text"]),
+                             ("superseded", encode(example()).decode("utf-8")))
+
     def test_exact_retry_and_changed_bundle_require_explicit_amendment(self):
         with running_server(self.app) as base:
             patient = self.make_patient(base)
