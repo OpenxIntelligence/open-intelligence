@@ -2,7 +2,7 @@ import type {ViewState} from './registry-client.js';
 import {patientContinuity} from './patient-continuity.js';
 import {matchesFollowthroughFilter} from './followthrough-view.js';
 
-export type SecondOpinionPreparationState='needs_check'|'needs_records'|'needs_question'|'needs_reassessment'|'inputs_prepared';
+export type SecondOpinionPreparationState='needs_check'|'needs_records'|'needs_question'|'needs_laboratory_review'|'needs_reassessment'|'inputs_prepared';
 
 export function secondOpinionPreparation(state:ViewState){
  const continuity=patientContinuity(state);
@@ -15,6 +15,7 @@ export function secondOpinionPreparation(state:ViewState){
   historical:index.sources.filter(source=>source.state==='superseded').length,
  }:null;
  const questions=continuity.questions;
+ const laboratoryQuestions=continuity.laboratoryQuestions;
  const attention=continuity.followthrough;
  // Question and task reads have independent grants. Never turn a task denial,
  // loading state, or other case's task history into a reassuring zero count.
@@ -62,8 +63,11 @@ export function secondOpinionPreparation(state:ViewState){
  let preparationState:SecondOpinionPreparationState='needs_check';
  if(records&&questions){
   preparationState=records.current===0?'needs_records':
-   questions.reassessment>0?'needs_reassessment':
+   questions.reassessment>0||Boolean(laboratoryQuestions?.reassessment)?'needs_reassessment':
+   continuity.laboratoryAvailable&&laboratoryQuestions===null?'needs_check':
+   Boolean(laboratoryQuestions?.current)?'needs_laboratory_review':
    questions.current===0?'needs_question':'inputs_prepared';
  }
- return {patientId,caseId,records,questions,agenda,coordination,state:preparationState} as const;
+ return {patientId,caseId,records,questions,laboratoryQuestions,
+  laboratoryAvailable:continuity.laboratoryAvailable,agenda,coordination,state:preparationState} as const;
 }
