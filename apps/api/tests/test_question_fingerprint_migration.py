@@ -6,11 +6,8 @@ import unittest
 from sqlalchemy import text
 
 from oi_api.app import create_app
-from oi_api.case_bindings import CanonicalCaseBindings
 from oi_api.contracts import SCHEMA_REVISION
 from oi_api.migrate import migrate
-from oi_api.source_world_model import project_source_world_model
-from oi_api.sources import PostgresSourceVersions
 from http_support import running_server
 import test_evidence_convergence_migrations as fixtures
 from test_patients import TOKEN_A, request
@@ -27,16 +24,7 @@ class QuestionFingerprintMigrationTests(SourceVersionFixture):
         migrate(self.admin, "upgrade", "0007_question_snapshot_contract")
         migrate(self.admin, "upgrade", "0006_image_custody")
         with self.services() as registry:
-            patient = registry.create_patient(**fixtures.COMMON, request_key="FINGERPRINT-PATIENT")["patient_id"]
-            CanonicalCaseBindings(registry).bind(
-                patient, **fixtures.COMMON, case_id="CASE-ALPHA", source_organization="ORG-INSTITUTION",
-                source_system="SYS-SYNTH", source_subject_ref="FINGERPRINT-SUBJECT", review_ref="FINGERPRINT-REVIEW")
-            sources = PostgresSourceVersions(registry)
-            source_id = sources.import_original(patient, "CASE-ALPHA", ORIGINAL.encode(),
-                                                **fixtures.OPTIONS)["source_id"]
-            world = project_source_world_model(sources.list(patient, "CASE-ALPHA", **fixtures.OPTIONS))
-            self.assertEqual(world["contract"], "oi.pg-source-world-model/1")
-            fingerprint = world["snapshot_fingerprint"]
+            patient, source_id, fingerprint = fixtures.seed_historical_source(registry)
         self.creds[0]["patient_ids"].append(patient)
         prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA"
         migrate(self.admin, "downgrade", "0007_question_snapshot_contract@-1")

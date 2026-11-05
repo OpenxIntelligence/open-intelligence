@@ -32,6 +32,18 @@ COMMON = {"organization": "ORG-ALPHA", "actor": "ACTOR-ALPHA", "purpose": "opera
 OPTIONS = {**COMMON, "recheck_authority": lambda: None, "prepare_response": None}
 
 
+def seed_historical_source(registry):
+    patient = registry.create_patient(**COMMON, request_key="UPGRADE-PATIENT")["patient_id"]
+    CanonicalCaseBindings(registry).bind(
+        patient, **COMMON, case_id="CASE-ALPHA", source_organization="ORG-INSTITUTION",
+        source_system="SYS-SYNTH", source_subject_ref="UPGRADE-SUBJECT", review_ref="UPGRADE-REVIEW")
+    source = PostgresSourceVersions(registry).import_original(
+        patient, "CASE-ALPHA", ORIGINAL.encode("utf-8"), **OPTIONS)["source_id"]
+    index = PostgresSourceVersions(registry).list(patient, "CASE-ALPHA", **OPTIONS)
+    snapshot = project_source_world_model(index)["snapshot_fingerprint"]
+    return patient, source, snapshot
+
+
 class EvidenceConvergenceMigrationTests(SourceVersionFixture):
     @contextmanager
     def services(self):
@@ -59,14 +71,7 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
             with probe.registry_connection():
                 self.fail("Current application accepted an older evidence schema")
         with self.services() as registry:
-            patient = registry.create_patient(**COMMON, request_key="UPGRADE-PATIENT")["patient_id"]
-            CanonicalCaseBindings(registry).bind(
-                patient, **COMMON, case_id="CASE-ALPHA", source_organization="ORG-INSTITUTION",
-                source_system="SYS-SYNTH", source_subject_ref="UPGRADE-SUBJECT", review_ref="UPGRADE-REVIEW")
-            source = PostgresSourceVersions(registry).import_original(
-                patient, "CASE-ALPHA", ORIGINAL.encode("utf-8"), **OPTIONS)["source_id"]
-            index = PostgresSourceVersions(registry).list(patient, "CASE-ALPHA", **OPTIONS)
-            snapshot = project_source_world_model(index)["snapshot_fingerprint"]
+            patient, source, snapshot = seed_historical_source(registry)
             question_text = "Which fictional continuity details require independent review?"
             prepared = PostgresSourceComposerPreflight(registry).preview(
                 patient, "CASE-ALPHA", **OPTIONS, expected_source_snapshot_sha256=snapshot,
