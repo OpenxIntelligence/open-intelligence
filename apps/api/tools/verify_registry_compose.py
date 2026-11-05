@@ -318,6 +318,41 @@ def main():
             assert snapshot() == original
             print("PASS EHR: exact restored rows/sequences, served prior notes and retries, third draft appended "
                   "through restored HTTP, independent note-read withdrawal and original database unchanged")
+            # Exercise both restored ownership triggers against valid destination keys.
+            # The other actor can read its own history even after the first loses note.read.
+            status, second = request("/v1/patients", tokens[1],
+                                     {"synthetic": True, "request_key": "RESTORE-SECOND-PATIENT"})
+            assert status == 201
+            second_patient = second["patient_id"]
+            assert re.fullmatch(r"PAT-[0-9A-F]{32}", second_patient) and second_patient != patient
+            credentials[1]["patient_ids"] = [second_patient]
+            save_access()
+            second_visits = "/v1/patients/" + second_patient + "/encounters"
+            status, second_visit = request(second_visits, tokens[1],
+                                          {**schedule, "external_key": "RESTORE-SECOND-VISIT"})
+            assert status == 200
+            second_id = int(second_visit["encounter_id"])
+            first_id = int(visit["encounter_id"])
+            note_id = int(note_receipts[0][1]["note_id"])
+            assert first_id != second_id
+            before_moves = snapshot("oi_api_test_restore")
+            for change in (
+                f"UPDATE ehr.clinical_encounters SET patient_id='{second_patient}' WHERE id={first_id}",
+                f"UPDATE ehr.clinical_note_headers SET encounter_id={second_id} WHERE id={note_id}",
+            ):
+                try:
+                    command(["exec", "-T", "db", "psql", "-X", "-U", "oi_api", "-d", "oi_api_test_restore",
+                             "-v", "ON_ERROR_STOP=1", "-c", "BEGIN; " + change + "; ROLLBACK"],
+                            capture_output=True, text=True)
+                except subprocess.CalledProcessError as error:
+                    assert "OI-IDENTITY-HISTORY-IMMUTABLE" in error.stderr, error.stderr
+                else:
+                    raise AssertionError("Restored EHR allowed owner reassignment")
+            assert snapshot("oi_api_test_restore") == before_moves
+            second_history = second_visits + "/" + str(second_id) + "/notes/" + note_path.split("/")[-2] + "/versions"
+            status, history = request(second_history, tokens[1])
+            assert status == 200 and history["versions"] == []
+            assert snapshot() == original
             credentials[0]["patient_ids"] = []
             save_access()
             assert request(path, tokens[0])[0] == 404
