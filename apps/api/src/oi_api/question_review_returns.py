@@ -22,6 +22,7 @@ from open_intelligence.postgres_registry import PostgresPatientRegistry
 from .case_bindings import _case_id
 from .composer_preflight import SHA256, SOURCE_SNAPSHOT_CONTRACT
 from .source_questions import LEGACY_SNAPSHOT_CONTRACT, PostgresSourceQuestions
+from .source_world_model import project_source_world_model
 from .sources import PostgresSourceVersions
 
 MAX_RECEIPTS = 750
@@ -67,6 +68,36 @@ def _queue_fingerprint(question: dict) -> str:
     })
 
 
+def _return_intent(patient_id, case_id, question_id, organization, actor, purpose,
+                   request_key, fingerprint, reason, comparison_source):
+    intent = {
+        "patient_id": patient_id, "case_id": case_id, "question_id": question_id,
+        "organization": organization, "actor": actor, "purpose": purpose,
+        "request_key": request_key, "queue_fingerprint": fingerprint,
+        "source_snapshot_contract": SOURCE_SNAPSHOT_CONTRACT,
+        "queue_fingerprint_contract": FINGERPRINT_CONTRACT, "reason": reason, "action": ACTION,
+    }
+    if comparison_source is not None:
+        intent["comparison_source"] = comparison_source
+    return _digest(intent)
+
+
+def attribution_comparison(observations: list[dict], question: dict, peer: dict) -> dict:
+    """Resolve two explicitly selected passages from the already verified current snapshot."""
+    by_line = {(o["source_id"], o["source_line"]): o for o in observations}
+    first = by_line.get((question["source_id"], question["source_line"]))
+    second = by_line.get((peer["source_id"], peer["source_line"]))
+    if first and second:
+        a, b = first.get("oncology"), second.get("oncology")
+        if (a and b and a["role"] == b["role"] == "metastasis"
+                and a["episode_id"] != b["episode_id"]
+                and first["document_id"] != second["document_id"]
+                and first["specimen_id"] is not None
+                and all(first[key] == second[key] for key in ("specimen_id", "event_date", "finding_key"))):
+            return second
+    raise PatientRegistryConflict("The selected reports cannot be compared for episode attribution")
+
+
 class PostgresQuestionReviewReturns:
     """Nonterminal question-review receipts in the existing investigation schema."""
 
@@ -83,7 +114,7 @@ class PostgresQuestionReviewReturns:
         receipt_rows = self.registry._fetchall(
             "SELECT receipt_id,question_id,patient_id,case_id,"
             "queue_fingerprint,source_snapshot_sha256,actor,action,reason,created_at,"
-            "source_snapshot_contract,queue_fingerprint_contract "
+            "source_snapshot_contract,queue_fingerprint_contract,request_key,intent_sha256 "
             "FROM investigation.question_review_receipts "
             "WHERE patient_id=%s AND case_id=%s AND origin_org=%s "
             "ORDER BY created_at,receipt_id LIMIT 751",
@@ -109,6 +140,7 @@ class PostgresQuestionReviewReturns:
             "reviewer_identity_verified": False, "external_notification_sent": False,
             "clinical_approval": False,
         } for r in receipt_rows]
+        self._attach_comparison_sources(patient_id, case_id, organization, source_index, receipt_rows, receipts)
         by_question: dict[str, list[dict]] = {}
         for receipt in receipts:
             by_question.setdefault(receipt["question_id"], []).append(receipt)
@@ -142,6 +174,50 @@ class PostgresQuestionReviewReturns:
             })
         return output, receipts
 
+    def _attach_comparison_sources(self, patient_id, case_id, organization, source_index, receipt_rows, receipts):
+        # A return and its journal entry commit together. Only the second exact
+        # anchor is added to the existing event. Original bytes stay with Sources.
+        comparison_events = self.registry._fetchall(
+            "SELECT metadata_json FROM identity.identity_domain_events WHERE patient_id=%s "
+            "AND event_type='investigation.review.returned_for_verification' "
+            "AND metadata_json->>'case_id'=%s AND metadata_json ? 'comparison_source_id' "
+            "ORDER BY id LIMIT 751", (patient_id, case_id),
+        )
+        if len(comparison_events) > MAX_RECEIPTS:
+            raise PatientRegistryError("Comparison history exceeds the receipt bound")
+        sources = {s["source_id"]: s for s in source_index["sources"]}
+        events = {e["receipt_id"]: e for (e,) in comparison_events}
+        if len(events) != len(comparison_events):
+            raise PatientRegistryError("Duplicate comparison return event")
+        for receipt, row in zip(receipts, receipt_rows):
+            event = events.pop(receipt["receipt_id"], None)
+            peer = None
+            if event is not None:
+                source = sources.get(event.get("comparison_source_id"))
+                line = event.get("comparison_source_line")
+                if (source is None or type(line) is not int or not 1 <= line <= 10000
+                        or event.get("comparison_source_sha256") != source["sha256"]
+                        or event.get("question_id") != receipt["question_id"]
+                        or event.get("queue_fingerprint") != receipt["queue_fingerprint"]
+                        or event.get("source_snapshot_sha256") != receipt["source_snapshot_sha256"]
+                        or event.get("actor") != receipt["actor_label"]):
+                    raise PatientRegistryError("Comparison return provenance mismatch")
+                peer = {"source_id": source["source_id"], "source_line": line}
+                receipt["comparison_source"] = {
+                    **peer, "source_sha256": source["sha256"], "document_id": source["document_id"],
+                    "source_version": source["version"],
+                }
+            if receipt["source_snapshot_contract"] == SOURCE_SNAPSHOT_CONTRACT:
+                expected = _return_intent(patient_id, case_id, receipt["question_id"], organization,
+                                          receipt["actor_label"], "operations", row[12],
+                                          receipt["queue_fingerprint"], receipt["reason"], peer)
+                if not hmac.compare_digest(row[13], expected):
+                    raise PatientRegistryError("Stored review intent does not match its source references")
+            elif peer is not None:
+                raise PatientRegistryError("Legacy return cannot carry a paired attribution")
+        if events:
+            raise PatientRegistryError("Comparison event has no matching return")
+
     def queue(self, patient_id: str, case_id: str, *, organization: str,
               actor: str, purpose: str, recheck_authority: Callable[[], None],
               prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
@@ -173,6 +249,7 @@ class PostgresQuestionReviewReturns:
     def return_for_verification(self, patient_id: str, case_id: str, question_id: str, *,
                                 organization: str, actor: str, purpose: str,
                                 request_key: str, expected_queue_fingerprint: str, reason: str,
+                                comparison_source: dict | None = None,
                                 recheck_authority: Callable[[], None],
                                 prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
         patient_id = _key(patient_id, "patient_id")
@@ -187,14 +264,8 @@ class PostgresQuestionReviewReturns:
         if (type(expected_queue_fingerprint) is not str
                 or SHA256.fullmatch(expected_queue_fingerprint) is None):
             raise PatientRegistryError("Invalid queue fingerprint")
-        intent = _digest({
-            "patient_id": patient_id, "case_id": case_id, "question_id": question_id,
-            "organization": organization, "actor": actor, "purpose": purpose,
-            "request_key": request_key, "queue_fingerprint": expected_queue_fingerprint,
-            "source_snapshot_contract": SOURCE_SNAPSHOT_CONTRACT,
-            "queue_fingerprint_contract": FINGERPRINT_CONTRACT,
-            "reason": reason, "action": ACTION,
-        })
+        intent = _return_intent(patient_id, case_id, question_id, organization, actor, purpose,
+                                request_key, expected_queue_fingerprint, reason, comparison_source)
 
         def response(receipt_id, duplicate):
             result = {"receipt_id": receipt_id, "question_id": question_id, "duplicate": duplicate}
@@ -233,6 +304,12 @@ class PostgresQuestionReviewReturns:
                 raise PatientRegistryConflict("Review queue item changed; refresh")
             self.registry._allow(actor, patient_id, "review_return", purpose)
             recheck_authority()
+            comparison_event = {}
+            if comparison_source is not None:
+                peer = attribution_comparison(project_source_world_model(index)["observations"], item, comparison_source)
+                comparison_event = {"comparison_source_id": peer["source_id"],
+                                    "comparison_source_line": peer["source_line"],
+                                    "comparison_source_sha256": peer["source_sha256"]}
             receipt_id = "REVIEW-" + uuid.uuid4().hex.upper()
             inserted = self.registry._fetchone(
                 "INSERT INTO investigation.question_review_receipts "
@@ -256,7 +333,7 @@ class PostgresQuestionReviewReturns:
                 queue_fingerprint=expected_queue_fingerprint,
                 source_snapshot_sha256=item["source_snapshot_sha256"],
                 source_snapshot_contract=SOURCE_SNAPSHOT_CONTRACT,
-                queue_fingerprint_contract=FINGERPRINT_CONTRACT, actor=actor,
+                queue_fingerprint_contract=FINGERPRINT_CONTRACT, actor=actor, **comparison_event,
             )
             return response(receipt_id, False)
 

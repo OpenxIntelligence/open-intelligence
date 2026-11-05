@@ -1,3 +1,4 @@
+import {AttributionReview} from './attribution-review';
 import {useEffect,useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
 import {FICTIONAL_RETURN_REASON,validReturnReason} from './review-queue-view';
@@ -34,8 +35,9 @@ export function useReviewReasonDrafts(state:ViewState){
 }
 
 /** Reuses the source-question review owner from PR245 in the current patient workspace. */
-export function ReviewPanel({state,session,busy,onOverview,onInvestigations,drafts}:{
+export function ReviewPanel({state,session,busy,onOverview,onInvestigations,onOriginal,drafts}:{
  state:ViewState;session:RegistrySession;busy:boolean;onOverview:()=>void;onInvestigations:()=>void;
+ onOriginal:(caseId:string,sourceId:string,version:number,digest:string)=>void;
  drafts:ReturnType<typeof useReviewReasonDrafts>;
 }){
  const changing=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
@@ -70,6 +72,7 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,draf
      aria-label="Exact verification return awaiting a receipt">
     <h3>{returning?'Recording the captured return':'Recover the earlier return receipt'}</h3>
     <p><strong>Captured reason:</strong> {intent.reason}</p>
+    {intent.comparison_source&&<p>Second source <code>{intent.comparison_source.source_id}</code> · line {intent.comparison_source.source_line}</p>}
     <p>This exact intent keeps its original request key. A later source amendment does not turn it
      into a return against the new source version.</p>
     <details><summary>Captured question and source context</summary>
@@ -124,6 +127,8 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,draf
         <p>Preflight <code>{item.preflight_sha256}</code></p>
         <p>Return context <code>{item.queue_fingerprint_contract}</code> · <code>{item.queue_fingerprint??'Not current'}</code></p>
        </details>
+       <AttributionReview key={item.question_id+':'+queue.access_receipt_id} session={session} state={state}
+        question={item} disabled={busy||returning||uncertain}/>
        {item.queue_fingerprint&&<div className="review-return-form">
         <label htmlFor={'reason-'+item.question_id}>Reason for independent verification</label>
         <textarea id={'reason-'+item.question_id} data-testid="review-reason" value={draft}
@@ -140,7 +145,15 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,draf
     <h3>Immutable return history</h3>
     {queue.receipts.length===0?<p>No verification-return receipts have been recorded.</p>:
      <ul className="review-history" data-testid="review-return-history">{queue.receipts.map(receipt=><li key={receipt.receipt_id}>
-      <strong>Returned for independent verification</strong>
+      <strong>{receipt.comparison_source?'Episode attribution left unresolved':'Returned for independent verification'}</strong>
+      {receipt.comparison_source&&(()=>{
+       const first=queue.items.find(item=>item.question_id===receipt.question_id)!;
+       const second=receipt.comparison_source;
+       return <div><p>{first.review_state==='source_reassessment_required'?'Source context changed. Reassess these passages.':'Recorded passages'}</p>
+        <button type="button" disabled={busy||returning||uncertain} onClick={()=>onOriginal(caseId,first.source_id,first.source_version,first.source_sha256)}>First original · v{first.source_version}, line {first.source_line}</button>{' '}
+        <button type="button" disabled={busy||returning||uncertain} onClick={()=>onOriginal(caseId,second.source_id,second.source_version,second.source_sha256)}>Second original · {second.document_id} v{second.source_version}, line {second.source_line}</button>
+       </div>;
+      })()}
       <p><strong>Reason:</strong> {receipt.reason}</p>
       <p><time dateTime={receipt.created_at}>{receipt.created_at}</time> · {receipt.source_snapshot_contract==='oi.pg-source-world-model/1'?
        'Canonical source context at recording':'Earlier source context; retained as history'}</p>

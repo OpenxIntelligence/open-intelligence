@@ -140,6 +140,23 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
             <p>{item.source_refs.map(ref=><code key={ref.source_id+':'+ref.source_line}>{ref.source_id} line {ref.source_line}; </code>)}</p>
           </li>)}</ul>
         </section>}
+        {!showQuestions&&episodes.size>0&&<section aria-label="Episode attribution reviews">
+          <h3>Episode attribution reviews</h3>
+          <button type="button" disabled={loading||busy||state.reviewPhase==='loading'}
+           onClick={()=>void session.loadReviewQueue(model.case_id)}>Check recorded attribution reviews</button>
+          {state.reviewPhase==='error'&&<p role="status">{state.reviewMessage}</p>}
+          {state.reviewPhase==='ready'&&state.reviewQueue?.case_id===model.case_id&&
+            state.reviewQueue.patient_id===model.patient_id&&(()=>{
+             const queue=state.reviewQueue;
+             const paired=new Set(queue.receipts.filter(r=>r.comparison_source).map(r=>r.question_id));
+             const items=queue.items.filter(q=>paired.has(q.question_id));
+             return items.length?<><ul>{items.map(q=><li key={q.question_id}>
+              <strong>{q.question}</strong> · {q.review_state==='source_reassessment_required'?
+               'Source context changed — reassessment required':'Attribution remains unresolved'}
+             </li>)}</ul><button type="button" onClick={onReview}>Inspect reasons and original passages</button></>:
+              <p>No paired attribution reviews are recorded for this case.</p>;
+            })()}
+        </section>}
         {model.history.length>0&&<details className="world-history"><summary>Superseded original history ({model.history.length})</summary>
           <ul>{model.history.map(item=><li key={item.source_id}><code>{item.source_id}</code> · {item.document_id} v{item.version} · SHA-256 <code>{item.sha256}</code></li>)}</ul>
         </details>}
