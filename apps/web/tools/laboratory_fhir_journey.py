@@ -14,8 +14,9 @@ SUBJECT = 'FICT-WEB-LAB'
 
 def fictional_bundle(*, amended=False):
     """Independently authored numeric-zero, negative-number and absent fixtures."""
-    subject = {'reference': 'Patient/' + SUBJECT}
-    specimen = {'reference': 'Specimen/FICT-WEB-SPEC'}
+    # Source originals may mix exact fullUrl references with local resource IDs.
+    subject = {'reference': 'urn:uuid:10000000-0000-4000-8000-000000000001'}
+    specimen = {'reference': 'urn:uuid:10000000-0000-4000-8000-000000000002'}
     category = [{'coding': [{'system': 'http://terminology.hl7.org/CodeSystem/observation-category', 'code': 'laboratory'}]}]
     coding = lambda code: {'coding': [{'system': 'http://loinc.org', 'code': code}]}
     issued = '2026-04-05T12:00:00Z' if amended else '2026-04-04T12:00:00Z'

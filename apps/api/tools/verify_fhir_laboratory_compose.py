@@ -53,8 +53,13 @@ FHIR_V1 = (
     '"effectiveDateTime":"2026-04-03T09:05:00-04:00",'
     '"issued":"2026-04-04T12:00:00Z"}}]}'
 )
-FHIR_V2 = FHIR_V1.replace('"value":4.20', '"value":5.00').replace(
-    '"issued":"2026-04-04T12:00:00Z"', '"issued":"2026-04-05T12:00:00Z"')
+# The amended fictional source names its targets by their exact entry fullUrls.
+# Keep the first source's relative links to exercise recovery of both spellings.
+FHIR_V2 = (FHIR_V1.replace('"value":4.20', '"value":5.00')
+           .replace("2026-04-04T12:00:00Z", "2026-04-05T12:00:00Z")
+           .replace('"Patient/FICTIONAL-PATIENT-A"', '"urn:uuid:00000000-0000-4000-8000-000000000001"')
+           .replace('"Specimen/FICTIONAL-SPECIMEN-A"', '"urn:uuid:00000000-0000-4000-8000-000000000002"')
+           .replace('"Observation/FICTIONAL-OBS-A"', '"urn:uuid:00000000-0000-4000-8000-000000000003"'))
 
 
 def main():
@@ -155,6 +160,9 @@ def main():
             assert world["summary"]["current_observations"] == 1
             assert world["summary"]["historical_sources"] == history
             lab, = world["laboratory_observations"]
+            assert lab["observation_reference"] == OBSERVATION
+            assert lab["specimen_reference"] == "Specimen/FICTIONAL-SPECIMEN-A"
+            assert lab["report_reference"] == "DiagnosticReport/FICTIONAL-REPORT-A"
             assert (lab["source_id"],lab["loinc_code"],lab["value_text"],lab["unit_code"]) == (
                 source_id,"777-3",value,"10*9/L")
             assert lab["clinical_review"] == "not_performed" and lab["clinical_meaning"] is None
