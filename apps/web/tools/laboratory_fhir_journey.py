@@ -51,7 +51,7 @@ def fictional_bundle(*, amended=False):
 
 
 def exercise(cd, patient_id, directory, token, credentials, write_grants, artifacts):
-    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'question_create', 'composer_context_read'}
+    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'question_create', 'composer_context_read', 'evidence_read', 'evidence_link', 'review_packet_read'}
     credentials[0]['actions'] = sorted(set(credentials[0]['actions']) | grants)
     write_grants()
     root = '/v1/patients/' + patient_id
@@ -111,12 +111,20 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     raw = fictional_bundle()
     records()
     cd.evaluate('''(() => {
-      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];window.__oiLabQuestionPosts=[];window.__oiLabHistoryCodes=[];
+      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];window.__oiLabQuestionPosts=[];window.__oiLabHistoryCodes=[];window.__oiLabCatalog=[];
       window.fetch=async(input,init)=>{
         window.__oiLabRequests++;
         const laboratory=String(input).endsWith('/laboratory/fhir-r4/sources')&&init?.method==='POST';
         if(laboratory)window.__oiLabWrites.push(JSON.parse(init.body));
         const response=await window.__oiLabFetch(input,init);
+        const path=String(input);
+        if(path.includes('/composer/laboratory-questions/')&&(path.endsWith('/evidence-links')||path.endsWith('/evidence-search'))){
+          const item={path,method:init.method,body:init.body??null,status:response.status,result:await response.clone().json()};
+          window.__oiLabCatalog.push(item);
+          if(path.endsWith('/evidence-links')&&init.method==='POST'&&response.status===201){
+            throw Error('Fictional lost laboratory citation acknowledgement');
+          }
+        }
         if(String(input).endsWith('/composer/laboratory-questions')&&init?.method==='GET')window.__oiLabHistoryCodes.push(response.status);
         if(String(input).endsWith('/composer/laboratory-questions')&&init?.method==='POST'){
           window.__oiLabQuestionPosts.push({body:JSON.parse(init.body),status:response.status});
@@ -310,6 +318,47 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert operator(laboratory_history)['questions'] == [committed]
     cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
     cd.wait("document.querySelector('[data-testid=lab-saved-question]')?.textContent.includes(" + json.dumps(question) + ")", 'reopen saved laboratory question')
+    # Use the same seeded, original fictional catalog as the text workflow.
+    # Inspect actual response bodies; only suppress delivery of its first write.
+    from question_metadata_journey import CITATION, QuestionEvidenceChecks
+    from followthrough_journey import click, fill
+    question_id = committed['question_id']
+    q_selector = '[data-testid=lab-saved-question][data-question-id="' + question_id + '"] '
+    control = lambda name: q_selector + '[data-testid=' + name + ']'
+    def exists(name):
+        return 'Boolean(document.querySelector(' + json.dumps(control(name)) + '))'
+    def visible_text(name):
+        return cd.evaluate('document.querySelector(' + json.dumps(control(name)) + ').textContent')
+    catalog_path = root + laboratory_history + '/' + question_id
+    expected_anchor = {k:committed[k] for k in ('source_id','source_version','source_sha256','observation_reference','source_snapshot_sha256','preflight_sha256')}
+    click(cd, control('metadata-evidence-open'))
+    cd.wait(exists('evidence-saved-links'), 'original question has fresh catalog history')
+    first_read = cd.evaluate('window.__oiLabCatalog.at(-1)')
+    assert (first_read['method'],first_read['path'],first_read['result']['links']) == ('GET',catalog_path+'/evidence-links',[])
+    assert first_read['result']['question_anchor'] == expected_anchor
+    fill(cd, control('evidence-query'), 'continuity')
+    click(cd, control('evidence-search'))
+    cd.wait(exists('evidence-result'), 'permitted fictional laboratory catalog result found')
+    searched = cd.evaluate('window.__oiLabCatalog.at(-1)')
+    assert searched['path'] == catalog_path+'/evidence-search' and json.loads(searched['body']) == {'synthetic':True,'query':'continuity'}
+    assert searched['result']['question_anchor'] == expected_anchor
+    catalog_record, = searched['result']['records']
+    assert catalog_record['citation'] == CITATION and catalog_record['title'] in visible_text('evidence-result')
+    cd.evaluate('document.querySelector(' + json.dumps(control('evidence-result')) + ').open=true')
+    click(cd, control('evidence-save'))
+    cd.wait(exists('evidence-retry'), 'unknown citation outcome offers exact recovery')
+    click(cd, control('evidence-retry'))
+    cd.wait(exists('evidence-saved-link'), 'current citation reopened from PostgreSQL')
+    writes = cd.evaluate("window.__oiLabCatalog.filter(r=>r.path.endsWith('/evidence-links')&&r.method==='POST')")
+    assert len(writes)==2 and [r['status'] for r in writes]==[201,200]
+    assert writes[0]['body']==writes[1]['body'] and writes[0]['path']==writes[1]['path']==catalog_path+'/evidence-links'
+    assert writes[1]['result']=={**writes[0]['result'],'duplicate':True}
+    saved_link=cd.evaluate('window.__oiLabCatalog.at(-1).result.links[0]')
+    assert saved_link['link_id']==writes[0]['result']['link_id'] and saved_link['record']==catalog_record
+    click(cd, control('lab-citation-report-open'))
+    cd.wait(exists('lab-citation-report'), 'original laboratory question and permitted citation report opened')
+    current_report = visible_text('lab-citation-report')
+    assert all(token in current_report for token in (committed['source_id'],committed['source_sha256'],committed['observation_reference'],catalog_record['title']))
     draft_question(first['source_id'], 'ABSENT', 'Why was the selected result not performed?')
     assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))"), 'Editing clears previous receipt'
     assert operator(questions_path)['questions'] == []
@@ -337,6 +386,36 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.wait("document.querySelector('[data-testid=lab-saved-question]')?.textContent.toLowerCase().includes('needs reassessment')", 'amendment flags the historical question')
     row = cd.evaluate("document.querySelector('[data-testid=lab-saved-question]').textContent")
     assert all(v in row for v in (question, first['source_id'], first['sha256'], 'Observation/FICT-WEB-ZERO'))
+    click(cd, control('metadata-evidence-open'))
+    cd.wait(exists('evidence-stale')+' && '+exists('evidence-saved-link'), 'historical question reopens its original citation')
+    assert not cd.evaluate(exists('evidence-query')) and not cd.evaluate(exists('evidence-save'))
+    historical_links=cd.evaluate('window.__oiLabCatalog.at(-1).result')
+    assert historical_links['question_anchor']==expected_anchor and historical_links['source_context_state']=='source_reassessment_required'
+    assert historical_links['links']==[saved_link]
+    fixture_rights=QuestionEvidenceChecks(cd, patient_id, CASE, question_id, first['source_id'])
+    try:
+        fixture_rights.set_fixture_rights(True)
+        click(cd, control('metadata-evidence-open'))
+        cd.wait(exists('evidence-restricted'), 'withdrawn metadata is withheld for the same immutable citation')
+        redacted=cd.evaluate('window.__oiLabCatalog.at(-1).result.links[0]')
+        assert redacted=={**saved_link,'record':None,'status':'rights_restricted'}
+        assert all(value not in visible_text('evidence-saved-link') for value in (catalog_record['title'],catalog_record['licence'],catalog_record['link']))
+        click(cd, control('lab-citation-report-open'))
+        cd.wait(exists('lab-citation-report'), 'report independently rechecks metadata rights after withdrawal')
+        historical_report=visible_text('lab-citation-report')
+        assert all(v in historical_report for v in (committed['source_id'],committed['source_sha256'],committed['observation_reference'],CITATION))
+        assert all(v not in historical_report for v in (current['source_id'],catalog_record['title'],catalog_record['licence'],catalog_record['link']))
+        (artifacts / 'laboratory-question-citations.json').write_text(json.dumps({
+            'synthetic':True,'question_id':question_id,'question_anchor':expected_anchor,'catalog_query':'continuity',
+            'citation':CITATION,'link_id':saved_link['link_id'],'metadata_sha256':saved_link['metadata_sha256'],
+            'create_and_retry_statuses':[x['status'] for x in writes],'retry_bytes_identical':True,
+            'amended_question_state':historical_links['source_context_state'],'withdrawn_metadata_state':redacted['status'],
+            'report_original_observation_preserved':True,'report_withdrawn_metadata_withheld':True,
+        },indent=2)+'\n')
+    finally:
+        if fixture_rights.rights_revoked:
+            fixture_rights.set_fixture_rights(False)
+    print('PASS LABORATORY CITATIONS: exact Observation search, one durable link, lost response recovery, original anchor after amendment, withdrawn metadata withheld from history and report.')
     credentials[0]['actions'].remove('question_read');write_grants()
     cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
     cd.wait("window.__oiLabHistoryCodes.at(-1)===404 && Boolean(document.querySelector('[data-testid=world-no-patient]')) && !document.querySelector('[data-testid=lab-saved-question]')", 'denied question read removes prior history')
@@ -398,7 +477,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.evaluate('[...document.querySelectorAll(".world-cases li")].find(e=>e.textContent.includes(' + json.dumps(CASE) + ')).querySelector("[data-testid=world-load]").click()')
     cd.wait('!document.querySelector("[data-testid=world-projection]") && document.querySelector("[data-testid=world-status]").textContent.includes("unavailable or revoked")', 'revoked laboratory projection cleared')
     credentials[0]['actions'].append('source_read');write_grants()
-    cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests;delete window.__oiLabPrepareCodes;delete window.__oiLabQuestionPosts;delete window.__oiLabHistoryCodes')
+    cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests;delete window.__oiLabPrepareCodes;delete window.__oiLabQuestionPosts;delete window.__oiLabHistoryCodes;delete window.__oiLabCatalog')
     navigate('Overview')
     (artifacts / 'laboratory-fhir-workflow.json').write_text(json.dumps({
         'synthetic': True, 'case_id': CASE, 'original_source_id': first['source_id'],

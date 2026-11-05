@@ -148,6 +148,10 @@ def up(directory, state):
     index = request(sources, state['token'])
     if not any(row['source_id'] == state['source_id'] for row in index['sources']):
         raise ValueError('Saved demo original is missing; refusing a silent reset')
+    # Populate the authored metadata used by Journey searches in this owned demo.
+    # The catalog seeder preserves the current rights decision for existing versions.
+    subprocess.run(command + ['exec', '-T', 'api', 'python', '-m', 'oi_api.evidence_catalog'],
+                   cwd=ROOT, env=env, check=True)
     print('Fictional demo ready; database and patient identity retained.')
     print('Patient ID:', patient)
     print('Obtain the local fixture token with: python tools/h1_demo.py credentials --state-dir', directory)

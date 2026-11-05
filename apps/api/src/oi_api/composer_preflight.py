@@ -243,11 +243,21 @@ def prepare_laboratory_question(source_index: dict, laboratory_observations: lis
         "absent_reason": anchor["absent_reason"], "source_reported": True,
         "review_state": "not_established", "clinical_review": "not_performed",
     }
+    prepared = laboratory_preflight_payload(patient_id, case_id, question, world["snapshot_fingerprint"], selected_source)
+    # Reserved by the source owner. It becomes a durable read receipt only after
+    # serialization, final authority, event persistence and transaction commit.
+    prepared["access_receipt_id"] = world["access_receipt_id"]
+    return prepared
+
+
+def laboratory_preflight_payload(patient_id: str, case_id: str, question: str, snapshot: str,
+                                 selected_source: dict) -> dict:
+    """Stable saved-question material. A matching digest grants no access or review status."""
     prepared = {
         "contract": "oi.synthetic-laboratory-question-preflight/1",
         "patient_id": patient_id, "case_id": case_id, "question": question,
         "source_snapshot_contract": SOURCE_SNAPSHOT_CONTRACT,
-        "source_snapshot_sha256": world["snapshot_fingerprint"],
+        "source_snapshot_sha256": snapshot,
         "selected_source": selected_source, "synthetic": True,
         "source_context_only": True, "durable_question_created": False,
         "durable_review_connected": False, "biomedical_evidence_rights_verified": False,
@@ -258,7 +268,4 @@ def prepare_laboratory_question(source_index: dict, laboratory_observations: lis
     raw = json.dumps(prepared, sort_keys=True, ensure_ascii=False,
                      separators=(",", ":"), allow_nan=False).encode("utf-8")
     prepared["preflight_sha256"] = hashlib.sha256(raw).hexdigest()
-    # Reserved by the source owner. It becomes a durable read receipt only after
-    # serialization, final authority, event persistence and transaction commit.
-    prepared["access_receipt_id"] = world["access_receipt_id"]
     return prepared
