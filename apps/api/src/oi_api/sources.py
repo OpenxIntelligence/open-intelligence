@@ -251,30 +251,40 @@ class PostgresSourceVersions:
         The application-owned callback includes DTO validation and HTTP encoding.
         Preparation failure withholds the original and rolls back its receipt.
         """
+        with self.registry.transaction():
+            return self.original_locked(patient_id, case_id, source_id, organization=organization,
+                                        actor=actor, purpose=purpose, recheck_authority=recheck_authority,
+                                        prepare_response=prepare_response)
+
+    def original_locked(self, patient_id: str, case_id: str, source_id: str, *,
+                        organization: str, actor: str, purpose: str, recheck_authority: Callable[[], None],
+                        prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
+        """Authorize, validate and audit an original in the caller's transaction."""
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("Original preparation requires caller transaction")
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         source_id = _source_id(source_id)
         organization = _key(organization, "organization")
-        with self.registry.transaction():
-            binding_revision = self._binding(patient_id, case_id, organization, purpose)
-            if self._is_reviewed(source_id):
-                raise PatientRegistryDenied("Use the reviewed-document original endpoint")
-            stored, raw = self._validated_original(case_id, source_id)
-            result = {"source_id": source_id, "case_id": case_id,
-                    "document_id": stored["document_id"], "version": stored["version"],
-                    "state": stored["state"], "sha256": stored["sha256"],
-                    "original_text": raw.decode("utf-8"),
-                    "synthetic": True, "clinical_review_state": "not_established"}
-            result["access_receipt_id"] = "ACCESS-" + uuid.uuid4().hex.upper()
-            prepared = prepare_response(result) if prepare_response is not None else result
-            self._read_receipt(
-                patient_id, case_id, actor=actor, purpose=purpose,
-                binding_revision=binding_revision, event="source.original_read_authorized",
-                receipt_id=result["access_receipt_id"],
-                recheck_authority=recheck_authority, source_id=source_id,
-                sha256=stored["sha256"], source_version=stored["version"], source_state=stored["state"],
-            )
-            return prepared
+        binding_revision = self._binding(patient_id, case_id, organization, purpose)
+        if self._is_reviewed(source_id):
+            raise PatientRegistryDenied("Use the reviewed-document original endpoint")
+        stored, raw = self._validated_original(case_id, source_id)
+        result = {"source_id": source_id, "case_id": case_id,
+                "document_id": stored["document_id"], "version": stored["version"],
+                "state": stored["state"], "sha256": stored["sha256"],
+                "original_text": raw.decode("utf-8"),
+                "synthetic": True, "clinical_review_state": "not_established"}
+        result["access_receipt_id"] = "ACCESS-" + uuid.uuid4().hex.upper()
+        prepared = prepare_response(result) if prepare_response is not None else result
+        self._read_receipt(
+            patient_id, case_id, actor=actor, purpose=purpose,
+            binding_revision=binding_revision, event="source.original_read_authorized",
+            receipt_id=result["access_receipt_id"],
+            recheck_authority=recheck_authority, source_id=source_id,
+            sha256=stored["sha256"], source_version=stored["version"], source_state=stored["state"],
+        )
+        return prepared
 
     def _validated_original(self, case_id: str, source_id: str) -> tuple[dict, bytes]:
         """Reuse exact-original validation inside the caller's locked transaction.

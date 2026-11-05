@@ -566,3 +566,57 @@ test('Journey names the changed original for each comparison on the same questio
  assert.doesNotMatch(attributionReviewStatus(q,{source_id:'SRC-'+'F'.repeat(32)},historic),/amended/);
  assert.match(attributionReviewStatus(q,peer,[]),/case context/i);
 });
+
+const consultRef={source_id:'SRC-'+'E'.repeat(32),source_line:8,document_id:'DOC-CONSULT',source_version:1,source_sha256:'3'.repeat(64)};
+function reassessmentFixture(){
+ const q=historyItem({prior_return_count:1}), r=receipt({comparison_source:consultRef});
+ function version(a,doc,episode){
+  return {source_id:a.source_id,document_id:doc,source_version:a.source_version,source_sha256:a.source_sha256,
+   finding:{source_id:a.source_id,source_line:a.source_line,finding_key:'nodule',source_statement:'Fictional statement '+doc,
+    reported_state:'indeterminate',clinical_review_state:'not_established',oncology:{role:'metastasis',episode_id:episode}}};
+ }
+ const first=version(q,'DOC-ALPHA','EP-A'), second=version(consultRef,'DOC-CONSULT','EP-B');
+ const latest=version({...consultRef,source_id:'SRC-'+'F'.repeat(32),source_version:2,source_line:9,source_sha256:'4'.repeat(64)},'DOC-CONSULT',null);
+ return {q,r,packet:{contract:'oi.synthetic-attribution-reassessment/1',synthetic:true,clinical_approval:false,
+  patient_id:patientId,case_id:caseId,question_id:questionId,receipt_id:receiptId,access_receipt_id:'ACCESS-'+'D'.repeat(32),
+  first:{recorded:first,latest:structuredClone(first)},second:{recorded:second,latest}}};
+}
+
+test('reassessment verifies both saved anchors and distinguishes a removed key from an unassigned episode',async()=>{
+ const {decodeAttributionReassessment}=await import('../.test-dist/attribution-reassessment.js');
+ const {q,r,packet}=reassessmentFixture();
+ assert.equal(decodeAttributionReassessment(packet,q,r).second.latest.finding.oncology.episode_id,null);
+ const absent=structuredClone(packet);absent.second.latest.finding=null;
+ assert.equal(decodeAttributionReassessment(absent,q,r).second.latest.finding,null);
+ for(const mutate of [p=>p.receipt_id='REVIEW-'+'B'.repeat(32),p=>p.patient_id='PAT-OTHER',p=>p.clinical_approval=true,
+   p=>p.second.recorded.finding.source_line=33,p=>p.second.latest.document_id='DOC-OTHER',
+   p=>p.second.latest.finding.finding_key='other',p=>p.second.latest.source_id=q.source_id,
+   p=>p.first.latest.finding.source_statement='Different words from an unchanged source.']){
+  const copy=structuredClone(packet);mutate(copy);assert.throws(()=>decodeAttributionReassessment(copy,q,r));
+ }
+});
+test('a withdrawn comparison grant clears previous passages and pending responses cannot restore them',async()=>{
+ const {q,r,packet}=reassessmentFixture(),pending=deferred();let calls=0;
+ const s=session(async(url)=>{
+  if(url===queuePath)return response(queue([q],[r]));
+  assert.equal(url,'/v1/patients/'+patientId+'/cases/'+caseId+'/review-returns/'+receiptId+'/attribution-reassessment');
+  calls++;return calls===1?response(packet):calls===2?pending.promise:response({detail:'Unavailable'},404);
+ });
+ await opened(s); await s.inspectAttribution(receiptId);
+ assert.equal(s.snapshot().attributionInspection?.receipt_id,receiptId);
+ const earlier=s.inspectAttribution(receiptId);
+ assert.equal(s.snapshot().attributionInspection,null);
+ await s.inspectAttribution(receiptId);
+ pending.resolve(response(packet));await earlier;
+ assert.equal(s.snapshot().attributionInspection,null);
+ assert.equal(s.snapshot().reviewQueue,null);
+ assert.equal(s.snapshot().reviewPhase,'error');
+});
+test('leaving Review while the passage comparison is loading discards its late response',async()=>{
+ const {q,r,packet}=reassessmentFixture(),pending=deferred();
+ const s=session(async url=>url===queuePath?response(queue([q],[r])):pending.promise);
+ await opened(s);const reading=s.inspectAttribution(receiptId);s.dismissAttributionInspection();
+ pending.resolve(response(packet));await reading;
+ assert.equal(s.snapshot().attributionInspection,null);
+ assert.equal(s.snapshot().attributionTarget,null);
+});

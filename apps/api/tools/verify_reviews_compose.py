@@ -24,16 +24,21 @@ ROOT = Path(__file__).resolve().parents[3]
 BASE = "http://127.0.0.1:8000"
 CASE = "CASE-COMPOSE-REVIEW"
 ORIGINAL = (
-    "OI-SYNTHETIC-REPORT/1\nPatient: CASE-COMPOSE-REVIEW\nDocument: DOC-REVIEW\n"
+    "OI-SYNTHETIC-REPORT/2\nPatient: CASE-COMPOSE-REVIEW\nDocument: DOC-REVIEW\n"
     "Type: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-11\n"
     "Specimen: SPECIMEN-REVIEW\n"
-    "Finding: marker|pending|Independently fictional café marker — pending.\n"
+    "Oncology-Finding: marker|metastasis|EP-A|pending|Independently fictional café marker — pending.\n"
 )
 AMENDED = (
-    "OI-SYNTHETIC-REPORT/1\nPatient: CASE-COMPOSE-REVIEW\nDocument: DOC-REVIEW\n"
+    "OI-SYNTHETIC-REPORT/2\nPatient: CASE-COMPOSE-REVIEW\nDocument: DOC-REVIEW\n"
     "Type: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-12\n"
     "Specimen: SPECIMEN-REVIEW\nAmends: DOC-REVIEW@1\n"
-    "Finding: marker|negative|Independently fictional café marker — negative.\n"
+    "Oncology-Finding: marker|metastasis|?|negative|Independently fictional café marker — negative.\n"
+)
+CONSULT = (
+    "OI-SYNTHETIC-REPORT/2\nPatient: CASE-COMPOSE-REVIEW\nDocument: DOC-SECOND\n"
+    "Type: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-11\nSpecimen: SPECIMEN-REVIEW\n"
+    "Oncology-Finding: marker|metastasis|EP-B|indeterminate|Fictional alternative origin.\n"
 )
 SOURCE_CONTRACT = "oi.pg-source-world-model/1"
 QUEUE_CONTRACT = "oi.synthetic-question-review-return-queue/2"
@@ -105,7 +110,16 @@ def main():
                     raise RuntimeError("Synthetic review API did not become ready")
                 time.sleep(0.25)
 
-        def snapshot(database="oi_api_synthetic"):
+        active_database = "oi_api_synthetic"
+
+        def clone_database(target):
+            dump = command(["exec", "-T", "db", "pg_dump", "-U", "oi_api", "-d",
+                            active_database, "--format=custom"], capture_output=True).stdout
+            command(["exec", "-T", "db", "createdb", "-U", "oi_api", target])
+            command(["exec", "-T", "db", "pg_restore", "-U", "oi_api", "-d", target,
+                     "--exit-on-error", "--no-owner"], input=dump)
+
+        def snapshot(database=None):
             return query("""
                 SELECT json_build_object(
                   'questions', (SELECT COALESCE(json_agg(q ORDER BY q.question_id),'[]'::json)
@@ -125,7 +139,7 @@ def main():
                   'events', (SELECT json_agg(e ORDER BY e.id)
                     FROM identity.identity_domain_events e),
                   'revision', (SELECT version_num FROM public.alembic_version))
-            """, database)
+            """, database or active_database)
 
         def read_queue():
             status, value = request(prefix + "/review-queue")
@@ -166,6 +180,8 @@ def main():
             intent = {"synthetic": True, "request_key": "COMPOSE-RETURN-V" + str(version),
                       "expected_queue_fingerprint": item["queue_fingerprint"],
                       "reason": "Please independently verify the fictional source and its uncertainty."}
+            if version == 1:
+                intent["comparison_source"] = {"source_id": consult_id, "source_line": 8}
             url = prefix + "/questions/" + question_id + "/return-for-verification"
             status, saved = request(url, intent)
             assert status == 201 and saved["duplicate"] is False
@@ -222,6 +238,9 @@ def main():
                 "review_ref": "REVIEW-SYNTHETIC-COMPOSE"})
             assert status == 201 and bound["patient_id"] == patient
             prefix = patient_path + "/cases/" + CASE
+            status, consult = request(prefix + "/sources", {"synthetic": True, "original_text": CONSULT})
+            assert status == 201 and consult["version"] == 1
+            consult_id = consult["source_id"]
             sources, questions, returns = [], [], []
             for version, original in enumerate((ORIGINAL, AMENDED), start=1):
                 status, imported = request(prefix + "/sources", {
@@ -238,6 +257,19 @@ def main():
                     assert request(old_url, old_intent) == (200, old_receipt)
                 questions.append(question(imported["source_id"], 8 if version == 1 else 9, version))
                 returns.append(return_question(questions[-1], version))
+            comparison_url = prefix + "/review-returns/" + returns[0][2]["receipt_id"] + "/attribution-reassessment"
+            def comparison():
+                status, packet = request(comparison_url)
+                assert status == 200 and packet["clinical_approval"] is False
+                access_id = packet.pop("access_receipt_id")
+                assert access_id.startswith("ACCESS-")
+                return packet
+            recorded = comparison()
+            assert recorded["first"]["recorded"]["source_id"] == sources[0]
+            assert recorded["first"]["latest"]["source_id"] == sources[1]
+            assert recorded["first"]["latest"]["finding"]["oncology"]["episode_id"] is None
+            assert recorded["second"]["recorded"] == recorded["second"]["latest"]
+            assert recorded["second"]["recorded"]["source_id"] == consult_id
             first, second = read_queue(), read_queue()
             assert first["access_receipt_id"] != second["access_receipt_id"]
             assert first["items"] == second["items"] and first["receipts"] == second["receipts"]
@@ -267,8 +299,30 @@ def main():
                 ready()
                 assert snapshot() == before, "Restart changed question/receipt/source history"
                 assert_history()
+                assert comparison() == recorded
                 print("Canonical questions, historical returns and retry identity survived " + service + " restart")
 
+            # Serve the restored copy with a freshly configured API, keeping the original
+            # database available for comparison in this isolated disposable Compose project.
+            before_restore = snapshot()
+            restored_active = "oi_api_test_active_review_restore"
+            clone_database(restored_active)
+            assert snapshot(restored_active) == before_restore
+            configured = json.loads(command(["config", "--format", "json"], capture_output=True, text=True).stdout)
+            old_url = configured["services"]["api"]["environment"]["OI_API_DATABASE_URL"]
+            assert old_url.endswith("/" + active_database)
+            restored_url = old_url.rsplit("/", 1)[0] + "/" + restored_active
+            with tempfile.TemporaryDirectory(prefix="oi-review-restore-config-") as config_dir:
+                override = Path(config_dir) / "restore-compose.json"
+                override.write_text(json.dumps({"services": {"api": {"environment": {
+                    "OI_API_DATABASE_URL": restored_url}}}}))
+                command(["-f", str(override), "up", "-d", "--no-deps", "api"])
+            active_database = restored_active
+            ready()
+            assert comparison() == recorded, "Restored API changed the recorded or latest passage"
+            assert snapshot("oi_api_synthetic") == before_restore, "The proof read from the original database"
+            assert_history()
+            print("PASS: restored API reproduced both paired passages and their amendments from the restored database")
             status, revoked = request(patient_path + "/case-bindings/" + CASE + "/revoke", {
                 "synthetic": True, "reason": "Withdraw the independently fictional review binding"})
             assert status == 200 and revoked["duplicate"] is False
@@ -277,14 +331,14 @@ def main():
             assert request(returns[1][0], returns[1][1])[0] == 404
             assert snapshot() == before
             assert before["bindings"][0]["status"] == "revoked"
-            for row, original in zip(before["sources"], (ORIGINAL, AMENDED)):
+            assert request(comparison_url)[0] == 404 and snapshot() == before
+            originals = {("DOC-REVIEW", 1): ORIGINAL, ("DOC-REVIEW", 2): AMENDED, ("DOC-SECOND", 1): CONSULT}
+            assert len(before["sources"]) == len(originals)
+            for row in before["sources"]:
+                original = originals[row["document_id"], row["version"]]
                 assert row["sha256"] == row["raw_sha256"] == hashlib.sha256(original.encode("utf-8")).hexdigest()
-            dump = command(["exec", "-T", "db", "pg_dump", "-U", "oi_api", "-d",
-                            "oi_api_synthetic", "--format=custom"], capture_output=True).stdout
             restored = "oi_api_test_reviews_restore"
-            command(["exec", "-T", "db", "createdb", "-U", "oi_api", restored])
-            command(["exec", "-T", "db", "pg_restore", "-U", "oi_api", "-d", restored,
-                     "--exit-on-error", "--no-owner"], input=dump)
+            clone_database(restored)
             assert snapshot(restored) == before, "Restore changed source/question/receipt/event history"
             print("PASS: actual canonical review HTTP, stable queue provenance, same-key recovery, "
                   "amendment history, independent grants, API/DB restart, binding revocation and dump/restore")

@@ -1,3 +1,4 @@
+import type {AttributionReassessment,AttributionVersion} from './attribution-reassessment';
 import {useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
 import {validReturnReason} from './review-queue-view';
@@ -42,4 +43,22 @@ export function AttributionReview({state,session,question,disabled}:{
     Record unresolved attribution
    </button></>}
  </details>;
+}
+
+
+export function ReassessmentPassages({packet}:{packet:AttributionReassessment}){
+ function passage(version:AttributionVersion, label:string){
+  const item=version.finding;
+  return <div><strong>{label} · {version.document_id} v{version.source_version}</strong>
+   {item?<><p>Line {item.source_line} · {item.finding_key} · {item.reported_state} · {item.oncology?
+    item.oncology.role+' · '+(item.oncology.episode_id??'Episode unassigned'):'No episode attribution on this line'}</p>
+    <blockquote>{item.source_statement}</blockquote></>:<p>This version has no statement with the recorded finding key.</p>}
+  </div>;
+ }
+ return <section aria-label="Recorded and current passages" data-testid="attribution-passages">
+  {[packet.first,packet.second].map(side=><section key={side.recorded.source_id} aria-label={side.recorded.document_id}>
+   {side.recorded.source_id===side.latest.source_id?passage(side.recorded,'Recorded version is current'):
+    <>{passage(side.recorded,'At review')}{passage(side.latest,'Latest version')}</>}
+  </section>)}
+ </section>;
 }

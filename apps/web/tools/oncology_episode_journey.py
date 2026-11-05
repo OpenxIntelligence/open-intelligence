@@ -176,12 +176,24 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
         cd.evaluate(reviews + '.querySelectorAll("button")[1].click()')
         history = element('[data-testid=review-return-history]')
         cd.wait(history + '?.textContent.includes(' + json.dumps(reason) + ')', 'original reason retained')
+        compare = element('[data-testid=inspect-attribution]')
+        cd.evaluate(compare + '.click()')
+        passages = element('[data-testid=attribution-passages]')
+        cd.wait(passages + '?.textContent.includes("DOC-CONSULT v2")', 'two-version attribution comparison')
+        consult_side = passages + '.querySelector(' + json.dumps('section[aria-label="DOC-CONSULT"]') + ')'
+        quoted = cd.evaluate('[...' + consult_side + '.querySelectorAll("blockquote")].map(node=>node.textContent)')
+        amended_consult = (FIXTURES / 'episode-origin-consult-v2.txt').read_text()
+        assert len(quoted) == 2 and quoted[0] in consult and quoted[1] in amended_consult, quoted
+        assert 'Line 9' in cd.evaluate(consult_side + '.textContent')
+        assert 'Episode unassigned' in cd.evaluate(consult_side + '.textContent')
+        assert 'Recorded version is current' in cd.evaluate(passages + '.textContent')
         cd.evaluate(history + '.querySelectorAll("button")[1].click()')
         cd.wait(element('[data-testid=server-original]') + '?.textContent===' + json.dumps(consult),
                 'history reopens exact pre-amendment consult under original-read authority')
         (artifacts / 'oncology-episodes.json').write_text(json.dumps({
             'synthetic': True, 'case_id': CASE, 'source_ids': selected_ids,
             'source_sha256': [hashlib.sha256(s.encode()).hexdigest() for s in originals],
+            'compared_consult_versions': [1, 2], 'latest_consult_line': 9,
             'paired_review_reassessment': True, 'consult_original_reopened': True,
             'primary_episodes': ['EP-A', 'EP-B'], 'nodule_episode_history': [None, 'EP-B'],
             'nodule_reported_state': 'indeterminate', 'source_only_preflights': 2,

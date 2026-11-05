@@ -116,14 +116,9 @@ export function parseSourceIndex(v:unknown,expectedPatient:string,expectedCase:s
   }
   const findings:SourceFinding[]=[];
   for(const raw of v.source_reported_assertions){
-    const typed=raw!==null && typeof raw==='object' && Object.hasOwn(raw,'oncology');
-    if(!exact(raw,['source_id','finding_key','reported_state','source_statement',
-      'source_line','clinical_review_state',...(typed?['oncology']:[])]) ||
-      typeof raw.source_id!=='string' || !current.has(raw.source_id) ||
-      !str(raw.finding_key,128) || !str(raw.reported_state,128) ||
-      !str(raw.source_statement,8192) || !positive(raw.source_line) ||
-      raw.clinical_review_state!=='not_established') throw Error('contract');
-    findings.push(Object.freeze({...raw,...(typed?{oncology:parseOncologyContext(raw.oncology)}:{})} as SourceFinding));
+    const finding=parseSourceFinding(raw);
+    if(!current.has(finding.source_id))throw Error('contract');
+    findings.push(finding);
   }
   return Object.freeze({
     contract:'oi.synthetic-original-sources/1',patient_id:expectedPatient,case_id:expectedCase,
@@ -132,4 +127,15 @@ export function parseSourceIndex(v:unknown,expectedPatient:string,expectedCase:s
     synthetic:true,clinical_interpretation:false,
     research_review_invalidation_integrated:false,
   });
+}
+
+export function parseSourceFinding(raw:unknown):SourceFinding{
+    const typed=raw!==null && typeof raw==='object' && Object.hasOwn(raw,'oncology');
+    if(!exact(raw,['source_id','finding_key','reported_state','source_statement',
+      'source_line','clinical_review_state',...(typed?['oncology']:[])]) ||
+      typeof raw.source_id!=='string' || !SOURCE.test(raw.source_id) ||
+      !str(raw.finding_key,128) || !str(raw.reported_state,128) ||
+      !str(raw.source_statement,8192) || !positive(raw.source_line) ||
+      raw.clinical_review_state!=='not_established') throw Error('contract');
+    return Object.freeze({...raw,...(typed?{oncology:parseOncologyContext(raw.oncology)}:{})} as SourceFinding);
 }

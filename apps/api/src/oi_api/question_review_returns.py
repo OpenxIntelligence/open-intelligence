@@ -19,6 +19,7 @@ from open_intelligence.patient_registry import (
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
+from .attribution_reassessment import compare_versions
 from .case_bindings import _case_id
 from .composer_preflight import SHA256, SOURCE_SNAPSHOT_CONTRACT
 from .source_questions import LEGACY_SNAPSHOT_CONTRACT, PostgresSourceQuestions
@@ -245,6 +246,49 @@ class PostgresQuestionReviewReturns:
                 patient_id, case_id, organization=organization, actor=actor, purpose=purpose,
                 prepare_response=prepare, recheck_authority=recheck_authority,
             )
+
+    def compare_attributions(self, patient_id: str, case_id: str, receipt_id: str, *, organization: str,
+                             actor: str, purpose: str, recheck_authority: Callable[[], None],
+                             prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
+        if purpose != "operations":
+            raise PatientRegistryDenied("Attribution review unavailable")
+        sources = PostgresSourceVersions(self.registry)
+        scope = dict(organization=organization, actor=actor, purpose=purpose, recheck_authority=recheck_authority)
+
+        def prepare(index):
+            questions, receipts = self._read_locked(patient_id, case_id, organization, index)
+            receipt = next((r for r in receipts if r["receipt_id"] == receipt_id), None)
+            if receipt is None or "comparison_source" not in receipt:
+                raise PatientRegistryDenied("Attribution review unavailable")
+            question = next(q for q in questions if q["question_id"] == receipt["question_id"])
+            current = {s["document_id"]: s for s in index["sources"] if s["state"] == "current"}
+
+            def side(anchor):
+                original = sources.original_locked(patient_id, case_id, anchor["source_id"], **scope)
+                latest = current.get(original["document_id"])
+                if latest is None:
+                    raise PatientRegistryError("Current document version unavailable")
+                return (compare_versions(anchor, original, latest, index["source_reported_assertions"]),
+                        original["access_receipt_id"])
+
+            first, first_access = side(question)
+            second, second_access = side(receipt["comparison_source"])
+            self.registry.append_event(
+                patient_id, "investigation.review.attribution_compared", case_id=case_id,
+                question_id=question["question_id"], review_receipt_id=receipt_id, actor=actor,
+                source_access_receipt_id=index["access_receipt_id"], first_original_access_id=first_access,
+                second_original_access_id=second_access, first_latest_source_id=first["latest"]["source_id"],
+                second_latest_source_id=second["latest"]["source_id"],
+            )
+            packet = {"contract": "oi.synthetic-attribution-reassessment/1", "synthetic": True,
+                      "clinical_approval": False, "patient_id": patient_id, "case_id": case_id,
+                      "receipt_id": receipt_id, "question_id": question["question_id"],
+                      "access_receipt_id": index["access_receipt_id"],
+                      "first": first, "second": second}
+            return prepare_response(packet) if prepare_response else packet
+
+        with self.registry.transaction():
+            return sources.list_locked(patient_id, case_id, **scope, prepare_response=prepare)
 
     def return_for_verification(self, patient_id: str, case_id: str, question_id: str, *,
                                 organization: str, actor: str, purpose: str,

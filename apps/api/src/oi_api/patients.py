@@ -539,6 +539,32 @@ class ComparisonSourceReceipt(ComparisonSourceLine):
     source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class AttributionVersion(Contract):
+    source_id: str
+    document_id: str
+    source_version: int = Field(ge=1)
+    source_sha256: str
+    finding: SourceFinding | None
+
+
+class AttributionComparison(Contract):
+    recorded: AttributionVersion
+    latest: AttributionVersion
+
+
+class AttributionReassessment(Contract):
+    contract: Literal["oi.synthetic-attribution-reassessment/1"]
+    synthetic: Literal[True]
+    clinical_approval: Literal[False]
+    patient_id: str
+    case_id: str
+    question_id: str
+    receipt_id: str
+    access_receipt_id: str
+    first: AttributionComparison
+    second: AttributionComparison
+
+
 class ReturnForVerification(Contract):
     comparison_source: ComparisonSourceLine | None = None
     synthetic: StrictBool
@@ -1048,6 +1074,26 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                 )
         except PatientRegistryDenied:
             raise HTTPException(404, "Question review queue unavailable") from None
+
+    @router.get("/{patient_id}/cases/{case_id}/review-returns/{receipt_id}/attribution-reassessment",
+                response_model=AttributionReassessment, responses=errors,
+                operation_id="compare_recorded_and_current_attributions_v1")
+    def compare_attributions(request: Request, patient_id: str, case_id: str, receipt_id: str,
+                             context: Principal = Depends(principal)):
+        actions = ("question_read", "source_read", "source_original_read", "review_queue_read")
+        try:
+            with registry(context) as patients:
+                for action in actions:
+                    records_authorized(patients, context, patient_id, action)
+                return PostgresQuestionReviewReturns(patients).compare_attributions(
+                    patient_id, case_id, receipt_id, organization=context.organization, actor=context.actor,
+                    purpose=context.purpose, recheck_authority=lambda: final_question_authority(
+                        request, context, patients, patient_id, actions),
+                    prepare_response=lambda packet: JSONResponse(
+                        AttributionReassessment(**packet).model_dump(mode="json"),
+                        headers={"Cache-Control": "no-store"}))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Attribution review unavailable") from None
 
     @router.post(
         "/{patient_id}/cases/{case_id}/questions/{question_id}/return-for-verification",
