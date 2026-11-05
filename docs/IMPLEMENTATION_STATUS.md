@@ -116,6 +116,70 @@ the main baseline run (823 tests) on the same machine, verified by
 diffing the two failure sets; zero new failures. This is
 fictional-only engineering, draft and undeployed.
 
+## Deterministic orchestrator: assignment + roster (Slice 3) — 5 November 2026
+
+Branch `program/c3-orchestrator`, from main `aad241e5`. Implements
+program-plan C3 (Notion OI-09 §4): the coordination dimension's
+assignment half — work is assigned to named agents by deterministic
+policy, with a lease, before any agent event, and the roster (who is
+doing what, busy/idle) is a queryable record. New
+`src/open_intelligence/orchestrator.py` is code, not a model: it
+decides routes, enforces assignments, and answers the roster; it
+never calls a model and never writes to any ledger but the case's own
+events table.
+
+A route is decided by `decide_route` and recorded as a `route.decided`
+event carrying `{templateId, agents[], reason, budget, authority,
+scope, decidedAt, leaseUntil, policyVersion}`. Route policy v1
+(`route-policy:1`) assigns A1 and only A1 for every template — the
+single-writer bridge carried over from slice 1, since the one existing
+model call still writes as A1; the policy function is the single place
+that changes when parallel role agents land. Scope is derived from the
+assigned roles' dimensions (A1 data-integration; A2/A3 analysis;
+A4/A5 hypothesis-generation; A6 verification). Authority is the
+account role that authorized the run — clinician or operator only
+(#515 role permissions: a patient reads only their own bound case, an
+auditor works no case route). The lease defaults to one hour and
+bounds the run's execution window, not the historical record. The
+budget records `{"maxModelCalls": 1}` and is not enforced on call
+counts: the repair round in C4 will need a second call.
+
+Enforcement: `save_investigation` rejects a write whose role is not
+among the route's agents (`unassigned_agent`) or whose lease has
+expired (`lease_expired`) — but only when a route record exists for
+the route. A write whose route was never decided is not rejected at
+save time (the pre-C3 grandfather path); the replay is the check that
+catches it: `check_replay` now fails such a run with
+`missing_route`, and fails a run whose stored role was tampered
+post-hoc with `unassigned_agent`. The run path in `__main__.py`
+decides the route before any agent event (model call in live mode,
+fixture validation in replay mode), with the current account's role as
+authority. The roster reads the ledger: an agent is busy while it
+holds a live assignment — latest `route.decided` per route, lease
+unexpired, no investigation stored for the route since the decision;
+a re-decision supersedes, an expired lease lapses without completing.
+
+New `tests/test_orchestrator.py` (25 tests): route decisions
+(policy, authority, lease, supersession, scope validation);
+assignment enforcement (assigned write accepted, unassigned rejected,
+expired lease rejected, missing route allowed at save time,
+route.decided precedes investigation_created); replay (with route
+reproduces, without route fails, tampered role fails, expired lease
+does not fail a replay); roster (all idle, busy on decision, idle
+after completion, idle on expiry, busy again on re-decision, busy on
+two routes). `tests/test_agent_writes.py` now decides a route in its
+`save_run` helper and adds a missing-route replay test plus an HTTP
+test that the run path decides the route before the investigation
+event. Out of scope, per the plan: parallel execution of A1–A5 and
+any model judgment in assignment.
+
+Local suite on the slice branch: 916 tests (889 on main plus 27 new:
+25 in the new file, 2 added to the write-contract tests),
+FAILED with 9 failures and 8 errors — the same 17 `test_pdf_intake`
+failures as the main baseline run on the same machine, verified by
+diffing the two failure sets; zero new failures. This is
+fictional-only engineering, draft and undeployed.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)
