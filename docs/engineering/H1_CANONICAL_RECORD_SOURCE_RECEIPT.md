@@ -2,6 +2,26 @@
 
 **Status:** synthetic-only, reviewable integration candidate stacked on original source owner [PR #187](https://github.com/OpenxIntelligence/open-intelligence/pull/187). Do not adopt or deploy as clinical software without authorization, security, data-rights, and source-owner reviews.
 
+## Connected amendment review in Records — 5 November 2026
+
+The construction candidate joins the purpose-scoped intake and Records surface from
+[#547](https://github.com/OpenxIntelligence/open-intelligence/pull/547) at
+`59b229edd8c4fa78f920a8a19ad27413f7e116f9` to the reconciliation contract from
+[#289](https://github.com/OpenxIntelligence/open-intelligence/pull/289) at
+`07ca7716281de9fcb706feaaf661b191522f2255`. The earlier checkpoints below describe their respective sources.
+
+In Records, open the case, expand Record requests and refresh. A received original stays pinned when an amendment arrives.
+Inspect the amendment, then choose **Use vN for this request** to update the operational receipt.
+**Check receipt history** reauthorizes the timeline and opens each original through its own access check.
+The actor, decision time and immutable source references are retained. Clinical review and investigation decisions keep their separate owners.
+
+The existing receive route accepts an optional version/digest pair and Records sends both.
+`POST …/record-requests/{id}/reconcile` compares the expected and replacement original in one transaction.
+`GET …/record-requests/{id}/receipt-history` checks patient, organization, purpose, request and source authority.
+The existing PostgreSQL event journal records the decision and authorized history reads; schema head stays
+`0022_lab_citation_source_scope`. The history limit is 256 receipt events and 256 versions per document.
+The extension uses the installed dependencies and existing source validators. Fictional use only.
+
 ## What is actually connected
 
 Existing first-party owners remain authoritative:

@@ -98,11 +98,18 @@ class RecordRequestReceipt(Contract):
     duplicate: bool
 
 
+class SelectedOriginal(Contract):
+    version: int = Field(strict=True, ge=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class ReceiveRecordRequest(Contract):
     synthetic: StrictBool
     case_id: str = Field(min_length=6, max_length=40,
                          pattern=r"^CASE-[A-Z0-9-]{1,35}$")
     source_id: str = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+
+    expected_original: SelectedOriginal | None = None
 
     @field_validator("synthetic")
     @classmethod
@@ -124,6 +131,61 @@ class ReceivedSourceReference(Contract):
     source_id: str
     version: int = Field(ge=1)
     sha256: str
+
+
+class ReconcileRecordRequest(Contract):
+    synthetic: StrictBool
+    case_id: str = Field(min_length=6, max_length=40, pattern=r"^CASE-[A-Z0-9-]{1,35}$")
+    expected_source_id: str = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    replacement_source_id: str = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    request_key: str = Field(min_length=3, max_length=128)
+    reason_code: Literal["source_amendment"]
+
+    @field_validator("synthetic")
+    @classmethod
+    def fictional_only(cls, value):
+        if value is not True:
+            raise ValueError("Only fictional source reconciliation is allowed")
+        return value
+
+    @field_validator("request_key")
+    @classmethod
+    def opaque_request(cls, value):
+        return _key(value, "request_key")
+
+
+class ReconciledRecordRequest(Contract):
+    request_id: str
+    reconciliation_id: str = Field(pattern=r"^RECON-[0-9A-F]{32}$")
+    previous_source_id: str = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    source_id: str = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    version: int = Field(ge=2)
+    duplicate: bool
+    clinical_approval: Literal[False]
+    external_request_sent: Literal[False]
+
+
+class RecordReceiptHistoryEntry(Contract):
+    kind: Literal["received", "reconciled"]
+    source_reference: ReceivedSourceReference
+    previous_source_id: str | None
+    reconciliation_id: str | None
+    revision: int = Field(ge=2)
+    occurred_at: datetime
+    actor: str
+    reason_code: Literal["source_amendment"] | None
+    clinical_approval: Literal[False]
+    external_request_sent: Literal[False]
+
+
+class RecordReceiptHistory(Contract):
+    patient_id: str
+    request_id: str
+    receipts: list[RecordReceiptHistoryEntry] = Field(max_length=256)
+    access_receipt_id: str = Field(pattern=r"^ACCESS-[0-9A-F]{32}$")
+    synthetic: Literal[True] = True
+    clinical_approval: Literal[False] = False
+    external_request_sent: Literal[False] = False
 
 
 class RecordRequest(Contract):
@@ -914,6 +976,8 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                     patient_id, request_id, payload.case_id, payload.source_id,
                     organization=context.organization, actor=context.actor,
                     purpose=context.purpose,
+                    expected_original=(payload.expected_original.version, payload.expected_original.sha256)
+                    if payload.expected_original is not None else None,
                     prepare_response=lambda result: JSONResponse(
                         content=ReceivedRecordRequest(**result).model_dump(mode="json"),
                         status_code=200 if result["duplicate"] else 201),
@@ -922,6 +986,56 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         except PatientRegistryDenied:
             raise HTTPException(404, "Record request or source unavailable") from None
 
+
+    @router.post("/{patient_id}/record-requests/{request_id}/reconcile",
+                 response_model=ReconciledRecordRequest, status_code=201,
+                 responses={200: {"model": ReconciledRecordRequest}, **errors},
+                 operation_id="reconcile_original_record_request_v1")
+    def reconcile_record(request: Request, patient_id: str, request_id: str,
+                         payload: ReconcileRecordRequest, case_id: str | None = None,
+                         context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                if case_id is not None and case_id != payload.case_id:
+                    raise PatientRegistryDenied("Record receipt case unavailable")
+                actions = (("record_request_receive", "source_read") if case_id is None else
+                           acquisition_grants(request, context, patients, patient_id, "record_request_receive", case_id))
+                for action in actions:
+                    records_authorized(patients, context, patient_id, action)
+                return PostgresRecordRequests(patients).reconcile(
+                    patient_id, request_id, payload.case_id,
+                    expected_source_id=payload.expected_source_id,
+                    replacement_source_id=payload.replacement_source_id,
+                    request_key=payload.request_key, reason_code=payload.reason_code,
+                    organization=context.organization, actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda result: JSONResponse(
+                        content=ReconciledRecordRequest(**result).model_dump(mode="json"),
+                        status_code=200 if result["duplicate"] else 201),
+                    recheck_authority=lambda: final_question_authority(
+                        request, context, patients, patient_id, actions))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Record request or source unavailable") from None
+
+    @router.get("/{patient_id}/record-requests/{request_id}/receipt-history",
+                response_model=RecordReceiptHistory, responses=errors,
+                operation_id="read_record_receipt_history_v1")
+    def read_record_receipt_history(request: Request, patient_id: str, request_id: str, case_id: str | None = None,
+                                    context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                actions = (("record_request_read", "source_read") if case_id is None else
+                           acquisition_grants(request, context, patients, patient_id, "record_request_read", case_id))
+                for action in actions:
+                    records_authorized(patients, context, patient_id, action)
+                return PostgresRecordRequests(patients).receipt_history(
+                    patient_id, request_id, organization=context.organization, workspace_case_id=case_id,
+                    actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda result: JSONResponse(
+                        content=RecordReceiptHistory(**result).model_dump(mode="json")),
+                    recheck_authority=lambda: final_question_authority(
+                        request, context, patients, patient_id, actions))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Record request or source unavailable") from None
 
     @router.get("/{patient_id}/case-bindings", response_model=CaseBindingList,
                 responses=errors, operation_id="list_case_bindings_v1")

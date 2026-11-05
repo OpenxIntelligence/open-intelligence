@@ -186,6 +186,19 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
     click(cd, receipt_row + ' [data-testid=request-inspect-original]')
     cd.wait("document.querySelector('[data-testid=server-original]')?.textContent===" +
             json.dumps(ORIGINAL.decode()), 'receipt opens the exact historical original after amendment')
+    refresh_requests()
+    cd.wait("Boolean(document.querySelector('[data-testid=request-reconcile]'))", "current amendment available")
+    click(cd, receipt_row + ' [data-testid=request-reconcile]')
+    cd.wait("document.querySelector(" + json.dumps(receipt_row) + ")?.dataset.receiptStatus==='source_current_unreviewed'",
+            'explicit amendment decision applied')
+    click(cd, receipt_row + ' [data-testid=request-history]')
+    cd.wait("document.querySelectorAll('[data-testid=request-history-entries] li').length===2",
+            'original receipt and explicit reconciliation retained')
+    cd.evaluate("document.querySelector('[data-testid=request-history-entries] button').click()")
+    cd.wait("document.querySelector('[data-testid=server-original]')?.textContent===" + json.dumps(ORIGINAL.decode()),
+            'original remains readable through the reconciliation history')
+    current, = [r for r in operator('/record-requests')['requests'] if r['request_id'] == tracked['request_id']]
+    assert current['revision']==3 and current['source_reference']['sha256']==new['sha256']
     print('PASS RECORD ACQUISITION: created a missing-record request in Records, selected the '
           'current original, then reopened its pinned v1 receipt after a v2 amendment.')
 

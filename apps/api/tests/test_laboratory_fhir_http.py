@@ -242,6 +242,39 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
             self.assertEqual(world["laboratory_timeline"][0]["clinical_interpretation"],
                              "not_performed")
 
+    def test_reconcile_record_receipt_through_native_laboratory_originals(self):
+        self.creds[0]["actions"].extend(("record_request_create", "record_request_read", "record_request_receive"))
+        with running_server(self.app) as base:
+            patient = self.make_patient(base)
+            root = f"/v1/patients/{patient}/record-requests"
+            def post(path, **fields):
+                return request(base, path, token=TOKEN_A, body={"synthetic": True, **fields})
+            status, tracked, _ = post(root, request_key="REQUEST-LAB", kind="laboratory",
+                                      record_label="Fictional laboratory report", source_organization="Fictional laboratory")
+            self.assertEqual(status, 201)
+            path = root + "/" + tracked["request_id"]
+            status, original, _ = self.import_source(base, patient)
+            self.assertEqual(status, 201)
+            self.assertEqual(post(path + "/receive", case_id="CASE-LAB-A", source_id=original["source_id"])[0], 201)
+            amended = example()
+            resource(amended, "Observation")["valueQuantity"]["value"] = 5
+            status, updated, _ = self.import_source(base, patient, amended, request_key="LAB-AMENDMENT",
+                                                    expected_previous_source_id=original["source_id"])
+            self.assertEqual(status, 201)
+            self.assertEqual(post(path + "/reconcile", case_id="CASE-LAB-A", expected_source_id=original["source_id"],
+                                  replacement_source_id=updated["source_id"], reason_code="source_amendment",
+                                  request_key="RECON-LAB")[0], 201)
+            status, history, _ = request(base, path + "/receipt-history", token=TOKEN_A)
+            self.assertEqual(status, 200)
+            self.assertEqual([item["source_reference"]["sha256"] for item in history["receipts"]],
+                             [original["original_sha256"], updated["original_sha256"]])
+            self.creds[0]["purpose"] = "research"
+            self.write_access()
+            self.assertEqual(request(base, path + "/receipt-history", token=TOKEN_A)[0], 404)
+            self.assertEqual(post(path + "/reconcile", case_id="CASE-LAB-A", expected_source_id=original["source_id"],
+                                  replacement_source_id=updated["source_id"], reason_code="source_amendment",
+                                  request_key="RECON-LAB")[0], 404)
+
     def test_exact_retry_and_changed_bundle_require_explicit_amendment(self):
         with running_server(self.app) as base:
             patient = self.make_patient(base)
