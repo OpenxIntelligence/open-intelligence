@@ -383,10 +383,18 @@ def main():
             select_section('Molecular')
             cd.wait("!!document.querySelector('[data-testid=diagnostic-reports-empty]') && !document.querySelector('[data-testid=server-original]')",
                     'pathology original stays out of the empty molecular category')
-            molecular=original.replace('DOC-ONE','DOC-PATHOLOGY-LABEL').replace('Type: pathology','Type: molecular')
-            status,_=add_synthetic(root+'/cases/'+case+'/sources',{'synthetic':True,'original_text':molecular})
+            diagnostic_case='CASE-DIAGNOSTIC-REPORTS'
+            status,_=add_synthetic(root+'/case-bindings',{
+                'synthetic':True,'case_id':diagnostic_case,'source_organization':'ORG-INSTITUTION',
+                'source_system':'SYS-SYNTH','source_subject_ref':'SUBJECT-DIAGNOSTIC','review_ref':'REVIEW-DIAGNOSTIC'})
             assert status==201
-            cd.evaluate(f"{alpha_row}.querySelector('[data-testid=load-sources]').click()")
+            molecular=original.replace(case,diagnostic_case).replace('DOC-ONE','DOC-PATHOLOGY-LABEL').replace('Type: pathology','Type: molecular')
+            status,_=add_synthetic(root+'/cases/'+diagnostic_case+'/sources',{'synthetic':True,'original_text':molecular})
+            assert status==201
+            cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
+            diagnostic_row="[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.querySelector('code').textContent==='CASE-DIAGNOSTIC-REPORTS')"
+            cd.wait(f"Boolean({diagnostic_row})", 'separate molecular case mapping')
+            cd.evaluate(f"{diagnostic_row}.querySelector('[data-testid=load-sources]').click()")
             cd.wait("document.querySelectorAll('[data-testid=source-version]').length===1 && document.querySelector('[data-testid=source-version] h4').textContent.includes('DOC-PATHOLOGY-LABEL')",
                     'molecular report follows its recorded type even with a misleading document name')
             cd.evaluate("document.querySelector('[data-testid=open-original]').click()")

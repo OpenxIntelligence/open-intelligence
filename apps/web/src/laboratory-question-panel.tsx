@@ -32,7 +32,7 @@ export function LaboratoryQuestionPanel({session,model,busy,sourceSavePending,st
   const save=()=>{if(!receipt||!item||locked||sourceSavePending||busy)return;const verified=receipt;setReceipt(null);void session.saveLabQuestion(model,verified);};
   return <form className="lab-question-form" aria-label="Question about a laboratory result" onSubmit={e=>{e.preventDefault();void prepare();}}>
     <h4>Prepare a question about a result</h4>
-    <p>You can switch between results as you write your questions. Check and save any you want to keep before refreshing the report or leaving Journey.</p>
+    <p>You can switch between results as you write your questions. Check and save any you want to keep before refreshing the report or leaving this section.</p>
     <label>Laboratory result
       <select data-testid="lab-question-result" disabled={locked} value={selection} onChange={e=>{stop();select(e.target.value);}}>
         <option value="">Choose a result</option>

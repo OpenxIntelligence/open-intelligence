@@ -71,7 +71,7 @@ export function LaboratoryIntake({session,patientId,caseId,disabled=false}:{
       onClick={()=>void session.retryLaboratoryImport()}>Retry exact import to recover its receipt</button>}
     {scoped&&state.laboratoryReceipt&&<p data-testid="laboratory-receipt">Saved original <code>{state.laboratoryReceipt.source_id}</code>
       {' '}· version {state.laboratoryReceipt.version} · {state.laboratoryReceipt.observation_count} source-reported results.
-      {' '}Inspect the original in Records or refresh the Patient World Model in Journey.</p>}
+      {' '}Inspect the original in Records or open the case in Labs to check the results.</p>}
     <p className="small muted">No external laboratory connection, unit conversion, reference-range interpretation or clinical approval is performed.</p>
   </section>;
 }
