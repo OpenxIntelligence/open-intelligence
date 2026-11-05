@@ -8,6 +8,14 @@ branch_labels = None
 depends_on = None
 
 
+# These existing contracts can represent a source line only. Follow-through
+# tasks already require an exact, non-null matching line in their own guard.
+TEXT_QUESTION_TABLES = (
+    "question_review_receipts", "question_passage_revisions", "question_evidence_links",
+    "question_evidence_assessments", "question_evidence_reports", "evidence_command_origins",
+)
+
+
 def upgrade():
     # Keep all existing question columns, identifiers, rows and versioned
     # intents. A NULL line requires exactly one immutable typed child at commit.
@@ -79,6 +87,38 @@ def upgrade():
         CREATE TRIGGER oi_lab_anchor_truncate_guard BEFORE TRUNCATE ON investigation.laboratory_question_anchors
             FOR EACH STATEMENT EXECUTE FUNCTION identity.reject_registry_history_mutation();
     """)
+    conn = op.get_bind()
+    conn.exec_driver_sql("""
+        CREATE FUNCTION investigation.require_text_question_target() RETURNS trigger
+        LANGUAGE plpgsql AS $oi_text_target$
+        DECLARE target_id text;
+        BEGIN
+            IF TG_TABLE_NAME='evidence_commands' THEN
+                target_id := NEW.result->>'question_id';
+            ELSE
+                target_id := NEW.question_id;
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM investigation.source_questions q
+                WHERE q.question_id=target_id AND q.source_line IS NOT NULL
+                  AND q.patient_id=NEW.patient_id AND q.case_id=NEW.case_id
+                  AND q.origin_org=NEW.origin_org AND q.purpose=NEW.purpose
+            ) THEN RAISE EXCEPTION 'OI-TEXT-QUESTION-TARGET-REQUIRED'; END IF;
+            RETURN NEW;
+        END;
+        $oi_text_target$;
+    """)
+    for table in TEXT_QUESTION_TABLES:
+        conn.exec_driver_sql(f"""
+            CREATE TRIGGER oi_anchor_text_question_required BEFORE INSERT ON investigation.{table}
+                FOR EACH ROW EXECUTE FUNCTION investigation.require_text_question_target()
+        """)
+    # Imports and withdrawals are case-owned and have no question in their receipt.
+    conn.exec_driver_sql("""
+        CREATE TRIGGER oi_anchor_text_question_required BEFORE INSERT ON investigation.evidence_commands
+            FOR EACH ROW WHEN (NEW.operation IN ('assess','report'))
+            EXECUTE FUNCTION investigation.require_text_question_target()
+    """)
 
 
 def downgrade():
@@ -90,6 +130,9 @@ def downgrade():
             OR EXISTS(SELECT 1 FROM investigation.laboratory_question_anchors)
     """).scalar_one():
         raise CommandError("Stored laboratory question history requires explicit reconciliation")
+    for table in (*TEXT_QUESTION_TABLES, "evidence_commands"):
+        conn.exec_driver_sql(f"DROP TRIGGER oi_anchor_text_question_required ON investigation.{table}")
+    conn.exec_driver_sql("DROP FUNCTION investigation.require_text_question_target()")
     conn.exec_driver_sql("""
         DROP TRIGGER oi_lab_question_requires_child ON investigation.source_questions;
         DROP TRIGGER oi_lab_question_insert_guard ON investigation.source_questions;

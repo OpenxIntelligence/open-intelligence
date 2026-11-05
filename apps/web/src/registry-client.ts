@@ -387,13 +387,18 @@ export class RegistrySession {
     this.#publish({sourceQuotePacket:null,sourceQuotePhase:'idle',
       sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
   };
-  disconnect=()=>{
+  #clearPatientSessionData(){
     this.#manualPassageIntents.clear();
     this.#laboratoryWrite++;this.#laboratoryWriting=false;
-    this.#scope++;this.#read++;this.#records++;this.#token='';this.#creating=false;this.#uploading=false;
+    this.#scope++;this.#read++;this.#records++;this.#creating=false;this.#uploading=false;
     this.#resetInvestigation();
     for(const c of this.#controllers)c.abort();this.#controllers.clear();
-    this.#state=fresh();for(const listener of this.#listeners)listener();
+    this.#state=fresh();
+  }
+  disconnect=()=>{
+    this.#token='';
+    this.#clearPatientSessionData();
+    for(const listener of this.#listeners)listener();
   };
   connect=(token:string)=>{
     this.disconnect();
@@ -857,10 +862,11 @@ export class RegistrySession {
         observation_reference:reference,question,expected_source_snapshot_sha256:model.snapshot_fingerprint})));
       if(!current())return null;
       if(res.status===401){this.#httpError(401);return null;}
+      if(res.status===403||res.status===404){this.#denyLaboratoryQuestionAccess('prepare');return null;}
       if(res.status!==200){
         withhold(res.status===409?'The laboratory report changed. Reopen the case to select a current result.':
           'Laboratory question preparation is unavailable. Recheck access to this case.',
-          [403,404].includes(res.status)?undefined:model.case_id);return null;
+          model.case_id);return null;
       }
       const receipt=readLabPreparation(await json(res),model,item,question);
       if(!current()||controller.signal.aborted)return null;
@@ -889,6 +895,16 @@ export class RegistrySession {
   async retryLabQuestion(model:SourceWorldModel):Promise<void>{
     if(this.#state.labQuestionWritePhase==='unknown'&&this.#canReadLabModel(model)&&!questionSaveBlocksSourceChange(this.#state))await this.#sendLabQuestion(model);
   }
+  #denyLaboratoryQuestionAccess(operation:'prepare'|'save'|'history'){
+    // A 403/404 can represent lost patient or case authority. Invalidate all
+    // patient data and outstanding responses before permitting another read.
+    this.#clearPatientSessionData();
+    const message='Laboratory question access is unavailable. Reopen the patient in Overview to check current access.';
+    this.#publish({connected:true,phase:'error',message,worldPhase:'error',worldMessage:message,
+      recordsPhase:'error',recordMessage:message,
+      ...(operation==='save'?{labQuestionWritePhase:'error' as const,labQuestionWriteMessage:message}:{}),
+      ...(operation==='history'?{labQuestionListPhase:'error' as const,labQuestionListMessage:message}:{})});
+  }
   async #sendLabQuestion(model:SourceWorldModel):Promise<void>{
     const intent=this.#labPending;
     if(!intent||intent.caseId!==model.case_id||intent.patient!==model.patient_id||this.#state.labQuestionWritePhase==='saving')return;
@@ -901,7 +917,8 @@ export class RegistrySession {
       const response=await this.transport(path,this.#init(control,intent.body));
       if(!current())return;
       if(response.status===401){this.#httpError(401);return;}
-      if([403,404,409,413,422].includes(response.status)){
+      if(response.status===403||response.status===404){this.#denyLaboratoryQuestionAccess('save');return;}
+      if([409,413,422].includes(response.status)){
         this.#labPending=null;this.#labDrafts=new WeakMap();this.#publish({...emptyLabQuestions(),labQuestionWritePhase:'error',
           labQuestionWriteMessage:response.status===409?'A changed report, conflicting request or full history can prevent a save. Reopen the saved questions and check the current report.':'Question save unavailable. Recheck access and prepare the question again.'});return;
       }
@@ -923,6 +940,7 @@ export class RegistrySession {
       const path='/v1/patients/'+encodeURIComponent(model.patient_id)+'/cases/'+encodeURIComponent(model.case_id)+'/composer/laboratory-questions';
       const response=await this.transport(path,this.#init(control));if(!current())return;
       if(response.status===401){this.#httpError(401);return;}
+      if(response.status===403||response.status===404){this.#denyLaboratoryQuestionAccess('history');return;}
       if(response.status!==200)throw Error('unavailable');
       const history=readLabQuestionList(await json(response,1048576),model);if(!current())return;
       this.#publish({labQuestionHistory:history,labQuestionListPhase:'ready',labQuestionListMessage:'Saved questions checked against current access.'});

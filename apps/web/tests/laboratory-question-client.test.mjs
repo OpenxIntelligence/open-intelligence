@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {readLabPreparation,readLabQuestionList} from '../.test-dist/laboratory-question.js';
 import {patient,caseId,projection} from './laboratory-projection-fixture.mjs';
@@ -217,4 +218,44 @@ test('text question conflict in the same case retains the uncertain laboratory c
  assert.equal(f.session.snapshot().labQuestionWritePhase,'unknown');
  await f.session.loadWorldModel(caseId);await f.session.retryLabQuestion(f.session.snapshot().worldModel);
  assert.deepEqual(labWrites,[labWrites[0],labWrites[0]]);assert.equal(f.session.snapshot().labQuestionSavedId,qid);
+});
+
+test('denied laboratory preparation, save or history clears patient, sources, World Model and drafts until access is rechecked',async()=>{
+ for(const operation of ['prepare','save','history'])for(const status of [403,404]){
+  let deny=false;let writes=0;
+  const captured=projection(), lab=captured.current_sources[0];
+  const originalText=`OI-SYNTHETIC-REPORT/1\nPatient: ${caseId}\nDocument: PREVIOUS-FICTIONAL-REPORT\nType: clinical\nEvent-Date: 2026-04-03\nIssued-At: 2026-04-04\n`;
+  const earlier={...lab,kind:'clinical',document_id:'PREVIOUS-FICTIONAL-REPORT',source_id:'SRC-'+'9'.repeat(32),sha256:createHash('sha256').update(originalText).digest('hex')};
+  captured.current_sources.push(earlier);captured.summary.current_sources++;
+  const index={contract:'oi.synthetic-original-sources/1',patient_id:patient,case_id:caseId,access_receipt_id:access,sources:captured.current_sources,source_reported_assertions:[],synthetic:true,clinical_interpretation:false,research_review_invalidation_integrated:false};
+  const original={case_id:caseId,source_id:earlier.source_id,document_id:earlier.document_id,version:1,state:'current',sha256:earlier.sha256,synthetic:true,clinical_review_state:'not_established',original_text:originalText,access_receipt_id:access};
+  const f=await ready((url)=>{
+   if(url.endsWith('/laboratory-preflight'))return deny&&operation==='prepare'?new Response('Unavailable',{status}):reply(prepared(f.world,f.item));
+   writes++;return reply({},status);
+  },()=>deny?new Response('Unavailable',{status}):reply(history()),()=>captured,url=>{
+   if(url.endsWith('/sources'))return reply(index);
+   if(url.endsWith('/'+earlier.source_id))return reply(original);
+   return null;
+  });
+  await f.session.loadSources(caseId);await f.session.loadOriginal(earlier.source_id);await f.session.loadWorldModel(caseId);
+  assert.equal(f.session.snapshot().original.original_text,originalText);assert.equal(f.session.snapshot().sourceIndex.sources.length,2);
+  const world=f.session.snapshot().worldModel;
+  const draft=await f.session.prepareLabQuestion(world,f.item.source_id,f.item.observation_reference,question,new AbortController().signal);
+  await f.session.loadLabQuestions(world);
+  assert.equal(f.session.snapshot().labQuestionHistory.questions[0].question_id,qid);
+  assert.ok(f.session.snapshot().cases.length);assert.ok(f.session.snapshot().worldModel);
+  deny=true;
+  if(operation==='prepare')await f.session.prepareLabQuestion(world,f.item.source_id,f.item.observation_reference,question,new AbortController().signal);
+  if(operation==='history')await f.session.loadLabQuestions(world);
+  if(operation==='save')await f.session.saveLabQuestion(world,draft);
+  const cleared=f.session.snapshot();assert.equal(cleared.connected,true);assert.equal(cleared.patient,null);
+  for(const field of ['cases','sourceIndex','original','worldModel','labQuestionHistory','labQuestionSavedId','questions','reviewQueue'])assert.equal(cleared[field],null,field);
+  assert.equal(cleared.worldPhase,'error');
+  if(operation==='save')assert.equal(cleared.labQuestionWritePhase,'error');
+  if(operation==='history')assert.equal(cleared.labQuestionListPhase,'error');
+  const count=writes;await f.session.retryLabQuestion(f.world);await f.session.saveLabQuestion(f.world,draft);assert.equal(writes,count);
+  deny=false;await f.session.read(patient);await f.session.loadCases();await f.session.loadWorldModel(caseId);
+  await f.session.retryLabQuestion(f.session.snapshot().worldModel);assert.equal(writes,count);
+  await f.session.loadLabQuestions(f.session.snapshot().worldModel);assert.equal(f.session.snapshot().labQuestionHistory.questions.length,1);
+ }
 });

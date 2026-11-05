@@ -71,6 +71,15 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     def navigate(name):
         cd.evaluate('[...document.querySelectorAll("nav button")].find(e=>e.textContent.startsWith(' + json.dumps(name) + ')).click()')
 
+    def reopen_patient():
+        navigate('Overview')
+        cd.wait("Boolean(document.querySelector('#patient-id'))", 'patient can reopen after independent grant check')
+        cd.evaluate("(() => {const e=document.querySelector('#patient-id');"
+                    "Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e," + json.dumps(patient_id) + ");"
+                    "e.dispatchEvent(new Event('input',{bubbles:true}));})()")
+        cd.evaluate("document.querySelector('#patient-id').form.requestSubmit()")
+        cd.wait("document.querySelector('[data-testid=patient-card]')?.textContent.includes(" + json.dumps(patient_id) + ")", 'patient reopened under fresh authority')
+
     def records():
         navigate('Records')
         cd.wait('Boolean(document.querySelector("[data-testid=load-cases]"))', 'laboratory Records workspace')
@@ -188,6 +197,10 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
 
     def journey(expected_value):
         navigate('Journey')
+        has_case = '[...document.querySelectorAll(".world-cases li")].some(e=>e.textContent.includes(' + json.dumps(CASE) + '))'
+        if not cd.evaluate(has_case):
+            cd.evaluate('document.querySelector("[data-testid=world-load-cases]").click()')
+            cd.wait(has_case, 'authorized laboratory case available')
         cd.evaluate('[...document.querySelectorAll(".world-cases li")].find(e=>e.textContent.includes(' + json.dumps(CASE) + ')).querySelector("[data-testid=world-load]").click()')
         cd.wait('document.querySelectorAll("[data-testid=world-laboratory-observation]").length===3', 'three typed source laboratory results')
         rendered = cd.evaluate('[...document.querySelectorAll("[data-testid=world-laboratory-observation]")].map(e=>({text:e.textContent,value:e.querySelector("[data-testid=world-laboratory-value]").textContent}))')
@@ -289,8 +302,9 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert all(v in row for v in (question, first['source_id'], first['sha256'], 'Observation/FICT-WEB-ZERO'))
     credentials[0]['actions'].remove('question_read');write_grants()
     cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
-    cd.wait("window.__oiLabHistoryCodes.at(-1)===404 && !document.querySelector('[data-testid=lab-saved-question]')", 'denied question read removes prior history')
+    cd.wait("window.__oiLabHistoryCodes.at(-1)===404 && Boolean(document.querySelector('[data-testid=world-no-patient]')) && !document.querySelector('[data-testid=lab-saved-question]')", 'denied question read removes prior history')
     credentials[0]['actions'].append('question_read');write_grants()
+    reopen_patient()
     journey('1')
     draft_question(current['source_id'], 'ABSENT', question)
     submit_question()
@@ -299,10 +313,11 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert current['sha256'] in amended_receipt and first['source_id'] not in amended_receipt
     credentials[0]['actions'].remove('composer_context_read');write_grants()
     submit_question()
-    cd.wait("!document.querySelector('[data-testid=world-projection]') && document.querySelector('[data-testid=world-status]').textContent.includes('Recheck access')", 'Composer denial withholds projection and prepared answer')
+    cd.wait("window.__oiLabPrepareCodes.at(-1)===404 && Boolean(document.querySelector('[data-testid=world-no-patient]'))", 'Composer denial withholds projection and prepared answer')
     assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))")
     assert operator(questions_path)['questions'] == []
     credentials[0]['actions'].append('composer_context_read');write_grants()
+    reopen_patient()
     (artifacts / 'laboratory-question-preparation.json').write_text(json.dumps({
         'synthetic': True, 'case_id': CASE, 'original': prepared, 'amendment': amended_receipt,
         'http_statuses': cd.evaluate('window.__oiLabPrepareCodes'),
