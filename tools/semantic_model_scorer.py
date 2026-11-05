@@ -75,6 +75,10 @@ def score_run(run: dict[str, Any], packet: dict[str, Any],
         stop_reasons.append("false_join_mapping")
     if counts["positive_wrong"]:
         stop_reasons.append("incorrect_positive_field")
+    # Zero correct fields means no measured retrieval utility. This is a
+    # minimal experimental sanity gate, NOT a clinical safety threshold.
+    if counts["positive_correct"] == 0:
+        stop_reasons.append("zero_correct_field_lookups")
     if counts["positive_invalid"] or counts["negative_invalid"]:
         stop_reasons.append("malformed_output")
     if counts["positive_transport_error"] or counts["negative_transport_error"]:

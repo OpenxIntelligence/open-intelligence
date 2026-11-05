@@ -1,0 +1,222 @@
+name: Qwen2.5-0.5B constrained metadata comparison (synthetic, non-NVIDIA)
+
+on:
+  pull_request:
+    branches: [research/semantic-constrained-decoding-20261105]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  small-real-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      MODEL_REPO: Qwen/Qwen2.5-0.5B-Instruct
+      MODEL_REVISION: 7ae557604adf67be50417f59c2c2f167def9a775
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      HF_HUB_DISABLE_PROGRESS_BARS: '1'
+      HF_HUB_ENABLE_HF_TRANSFER: '0'
+      NVIDIA_API_KEY: ''
+      DEFAULT_MODELS_API_KEY: ''
+      REASONING_API_KEY: ''
+      EMBED_API_KEY: ''
+      CONNECTION_STRINGS: ''
+      LANGCHAIN_TRACING_V2: 'false'
+      LANGSMITH_TRACING: 'false'
+    steps:
+      - name: Checkout exact Open Intelligence candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Python 3.12 on evaluation host
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Freeze answer-free question packet; verify no data or gold
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p cpu-research-evidence
+          python -m compileall -q tools/semantic_qwen_cpu_weights.py tools/semantic_cpu_constrained_run.py tools/semantic_choice_contract.py tests/test_semantic_choice_contract.py
+          python -m unittest discover -s tests -p 'test_semantic*.py' -v 2>&1 | tee cpu-research-evidence/tests.txt
+          python tools/semantic_question_packet.py --output "$RUNNER_TEMP/oi-cpu-questions.json" \
+            > cpu-research-evidence/question-packet-receipt.json
+          python - <<'PY'
+          import json,os,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from semantic_question_packet import validate_packet
+          p=json.loads((Path(os.environ["RUNNER_TEMP"])/'oi-cpu-questions.json').read_text())
+          v=validate_packet(p)
+          assert v['task_count']==72 and v['allowed_fields']==22
+          assert not v['hidden_answers_included']
+          assert p['sql_execution_allowed'] is False
+          assert p['patient_record_access_allowed'] is False
+          print("Input-only model packet is approved synthetic-only schema")
+          PY
+      - name: Download Apache-2.0 small reference model at immutable revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --no-cache-dir 'huggingface_hub==0.30.2'
+          python - <<'PY'
+          from huggingface_hub import snapshot_download,HfApi
+          from pathlib import Path
+          import hashlib,json,os
+          repo=os.environ["MODEL_REPO"]
+          sha=os.environ["MODEL_REVISION"]
+          meta=HfApi().model_info(repo,revision=sha)
+          if meta.sha!=sha or meta.cardData is None or meta.cardData.license!="apache-2.0":
+              raise RuntimeError("Model license or revision not verified")
+          root=Path(os.environ['RUNNER_TEMP'])/'oi-cpu-model'
+          snapshot_download(repo_id=repo,revision=sha,local_dir=str(root),
+              allow_patterns=[
+                  "config.json","generation_config.json","model.safetensors",
+                  "tokenizer.json","tokenizer_config.json","special_tokens_map.json",
+                  "vocab.json","merges.txt",
+              ])
+          if not (root/'model.safetensors').is_file():
+              raise RuntimeError("Missing pinned safetensors weights")
+          files={}
+          for p in root.rglob('*'):
+              if not p.is_file() or '.cache' in p.parts: continue
+              h=hashlib.sha256(p.read_bytes()).hexdigest()
+              files[str(p.relative_to(root))]={'sha256':h,'bytes':p.stat().st_size}
+          if not files or not all("sha256" in v for v in files.values()):
+              raise RuntimeError("Invalid model manifest")
+          receipt={'model_repo':repo,'model_sha':sha,'model_card_license':'apache-2.0',
+                   'source':'huggingface_hub_pinned_snapshot',
+                   'weights':files,'model_credentials':False,
+                   'nvidia_model':False,'clinical_validation':False}
+          Path('cpu-research-evidence/model-weights.json').write_text(json.dumps(receipt,sort_keys=True,indent=2)+'\n')
+          print('Pinned permissive small-model weights downloaded and independently hashed')
+          PY
+          rm -rf "$RUNNER_TEMP/oi-cpu-model/.cache"
+          chmod -R a+rX "$RUNNER_TEMP/oi-cpu-model"
+      - name: Build disposable model-only container without gold references
+        shell: bash
+        run: |
+          set -euo pipefail
+          context="$RUNNER_TEMP/oi-cpu-server-build"
+          mkdir -p "$context"
+          for file in semantic_qwen_cpu_weights.py semantic_cpu_constrained_run.py \
+              semantic_choice_contract.py semantic_local_model_runner.py semantic_question_packet.py \
+              semantic_adversarial_eval.py semantic_benchmark.py semantic_contract_probe.py; do
+            cp "tools/$file" "$context/$file"
+          done
+          cat > "$context/Dockerfile" <<'DOCKERFILE'
+          FROM python:3.12-slim
+          ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 TOKENIZERS_PARALLELISM=false
+          RUN python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0" \
+              && python -m pip install --no-cache-dir "transformers==4.50.3" "huggingface_hub==0.30.2" "safetensors==0.5.3"
+          WORKDIR /app
+          RUN mkdir -p /input /results
+          COPY *.py /app/
+          USER 65532:65532
+          ENTRYPOINT ["python","-u","/app/semantic_cpu_constrained_run.py"]
+          DOCKERFILE
+          docker build -t oi-synthetic-cpu-reference:local "$context"
+          echo "Model-only container contains no patient records, answer labels or research worktree"
+      - name: Run real weights with fixed 23-token choice vocabulary, network=none
+        shell: bash
+        run: |
+          set -euo pipefail
+          packet="$RUNNER_TEMP/oi-cpu-questions.json"
+          expected="$(python -c 'import json,sys;print(json.load(open(sys.argv[1]))["packet_sha256"])' "$packet")"
+          output="$RUNNER_TEMP/oi-cpu-output"
+          mkdir -p "$output"
+          sudo chown 65532:65532 "$output"
+          docker run --rm --name oi-synthetic-cpu-inprocess \
+            --network none \
+            --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+            --memory 4g --cpus 2 --pids-limit 80 \
+            --tmpfs /tmp:rw,noexec,nosuid,size=128m \
+            --mount type=bind,src="$RUNNER_TEMP/oi-cpu-model",dst=/weights,readonly \
+            --mount type=bind,src="$packet",dst=/input/questions.json,readonly \
+            --mount type=bind,src="$output",dst=/results \
+            oi-synthetic-cpu-reference:local \
+              --packet /input/questions.json \
+              --expected-packet-sha256 "$expected" \
+              --model-revision "$MODEL_REVISION" \
+              --output /results/real-model-run.json \
+              --evidence /results/real-token-usage.json
+          sudo cp "$output"/real-model-run.json "$output"/real-token-usage.json cpu-research-evidence/
+          sudo chown "$USER":"$USER" cpu-research-evidence/real-model-run.json cpu-research-evidence/real-token-usage.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          x=json.loads(Path('cpu-research-evidence/real-token-usage.json').read_text())
+          assert x['method']=='masked_single_token_next_logit_23_choices'
+          assert x['questions']==72 and x['nvidia_model_or_auto_ontology_inference'] is False
+          assert x['actual_model_forward_passes']==72 and x['forced_choice_tokens']==72
+          assert x['unconstrained_freeform_json_generated'] is False
+          assert x['network_interfaces_available'] is False
+          print('72 actual constrained forward passes ran inside a network-disabled container')
+          PY
+      - name: Score real model outputs separately against public synthetic gold
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/semantic_model_scorer.py \
+            --run cpu-research-evidence/real-model-run.json \
+            --packet "$RUNNER_TEMP/oi-cpu-questions.json" \
+            --reference tests/fixtures/semantic_adversarial_challenge_v2.json \
+            --original tests/fixtures/semantic_benchmark_cases_v1.json \
+            --output cpu-research-evidence/real-model-score.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('cpu-research-evidence/real-model-run.json').read_text())
+          s=json.loads(Path('cpu-research-evidence/real-model-score.json').read_text())
+          assert r['complete'] is True and r['attempted_questions']==72
+          assert s['reference_cases']==72 and s['positive_cases']==36 and s['negative_cases']==36
+          assert s['provider_provenance_verified'] is False
+          assert s['nvidia_auto_ontology_model_verified'] is False
+          assert s['clinical_validation'] is False
+          assert s['production_adoption_approved'] is False
+          assert r['nvidia_auto_ontology_verified'] is False
+          print('Real pinned small CPU weights: fixed-vocabulary classification completed, not NVIDIA/clinical accuracy')
+          print(json.dumps(s['counts'],sort_keys=True))
+          print('Experimental stop triggered:',s['experimental_stop_triggered'])
+          PY
+      - name: Record source, model, execution and limitations
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p cpu-research-evidence
+          python - <<'PY'
+          from pathlib import Path
+          import json,hashlib,os,platform,subprocess
+          paths=['tools/semantic_qwen_cpu_weights.py','tools/semantic_cpu_constrained_run.py','tools/semantic_choice_contract.py','tools/semantic_local_model_runner.py','.github/workflows/semantic-qwen-cpu.yml']
+          source={'commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+                  'run_id':os.environ.get('GITHUB_RUN_ID'),
+                  'python':platform.python_version(),
+                  'source_sha256':{p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths},
+                  'model_repo':os.environ['MODEL_REPO'],
+                  'model_revision':os.environ['MODEL_REVISION'],
+                  'real_cpu_model_inference_attempted':True,
+                  'decoding_method':'masked_single_token_next_logit_23_choices',
+                  'nvidia_model_used':False,'nvidia_auto_ontology_inference':False,
+                  'unreviewed_synthetic_public_gold':True,'clinical_validation':False,
+                  'patient_data_used':False,'hosted_provider_api_key_used':False,
+                  'model_cost_established':False}
+          Path('cpu-research-evidence/execution-receipt.json').write_text(json.dumps(source,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(source,sort_keys=True))
+          PY
+          echo "Model ran under Docker --network none; no HTTP server exposed" > cpu-research-evidence/container-diagnostics.txt
+      - name: Stop disposable local CPU model
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f oi-synthetic-cpu-inprocess >/dev/null 2>&1 || true
+      - name: Preserve bounded research-only evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: oi-qwen-cpu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: cpu-research-evidence/
+          if-no-files-found: warn
+          retention-days: 7

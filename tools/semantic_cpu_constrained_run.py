@@ -20,7 +20,7 @@ import time
 
 import torch
 
-from semantic_cpu_model_server import model, tokenizer, EXPECTED_MODEL_ID
+from semantic_qwen_cpu_weights import model, tokenizer, EXPECTED_MODEL_ID
 from semantic_choice_contract import (
     METHOD, ABSTAIN_CODE, MODEL_CHOICE_COUNT, build_choices,
     task_messages, token_ids, choice_to_proposal,
@@ -29,7 +29,7 @@ from semantic_question_packet import validate_packet
 from semantic_local_model_runner import CONTRACT as RUN_CONTRACT, validate_run
 from semantic_benchmark import digest
 
-EXPECTED_MODEL_REVISION = "12fd25f77366fa6b3b4b768ec3050bf629380bac"
+EXPECTED_MODEL_REVISION = "7ae557604adf67be50417f59c2c2f167def9a775"
 MAX_PROMPT_TOKENS = 1500
 MAX_PACKET_BYTES = 65536
 

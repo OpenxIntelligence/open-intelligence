@@ -1,0 +1,99 @@
+name: Synthetic semantic utility and safety gate (no model)
+
+on:
+  push:
+    branches: [research/semantic-qwen2p5-cpu-comparison-20261105]
+  pull_request:
+    branches: [research/semantic-constrained-decoding-20261105]
+
+permissions:
+  contents: read
+
+jobs:
+  research-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NVIDIA_API_KEY: ''
+      DEFAULT_MODELS_API_KEY: ''
+      CONNECTION_STRINGS: ''
+      LANGCHAIN_TRACING_V2: 'false'
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Python 3.13, standard-library only
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Compile and check all semantic harness regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p utility-evidence
+          python -m compileall -q tools/semantic_model_scorer.py tests/test_semantic_governed_runner.py
+          python -m unittest discover -s tests -p 'test_semantic*.py' -v 2>&1 | tee utility-evidence/tests.txt
+      - name: Verify report and zero-utility research stop semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          sys.path.insert(0,'tests')
+          from semantic_question_packet import make_packet
+          from semantic_model_scorer import score_run
+          from semantic_local_model_runner import evaluate_packet
+          from test_semantic_governed_runner import CHALLENGE,ORIGINAL,model_reply
+          def abstain(_url,_body,_timeout):
+              return model_reply({'status':'abstain'})
+          packet=make_packet(CHALLENGE,ORIGINAL)
+          run=evaluate_packet(packet,url='http://127.0.0.1:18763/v1/chat/completions',
+                              model_id='scripted-test-only',sender=abstain)
+          score=score_run(run,packet,CHALLENGE,ORIGINAL)
+          assert score['positive_cases']==36 and score['negative_cases']==36
+          assert score['counts']['positive_correct']==0
+          assert score['counts']['negative_abstained']==36
+          assert score['experimental_stop_triggered'] is True
+          assert score['experimental_stop_reasons']==['zero_correct_field_lookups']
+          assert score['clinical_validation'] is False and score['production_adoption_approved'] is False
+          Path('utility-evidence/all-abstain-gate.json').write_text(json.dumps({
+              'input_type':'scripted_test_double_only',
+              'correct_positive':0,'negative_abstention':36,
+              'stop_reasons':score['experimental_stop_reasons'],
+              'clinical_validation':False,
+              'no_real_model_called':True
+          },indent=2,sort_keys=True)+'\n')
+          Path('docs/research/SEMANTIC_MODEL_COMPARISON_2026-11-05.md').read_text()
+          print('No-utility all-abstain experiment blocked: PASS (no real model)')
+          PY
+      - name: Hash receipt for reproducible source identity
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p utility-evidence
+          python - <<'PY'
+          import hashlib,json,os,platform,subprocess
+          from pathlib import Path
+          names=['tools/semantic_model_scorer.py','tests/test_semantic_governed_runner.py',
+                 'docs/research/SEMANTIC_MODEL_COMPARISON_2026-11-05.md',
+                 '.github/workflows/semantic-utility-gate.yml']
+          r={'exact_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+             'run_id':os.environ.get('GITHUB_RUN_ID'),'python':platform.python_version(),
+             'source_sha256':{n:hashlib.sha256(Path(n).read_bytes()).hexdigest() for n in names},
+             'model_calls':0,'patient_records':False,'clinical_validation':False,
+             'public_author_labeled_gold':True}
+          Path('utility-evidence/receipt.json').write_text(json.dumps(r,sort_keys=True,indent=2)+'\n')
+          print(json.dumps(r,sort_keys=True))
+          PY
+      - name: Preserve reproducible nonclinical evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: oi-semantic-utility-${{ github.run_id }}-${{ github.run_attempt }}
+          path: utility-evidence/
+          if-no-files-found: warn
+          retention-days: 14
