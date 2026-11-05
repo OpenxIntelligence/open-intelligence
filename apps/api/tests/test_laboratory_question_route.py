@@ -1,12 +1,16 @@
-"""Real ASGI routing/serialization with simulated source transactions, not PG proof."""
+"""Real loopback HTTP/serialization with simulated transactions, not PG proof."""
 from contextlib import contextmanager
+import json as jsonlib
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
+from urllib.request import ProxyHandler, Request, build_opener
 
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import JSONResponse
-from fastapi.testclient import TestClient
+
+from http_support import running_server
 
 from open_intelligence.patient_registry import (
     PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError,
@@ -59,8 +63,6 @@ class LaboratoryQuestionRouteTests(unittest.TestCase):
             records_authorized=authorized, final_authority=final, errors={})
         app.include_router(router)
         self.app = app
-        self.client = TestClient(app, raise_server_exceptions=False)
-        self.addCleanup(self.client.close)
         def source_read(owner, patient, case, **kw):
             self.events.append("transaction")
             self.assertEqual((patient, case), (PID, CASE))
@@ -92,9 +94,27 @@ class LaboratoryQuestionRouteTests(unittest.TestCase):
         self.payload = {"synthetic": True, "source_id": SID,
                         "observation_reference": OBS, "question": QUESTION,
                         "expected_source_snapshot_sha256": project_source_world_model(self.index)["snapshot_fingerprint"]}
+        self.base = self.enterContext(running_server(self.app))
+
+    def post(self, path, *, json=None, content=None, headers=None):
+        # Exercise the existing HTTP server without adding httpx/httpx2 to the
+        # hash-locked dependency surface. Preserve error bodies for denial tests.
+        supplied = dict(headers or {})
+        if json is not None:
+            content = jsonlib.dumps(json).encode("utf-8")
+            supplied["Content-Type"] = "application/json"
+        request = Request(self.base + path, data=content, method="POST", headers=supplied)
+        try:
+            response = build_opener(ProxyHandler({})).open(request, timeout=5)
+        except HTTPError as error:
+            response = error
+        with response:
+            text = response.read().decode("utf-8")
+            return SimpleNamespace(status_code=response.status, text=text,
+                                   headers=response.headers, json=lambda: jsonlib.loads(text))
 
     def test_route_returns_typed_context_only_after_complete_serialization(self):
-        response = self.client.post(PATH, json=self.payload)
+        response = self.post(PATH, json=self.payload)
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
         self.assertEqual(body["selected_source"]["value_text"], "4.20")
@@ -111,14 +131,14 @@ class LaboratoryQuestionRouteTests(unittest.TestCase):
             with self.subTest(grant=grant):
                 self.events.clear()
                 self.state["allowed"].remove(grant)
-                response = self.client.post(PATH, json=self.payload)
+                response = self.post(PATH, json=self.payload)
                 self.assertEqual(response.status_code, 404)
                 self.assertNotIn("transaction", self.events)
                 self.state["allowed"].add(grant)
 
     def test_final_authority_denial_withholds_prepared_values(self):
         self.state["late_deny"] = True
-        response = self.client.post(PATH, json=self.payload)
+        response = self.post(PATH, json=self.payload)
         self.assertEqual(response.status_code, 404)
         self.assertIn("serialized", self.events)
         self.assertIn("rollback", self.events)
@@ -128,7 +148,7 @@ class LaboratoryQuestionRouteTests(unittest.TestCase):
 
     def test_audit_failure_withholds_response(self):
         self.state["audit_fail"] = True
-        response = self.client.post(PATH, json=self.payload)
+        response = self.post(PATH, json=self.payload)
         self.assertEqual(response.status_code, 500)
         self.assertIn("rollback", self.events)
         self.assertNotIn("commit", self.events)
@@ -138,14 +158,14 @@ class LaboratoryQuestionRouteTests(unittest.TestCase):
         response_type = getattr(routes, "PreparedLaboratoryQuestion", None)
         self.assertIsNotNone(response_type, "typed response contract missing")
         with patch.object(routes, "PreparedLaboratoryQuestion", side_effect=ValueError("Fictional serialization failure")):
-            response = self.client.post(PATH, json=self.payload)
+            response = self.post(PATH, json=self.payload)
         self.assertEqual(response.status_code, 500)
         self.assertIn("rollback", self.events)
         self.assertNotIn("final-authority", self.events)
         self.assertNotIn("audit", self.events)
 
     def test_changed_snapshot_is_conflict_not_success(self):
-        response = self.client.post(PATH, json={**self.payload, "expected_source_snapshot_sha256": "0" * 64})
+        response = self.post(PATH, json={**self.payload, "expected_source_snapshot_sha256": "0" * 64})
         self.assertEqual(response.status_code, 409)
         self.assertNotIn("commit", self.events)
 
@@ -153,15 +173,15 @@ class LaboratoryQuestionRouteTests(unittest.TestCase):
         for change in ({"source_line": 8}, {"synthetic": "true"},
                        {"question": 123}, {"source_id": False}):
             with self.subTest(change=change):
-                self.assertEqual(self.client.post(PATH, json={**self.payload, **change}).status_code, 422)
-        self.assertEqual(self.client.post(PATH, json={**self.payload, "synthetic": False}).status_code, 404)
-        self.assertEqual(self.client.post(PATH + "?unexpected=true", json=self.payload).status_code, 404)
+                self.assertEqual(self.post(PATH, json={**self.payload, **change}).status_code, 422)
+        self.assertEqual(self.post(PATH, json={**self.payload, "synthetic": False}).status_code, 404)
+        self.assertEqual(self.post(PATH + "?unexpected=true", json=self.payload).status_code, 404)
         self.state["purpose"] = "research"
-        self.assertEqual(self.client.post(PATH, json=self.payload).status_code, 404)
+        self.assertEqual(self.post(PATH, json=self.payload).status_code, 404)
 
     def test_request_bytes_are_bounded_before_json_parsing(self):
-        response = self.client.post(PATH, content=b" " * 16385,
-                                    headers={"Content-Type": "application/json"})
+        response = self.post(PATH, content=b" " * 16385,
+                             headers={"Content-Type": "application/json"})
         self.assertEqual(response.status_code, 413)
         self.assertEqual(self.events, [])
 
