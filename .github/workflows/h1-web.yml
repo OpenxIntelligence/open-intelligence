@@ -4,13 +4,13 @@ on:
     branches: [feat/h1-react-patient-entry-20261102, integration/h1-react-source-records-20261102, feat/h1-react-record-import-20261102]
   pull_request:
     # The API imports shared src; the browser harness imports tests/browser_journey.py.
-    paths: ['apps/web/**', 'apps/api/**', 'src/**', 'tests/**', 'tools/audit_ci_data_boundaries.py', '.github/workflows/h1-web.yml']
+    paths: ['apps/web/**', 'apps/api/**', 'src/**', 'tests/**', 'tools/audit_ci_data_boundaries.py', 'tools/h1_demo.py', 'examples/synthetic/h1-demo-report.txt', 'examples/synthetic/demo-evidence.txt', '.github/workflows/h1-web.yml']
 permissions:
   contents: read
 jobs:
   connected-web:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16.15-bookworm
@@ -73,6 +73,8 @@ jobs:
         run: |
           set -o pipefail
           python apps/web/tools/browser_journey.py 2>&1 | tee verification-web/browser.txt
+      - name: Persistent fictional demo and complete browser walkthrough
+        run: python apps/web/tools/demo_journey.py
       - name: Retain exact code, lock and notices without credentials
         if: always()
         run: |
@@ -89,4 +91,3 @@ jobs:
           path: verification-web/
           if-no-files-found: error
           retention-days: 7
-

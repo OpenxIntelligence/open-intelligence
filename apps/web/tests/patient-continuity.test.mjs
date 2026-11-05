@@ -78,6 +78,7 @@ test('an independent follow-up read failure preserves the question counts and dr
 
 const modelSummary=(current_sources=2,source_disagreements=0,unresolved_observations=0)=>({
  patient_id:'PAT-ONE',case_id:'CASE-ONE',snapshot_fingerprint:'v1',
+ observations:current_sources?[{source_id:'SRC-ONE',source_line:2}]:[],
  summary:{current_sources,historical_sources:0,current_observations:2,
   unresolved_observations,source_disagreements}
 });
@@ -94,7 +95,7 @@ test('preparation prompts derive only from verified case sources and questions, 
 });
 test('preparation distinguishes unchecked question history from zero questions',()=>{
  const checked=projection({...base(),worldModel:modelSummary()});
- assert.ok(checked?.preparation.some(x=>x.key==='prepare-a-question'));
+ assert.equal(checked?.preparation.find(x=>x.key==='prepare-a-question')?.destination,'Journey');
  assert.ok(!checked?.preparation.some(x=>x.key==='questions-unchecked'));
  const unknown=projection({...base(),worldModel:modelSummary(),questionListPhase:'error'});
  assert.ok(unknown?.preparation.some(x=>x.key==='questions-unchecked'));
@@ -127,4 +128,13 @@ test('preparation never discloses cached other-patient, revoked or failed-read c
  }
  const unrelated={...state,questions:[{...row('source_reassessment_required'),patient_id:'PAT-TWO'}]};
  assert.ok(!projection(unrelated)?.preparation.some(x=>x.key==='question-recheck'));
+});
+
+test('laboratory-only cases offer inspection and withhold the source-line question action',()=>{
+ const laboratoryOnly={...modelSummary(),observations:[],
+  summary:{current_sources:1,historical_sources:0,current_observations:1,
+   current_laboratory_observations:1,unresolved_observations:1,source_disagreements:0}};
+ const view=projection({...base(),worldModel:laboratoryOnly});
+ assert.ok(!view.preparation.some(item=>item.key==='prepare-a-question'));
+ assert.equal(view.preparation.find(item=>item.key==='unresolved-statements')?.destination,'Journey');
 });

@@ -1,90 +1,32 @@
 # Integration inventory — current contracts and unfinished connections
 
-## Current combined candidate — draft #381
-
-The isolated [document/image candidate #381](https://github.com/OpenxIntelligence/open-intelligence/pull/381) composes the frozen #377 document/evidence/review candidate with #370 image/archive/report continuity, corrected #376 audit-tail tests, #373 fixture lifespan and verified #378/#379/#380/#382 frontend corrections. Its own hosted acceptance is pending. Historical owner receipts below do not qualify this composition.
-
-Current runtime readiness requires the single `0013_document_image_convergence` head. Both published 0012 histories and their immutable originals, annotations, citations, reports and tasks remain intact. The new join has no DDL. The combined dependency inventory retains the existing 26 exact runtime artifacts, full notices and code-only pydicom boundary; no new component or permission is selected.
-
-Tests-first source `ecda925d887c55e496dc3e6748337a8ddebd34ac`, tree `61f0bd922adafe0f6ef2d4711c7f0627d5710989`, ran 441 API/PostgreSQL test executions in [41711711965](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711711965) and failed seven assertions solely in the five new route/graph/convergence methods. No test errors or skips were reported. The unchanged document browser baseline passed 415 client tests, 13 rights controls, build and actual browser execution in [41711711889](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711711889). These are baseline results, not a final combined pass.
-
-The pinned accepted-main input remains `c4798ae85004713593f83458abd2102be6729095` through #377. This does not claim reconciliation with a subsequently moving main. Main and owner branches are untouched. The source-only review identified a separate shared source/document audit-tail authority gap; a regression and repair must be verified before completion.
-
-Draft, unmerged, undeployed and independently fictional only. Manual passage provenance in canonical investigations, amended-record reconciliation adoption, production identity/consent, qualified external archive access, clinical evaluation and distribution decisions remain explicit separate contracts. PACS adoption remains HOLD. See the [execution plan](https://github.com/OpenxIntelligence/open-intelligence/blob/integration/h1-document-image-continuity-20261103/docs/superpowers/plans/2026-11-03-document-image-convergence.md) for frozen inputs, rulings and acceptance.
-
-## Preserved owner checkpoints
-
-> **Current pinned-main reconciliation:** see the [convergence gate](../engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) for the exact composition and its separate verification record. Existing [#354](https://github.com/OpenxIntelligence/open-intelligence/pull/354) remains the canonical document candidate at `7b16a9a900737f07adb03e35362922c886424e9b`. This dependent checkpoint preserves that owner, reconciles accepted main `c4798ae85004713593f83458abd2102be6729095` and records explicit #374 ancestry. The green hosted receipt for #354 does not establish acceptance of this composition. Earlier checkpoints below retain their original scope.
-
 **Assessment:** 3 November 2026 (America/New_York).  
-**Canonical document candidate:** existing [#354](https://github.com/OpenxIntelligence/open-intelligence/pull/354) at `7b16a9a900737f07adb03e35362922c886424e9b`, advanced from the frozen `d9b81f08a97998e8f95d2a1cc7c43b4165e99862` foundation. Its green hosted receipt belongs to that owner. The dependent accepted-main reconciliation and explicit #374 ancestry require their own exact-head acceptance in the convergence gate above. H1 remains unmerged and undeployed.
-
-## Canonical composition and dependent acceptance boundary
-
-| Existing owner | Included scope | Reconciliation gate |
-| --- | --- | --- |
-| #354 reviewed documents, comparisons and rights | Exact text/PDF originals, immutable manual selections, document-aware denial reset, comparison draft/retry owners, dependency identity controls and the later reviewed-document/late-inbox browser checks | Preserve all current document behavior with accepted main and explicit #374 ancestry |
-| #368 evidence/review continuity | Strict evidence chronology, truthful pending status and app-owned memory-only Review reasons, including #324's repair | Actual Review navigation and current document-denial clearing, without stale text returning after fresh access |
-| #369 task chronology | Strict creation/history timestamps and withholding malformed actionable views | Actual malformed-response and valid-recovery browser checks together with document/review flows |
-| #362 restored-document HTTP | Existing source-recovery assertions, exact bytes/history/retries, independent grants and restored revoked-binding denial | Execute against the reconciled PostgreSQL/API candidate, preserving the donor and #354 receipts separately |
-| #367 CI and documentation | Shared-source/test trigger coverage and existing data-boundary audit | Both full API/recovery and web/browser workflows at the exact reconciled head |
-| Accepted main and #374 ancestry | Reference fixes at pinned main `c4798ae`; explicit #374 lineage, whose workflow matches the #367 contribution | Record the exact composition and its own verification in the existing convergence gate |
-
-The [owner candidate record](../engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354)
-and [original bounded plan](../superpowers/plans/2026-11-03-reviewed-document-convergence.md)
-retain #354's frozen donor inputs and original local publication checkpoint.
-The [convergence gate](../engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md)
-records the separate accepted-main composition and remaining exact-head checks.
-Manual selections still do not enter structured World Model/question/report
-snapshots. DOI, imaging/archive and clinical-domain candidates remain separate;
-synthetic engineering checks do not qualify real identity, clinical review or
-release-wide rights.
-
-**Historical #355/#367 publication checkpoint:** [#355](https://github.com/OpenxIntelligence/open-intelligence/pull/355) at `6f836b451c2e8426e5c3b2be194408424f95c69f` already contained the earlier approved runtime composition. Its child #367 added shared-source CI coverage and reconciled documentation while preserving parent backlog/plan. Exact child hosted checks were pending when that original checkpoint was written and subsequently passed; those receipts establish neither #354 acceptance nor acceptance of the dependent pinned-main reconciliation.
-
-**Historical baselines:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; selected connected H1 draft [#328](https://github.com/OpenxIntelligence/open-intelligence/pull/328) at `5a188d4e18e4d80bc2ba1d662c966abc3096301f`, with locally verified #330/#335/#339 corrections. Earlier #276 and #293/#298 assessments are preserved below as historical checkpoints. Other drafts are named separately.
+**Baselines:** reference main `24519839aa8ac1ea3aff88a956349ba72798a72a`; initial H1 assessment [#276](https://github.com/OpenxIntelligence/open-intelligence/pull/276) at `c154bfbc5f99f76801d37903959943659c0b6a71`; current verified draft integration [#307](https://github.com/OpenxIntelligence/open-intelligence/pull/307) at `477f24826a8a102c7437c993d69877c1f250b951`, joining #298 and #300 with #302/#303/#304 corrections. Other drafts are named separately.
 
 **Status vocabulary:** the eight categories in [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) apply to bounded behavior, never to a whole clinical domain by implication.
 
-## Reviewed document continuation — draft #323
+## Current #307 convergence checkpoint
 
-[Contract and evidence](../engineering/H1_REVIEWED_DOCUMENTS.md): #323 builds on
-#315 after evidence convergence, adding source-owned text/PDF preview, original
-custody and immutable manual-selection corrections to Records. No new patient or
-source owner is introduced. Manual-provenance propagation into World Model,
-questions and reports remains open. Final commit-specific results are in the PR;
-older checkpoints below are retained as historical evidence.
+[The exact acceptance receipt](../engineering/H1_EVIDENCE_CONTINUITY.md) records
+runtime `477f24826a8a102c7437c993d69877c1f250b951`, tree
+`cd8d909ad2844e7fbd37ae30a9a10b9123374666`: 414 API/PostgreSQL tests, 287 reference
+tests, 266 React client tests, actual built-browser acceptance and all five
+recovery probes passed. Main is unchanged; the contribution remains draft,
+unmerged and undeployed. This supersedes only the older selected-next-work claims
+below, preserving their source and historical scope.
 
-## Historical integration scope — #328 plus bounded local corrections
+| Connected capability | Preserved owner and actual result | Remaining boundary |
+| --- | --- | --- |
+| One question with citations, authored originals/comparisons/reports and tasks | #298/#293 plus #300/#288, verified together in #307 | Metadata does not become assessed content or confer its rights. All comparisons are human-authored, fictional and clinically unreviewed. |
+| Published evidence schema convergence | DDL-free `0011_evidence_convergence`; both populated old heads and the unconverged two-head rejection pass | Published migrations are unchanged; arbitrary schema heads remain refused. |
+| Original source disclosure | #304 final typed/JSON preparation and authorization reused in the source owner | Prepared disclosure is not delivery or atomic external identity-provider revocation. |
+| One restored canonical question with citation, report and task | #302's restored-HTTP probe extended to all 18 relevant tables and four sequence states; readable, rights-restricted, withdrawn/amended and revoked-binding checkpoints pass | Disposable PostgreSQL proof, not a production recovery qualification. |
+| One rendered application | Overview, sources, questions, reviews, metadata, authored reports and follow-through retained; shared-authority denial clears both evidence sessions | Production accounts/consent, full accessibility and clinical approval remain open. |
 
-The [current project checkpoint](PROJECT_STATE.md) and
-[continuity evidence](../engineering/H1_EVIDENCE_CONTINUITY.md) supersede the
-#293/#298 selected-baseline and next-work statements below. The selected base is
-#328 at `5a188d4e18e4d80bc2ba1d662c966abc3096301f`; source, question, fictional
-evidence originals/citations, comparisons, reports and follow-through already
-share the canonical PostgreSQL owners. The locally composed #330/#335/#339
-candidate preserves those owners, dependencies and migrations. Its complete
-hosted browser acceptance and owner review remain pending.
-
-PDF/annotation #323, DOI #321, clinical/EHR/LIS and image/archive work retain
-their separate owners. At the audited heads, #321 and #323 introduce distinct
-migration revisions descending from `0011_evidence_convergence`; they cannot
-be combined by selecting one migration file and dropping the other. Their
-future union requires deliberate graph reconciliation, populated upgrades and
-restored HTTP acceptance. Separate passing workflows do not prove that union.
-
-Final source refresh at 16:34–16:37 UTC on 3 November also found these separate
-owners, which are not included in the local correction candidate:
-
-| Existing candidate | Current observed scope and acceptance boundary |
-| --- | --- |
-| [#348](https://github.com/OpenxIntelligence/open-intelligence/pull/348) at `297c9d4928105a77c9cf132a17b244409611c018` | Comparison-draft retention converged onto #335. The earlier `8d2ee0f` head passed, but current-head run 41675783452 was in progress; do not inherit that older result. |
-| [#349](https://github.com/OpenxIntelligence/open-intelligence/pull/349) at `75365e8532267ac31c4103cea8f9eea3b4591d24` | Tests-first PDF/text workspace acceptance, changing helpers, fixture and plan. Web run 41675233846 failed; this checkpoint does not establish product convergence. |
-| [#250](https://github.com/OpenxIntelligence/open-intelligence/pull/250) at `ef2949521911ecac8164aece851674d3df4e4965` | Reviewed passages already connect to the reference/CaseStore World Model, investigation and follow-through with extraction/page provenance. This capability is not absent from the repository; convergence into the selected H1 PostgreSQL path remains open. |
-| [#297](https://github.com/OpenxIntelligence/open-intelligence/pull/297), [#301](https://github.com/OpenxIntelligence/open-intelligence/pull/301) | Separate clinical PostgreSQL parity/integrity candidates. Their existence does not establish clinical-source/PWM publication, broad EHR/LIS operation or acceptance of another successor. |
-
-The selected #322/#328/#330/#335/#339 heads and pinned main were unchanged at
-that final refresh. This is a dated source observation, not a live status feed.
+The next bounded convergence is the separately owned source-reading/return UI in
+#305/#308/#309/#310, after rechecking live heads. Real biomedical access remains
+its own rights-qualified connector task. No new dependency, model, content source,
+asset or hosted service is adopted by #307.
 
 ## Historical #293/#298 integration checkpoint — 3 November 2026
 

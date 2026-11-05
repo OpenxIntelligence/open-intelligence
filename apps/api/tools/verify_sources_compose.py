@@ -21,6 +21,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 import uuid
 
+from oi_api.contracts import SCHEMA_REVISION
+
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = "http://127.0.0.1:8000"
@@ -463,7 +465,7 @@ def main():
             assert len(rows["clinical_source.assertions"]) == 2
             assert len(rows["clinical_source.document_intakes"]) == 2
             assert len(rows["clinical_source.annotation_revisions"]) == 4
-            assert rows["public.alembic_version"] == [{"version_num": "0015_manual_report_context"}]
+            assert rows["public.alembic_version"] == [{"version_num": SCHEMA_REVISION}]
             for item in documents:
                 stored = next(row for row in rows["clinical_source.source_versions"]
                               if row["source_id"] == item["saved"]["source_id"])
@@ -633,7 +635,7 @@ def main():
             assert snapshot(restored_database) == revoked_before, "Revoked restore changed its source copy"
             assert snapshot(original_database) == readable_before, "Recovery changed original database"
             receipt = {"contract": "oi.source-document-recovery/1", "synthetic": True,
-                "schema_revision": "0015_manual_report_context", "table_count": len(rows),
+                "schema_revision": SCHEMA_REVISION, "table_count": len(rows),
                 "sequence_count": len(readable_before["sequences"]),
                 "documents": [{"source_id": item["saved"]["source_id"],
                     "sha256": hashlib.sha256(item["raw"]).hexdigest(), "byte_length": len(item["raw"]),

@@ -74,6 +74,8 @@ API/PostgreSQL/browser/recovery results must be recorded in its PR verification
 receipt after publication; #355's success is not inherited as the child's result.
 Publication authorization does not authorize merge, deployment or clinical use.
 
+Latest preparation record: [main reconciliation and chronology corrections](#main-reconciliation-and-chronology-corrections--3-november-2026). Earlier receipts below retain their original pinned scope.
+
 **Status:** original convergence in draft #307; subsequent combined acceptance
 is recorded below. All contributions remain subject to explicit review.
 **Scope:** independently authored fictional engineering inputs only.
@@ -1291,3 +1293,270 @@ backup. Preserve #248 HOLD. All records, images and evidence are independently
 authored fiction. The reports contain human-authored comparisons, not model
 execution, scientific appraisal or clinical approval. Draft integration does not
 establish deployment, production identity/consent or real-patient readiness.
+
+## Verified #322 / #328 integration review — 3 November 2026
+
+This checkpoint records live GitHub reads, immutable source review and retained
+artifact verification. It supersedes the earlier pending-run wording for these
+exact heads; it does not approve the wider parent chain or a future merge.
+
+### Exact dependency and ownership
+
+- #322 head: `19b75317701ae01fc93844077ac94c351fd982bd`; sole parent
+  #318 `0db90a45ec256d380c01d503162e31ac8ee419b5`.
+- #328 head: `5a188d4e18e4d80bc2ba1d662c966abc3096301f`; sole parent
+  is the #322 head above. Its tree is
+  `269ce69e54fa1338dbfa87ae6e043b36f11d6ba6`.
+- #299 is a selectively reused donor, not an ancestor. All four intended
+  production/test/browser blobs match donor
+  `b47cc6ddde922bb53aa399b7d05adaee2d07620c` exactly.
+- The two changes together touch 12 paths relative to #318. The 397 files
+  unchanged by #328 retain their #322 Git blob IDs and modes. The #328 document appends
+  to the complete #322 document without replacing its existing content.
+
+### Directly checked hosted evidence
+
+| Exact head | Run | Observed coverage |
+| --- | --- | --- |
+| #322 `19b7531` | [41664891696](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664891696) | 278 client tests; build; actual PostgreSQL/FastAPI/React browser journey |
+| #322 `19b7531` | [41664891742](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664891742) | 416 API tests without skips; 287 prototype tests; HTTP, restart and backup/restore acceptance |
+| #328 `5a188d4` | [41666427184](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41666427184) | 300 client tests without skips; build; complete connected browser journey, including follow-through attention |
+
+All three runs completed successfully on attempt 1. Checkout logs identify the
+exact PR heads above, rather than GitHub's synthetic merge commits.
+Artifact `13246611987` has SHA-256
+`a954037043d7fbf8321e2641530d30d9ce6cd9d27ea93660392dbbee984f825f`.
+Its commit record and all 403 source files match the #328 tree; executable
+file modes were also checked. This audit did not repeat the full test suites.
+
+The separate full API workflow did not run on #328. Its path filters exclude
+#328's frontend/documentation-only delta. Parent backend acceptance is retained
+as parent evidence, not relabelled as a child run. The current #328 merge-preview
+commit has the same tree as its head, but was not the checkout used in the run.
+
+### Review and remaining gates
+
+Separate automated reviews found no material defect in the bounded evidence
+contract/export or follow-through changes. Canonical patient, source, question,
+evidence, report, task and authorization owners are retained. These reviews are
+not submitted GitHub approvals or human, legal or clinical acceptance.
+
+Both PRs remain open drafts with no submitted review. #322 targets the #318
+branch; #328 targets the #322 branch. Neither targets main. Relative to main
+`24519839aa8ac1ea3aff88a956349ba72798a72a`, #328 is 168 commits ahead,
+zero behind, with 262 changed paths. A review of this two-commit delta does not
+approve that full inherited change set.
+
+Before merge: identify the destination and parent-chain review scope; obtain
+the appropriate human owner acceptance; run both existing H1 workflows on the
+actual approved candidate; record its commit, tree, checkout identities and
+results. A later documentation or code commit is a new candidate. Do not merge
+the child into an obsolete parent branch without an explicit retargeting plan.
+
+No source change, merge, deployment, branch-protection change, real-patient
+use or clinical approval is authorized by this evidence record.
+
+## Main reconciliation and chronology corrections — 3 November 2026
+
+This is a locally prepared continuation of the verified #365 candidate. The
+proposed destination is a new draft integration PR against main, with #322 then
+#328 retained in Git ancestry. It is not approval to merge either original PR,
+change its base or history, close an owner PR, or deploy. Published #365 remains
+unchanged at `b71b5390b4d587bbad77d57c8edf9f80c070f2b8`.
+
+### Frozen inputs and selective reuse
+
+| Input | Pinned identity | Treatment |
+| --- | --- | --- |
+| Verified #365 | `b71b5390b4d587bbad77d57c8edf9f80c070f2b8` | Preserve the combined #322/#328 implementation and its audit record |
+| Accepted main | `824ed8c415068bd31c67929cb9f79e79b2df0892` | Retain all 13 commits beyond the previous `24519839` baseline; all 44 changed paths have no overlap with the original H1 delta |
+| #360 | `f200dd107871d89703267ee0d1a14b2d1ca64d36` | Reuse #330 chronology and #339 dependency-identity corrections; preserve the shared document histories |
+| #367 workflow | Git blob `0052ad3c134b55f681838b617db6df94835aa70f` | Reuse this exact H1 web workflow only; include shared source/reference paths and the existing synthetic-data audit |
+| #369 follow-through | `3c028ddfb4b408571b36140a5e5b52115c7bd790` | Reuse its exact validator, client-test and browser-helper files; these three files' donor bases equal the #365 files |
+| #307 final documentation | `c35219dc5eb244874a7df6e9bf00cfbfda18251f` | Reconcile its four final evidence documents with the later continuity additions |
+| #193 omitted regression | Test blob `e400814e082efafb7e3e8b7581feda9caea60baa` | Restore the exact owner test file; no production API change |
+
+#360's artifact `13254432621` was downloaded and independently hashed:
+`ccd34323ba053accdf159ea2a8c80c348f4450a425bf08525c2456367aa95f06`.
+Its commit record and all 407 source blobs match the donor tree; executable
+modes were retained. The #367 workflow matches its exact published blob.
+No new package, H1 schema, canonical ledger, grant or model is introduced.
+
+The 13 accepted main commits retain their existing prototype owners, including
+the already accepted fictional actor-grant and subject-binding work. This
+reconciliation does not design a replacement H1 permission system or turn
+synthetic actor fixtures into production identity.
+
+### Findings resolved in the proposal
+
+The evidence clients' permissive JavaScript date parsing accepted impossible
+calendar values; #330's existing strict validator, carried by #360, addresses
+that gap. The same issue remained in follow-through history. Running #369's
+unchanged tests before its production fix produced 16 failures and 26 passing
+controls. The failed cases included February 30, non-leap February 29, year zero,
+hour 24, missing seconds and excess fractional precision in task creation or
+history timestamps. The exact donor correction rejects these responses, removes
+actionable history/counts, and requires a fresh valid read.
+
+The original installed-package gate did not require package identity and declared
+license to match the lock, and followed filesystem links. #339's existing
+correction adds those checks and 13 filesystem regression controls. The
+inventory still records two absent optional packages as uninspected and does
+not claim commercial-release or native-linkage clearance.
+
+The original H1 web PR filter omitted shared `src/**`, reference `tests/**`
+and the existing boundary audit. The exact #367 workflow covers those paths and
+executes the boundary audit before acquiring packages. A newly named branch
+requires an opened or synchronized matching PR; its push trigger alone is not a
+validation mechanism.
+
+Ancestry review identified two historical differences. #314 consumes #307's
+verified runtime `477f24826a8a102c7437c993d69877c1f250b951`, but not its later
+four-document receipt. #200 diverges from the final #193 head by two test
+commits. The candidate retained the datetime instant comparisons but omitted
+the 28-line amendment-before-first-receipt test. Its exact restored owner file
+checks rejection of the superseded source, no durable receipt on rejection,
+and successful receipt of the current source. The runtime guard was retained;
+this finding establishes test-coverage loss, not a demonstrated production
+regression.
+
+### Executed local checks and remaining hosted evidence
+
+- 327 compiled React client tests passed, with zero failures, skips or
+  cancellations. TypeScript checking and the Vite production build passed.
+- 13 dependency-gate controls passed. The real installed gate inspected 18
+  locked packages, reported no errors, and left two absent optional packages
+  explicitly uninspected.
+- After the final accepted-main refresh, 406 reference Python/HTTP tests passed
+  with no skips. The separately invoked reference Node suite passed 15 tests.
+  These counts overlap in exercised behavior and are not summed.
+- The existing static synthetic-data entrypoint audit passed. The restored
+  PostgreSQL test and reused browser helper parse successfully; parsing is not
+  execution of either acceptance path.
+- The client/build/rights checks preceded the last main refresh. That refresh
+  changed reference-source/test/UI files only; all web client, test, package,
+  lock and dependency-gate inputs remain byte-identical to the tested inputs.
+- One mistakenly unscoped `node --test` invocation ran from the repository root
+  and failed web test setup because it did not use the web package's prescribed
+  working directory. The corrected scoped reference Node command passed;
+  the prescribed `npm test` web command independently passed all 327 tests.
+- Source whitespace checking retains five trailing-blank-line warnings from
+  unchanged donor/main files. No clean whitespace-check claim is made.
+
+#365's successful web run
+[41699683211](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41699683211)
+and API run
+[41699683626](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41699683626)
+still apply to that immutable head: 300 client, 416 API and 287 reference tests,
+plus real PostgreSQL/browser/recovery acceptance. They are not relabelled as
+verification of this new proposal. Fresh exact-head H1 API/PostgreSQL,
+React/Chromium, reference UI and restart/dump/restore evidence remains required,
+including execution of the restored #193 regression and #369 browser controls.
+
+### Review boundary and next gate
+
+The automated CI/dependency review confirmed the two gate corrections within its
+inspected scope. The inherited API revisit covered authentication, connection
+ownership, case/source scope, source disclosure, canonical questions and part of
+authored-evidence integrity; it did not finish every follow-through, migration,
+historical-report or restored-authority path. No full-chain approval is inferred.
+
+A source-based frontend review identified inherited P2 loss of unsent task
+creation and transition inputs when navigation unmounts their component. The
+existing #379 continuation owns this issue; its implementation and final
+acceptance were not included in this minimum correction. No browser reproduction
+of this finding was executed in this review. Resolve or explicitly accept that
+bounded issue before final merge.
+
+The 28 inspected original, parent and correction PRs had no submitted GitHub
+reviews. The branch API reported main unprotected and the rulesets list was
+empty, but the detailed branch-protection endpoint returned 403. This is not an
+administrative certification or permission to change governance.
+
+Before publication, recheck the pinned heads, present the exact proposed patch
+and source tree, and obtain the repository-change approval required by the
+integration review. After approval, create a new draft targeting main and run
+the existing acceptance workflows on its frozen published head. Preserve the
+original PRs and record any new main movement explicitly. Human owner acceptance,
+whole-chain review, final merge authorization and clinical/production qualification
+remain separate. All engineering inputs remain independently fictional.
+
+
+### Post-publication main movement and refreshed candidate — 3 November 2026
+
+After draft #390 was published at `427f5222320fc86d9da8093bcc952d3a0e3f3fcf`, `main` advanced by two accepted commits from `824ed8c415068bd31c67929cb9f79e79b2df0892` to `c2aa2054fa746fb26576150f27ec1f229b003f6f`.
+The intervening commits are `f02d2427f9314c0d258425a809ee5e95f8857bf6` (clear the Patient Mission projection when grant authority is lost) and `c2aa2054fa746fb26576150f27ec1f229b003f6f` (QA-11/12/13/15/17 guards and their new regression file).
+
+Six paths changed on main. Five overlap the integration proposal only because the proposal had retained the immediately prior accepted-main versions of those files; no H1-specific correction in those paths is displaced. The refreshed candidate therefore takes the direct successor main blobs for `src/open_intelligence/__main__.py`, `src/open_intelligence/store.py`, `tests/test_qa_adversarial_cycle3.py`, `web/app.js` and `web/mission.js`, and adds `tests/test_qa_regressions_qa11_12_13_15_17.py` unchanged from main.
+
+The earlier exact-head #390 web/API success applies only to `427f5222`. This refreshed head requires a new exact-head hosted run before merge. No earlier run is relabelled as verification of the refreshed tree.
+
+
+### Second post-publication main movement — 3 November 2026
+
+After refreshed head `73f6eb838a966399173bc753833048d567b3ea3a` completed both H1 hosted gates successfully, `main` advanced once more from `c2aa2054fa746fb26576150f27ec1f229b003f6f` to `e7c6b02e06ff76d0276ffa11cf09215c0b6f65b0` via QA cycle-1 fixes #346.
+
+The accepted commit changes `src/open_intelligence/changes.py`, `src/open_intelligence/discovery.py`, `src/open_intelligence/investigation.py`, `src/open_intelligence/store.py`, `web/app.js`, and adds `tests/test_qa_c1_remaining.py`. The overlapping integration files are direct accepted-main successors; no H1-specific chronology, workflow, evidence-report, follow-through, or dependency-gate change is displaced. The refreshed candidate takes those exact accepted blobs and must again pass exact-head H1 web and API/recovery workflows before merge. Earlier successful runs remain evidence for their own immutable heads only.
+
+## Unsent follow-up creation drafts — 3 November 2026
+
+Draft #379 continues #375 at `1bdc44ac8507ec3a05398c3965bed5fcae0d59eb`
+(tree `8adcccc18f34e6f28cd178af9f213834dbc34cc8`) under OI-007/009/010/013.
+Unsent coordination fields previously lived inside the mounted question form;
+leaving Investigations discarded them. The tests-first hosted run
+[41711236459](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711236459)
+at `bf63226af9c99eb9c30c38d1bcc958673a678aa5` passed all 397 compiled
+client tests, build and dependency checks, then failed the new actual-browser
+assertion: `Same-case navigation discarded unsent follow-up title`.
+
+The correction stores unsent creation fields only in the existing tab's
+RegistrySession, bound to patient, case, question, source snapshot and preflight.
+Same-case navigation and matching source/question refreshes retain the literal
+fields. Changed snapshots, missing/changed questions, revoked scope, patient/case
+changes and disconnect clear them. The form never stores drafts in browser
+storage or sends a command until explicit submission. Successful task transitions
+retain another unsent creation draft; a confirmed creation consumes only its
+question's draft. Existing captured command bodies and retry keys remain the
+authority for uncertain writes, and edits are blocked until resolved or abandoned.
+Ordinary rejected input retains editable fields; denied access clears them.
+
+Local verification at the first implementation checkpoint: 46 follow-through
+session tests and 13 filesystem rights controls passed; Python helper syntax,
+whitespace and the existing synthetic-data boundary audit passed. New local
+tests use Node's TypeScript transform, not a typecheck. The full local `npm test`
+could not run because the pinned TypeScript toolchain is absent. Final hosted
+TypeScript/Vite/client/PG16/FastAPI/Chromium acceptance and independent source
+review are pending at this source checkpoint; the PR records subsequent
+exact-head results without rewriting this historical checkpoint.
+
+No backend, SQL, grants, dependencies or workflow changes. Status-transition
+input retention across navigation is not added by this slice. It is not durable
+autosave, a clinical order, notification or clinical approval. Synthetic only;
+draft, unmerged and undeployed. Main and other owners' branches are unchanged.
+
+### Status-change draft continuation — 3 November 2026
+
+The same draft #379 now also addresses unfinished status-change reasons and
+proposed owners. Tests-first [run 41715861398](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41715861398)
+at `fedd78104b5e40e6583765797878fb6876650438` passed all 401 inherited
+client tests, 13 rights controls and build, then reproduced the actual browser
+failure: `Same-case navigation discarded unsent transition owner`.
+
+These fields remain in the existing RegistrySession and are bound to the exact
+task, revision, status, recorded owner and original source/question context.
+Matching authorized task reads preserve them, including daily date-flag changes.
+A changed revision, source reassessment or missing task clears the old input.
+Case/patient/access/session boundaries clear both kinds of unsent work. Explicit
+clear and confirmed submission consume only the selected draft; unrelated tasks
+and creation drafts remain separate. The captured command and request key remain
+authoritative for uncertain writes even if later task history advances.
+
+At this implementation checkpoint, 54 follow-through session tests and 21
+attention controls passed locally using Node's TypeScript transform. The browser
+helper additionally exercises navigation, matching task refresh, explicit clear,
+successful submission, unrelated task creation, source amendment and case-roundtrip
+clearing. Final hosted compilation/build/database-backed browser acceptance and
+independent review are pending here; subsequent evidence is recorded on #379.
+This supersedes the earlier creation-only scope note without changing its
+historical verification record. No backend, migration, dependency, grant or
+workflow changes; memory-only synthetic engineering, no clinical action.

@@ -4,7 +4,8 @@ import {QuestionPassageClient,decodeManualContext,decodeSelection} from '../.tes
 import * as manualModule from '../.test-dist/question-passages.js';
 import {decodeEvidenceReport} from '../.test-dist/authored-evidence.js';
 import {RegistrySession} from '../.test-dist/registry-client.js';
-import {question,report,reportId,patientId,caseId,questionId,hash,ready,transportFor,response,packet,world,deferred} from './authored-evidence-fixtures.mjs';
+import {question,report,reportId,patientId,caseId,questionId,hash,ready,transportFor,response,packet,world,deferred,cases} from './authored-evidence-fixtures.mjs';
+import {sourceIndex} from './source-images-fixtures.mjs';
 
 const scope={patient_id:patientId,case_id:caseId,question_id:questionId};
 function sign(value){const {context_sha256,access_receipt_id,...content}=value;return {...value,context_sha256:hash(content)};}
@@ -147,4 +148,158 @@ test('unsaved additions and removals block report binding until explicit save or
  assert.equal(manualModule.manualReportBinding(packet,saved,'saving').blocked,true);
  assert.equal(manualModule.manualReportBinding(null,[],'uncertain').blocked,true);
  assert.equal(manualModule.manualReportBinding(packet,saved,'idle').context.context_sha256,packet.context_sha256);
+});
+
+function draftStore(){let value=null;return {read:()=>value,write:next=>{value=next;}};}
+
+test('manual draft reminders notify subscribers, include removals, and withhold during question recheck',async()=>{
+ let fail=false;const fallback=transportFor(()=>response(packet()));
+ const session=new RegistrySession((url,init)=>fail&&url.endsWith('/questions')?response({},503):fallback(url,init));
+ await ready(session);const store=session.manualPassageDraftStore(scope);let notifications=0;
+ const stop=session.subscribe(()=>notifications++);
+ store.write(Object.freeze({expected_context_sha256:context().context_sha256,references:Object.freeze([])}));
+ assert.deepEqual(session.snapshot().manualPassageDraftQuestionIds,[questionId]);assert.equal(notifications,1);
+ fail=true;await session.loadSavedQuestions(caseId);assert.deepEqual(session.snapshot().manualPassageDraftQuestionIds,[]);
+ fail=false;await session.loadSavedQuestions(caseId);assert.deepEqual(session.snapshot().manualPassageDraftQuestionIds,[questionId]);
+ session.manualPassageDraftStore(scope).write(null);assert.deepEqual(session.snapshot().manualPassageDraftQuestionIds,[]);
+ store.write(Object.freeze({expected_context_sha256:context().context_sha256,references:Object.freeze([ref()])}));
+ session.disconnect();assert.deepEqual(session.snapshot().manualPassageDraftQuestionIds,[]);stop();
+});
+function selectionReply(p=context().passages[0]){return {status:200,body:{...p,contract:'oi.reviewed-document-selection/1',synthetic:true,clinical_approval:false,model_execution:false,access_receipt_id:context().access_receipt_id}};}
+
+test('unsaved additions resume only after fresh context and exact selection checks, without writes',async()=>{
+ const store=draftStore(),held=deferred();let writes=0,reads=0;
+ const request=async body=>{if(body)writes++;return {status:200,body:context(true)};};
+ const first=new QuestionPassageClient(scope,request,undefined,store,async()=>selectionReply());
+ await first.load();assert.equal(first.choose?.(context().passages[0]),true);
+ assert.equal(JSON.stringify(store.read()).includes('fictional'),false,'draft store must contain references, not quotations');
+ first.dispose();
+ const resumed=new QuestionPassageClient(scope,request,undefined,store,async()=>{reads++;return held.promise;});
+ const checking=resumed.load();await new Promise(resolve=>setTimeout(resolve,0));
+ assert.equal(resumed.snapshot().chosen.length,0,'no cached quotation while fresh authority is pending');
+ held.resolve(selectionReply());await checking;
+ assert.equal(reads,1);assert.equal(resumed.snapshot().chosen[0].anchor_sha256,ref().anchor_sha256);
+ assert.equal(resumed.snapshot().draftStatus,'ready');assert.equal(writes,0);
+ await resumed.load();assert.equal(resumed.snapshot().chosen.length,1);assert.equal(writes,0);
+});
+
+test('unsaved removal survives refresh; changed saved context blocks reuse until explicit discard',async()=>{
+ const store=draftStore();let changed=false;
+ const client=new QuestionPassageClient(scope,async()=>({status:200,body:context(changed)}),undefined,store,async()=>selectionReply());
+ await client.load();assert.equal(client.remove?.(ref().anchor_sha256),true);await client.load();
+ assert.deepEqual(client.snapshot().chosen,[]);assert.equal(client.snapshot().draftStatus,'ready');
+ changed=true;await client.load();assert.equal(client.snapshot().draftStatus,'conflict');
+ assert.deepEqual(client.snapshot().chosen,[]);await client.discardDraft();
+ assert.equal(store.read(),null);assert.equal(client.snapshot().draftStatus,'none');
+});
+
+for(const status of [401,403,404,503])test(`resumed selection ${status} withholds text and handles draft retention`,async()=>{
+ const store=draftStore();let denied=false;
+ const client=new QuestionPassageClient(scope,async()=>({status:200,body:context(true)}),undefined,store,async()=>denied?{status,body:null}:selectionReply());
+ await client.load();assert.equal(client.choose?.(context().passages[0]),true);denied=true;await client.load();
+ assert.deepEqual(client.snapshot().chosen,[]);assert.equal(client.snapshot().packet,null);
+ assert.equal(store.read()!==null,status===503);
+});
+
+test('a corrected exact selection blocks draft reuse even when the saved passage set did not change',async()=>{
+ const store=draftStore();let changed=false;
+ const client=new QuestionPassageClient(scope,async()=>({status:200,body:context(true)}),undefined,store,async()=>{
+  const p=structuredClone(context().passages[0]);if(changed){p.latest_annotation_revision_id='ANN-'+'F'.repeat(32);p.selection_state='selection_reassessment_required';}
+  return selectionReply(p);
+ });
+ await client.load();assert.equal(client.choose?.(context().passages[0]),true);changed=true;await client.load();
+ assert.equal(client.snapshot().draftStatus,'conflict');assert.deepEqual(client.snapshot().chosen,[]);
+ assert.ok(store.read());
+});
+
+test('session draft survives evidence refresh but denial clears it and invalidates old store callbacks',async()=>{
+ const session=await sessionFor(()=>response({},403));
+ const store=session.manualPassageDraftStore(scope),draft=Object.freeze({expected_context_sha256:context(true).context_sha256,references:Object.freeze([ref()])});
+ store.write(draft);await session.loadQuestionEvidence(questionId);assert.equal(store.read(),draft);
+ await session.questionPassageRequest(caseId,questionId);
+ await ready(session);await session.loadQuestionEvidence(questionId);
+ const fresh=session.manualPassageDraftStore(scope);assert.equal(fresh.read(),null);
+ fresh.write(draft);store.write(null);assert.equal(fresh.read(),draft,'late clearing cannot erase a new draft');
+ session.disconnect();store.write(draft);fresh.write(draft);
+ await ready(session);await session.loadQuestionEvidence(questionId);
+ assert.equal(session.manualPassageDraftStore(scope).read(),null);
+});
+
+test('disposing during retained selection checks cannot revive quotations or lose the retained reference draft',async()=>{
+ const store=draftStore(),held=deferred();store.write(Object.freeze({expected_context_sha256:context(true).context_sha256,references:Object.freeze([ref()])}));
+ const client=new QuestionPassageClient(scope,async()=>({status:200,body:context(true)}),undefined,store,()=>held.promise);
+ const checking=client.load();await new Promise(resolve=>setTimeout(resolve,0));client.dispose();held.resolve(selectionReply());await checking;
+ assert.equal(client.snapshot().packet,null);assert.deepEqual(client.snapshot().chosen,[]);assert.ok(store.read());
+});
+
+test('saving unsent choices transfers recovery to the exact command, and conflict blocks submission',async()=>{
+ const store=draftStore(),intent=draftStore();let writes=0,changed=false;
+ const request=async body=>{if(body){writes++;throw Error('Response lost');}return {status:200,body:context(!changed)};};
+ const client=new QuestionPassageClient(scope,request,intent,store,async()=>selectionReply());
+ await client.load();client.choose(context().passages[0]);changed=true;await client.load();
+ assert.equal(client.snapshot().draftStatus,'conflict');await client.replace([ref()]);assert.equal(writes,0);
+ await client.discardDraft();client.remove(ref().anchor_sha256);await client.replace([]);
+ assert.equal(store.read(),null);assert.ok(intent.read());assert.equal(client.snapshot().phase,'uncertain');
+ assert.deepEqual(client.snapshot().chosen,[]);assert.equal(writes,1);
+ assert.equal(manualModule.manualReportBinding(context(true),[],'idle','conflict').blocked,true);
+});
+
+for(const status of [503,403])test(`question list retry after ${status} distinguishes temporary failure from revoked authority`,async()=>{
+ let fail=false;const fallback=transportFor(()=>response(packet()));
+ const session=new RegistrySession((url,init)=>fail&&url.endsWith('/questions')?response({},status):fallback(url,init));
+ await ready(session);const store=session.manualPassageDraftStore(scope);
+ const draft=Object.freeze({expected_context_sha256:context(true).context_sha256,references:Object.freeze([ref()])});
+ store.write(draft);fail=true;await session.loadSavedQuestions(caseId);assert.equal(store.read(),null,'failed question read withholds draft access');
+ fail=false;await session.loadSavedQuestions(caseId);
+ assert.equal(session.manualPassageDraftStore(scope).read(),status===503?draft:null);
+ await session.loadSavedQuestions('CASE-OTHER');await session.loadSavedQuestions(caseId);
+ assert.equal(session.manualPassageDraftStore(scope).read(),null,'an actual case switch clears unsent choices');
+});
+
+for(const status of [400,409,422])test(`definitive save rejection ${status} retains the unsent reference set for explicit resolution`,async()=>{
+ const store=draftStore(),intent=draftStore();let changed=false;
+ const client=new QuestionPassageClient(scope,async body=>body?{status,body:null}:{status:200,body:context(!changed)},intent,store,async()=>selectionReply());
+ await client.load();client.choose(context().passages[0]);const draft=store.read();
+ changed=true;await client.replace([ref()]);
+ assert.equal(intent.read(),null,'a known rejection is not an uncertain commit');
+ assert.equal(store.read(),draft,'known rejection must not discard unsent work');
+ await client.load();assert.equal(client.snapshot().draftStatus,'conflict');assert.deepEqual(client.snapshot().chosen,[]);
+ await client.discardDraft();assert.equal(store.read(),null);assert.equal(client.snapshot().draftStatus,'none');
+});
+
+for(const [suffix,refresh] of [
+ ['/case-bindings',s=>s.loadCases()],['/sources',s=>s.loadSources(caseId)],['/world-model',s=>s.loadWorldModel(caseId)],
+])for(const status of [200,503,403,404])test(`same-case ${suffix} refresh ${status} retains only reauthorizable drafts`,async()=>{
+ let override=false,writes=0;const fallback=transportFor(()=>response(packet()));
+ const session=new RegistrySession((url,init)=>{
+  if(init.method==='POST')writes++;
+  if(override&&url.endsWith(suffix)&&status!==200)return response({},status);
+  return url.endsWith('/sources')?response(sourceIndex()):fallback(url,init);
+ });
+ await ready(session);const oldStore=session.manualPassageDraftStore(scope);
+ const draft=Object.freeze({expected_context_sha256:context(true).context_sha256,references:Object.freeze([ref()])});
+ oldStore.write(draft);override=true;await refresh(session);
+ assert.equal(oldStore.read(),null,'refresh invalidates prior callbacks and withholds draft access');
+ override=false;await session.loadCases();await session.loadWorldModel(caseId);await session.loadSavedQuestions(caseId);
+ const fresh=session.manualPassageDraftStore(scope),retained=[200,503].includes(status);
+ assert.equal(fresh.read(),retained?draft:null,'temporary rechecks retain references; authority denial clears them');
+ if(retained){
+  let checks=0;const client=new QuestionPassageClient(scope,async()=>({status:200,body:context(true)}),undefined,fresh,async()=>{checks++;return selectionReply();});
+  assert.deepEqual(client.snapshot().chosen,[]);await client.load();
+  assert.equal(checks,1);assert.equal(client.snapshot().chosen.length,1);
+ }
+ const replacement=Object.freeze({...draft,references:Object.freeze([])});fresh.write(replacement);
+ oldStore.write(null);oldStore.write(draft);assert.equal(fresh.read(),replacement,'late old callbacks cannot erase or replace a new draft');
+ assert.equal(writes,0);
+});
+
+test('same-patient mapping refresh clears a draft when its case is no longer active',async()=>{
+ let omit=false;const fallback=transportFor(()=>response(packet()));
+ const session=new RegistrySession((url,init)=>{
+  if(omit&&url.endsWith('/case-bindings')){const value=cases();value.mappings=value.mappings.filter(c=>c.case_id!==caseId);return response(value);}
+  return fallback(url,init);
+ });
+ await ready(session);session.manualPassageDraftStore(scope).write(Object.freeze({expected_context_sha256:context(true).context_sha256,references:Object.freeze([ref()])}));
+ omit=true;await session.loadCases();omit=false;await session.loadCases();await session.loadWorldModel(caseId);await session.loadSavedQuestions(caseId);
+ assert.equal(session.manualPassageDraftStore(scope).read(),null);
 });

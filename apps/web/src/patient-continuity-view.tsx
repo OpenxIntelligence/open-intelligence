@@ -51,7 +51,7 @@ export function PatientContinuity({state,onNavigate,onRefreshFollowthrough,busy}
   </div>
   {view.caseId&&<section className="continuity-item continuity-preparation" data-testid="continuity-preparation" aria-labelledby="continuity-preparation-heading">
    <h3 id="continuity-preparation-heading">What to look at next</h3>
-   <p>Reviewable preparation prompts from the last authorized case reads, not AI treatment advice.</p>
+   <p>Use the latest checked records, questions and follow-up work to prepare for discussion.</p>
    {view.preparation.length>0?<ol className="continuity-preparation-list" aria-label="Case preparation prompts">
     {view.preparation.map(item=><li key={item.key} data-testid="continuity-preparation-item" data-kind={item.key}>
      <h4>{item.title}</h4><p>{item.detail}</p>
@@ -61,7 +61,7 @@ export function PatientContinuity({state,onNavigate,onRefreshFollowthrough,busy}
    {view.preparationTotal>view.preparation.length&&<p className="small" data-testid="continuity-preparation-coverage">
     Showing {view.preparation.length} of {view.preparationTotal} record-preparation prompts; inspect the source and investigation views for full context.
    </p>}
-   <p className="muted small">Not ranked by medical urgency. Source-only counts exclude separately reviewed documents and providers that are not connected. Each destination rechecks its own authorization.</p>
+   <p className="muted small">Counts cover the structured records available here. Reviewed documents and records held by other providers may add context.</p>
   </section>}
   <section className="continuity-item continuity-followthrough" data-testid="continuity-followthrough" aria-labelledby="continuity-followthrough-heading">
    <h3 id="continuity-followthrough-heading">Follow-up work</h3>

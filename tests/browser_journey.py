@@ -709,24 +709,59 @@ def main() -> None:
             # than only at the store layer: a byte-identical re-import and a
             # wrong-patient import must both be refused without new facts.
             cd.evaluate("""(() => {
+              const before = readyCase();
               const picker = document.querySelector('#case-picker');
               picker.value = 'CASE-ALPHA'; picker.dispatchEvent(new Event('change'));
+              if (readyCase() !== before) throw Error('Same-case picker event reset the loaded case');
             })()""")
-            cd.wait("document.querySelector('#case-heading')?.textContent === 'Fictional case Alpha'",
-                    "return to Alpha for rejection checks")
+            # Same-case selection retains readiness. Still verify the actual
+            # case-bound write guard rather than treating a visible heading as
+            # authority for the next duplicate or wrong-patient import check.
+            cd.wait("""(() => {
+              if (document.querySelector('#case-heading')?.textContent !== 'Fictional case Alpha')
+                return false;
+              if (document.querySelector('#case-picker')?.value !== 'CASE-ALPHA')
+                return false;
+              try { return readyCase() === 'CASE-ALPHA'; } catch { return false; }
+            })()""", "return to fully ready Alpha for duplicate and wrong-patient checks")
             cards_before = cd.evaluate("document.querySelectorAll('#source-list .source-card').length")
             state_before = json.load(urlopen(
                 f"http://127.0.0.1:{app_port}/api/cases/CASE-ALPHA/state"))
             original_id = next(x["id"] for x in state_before["sources"]
                                if x["document_id"] == "PATH-ALPHA" and x["version"] == 1)
+            # Diagnostic only: observe notice mutations without changing the import command
+            # or weakening its required visible duplicate-result assertion.
+            cd.evaluate("""(() => {
+              const element = document.querySelector('#notice');
+              window.__oiDuplicateNoticeTrace = [];
+              if (element) new MutationObserver(() => {
+                const note = (element.textContent || '').slice(0, 220);
+                if (window.__oiDuplicateNoticeTrace.length < 32)
+                  window.__oiDuplicateNoticeTrace.push(note);
+              }).observe(element, {childList: true, subtree: true, characterData: true, attributes: true});
+            })()""")
             cd.evaluate("""(async (sourceId) => {
               const text = (await (await fetch('/api/cases/CASE-ALPHA/sources/' + sourceId,
                 {headers: {'X-Fictional-Actor': 'FICTIONAL-NAVIGATOR-A'}})).json()).text;
               document.querySelector('#report-text').value = text;
               document.querySelector('#import-form').requestSubmit();
             })(""" + str(original_id) + ")")
-            cd.wait("document.querySelector('#notice')?.textContent.includes('Import: duplicate')",
-                    "duplicate import refused in browser")
+            try:
+                cd.wait("document.querySelector('#notice')?.textContent.includes('Import: duplicate')",
+                        "duplicate import refused in browser")
+            except AssertionError as error:
+                # Bounded synthetic-only state; never log original source text or request data.
+                context = cd.evaluate("""JSON.stringify({
+                  notice: (document.querySelector('#notice')?.textContent || '').slice(0, 220),
+                  notices: (window.__oiDuplicateNoticeTrace || []).slice(-32),
+                  selectedCase: document.querySelector('#case-picker')?.value,
+                  heading: (document.querySelector('#case-heading')?.textContent || '').slice(0, 120),
+                  caseId: typeof caseId === 'string' ? caseId : null,
+                  renderedCaseId: typeof renderedCaseId === 'string' ? renderedCaseId : null,
+                  sourceCards: document.querySelectorAll('#source-list .source-card').length,
+                  reportLength: document.querySelector('#report-text')?.value?.length ?? -1
+                })""")
+                raise AssertionError(f"{error}; bounded synthetic UI state: {context}") from error
             assert cd.evaluate("document.querySelectorAll('#source-list .source-card').length") == cards_before, (
                 "duplicate import added a source card"
             )
@@ -804,5 +839,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

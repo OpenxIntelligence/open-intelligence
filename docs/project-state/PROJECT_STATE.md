@@ -1,94 +1,41 @@
 # Open Intelligence — current project state
 
-## Current combined candidate — draft #381
-
-The isolated [document/image candidate #381](https://github.com/OpenxIntelligence/open-intelligence/pull/381) composes the frozen #377 document/evidence/review candidate with #370 image/archive/report continuity, corrected #376 audit-tail tests, #373 fixture lifespan and verified #378/#379/#380/#382 frontend corrections. Its own hosted acceptance is pending. Historical owner receipts below do not qualify this composition.
-
-Current runtime readiness requires the single `0013_document_image_convergence` head. Both published 0012 histories and their immutable originals, annotations, citations, reports and tasks remain intact. The new join has no DDL. The combined dependency inventory retains the existing 26 exact runtime artifacts, full notices and code-only pydicom boundary; no new component or permission is selected.
-
-Tests-first source `ecda925d887c55e496dc3e6748337a8ddebd34ac`, tree `61f0bd922adafe0f6ef2d4711c7f0627d5710989`, ran 441 API/PostgreSQL test executions in [41711711965](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711711965) and failed seven assertions solely in the five new route/graph/convergence methods. No test errors or skips were reported. The unchanged document browser baseline passed 415 client tests, 13 rights controls, build and actual browser execution in [41711711889](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41711711889). These are baseline results, not a final combined pass.
-
-The pinned accepted-main input remains `c4798ae85004713593f83458abd2102be6729095` through #377. This does not claim reconciliation with a subsequently moving main. Main and owner branches are untouched. The source-only review identified a separate shared source/document audit-tail authority gap; a regression and repair must be verified before completion.
-
-Draft, unmerged, undeployed and independently fictional only. Manual passage provenance in canonical investigations, amended-record reconciliation adoption, production identity/consent, qualified external archive access, clinical evaluation and distribution decisions remain explicit separate contracts. PACS adoption remains HOLD. See the [execution plan](https://github.com/OpenxIntelligence/open-intelligence/blob/integration/h1-document-image-continuity-20261103/docs/superpowers/plans/2026-11-03-document-image-convergence.md) for frozen inputs, rulings and acceptance.
-
-## Preserved owner checkpoints
-
-> **Current pinned-main reconciliation:** see the [convergence gate](../engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md) for the exact composition and its separate verification record. Existing [#354](https://github.com/OpenxIntelligence/open-intelligence/pull/354) remains the canonical document candidate at `7b16a9a900737f07adb03e35362922c886424e9b`. This dependent checkpoint preserves that owner, reconciles accepted main `c4798ae85004713593f83458abd2102be6729095` and records explicit #374 ancestry. The green hosted receipt for #354 does not establish acceptance of this composition. Earlier checkpoints below retain their original scope.
+**Current connected application:** [consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
+maintains the current revision, verification receipts and landing status.
+Use the [persistent fictional demo](../H1_DEMO.md) and
+[convergence record](../engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md).
+The dated assessment below is preserved historical evidence. Its former main,
+draft labels, schema heads and test counts do not describe current acceptance.
 
 Assessment date: 3 November 2026. Initial assessment recorded before this branch's product changes.
 
-## Canonical document candidate — existing #354 convergence
+## Historical verified continuation — #307
 
-Existing [draft #354](https://github.com/OpenxIntelligence/open-intelligence/pull/354)
-remains the canonical document candidate at
-`7b16a9a900737f07adb03e35362922c886424e9b`. It advances the frozen
-`d9b81f08a97998e8f95d2a1cc7c43b4165e99862` foundation with #368 evidence
-chronology/recovery and Review drafts, #369 strict task timestamps, #362
-restored-document HTTP and #367 shared acceptance triggers/documentation,
-including the later reviewed-document and late-inbox browser checks. The
-[owner candidate record](../engineering/H1_CONNECTED_RIGHTS_CONVERGENCE.md#current-candidate--reviewed-document-convergence-in-354)
-retains the exact donor inputs and original local publication checkpoint;
-#354's PR receipt records its subsequent hosted result.
+[PR #307](https://github.com/OpenxIntelligence/open-intelligence/pull/307) joins the
+existing #298 metadata/follow-through and #300 authored-evidence/Overview owners,
+with #302 restored HTTP, #303 timestamp and #304 original-source corrections.
+Runtime `477f24826a8a102c7437c993d69877c1f250b951`, tree
+`cd8d909ad2844e7fbd37ae30a9a10b9123374666`, passed **414 API/PostgreSQL tests**,
+**287 reference tests**, **266 React client tests**, actual browser acceptance and
+**all five recovery probes**. Published migrations remain unchanged; one no-DDL
+merge revision preserves both populated evidence lineages. One canonical question
+retains its citation, immutable report and follow-through after actual restore,
+with independent rights and revoked-binding denial.
 
-This dependent checkpoint reconciles accepted main
-[`c4798ae85004713593f83458abd2102be6729095`](https://github.com/OpenxIntelligence/open-intelligence/commit/c4798ae85004713593f83458abd2102be6729095)
-and explicit #374 ancestry while preserving #354's composition and ownership.
-The [convergence gate](../engineering/H1_EVIDENCE_CONVERGENCE_MERGE_GATE.md)
-records the pinned composition, local evidence and its separate exact-head
-API/browser/recovery requirements. The green #354 receipt does not establish
-acceptance of this reconciled head.
+[The bounded receipt](../engineering/H1_EVIDENCE_CONTINUITY.md) preserves exact
+inputs, tests-first failures, review fixes, source/archive checksums and the
+limitations. Main remains `24519839aa8ac1ea3aff88a956349ba72798a72a`; this increment
+is draft, unmerged and undeployed. No new dependency, model, real biomedical
+retrieval, professional signoff or commercial clearance is claimed.
 
-H1 remains unmerged and undeployed. Document originals and manual selection
-history are present in #354; manual selections are **not** yet structured
-investigation provenance in the World Model, questions or reports. Real
-identity/delegation, qualified biomedical/model use, professional review,
-independent user/clinical evaluation and release-wide rights remain open.
+The next bounded implementation is to reconcile the existing #305/#308/#309/#310
+source-reading/return owners with this same question/evidence path, after live
+head review. The earlier plan to create an authored-evidence PostgreSQL adapter
+is superseded by #300 and this integration. Real source activation, production
+identity/consent, clinical/PDF parity and scientific validation remain separately
+open. Historical assessments below retain their dated scope.
 
-This continues existing OI-007/008/009/010/013 and GH-323 work. It preserves
-the selected H1 stack, source owners and full platform ambition. The historical
-#355/#367 and earlier sections below retain their original evidence and scope;
-their publication-time pending statements are not the current acceptance record.
-
-## Historical #355/#367 publication checkpoint
-
-The selected publication base is [draft #355](https://github.com/OpenxIntelligence/open-intelligence/pull/355)
-at `6f836b451c2e8426e5c3b2be194408424f95c69f`. At the 3 November 2026
-19:03 UTC refresh, it already contained the approved local candidate's 13
-implementation/test/package/helper blobs byte-for-byte. This follow-up carries
-only shared-source CI trigger/boundary-scan coverage and documentation updates,
-preserving #355's backlog and plan. Its own published-head hosted verification
-is pending at this source checkpoint and belongs in the resulting PR receipt.
-The founder has authorized publication and hosted checks; merge and deployment
-remain separate. See [continuity evidence](../engineering/H1_EVIDENCE_CONTINUITY.md).
-
-## Historical local reconciliation — #328 and c1484ed
-
-That GitHub and source audit on **3 November 2026** observed main at
-`24519839aa8ac1ea3aff88a956349ba72798a72a`. The selected connected H1 base is
-[draft #328](https://github.com/OpenxIntelligence/open-intelligence/pull/328) at
-`5a188d4e18e4d80bc2ba1d662c966abc3096301f`, directly parented by #322 at
-`19b75317701ae01fc93844077ac94c351fd982bd`. This is 168 commits and 262 changed
-paths ahead of main; a small child diff does not approve that parent chain.
-
-| Scope | Current evidence and remaining boundary |
-|---|---|
-| Implemented in #328 | Canonical PostgreSQL patient/case/source/question state; original-source reading and exact quotations; nonterminal verification returns; fictional metadata citations and evidence originals; human-authored comparisons; immutable status-bearing reports; question-owned follow-through and attention controls. These are synthetic engineering capabilities, not professional clinical review. |
-| Independently rechecked donor results | #322 API [41664891742](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664891742) and web [41664891696](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41664891696) succeeded. #328 web [41666427184](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/41666427184) succeeded. Their recorded submitted-review lists were empty at this audit. |
-| Local candidate at that checkpoint | #328 plus chronology #330 (`312ad9379311901f8a69a7c20d4ea09f98027481`), intake disclosure #335 (`9d173843f924b40becba3a7dffd71717c12afb5d`), and dependency-evidence gate #339 (`d694db4ca12206e815d6045b73baa9b6f7394290`). H1 web CI now watches imported shared source/test inputs and executes the existing synthetic-data boundary scan. |
-| Local execution | Pristine archived #328: 300 client tests passed. Donor regressions reproduced nine chronology and eight rights-evidence failures before fixes. Combined candidate: 310 client tests and 13 rights controls passed, no skips; production TypeScript/Vite build, installed dependency gate and synthetic boundary scan passed. Browser helpers compile. Exact commands and boundaries are in the existing continuity record. |
-| Still required | Hosted PostgreSQL/FastAPI/built-React/Chromium acceptance of this new combined head, fresh owner/parent-chain review, and publication approval. Parent API/restore success remains attributed to the parent's unchanged runtime; no new full backend/restore run is claimed. The candidate has not been pushed, merged or deployed. |
-| Complete product gap | Ordinary supported document extraction, typed clinical context, one permitted biomedical retrieval/investigation/review loop, real account/profile/caregiver authority, clinical sign-off and independent workflow evaluation remain unfinished. Read the full 15-step MVP acceptance crosswalk separately from the bounded H1 milestone. |
-
-The [30-domain research crosswalk](../research/PATIENT_JOURNEY_CAPABILITY_CROSSWALK_2026-11-03.md)
-maps the existing owners, while [current gaps](INCOMPLETE_FEATURES.md) and
-[requirements](PRODUCT_REQUIREMENTS.md) describe remaining behavior. All 28
-founding documentation responsibilities have existing owners or indexed source
-homes; expand their evidence rather than create competing documentation or
-task registries. Research, adopted decisions, implementation, verification,
-independent acceptance and release clearance remain separate statuses.
-
-## Historical #293/#298 current-truth checkpoint — 3 November 2026
+## Historical #293/#298 current-truth reconciliation — 3 November 2026
 
 This later audit updates the selected implementation baseline and next work. The initial assessment, former plans and verification receipts below remain historical evidence; their earlier use of "planned" or "selected baseline" does not describe the newer #293/#298 checkpoints.
 

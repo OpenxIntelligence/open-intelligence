@@ -309,6 +309,8 @@ def main():
             cd.wait("Boolean(document.querySelector('#patient-id'))",'Overview restored after reviewed document journey')
             from image_evidence_journey import exercise as exercise_image_evidence
             exercise_image_evidence(cd,pid,tokens[0],credentials,write_grants,directory,out,restart_api)
+            from laboratory_fhir_journey import exercise as exercise_laboratory
+            exercise_laboratory(cd,pid,directory,tokens[0],credentials,write_grants,out)
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()

@@ -27,10 +27,24 @@ from .case_bindings import _case_id
 from .composer_preflight import PostgresSourceComposerPreflight, SHA256, SOURCE_SNAPSHOT_CONTRACT
 from .source_questions import PostgresSourceQuestions
 from .sources import PostgresSourceVersions
+from .question_passages import QuestionPassages
+from .followthrough_contracts import ManualTaskDependency
 
 CONTRACT = "oi.pg-question-followthrough/1"
 MAX_TASKS = 250
 MAX_EVENTS = 750
+# Published migration fixtures deliberately seed the canonical task owner at
+# historical revisions without the manual-task owner. Current API readiness
+# requires the joined head; only these exact historical schemas may omit it.
+PRE_MANUAL_TASK_REVISIONS = frozenset({
+    "0009_question_followthrough", "0009_question_evidence",
+    "0009_image_review_merge", "0010_question_evidence",
+    "0010_authored_evidence_origin", "0011_evidence_convergence",
+    "0011_image_evidence_merge", "0012_image_report_convergence",
+    "0012_reviewed_documents", "0013_document_image_convergence",
+    "0014_question_passages", "0015_manual_report_context",
+    "0016_fhir_laboratory_sources",
+})
 PreparedResponse = TypeVar("PreparedResponse")
 TASK_FIELDS = (
     "task_id", "question_id", "patient_id", "case_id", "origin_org", "actor", "purpose",
@@ -105,7 +119,8 @@ def _timestamp(value: datetime) -> str:
     return value.isoformat()
 
 
-def _project_task(task: dict, history: list[dict], question: dict, evaluated_on: str) -> dict:
+def _project_task(task: dict, history: list[dict], question: dict, evaluated_on: str,
+                  manual_state: dict | None = None) -> dict:
     """Read-only lifecycle projection from the canonical question's freshness."""
     if (not history or any(task[name] != question[name] for name in ANCHOR_FIELDS)
             or task["purpose"] != "operations"
@@ -150,7 +165,10 @@ def _project_task(task: dict, history: list[dict], question: dict, evaluated_on:
         "owner_label": effective_owner, "due_date": due,
         "created_at": _timestamp(task["created_at"]), "status": previous, "revision": len(history),
         "source_context_state": question["source_context_state"],
-        "needs_recheck": bool(is_open and question["source_context_state"] != "current_unreviewed_question"),
+        "manual_dependency_revision_id": (manual_state["dependency_revision_id"] if manual_state else None),
+        "manual_context_state": (manual_state["state"] if manual_state else None),
+        "needs_recheck": bool(is_open and (question["source_context_state"] != "current_unreviewed_question"
+                                         or (manual_state is not None and manual_state["needs_recheck"]))),
         "is_overdue": bool(is_open and due and due < evaluated_on),
         "is_due_soon": bool(is_open and due and evaluated_on <= due <= soon),
         "clinical_approval": False, "history": output_history,
@@ -201,20 +219,64 @@ class PostgresQuestionFollowthrough:
             "WHERE patient_id=%s AND case_id=%s AND origin_org=%s ORDER BY task_id,revision LIMIT 751",
             (patient_id, case_id, organization),
         )
-        if len(rows) > MAX_TASKS or len(events) > MAX_EVENTS:
+        # Historical migration acceptance exercises task reads at published
+        # pre-manual-owner schema heads. Those schemas cannot contain a manual-task
+        # dependency, so an absent child is valid *only* for exact known heads.
+        # A missing child at the current joined head, an unknown revision or an unversioned
+        # database must fail closed instead of silently staling no tasks.
+        present = self.registry._fetchone(
+            "SELECT to_regclass('coordination.question_followthrough_manual_dependencies')")
+        if present is None:
+            raise PatientRegistryError("Manual task dependency schema status unavailable")
+        if present[0] is None:
+            revisions = self.registry._fetchall(
+                "SELECT version_num FROM public.alembic_version ORDER BY version_num")
+            if (not 1 <= len(revisions) <= 2
+                    or any(row[0] not in PRE_MANUAL_TASK_REVISIONS for row in revisions)):
+                raise PatientRegistryError("Manual task dependency owner unavailable at this schema")
+            manual_rows = []
+        else:
+            manual_rows = self.registry._fetchall(
+                "SELECT task_id,question_id,revision_id,patient_id,case_id,origin_org,references_sha256 "
+                "FROM coordination.question_followthrough_manual_dependencies "
+                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s LIMIT 251",
+                (patient_id, case_id, organization),
+            )
+        if len(rows) > MAX_TASKS or len(events) > MAX_EVENTS or len(manual_rows) > MAX_TASKS:
             raise PatientRegistryError("Follow-through exceeds bounded read limit")
         histories = {}
         for row in events:
             event = dict(zip(EVENT_FIELDS, row))
             histories.setdefault(event["task_id"], []).append(event)
+        manual_by_task = {}
+        for row in manual_rows:
+            entry = dict(zip(("task_id", "question_id", "revision_id", "patient_id",
+                              "case_id", "origin_org", "references_sha256"), row))
+            if entry["task_id"] in manual_by_task:
+                raise PatientRegistryError("Duplicate manual task dependency")
+            manual_by_task[entry["task_id"]] = entry
         output = []
         for row in rows:
             task = dict(zip(TASK_FIELDS, row))
             question = questions.get(task["question_id"])
             if question is None:
                 raise PatientRegistryError("Task question unavailable in canonical context")
-            output.append(_project_task(task, histories.pop(task["task_id"], []), question, evaluated_on))
-        if histories:
+            bound = manual_by_task.pop(task["task_id"], None)
+            manual_state = None
+            if bound is not None:
+                if (bound["question_id"] != task["question_id"]
+                        or bound["patient_id"] != patient_id
+                        or bound["case_id"] != case_id
+                        or bound["origin_org"] != organization):
+                    raise PatientRegistryError("Manual task dependency origin mismatch")
+                scope = dict(patient_id=patient_id, case_id=case_id, organization=organization,
+                             question_id=task["question_id"], purpose="operations", actor=task["actor"])
+                dependency = {k:bound[k] for k in (
+                    "patient_id", "case_id", "question_id", "revision_id", "references_sha256")}
+                manual_state = QuestionPassages(self.registry).manual_dependency_state_locked(scope, dependency)
+            output.append(_project_task(task, histories.pop(task["task_id"], []), question,
+                                        evaluated_on, manual_state))
+        if histories or manual_by_task:
             raise PatientRegistryError("Task history lacks its scoped origin")
         return output, questions, len(events)
 
@@ -282,7 +344,8 @@ class PostgresQuestionFollowthrough:
                owner_label: str, due_date: str | None, review_trigger: str, reason: str,
                source_snapshot_contract: str, expected_source_snapshot_sha256: str,
                expected_preflight_sha256: str, recheck_authority: Callable[[], None],
-               prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
+               prepare_response: Callable[[dict], PreparedResponse] | None = None,
+               manual_dependency: dict | None = None) -> dict | PreparedResponse:
         patient_id, case_id, organization, actor = self._scope(patient_id, case_id, organization, actor, purpose)
         question_id = _identifier(question_id, "QUESTION")
         request_key = _key(request_key, "request_key")
@@ -293,13 +356,18 @@ class PostgresQuestionFollowthrough:
         if any(type(v) is not str or SHA256.fullmatch(v) is None
                for v in (expected_source_snapshot_sha256, expected_preflight_sha256)):
             raise PatientRegistryError("Task source fingerprints must be SHA-256")
+        bound = ManualTaskDependency(**manual_dependency).model_dump(mode="json") if manual_dependency is not None else None
+        if bound is not None and any(bound[k] != v for k,v in (
+                ("patient_id", patient_id), ("case_id", case_id), ("question_id", question_id))):
+            raise PatientRegistryDenied("Manual dependency scope differs from task question")
         final = self._authority(patient_id, actor, purpose, "followthrough_create", recheck_authority)
         intent = _digest({"operation": "followthrough.create", "patient_id": patient_id,
                           "case_id": case_id, "question_id": question_id, "organization": organization,
                           "actor": actor, "purpose": purpose, "request_key": request_key, **fields,
                           "source_snapshot_contract": source_snapshot_contract,
                           "source_snapshot_sha256": expected_source_snapshot_sha256,
-                          "preflight_sha256": expected_preflight_sha256})
+                          "preflight_sha256": expected_preflight_sha256,
+                          **({"manual_dependency": bound} if bound is not None else {})})
 
         def prepare(index):
             prior = self._prior(patient_id, case_id, organization, request_key, intent)
@@ -324,6 +392,12 @@ class PostgresQuestionFollowthrough:
                 question=question["question"], source_index=index)
             if not hmac.compare_digest(preflight["preflight_sha256"], expected_preflight_sha256):
                 raise PatientRegistryConflict("Saved question preflight requires reassessment")
+            if bound is not None:
+                scope = dict(patient_id=patient_id, case_id=case_id, question_id=question_id,
+                             organization=organization, actor=actor, purpose=purpose)
+                state = QuestionPassages(self.registry).manual_dependency_state_locked(scope, bound)
+                if state["needs_recheck"]:
+                    raise PatientRegistryConflict("Selected manual passage dependency requires reassessment")
             task_id = "TASK-" + uuid.uuid4().hex.upper()
             self.registry._execute(
                 "INSERT INTO coordination.question_followthrough_tasks "
@@ -336,6 +410,14 @@ class PostgresQuestionFollowthrough:
                  question["source_sha256"], question["source_version"], source_snapshot_contract,
                  expected_source_snapshot_sha256, expected_preflight_sha256),
             )
+            if bound is not None:
+                self.registry._execute(
+                    "INSERT INTO coordination.question_followthrough_manual_dependencies "
+                    "(task_id,question_id,revision_id,patient_id,case_id,origin_org,references_sha256) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (task_id, question_id, bound["revision_id"], patient_id, case_id,
+                     organization, bound["references_sha256"]),
+                )
             result = self._append(patient_id=patient_id, case_id=case_id, organization=organization,
                 actor=actor, purpose=purpose, task_id=task_id, question_id=question_id,
                 request_key=request_key, intent=intent, revision=1, previous_status=None,
@@ -372,6 +454,8 @@ class PostgresQuestionFollowthrough:
                 raise PatientRegistryDenied("Follow-through target unavailable")
             if task["revision"] != expected_revision:
                 raise PatientRegistryConflict("Task revision changed; refresh before recording another transition")
+            if status == "completed" and task["manual_context_state"] == "reassessment_required":
+                raise PatientRegistryConflict("Manual-dependent task requires source reassessment before completion")
             if status not in TRANSITIONS[task["status"]]:
                 raise PatientRegistryConflict("Task transition unavailable; completion requires acknowledgment")
             if event_count >= MAX_EVENTS:

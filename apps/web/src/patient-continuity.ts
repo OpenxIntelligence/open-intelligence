@@ -53,10 +53,10 @@ export function patientContinuity(state:ViewState){
   if(questions===null) add('questions-unchecked','Check saved questions',
    'Question history was not successfully checked for this case; an unavailable read is not a verified empty list.',
    'Investigations','Check question history');
-  else if(questions.current+questions.reassessment===0&&model.summary.current_sources>0)
+  else if(questions.current+questions.reassessment===0&&model.observations.length>0)
    add('prepare-a-question','Prepare a source-linked question',
     'No saved questions were returned in the last authorized question read. This does not mean no care questions exist.',
-    'Investigations','Open investigations');
+    'Journey','Choose a source statement');
  }
  return {patientId:patient.patient_id,caseId,questions,draft,followthrough,
   preparation:Object.freeze(preparation.slice(0,3)),preparationTotal:preparation.length} as const;

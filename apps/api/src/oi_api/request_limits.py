@@ -1,4 +1,4 @@
-"""Bound the small identity command before JSON parsing, including chunked HTTP."""
+"""Bound patient command bodies before JSON parsing, including chunked HTTP."""
 
 import asyncio
 import re
@@ -13,6 +13,7 @@ class PatientRequestLimit:
     async def __call__(self, scope, receive, send):
         route = scope.get("path", "")
         image_upload = re.fullmatch(r"/v1/patients/[^/]+/cases/[^/]+/sources/[^/]+/images", route) is not None
+        laboratory_preview = re.fullmatch(r"/v1/patients/[^/]+/cases/[^/]+/laboratory/fhir-r4/(?:preview|sources)", route) is not None
         bounded = route == "/v1/patients" or (
             route.startswith("/v1/patients/") and (
                 route.endswith("/record-requests") or route.endswith("/case-bindings") or route.endswith("/sources") or
@@ -21,14 +22,15 @@ class PatientRequestLimit:
                 ("/questions/" in route and route.endswith("/return-for-verification")) or
                 ("/questions/" in route and route.endswith("/brief")) or
                 ("/questions/" in route and route.endswith("/followthrough")) or
+                ("/questions/" in route and route.endswith("/manual-passages")) or
                 ("/questions/" in route and route.endswith(("/evidence-search", "/evidence-links"))) or
                 ("/followthrough/" in route and route.endswith("/transitions")) or
                 ("/questions/" in route and route.endswith(("/evidence", "/evidence-assessments", "/evidence-reports"))) or
                 ("/questions/" in route and "/evidence/" in route and route.endswith("/withdraw")) or
-                ("/record-requests/" in route and route.endswith("/cancel")) or
+                ("/record-requests/" in route and route.endswith(("/cancel", "/receive"))) or
                 ("/case-bindings/" in route and route.endswith("/revoke"))
             )
-        ) or image_upload
+        ) or image_upload or laboratory_preview
         if scope["type"] != "http" or scope["method"] != "POST" or not bounded:
             await self.app(scope, receive, send)
             return
@@ -38,7 +40,9 @@ class PatientRequestLimit:
                                     headers={"Cache-Control": "no-store", "Connection": "close"})
             await response(scope, receive, send)
 
-        limit = 2_097_152 if image_upload else (210_000 if route.endswith('/evidence') else 262_144 if '/documents' in route else 72_000 if route.endswith('/sources') else 16_384)
+        # A 65,536-character bundle string can use 12 JSON bytes per character
+        # (escaped surrogate pairs). Leave room for the outer JSON envelope.
+        limit = 2_097_152 if image_upload else 800_000 if laboratory_preview else (210_000 if route.endswith('/evidence') else 262_144 if '/documents' in route else 72_000 if route.endswith('/sources') else 16_384)
         headers = dict(scope["headers"])
         length = headers.get(b"content-length")
         if length is not None:

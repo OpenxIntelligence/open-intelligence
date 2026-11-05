@@ -1,6 +1,33 @@
 # Open Intelligence
 
-## Current combined candidate — draft #381
+Open Intelligence is building a patient-centered healthcare intelligence platform,
+initially focused on oncology. The full product ambition and canonical architecture
+remain in the [first-principles plan](docs/FIRST_PRINCIPLES_PLAN.md).
+
+## Run the connected fictional application
+
+Start with the [persistent demo guide](docs/H1_DEMO.md). The connected H1 application
+uses React/Vite/TypeScript and FastAPI/PostgreSQL 16. It brings fictional records,
+source-anchored questions, evidence comparisons, preserved reports and recorded
+follow-up work into one patient workspace. Setup deliberately creates one fictional
+patient/case/source; repeated setup and stop/resume retain its saved work.
+
+[Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
+records the current candidate, exact revision, test receipts and landing status.
+The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
+the retained contributions. Runtime readiness uses the single
+`0017_lab_manual_convergence` migration head; published histories remain intact.
+The Python/SQLite application is retained as a separate reference implementation.
+
+Use independently authored fictional data only. This application does not establish
+production identity/consent, professional clinical approval, model qualification,
+authorized external sharing, clinical deployment or distribution rights.
+
+## Historical document/image checkpoint — #381
+
+The checkpoint records below preserve their original scope and evidence. Their
+draft, migration and test status describes the named earlier revision, not the
+current application or acceptance status linked above.
 
 The isolated [document/image candidate #381](https://github.com/OpenxIntelligence/open-intelligence/pull/381) composes the frozen #377 document/evidence/review candidate with #370 image/archive/report continuity, corrected #376 audit-tail tests, #373 fixture lifespan and verified #378/#379/#380/#382 frontend corrections. Its own hosted acceptance is pending. Historical owner receipts below do not qualify this composition.
 
@@ -26,7 +53,7 @@ The destination is a complete first-party healthcare ecosystem: EHR, oncology, l
 
 Repository context: Meta Global AI Developer Hackathon, Indie track.
 
-## Current status
+## Historical implementation checkpoints
 
 **3 November 2026 checkpoint:** main was observed at
 [`c4798ae85004713593f83458abd2102be6729095`](https://github.com/OpenxIntelligence/open-intelligence/commit/c4798ae85004713593f83458abd2102be6729095)
@@ -75,7 +102,7 @@ an unmerged engineering candidate, with no clinical approval or deployment claim
 
 **Preserved #354 foundation:** [draft #354](https://github.com/OpenxIntelligence/open-intelligence/pull/354) already combined that document workspace with #348/#359's recoverable in-memory comparison drafts and #339's dependency identity checks at `d9b81f08a97998e8f95d2a1cc7c43b4165e99862`. Drafts resume only after fresh matching access; uncertain submissions retain their exact retry intent. The current continuation above preserves those owners and adds the existing donor corrections. Manual-document provenance in structured questions/reports, clinical validation and production identity remain open.
 
-## Start here
+## Project documents
 
 | Document | Purpose |
 |---|---|
