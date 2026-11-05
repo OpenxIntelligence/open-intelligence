@@ -17,6 +17,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence.__main__ import Handler, seed
+from open_intelligence.agent_writes import build_investigation_contract
 from open_intelligence.store import CaseStore
 from open_intelligence.investigation import (
     InvestigationError,
@@ -110,7 +111,9 @@ class InvestigationFreshnessTests(unittest.TestCase):
                 {"topic": "question", "reason": "insufficient_evidence"}],
             dropped=[], model="recorded-replay", mode="replay")
         run_id = db.save_investigation(
-            case_id, question_id, "evidence-summary", validated, "replay")
+            case_id, question_id, "evidence-summary", validated, "replay",
+            write_contract=build_investigation_contract(
+                db, case_id, question_id, "evidence-summary", validated.model))
         return question_id, run_id
 
     def test_amendment_invalidates_all_same_case_model_inputs_without_snapshot(self):
