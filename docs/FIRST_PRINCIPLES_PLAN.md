@@ -4,6 +4,166 @@
 
 Original source checks: 29 October 2026. Source terms and guidance must be rechecked for each integration or deployment decision.
 
+## Governing objective — entire Open Intelligence core (founder clarification, 5 November 2026)
+
+**The objective is to build the entire working Open Intelligence core—not just an MVP, a partial patient chart, the first patient-facing journey, an isolated AI feature, or a collection of draft PRs.** The adopted scope is all **PF-01–PF-10 shared foundations** and **PD-01–PD-16 first-party product domains**, reconciled with the existing 30-domain capability map and modular, independently evolvable engines. These components must become one interoperable platform with durable real operational behavior under the appropriate authority. Neither a technical demonstration nor success in the first oncology workflow closes the core mandate.
+
+This overrides any earlier sequencing phrase (“minimum complete workflow”, “first product”, “recommended initial workflow”, “subsequent milestones”) **when interpreted as a permanent scope reduction**. Those stages are acceptance slices and integration checkpoints; the target remains complete core coverage. Preserve the existing architecture, owner contracts, accumulated tests, rights decisions and historical evidence. Do not create a parallel patient master, evidence ledger, blueprint or backlog.
+
+### Ten shared foundations: required functionality, not background assumptions
+
+| Foundation | Functional delivery target |
+| --- | --- |
+| PF-01 Identity, relationships & authority | One patient/case identity, distinct clinician/patient/caregiver/researcher/service authority, delegation, isolation and revocation |
+| PF-02 Consent & data-use | Purpose-scoped consent/sharing, research tiers, revocation and enforceable restrictions across every dependent service |
+| PF-03 Source registry | Typed entry, uploads, originals, issuer/source, version and exact locator, deduplication, identity/specimen matching, missing records, quarantine and custody |
+| PF-04 Patient world model | Temporal longitudinal oncology and general-health state, biological entities, source-linked interpretations, uncertainty, gaps, conflicting reports and change |
+| PF-05 Evidence & provenance graph | Exact claim/source/evidence lineage, citation versus actual support, research rights, hypothesis and review/decision status |
+| PF-06 Event & dependency system | Durable events, idempotency, retries, restart/recovery, amendments, dependency-specific invalidation, immutable historical receipts |
+| PF-07 Terminology & knowledge services | Rights- and version-aware clinical, laboratory, medication, cancer and genomic vocabulary with transparent unmapped/uncertain states |
+| PF-08 Intelligence & verification runtime | Replaceable-model orchestration, bounded specialized tools/agents, traceable computation, evaluation, independent verification, human controls and checkpoints |
+| PF-09 Interoperability adapters | FHIR/mCODE, HL7/CDA, DICOMweb, laboratory, imaging, omics, EHR/portal, payer, developer API and other approved connectors, with mapped coverage/loss |
+| PF-10 Security, audit & observability | Identity/authorization enforcement, encryption/key architecture, immutable audit, activity/incident monitoring, access isolation, backup/restore and reliability |
+
+### Sixteen domain cores: required operational coverage
+
+| Domain | Required working core |
+| --- | --- |
+| PD-01 Clinical EHR/EMR | Encounters, notes, diagnoses/problems, clinical history, clinical documentation, orders/referrals and corrections |
+| PD-02 Oncology management | Tumor episodes, stage/status and response, oncology care planning, multidisciplinary case review |
+| PD-03 Laboratory & LIS | Orders, specimens, accession/QC, original and released results, assay/provenance and amendments |
+| PD-04 Pathology & digital pathology | Specimens/cases, annotations/slide records, synoptic/molecular pathology and source verification |
+| PD-05 Radiology & imaging | DICOM studies, reports, imaging custody/viewing, measurements and serial lesion/imaging comparison |
+| PD-06 Genomics & precision oncology | Germline/somatic assays, variants, molecular findings, specimen/build identity and precision research context |
+| PD-07 Treatment, medication & pharmacy | Regimens and therapies, distinct planned/ordered/dispensed/administered/reported exposures, monitoring and adverse-event context |
+| PD-08 Radiation & surgical oncology | Radiation courses/plans/fractions, operative episodes, procedure/results follow-through |
+| PD-09 Hematologic oncology & cellular therapy | Specialized disease response/MRD, transplant and cell therapy workflows, toxicity monitoring |
+| PD-10 Patient & caregiver platform | Health history/records, goals, symptoms, authorized caregiver access, requests, explanations and communications |
+| PD-11 Supportive care, survivorship, palliative | Quality-of-life and symptom services, nutrition, psychosocial support, rehabilitation, survivorship and supportive referrals |
+| PD-12 Hereditary cancer, screening & prevention, fertility | Family/genetic context, risk/screening programs, preventive/fertility coordination |
+| PD-13 Research, trials & real-world evidence | Scientific sources, protocols, transparent eligibility pre-screen, research authorization, cohorts and reproducible evaluation |
+| PD-14 Clinical intelligence & AI | Source-grounded investigation, biomedical models/tools, uncertainty, knowledge, evidence appraisal, Opportunity Dossiers, human review |
+| PD-15 Enterprise, administration & finance | Scheduling/resources, access and billing/payer processes, facility/operational workflow, workforce and finance |
+| PD-16 Biobank & specimen research | Consented specimen/derivative inventory, experimental provenance, custody and research distribution |
+
+**Biomedical computation and scientific discovery belong within the connected platform**, especially PD-06/13/14/16: bioinformatics, genomic analysis, single-cell/transcriptomic and multi-omics analysis, biological hypotheses, targets, drug research and mRNA/personalized research. Build actual versioned interfaces and reproducible, evaluated synthetic/rights-cleared workflows for those specialized engines; do not confuse architectural placeholders with running scientific methods or experimentally validated therapies.
+
+### Core completion contract
+
+A PF or PD is not complete merely because it has a design, API stub, UI screen, library, agent name, test fixture, or independently passing branch. Essential operational state and module responsibilities must be implemented and connected through the existing patient/case/source/authority contracts, with usable frontend/API workflows, provenance, time/version/rights semantics, observed failure modes, persisted/recovered history, cross-domain interoperability and tested access controls. Every completion claim needs a revision-pinned repository implementation plus exact-head integration evidence and a clearly documented clinical/rights limitation.
+
+Execution can be dependency-ordered and independent modules developed in parallel after shared contracts are established, but **stop conditions apply to a particular verified increment, not to the full project objective**. Build the foundations, prove cross-domain seams with end-to-end patient cases, then continue implementing the rest of the PF/PD matrix and scientific core until the integrated system covers all required domains. Track each through the existing OI-16, OI-27, #424, #81 and domain owners; do not create a redundant workstream registry. When a domain is blocked by an explicit legal/content/clinical gate, keep that blocker visible and its completion status open instead of making an unsafe or fabricated claim.
+
+**Synthetic engineering is separate from clinical release.** Current development uses independently invented cases only. Production identity/consent, real PHI, external connections, regulated medical device functionality, professional approvals, therapeutics, clinical efficacy and patient outcome claims require separate justified validation, rights and release decisions. The full-core build mandate never overrides these controls.
+
+---
+
+## Patient intelligence and opportunity loop — founder product priority, 4 November 2026
+
+**Mandate:** The Open Intelligence health record is the foundation of an **active, patient-centered medical and scientific intelligence environment**, not a passive chart or a chatbot that answers isolated questions. Its job is to help people facing cancer understand their changing situation, obtain missing information, identify scientifically defensible opportunities, prepare effective expert discussions, coordinate follow-through and measure what happened. The ultimate aspiration is to improve patients' access to effective care and research—and, where medicine permits, the possibility of cure or durable control. **No system or intervention can promise a cure, independently choose experimental treatment, or replace professional clinical responsibility.** These requirements complement the existing architecture; they do not replace the accepted patient/source/evidence/clinical-owner boundaries.
+
+### What this product must actually do for a patient
+
+A patient should be able to ask **"What do we know; what do we not know; what has changed; what might be worth asking about; who could help; and what should happen next?"** The response must be backed by exact available records, their timestamps, rights, scientific evidence, unresolved contradictions, and the patient's own values and constraints. The system must also explicitly say **"unknown / not checked / insufficient evidence"** and identify the missing action that could resolve it.
+
+The unifying longitudinal loop is:
+
+**Collect → Reconstruct → Detect → Investigate → Compare options → Consult experts → Make an authorized decision → Coordinate → Monitor → Reassess.**
+
+These stages are **not** a claim of autonomous AI care. A patient/caregiver and the appropriate clinicians, researchers, navigators and reviewers remain responsible for the actions within their authority. The platform can prepare, remind, compare, audit and propose, but must not independently diagnose, prescribe, order, administer, enroll, purchase an experimental therapy or transmit sensitive records.
+
+#### Patient-facing outcome surfaces
+
+| Surface | Concrete value beyond record storage | Existing first-party owner to reuse |
+| --- | --- | --- |
+| My Health / Patient World Model | Reconstruct diagnosis, stage, specimens, biomarkers, treatment exposures, responses, comorbidities, symptom burden, patient priorities and case time into a provenance-linked timeline | Existing patient, source/version, temporal and projection owners |
+| Information Gaps and Changes | Distinguish uncollected vs unavailable vs not-yet-checked; request missing pathology, prior imaging, molecular testing, records or specialist context; show meaningful amendments and contradictions | Record-request, source/version, audit, amendment and question-reassessment owners |
+| Questions / Investigation Desk | Turn a patient concern or a detected knowledge gap into a durable, source-linked investigation question, including hypotheses and alternatives | Canonical question, Composer preflight, evidence/citation and report owners |
+| Options to Discuss | Build evidence-graded candidate *discussion* cards across established treatment pathways, relevant molecular testing, clinical trials, multidisciplinary opinions, supportive care and emerging research; never imply eligibility or efficacy is certain | Governed investigation/evidence artifacts, not a competing therapy/order ledger |
+| Experts and Second Opinions | Prepare a patient-controlled case packet and questions for oncology, pathology, radiology, genetics, tumor board or research specialists; preserve who actually reviewed and disagreed | Existing case packet, permissions, review/return and coordination owners |
+| My Care and Next Steps | Track requested records, referrals, appointment preparation, trial coordinators, caregiver needs, transportation, benefits/insurance obstacles and human-owned follow-through | Canonical task, request, care operations and approval owners |
+| Monitoring and Re-evaluation | Compare new lab, imaging, assay, treatment, symptom or literature updates with the exact prior state; retire stale analyses without rewriting history and selectively reopen affected work | Existing source versions, report immutability, dependent-only invalidation and events |
+| Patient and Caregiver Explanation | Provide plain-language explanation, translate medical terminology, preserve patient narrative and values, display uncertainties and next questions with exact citations | Read-only patient projections and separately attributed authored summaries |
+
+### Source universe: every useful signal, but only through the right authority
+
+Treat intake as an **open, extensible source registry and acquisition program** instead of a finite fixed list. Each new source type must identify an owner, acquisition mechanism, rights, original/version contract, source/subject/specimen validity and independent verification evidence.
+
+Include, when relevant: **(1)** patient/caregiver stories, symptoms, goals and diaries; **(2)** EHR encounters, physician notes, diagnoses, treatment plans and discharge summaries; **(3)** pathology, cytology, specimens and whole-slide imaging; **(4)** routine and specialist laboratory tests; **(5)** radiology reports, DICOM studies, nuclear imaging, radiotherapy plans and longitudinal measurements; **(6)** germline/somatic DNA and RNA profiling, ctDNA/MRD, protein, immune and other multi-omics with assay/reference/build metadata; **(7)** prescribed, dispensed, administered and patient-reported medications and therapy exposure as different events; **(8)** procedures, radiation, surgeries, rehabilitation and adverse events; **(9)** PGHD, wearables, home monitoring and validated symptom scores; **(10)** comorbidities, function, fertility, nutrition, psychology, supportive and palliative care; **(11)** referrals, clinicians, second opinions, appointments and care access; **(12)** insurance, financial assistance, transportation and social determinants; **(13)** scientific publications, mechanistic models, clinical trial protocols, drug databases, guidelines and regulatory labels; **(14)** expert deliberation, informed choices, consent, rights and follow-up; and **(15)** source freshness, provenance, quality, outages and missing information.
+
+Acquisition channels can include explicit forms/typing, file or scan upload, structured imports, healthcare APIs and standards-based connectors (FHIR/mCODE, HL7/C-CDA, DICOMweb, laboratory/omics), document/portal exports, record requests and approved research catalogs. Real source authorization and operational qualification must be established before production use. Patient-reported, source-reported, researcher-authored, AI-derived and clinician-signed information **must not collapse into one epistemic status**.
+
+### AI reasoning and investigation architecture
+
+Implement specialized, replaceable AI functions behind a **first-party, auditable orchestration/control plane**, using deterministic validators and specialized biomedical tools where warranted, rather than delegating clinical authority to a single language model:
+
+1. **Case reconstruction:** align source documents, typed claims, temporal facets, episodes, specimens and therapies; identify missing or contradictory records without guessing.
+2. **Change and uncertainty detection:** find new pathology addenda, results, disease status, toxicity, source retractions and changes in evidence; produce an exact diff and dependent-only reassessment proposal.
+3. **Question formulation:** propose concrete, falsifiable questions—e.g. whether a particular biomarker result is from the current relevant specimen, what remains untested, or which clinical trial criteria are unknown. Patient/care-team approves the question.
+4. **Research and evidence assessment:** retrieve only permitted, current primary sources and approved metadata; separate licensed guidelines, peer-reviewed studies, registries, preprints, case reports and expert hypotheses. Inspect date, study design, cancer context, endpoint, population, comparability, contradictions and rights. Detect missing citations, unsupported causal language and retracted/superseded evidence.
+5. **Biomarker and biological interpretation support:** map exact variants, tumor/assay context and disease state to **reviewable** drug mechanisms, diagnostic needs or research hypotheses. Preserve tumor heterogeneity, resistance, limitations and evidence tier. Do not convert an apparent molecular match into predicted benefit.
+6. **Trial discovery and screening:** periodically refresh NCI/ClinicalTrials.gov and explicitly authorized registries; compare each inclusion/exclusion criterion to exact patient sources, mark `potential / contradicted / unknown`, identify missing tests and contact status. Trial coordinators confirm site recruiting status and eligibility; AI does not enroll.
+7. **Second-opinion and tumor-board preparation:** assemble minimal-authority case snapshots, exact originals, competing viewpoints, unanswered questions, evidence recency and specialist-tailored packets. Record dissent and reviewer disposition without false approval.
+8. **Access and navigation:** help locate specialist programs, records, financial/insurance support, transportation and administrative steps; track requests, owner and actual confirmed result without fabricating appointments or referrals.
+9. **Longitudinal learning:** distinguish literature updates, case changes and new model versions; compare findings with historical baseline, preserve frozen reports and reviewer decisions, and measure whether proposed actions were actually completed.
+10. **Research agents later:** maturity-gated multi-agent hypothesis review, reproducible computational analyses, contradiction checking and biological tool use under explicit scope, checkpoint/replay and independent validation. Outputs are proposals unless appropriately governed.
+
+### One Opportunity Dossier—not an unreviewable treatment recommendation
+
+Each candidate opportunity should contain:
+
+- **Patient question, purpose and proposed discussion topic**; e.g. confirm diagnosis, obtain a test, review standard treatment, investigate a trial or seek specialized opinion.
+- **Exact patient-state snapshot**: patient/case, tumor/stage, specimen and biomarker identity, current therapy, functional status, patient preferences, source cut-off and permission context.
+- **Reason for consideration** grounded in original source spans/versions and dated scientific references, with a clearly separated model-generated interpretation.
+- **Evidence tier**: guideline/approved practice; prospective clinical evidence; retrospective/real-world evidence; early trial; translational/preclinical hypothesis; anecdote/unknown. Declare conflicts, contraindications, nonapplicability, population differences and source/licensing limitations.
+- **Requirements and missing information**: criterion-level known/unknown/contradicted, unavailable assays, physician checks, access barriers, location, cost/insurance and the next human verification step.
+- **Ownership and state**: generated hypothesis → ready for human review → reviewed/declined or returned for evidence → authorized plan (recorded by clinical owner) → confirmed action → observed response/reassessment. No automatic transition from AI suggestion to order or therapy.
+- **Time and provenance**: when evidence was valid, model/tool version, original source hash, reviewer, dissent, expiry/recheck trigger and exact audit receipt.
+
+**Never rank an off-label drug or experimental intervention solely by a speculative AI score.** The dossier should highlight evidence quality, potential eligibility, uncertainties and discussion paths, not imply a bespoke cure.
+
+### Grounded external evidence and design lessons (retrieved 4 November 2026)
+
+- A published *first-person patient account* describes repeated data acquisition, multidisciplinary expert involvement, research of options and continued monitoring after a reported no-evidence-of-disease status. The transferable system pattern is **observe → orient → investigate → expert-review → act → reassess**. This is a narrative of one person's experience, **not** proof that AI or an intervention caused cure. Study this account's described methods only; **do not download, process, copy or derive fixtures from any personally identifying medical/genomic data**. https://sijbrandij.substack.com/p/im-going-founder-mode-on-my-cancer and https://academy.openai.com/public/blogs/sid-sijbrandij-chatgpt-cancer-research
+- NCI states biomarker testing may guide treatments or trial searches, but may not produce an actionable result or a working therapy. Preserve tumor specificity, assay context, accessibility and limits. https://www.cancer.gov/about-cancer/treatment/types/biomarker-testing-cancer-treatment
+- In a 2022 cluster RCT of 1,191 patients, electronic symptom monitoring improved several patient-reported quality-of-life domains modestly; this supports building **measurement and accountable response**, not promising an individual survival benefit. https://jamanetwork.com/journals/jama/fullarticle/2793279
+- In a 2017 report from a randomized symptom-monitoring trial involving 766 patients, median overall survival differed between groups; the intervention was clinician-linked symptom response, **not a general-purpose AI system**. https://jamanetwork.com/journals/jama/fullarticle/2630810
+- A 2025 *Nature Cancer* oncology-agent study reported better task accuracy on 20 multimodal cases than a base LLM. A 2026 *Nature Medicine* hematologic agent study reported approximately 83% concordance in a 64-case prospective silent-validation subset. These are bounded studies, not proof of improved real-world survival or safe unattended clinical decisions. https://www.nature.com/articles/s43018-025-00991-6 and https://www.nature.com/articles/s41591-026-04494-4
+- A 2026 retrospective AI trial-matching study compared criteria-level predictions to expert adjudication using longitudinal records; promising screening accuracy still requires prospective assessment of access, enrollment, equity and impact. https://pubmed.ncbi.nlm.nih.gov/42223138/
+- NCI exposes a clinical trials search API, and HL7's mCODE v4.0.0 specifies oncology-specific FHIR profiles; neither ensures real-world completeness, live site eligibility, or licensing rights to all content. https://www.cancer.gov/syndication/api and https://hl7.org/fhir/us/mcode/
+- NCI ranks research evidence by study design and quality, rarely relying on case reports; ASCO calls for transparent, accountable, equitable and human-centered AI. FDA's January 2026 clinical decision support guidance clarifies device/non-device boundaries, including patient-facing medical software. https://www.cancer.gov/publications/pdq/evidence-assessment ; https://www.asco.org/news-initiatives/policy-news-analysis/asco-sets-six-guiding-principles-ai-oncology ; https://www.fda.gov/regulatory-information/search-fda-guidance-documents/clinical-decision-support-software
+
+### Executable vertical roadmap, not a promised autonomous hospital
+
+**P0 — accepted source reality and convergence:** Qualify the already open, fictional H1/first-party integration PRs (including #381/#405/#406/#410 as appropriate to the current exact heads), no skipped rights/recovery tests, and preserve published patient/source/clinical owners. Existing green donor branches are not combined evidence.
+
+**P1 — Patient Health Home / information acquisition:** One case-aware intake surface for patient statements, original text/PDF, authorized source imports and missing-record requests. Persistent source coverage matrix; clear **known / negative / missing / not checked / stale / conflicting** distinctions; explicitly verified original and no implicit import. Reuse WS-03 #99/#115 and WS-12 #108.
+
+**P2 — World Model and dynamic gaps:** Longitudinal reconciliation across diagnosis, treatment, specimen/assay, time, care team and patient goals; immutable historical snapshots; provenance and selective stale-dependent updates. Produce a patient-understandable change summary and ask for what is genuinely missing.
+
+**P3 — Guided question and opportunity discovery:** One true question → actual original → permitted scientific evidence → structured *discussion* dossier → clinician review → human-owned follow-up, including document amendment/reassessment; early trial discovery uses public protocol metadata with criterion-level unknowns, not eligibility claims. Reuse existing source, question, evidence, review and task owners; integrate tested manual-passage work deliberately.
+
+**P4 — Care-team network and monitoring:** Second-opinion packet and verified routing, navigator tasks, symptom monitoring with escalation protocols approved by the participating care team, actual referral/appointment status, longitudinal scientific updates and accessibility/affordability checks. No invented provider contact or treatment action.
+
+**P5 — Advanced biomedical intelligence and clinical evaluation:** Multimodal imaging/pathology/molecular analysis, pharmacogenomic or mechanistic modeling, experimental hypothesis review and research agents **only after** licensing, reproducibility, external validation and clinical safety assessment. Product roles involving individualized treatment recommendations or medical-device functions require applicable regulatory review and approvals.
+
+### Acceptance scenarios and decision metrics
+
+- **Acquisition:** three fictional institutions, wrong-subject/quarantined specimen, missing pathology, current and historical PDFs, named/unnamed biomarkers, duplicate and amendment; every material displayed claim resolves to an original, permitted anchor.
+- **Completeness:** missing source is never rendered as a negative test or “no options.” The system must identify which source type, version, temporal interval or assay is missing and why it matters to a question.
+- **Biomarker ambiguity:** conflicting variant transcript/build, old vs new metastatic specimen and unconfirmed tumor origin do not become a confident individualized therapeutic suggestion.
+- **Trial matching:** source-grounded, versioned criterion-by-criterion assessment, high-sensitivity screening plus clear unassessable cases, stale registry/closed site and geographic feasibility. Expert adjudication and measured false omissions.
+- **Clinical alternatives:** in a fictional progression case, present supported standard options and reviewable study/second-opinion questions without inventing benefit or recommending unsupervised off-label treatment.
+- **Monitoring:** a new fictional scan, lab, symptom or pathology amendment changes only dependent dossiers/reports; preserve earlier bytes and avoid stale-as-current displays.
+- **Cross-patient safety:** revoked permissions, wrong case/specimen, stale source, hostile input, failed connector, uncertain write/retry and model citation fabrication fail closed with audit evidence.
+- **Human-centered experience:** measure time to usable case summary, missing-record resolution, patient comprehension, specialist preparation effort, appropriate questions surfaced, review workload, care-task completion, inequitable access and avoidable misinformation; count clinical outcomes only in separately governed prospective evaluation.
+
+Maintain a **five-part evaluation vector**: clinical/source correctness and safety; useful opportunity identification and calibration; patient and clinician leverage; time to verified action; and infrastructure/reviewer cost. Measure harms and abstentions explicitly. No benchmark, trial match count or anecdote is a surrogate for patient benefit.
+
+**Integration boundary:** This is an approved product objective and a **proposed engineering program**, not proof that the listed AI functions, clinical connectors, trial-matching service or oncology decision system are already implemented. Continue under canonical patient/identity/source/evidence/review/authority owners; no second EHR or source ledger. Independently authored fictional data only in current development. All real PHI, production credentials, guideline text, off-label advice, clinical approval and external action remain separately gated.
+
+---
+
 ## Decision and status
 
 Keep the full ambition: an accessible, AI-native operating environment for understanding a person's cancer, investigating unanswered questions, and coordinating evidence-informed review over time. Reorganize execution around a complete clinical workflow rather than an expanding list of repositories or screens.
