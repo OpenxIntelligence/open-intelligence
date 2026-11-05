@@ -55,6 +55,7 @@ class FollowthroughCreate(Contract):
     source_snapshot_contract: Literal["oi.pg-source-world-model/1"]
     expected_source_snapshot_sha256: str = Field(pattern=Digest)
     expected_preflight_sha256: str = Field(pattern=Digest)
+    manual_dependency: ManualTaskDependency | None = None
 
     @field_validator("synthetic", mode="before")
     @classmethod
@@ -161,6 +162,8 @@ class FollowthroughTask(Contract):
     source_snapshot_sha256: str = Field(pattern=Digest)
     preflight_sha256: str = Field(pattern=Digest)
     source_context_state: Literal["current_unreviewed_question", "source_reassessment_required"]
+    manual_dependency_revision_id: str | None = None
+    manual_context_state: Literal["current_unreviewed", "reassessment_required"] | None = None
     needs_recheck: bool
     is_overdue: bool
     is_due_soon: bool

@@ -12,6 +12,7 @@ import importlib
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import Mock, patch
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -213,6 +214,58 @@ class FollowthroughLogicTests(unittest.TestCase):
                         purpose="operations", recheck_authority=lambda: None)
 
 
+class ManualDependencyHistoricalSchemaBoundaryTests(unittest.TestCase):
+    def test_known_pre_0016_tasks_have_no_manual_origin_but_current_schema_fails_closed(self):
+        # Historical migration tests seed real tasks before 0016; a missing
+        # child table at the *current* revision is never silently tolerated.
+        module = owner_module(self)
+        for revisions, expected_allowed in (
+            ([("0009_question_followthrough",)], True),
+            ([("0015_manual_report_context",)], True),
+            ([("0011_evidence_convergence",), ("0011_image_evidence_merge",)], True),
+            ([("0016_manual_task_dependency",)], False),
+            ([("unrecognized_version",)], False),
+            ([], False),
+            ([("0011_evidence_convergence",)] * 3, False),
+        ):
+            with self.subTest(revisions=revisions):
+                registry = PostgresPatientRegistry(Mock(autocommit=False))
+                registry._fetchone = Mock(return_value=(None,))
+                def rows(sql, params=()):
+                    if "FROM public.alembic_version" in sql:
+                        return revisions
+                    if ("FROM coordination.question_followthrough_tasks" in sql
+                            or "FROM coordination.question_followthrough_events" in sql):
+                        return []
+                    raise AssertionError("An absent manual child must not be queried")
+                registry._fetchall = Mock(side_effect=rows)
+                owner = module.PostgresQuestionFollowthrough(registry)
+                with patch.object(module.PostgresSourceQuestions, "project_locked", return_value=[]):
+                    if expected_allowed:
+                        output, questions, events = owner._read_locked(
+                            "PAT-FAKE", "CASE-ALPHA", "ORG-ALPHA", {}, "2026-11-04")
+                        self.assertEqual((output, questions, events), ([], {}, 0))
+                    else:
+                        with self.assertRaises(PatientRegistryError):
+                            owner._read_locked("PAT-FAKE", "CASE-ALPHA", "ORG-ALPHA", {}, "2026-11-04")
+                registry._fetchone.assert_called_once()
+
+    def test_declared_child_table_reads_normally_without_legacy_exemption(self):
+        module = owner_module(self)
+        registry = PostgresPatientRegistry(Mock(autocommit=False))
+        registry._fetchone = Mock(return_value=("coordination.question_followthrough_manual_dependencies",))
+        def rows(sql, params=()):
+            if "FROM public.alembic_version" in sql:
+                raise AssertionError("Current-schema reads must not use historical exemptions")
+            return []
+        registry._fetchall = Mock(side_effect=rows)
+        with patch.object(module.PostgresSourceQuestions, "project_locked", return_value=[]):
+            self.assertEqual(
+                module.PostgresQuestionFollowthrough(registry)._read_locked(
+                    "PAT-FAKE", "CASE-ALPHA", "ORG-ALPHA", {}, "2026-11-04"),
+                ([], {}, 0))
+
+
 class FollowthroughMigrationGraphTests(unittest.TestCase):
     def test_task_migration_extends_the_published_single_head(self):
         config = Config()
@@ -320,7 +373,7 @@ class FollowthroughPostgresTests(SourceVersionFixture):
             self.transition(created["task_id"], 4, "assigned", key="REOPEN-COMPLETED")
         self.assertEqual(self.rows(), before)
 
-    def test_optional_manual_dependency_storage_is_scoped_and_immutable(self):
+    def test_optional_manual_task_binding_and_targeted_reassessment(self):
         # No dependency row is implicitly created for a source-only task.
         task = self.create_task(key="SOURCE-ONLY-TASK")
         table = "coordination.question_followthrough_manual_dependencies"
@@ -351,7 +404,79 @@ class FollowthroughPostgresTests(SourceVersionFixture):
                 synthetic=True,request_key="TASK-MANUAL-DEPENDENCY",
                 expected_context_sha256=current["context_sha256"],references=[ref]))
             self.assertEqual(status,201,saved)
-            second_question,_=create_question(self,base,self.patient,self.source_id,
+        binding=dict(patient_id=self.patient,case_id=CASE,question_id=self.question,
+                     revision_id=saved["revision_id"],references_sha256=fingerprint([ref]))
+        # Verify the actual HTTP Pydantic boundary, then exact-retry from the
+        # same first-party PostgreSQL task owner across a fresh connection.
+        self.creds[0]["actions"].extend(("followthrough_create","followthrough_read"))
+        self.write()
+        command=dict(synthetic=True,request_key="TASK-MANUAL-BOUND",
+            title="Prepare the fictional source packet",detail="",owner_label="",
+            due_date="2026-11-04",review_trigger="",
+            reason="Recorded for the next fictional discussion.",
+            source_snapshot_contract=SOURCE_SNAPSHOT_CONTRACT,
+            expected_source_snapshot_sha256=self.preflight["source_snapshot_sha256"],
+            expected_preflight_sha256=self.preflight["preflight_sha256"],
+            manual_dependency=binding)
+        path=f"/v1/patients/{self.patient}/cases/{CASE}/questions/{self.question}/followthrough"
+        with running_server(create_app(self.settings)) as base:
+            status,manual_task,_=request(base,path,token=TOKEN_A,body=command)
+            self.assertEqual(status,201,manual_task)
+            retry_status,retry,_=request(base,path,token=TOKEN_A,body=command)
+            self.assertEqual(retry_status,200,retry)
+            self.assertEqual(retry,manual_task|{"duplicate":True})
+        self.assertEqual(self.create_task(key="TASK-MANUAL-BOUND",manual_dependency=binding),
+                         manual_task|{"duplicate":True})
+        tasks={item["task_id"]:item for item in self.listing()["tasks"]}
+        self.assertIsNone(tasks[task["task_id"]]["manual_context_state"])
+        self.assertFalse(tasks[task["task_id"]]["needs_recheck"])
+        self.assertEqual(tasks[manual_task["task_id"]]["manual_context_state"],"current_unreviewed")
+        self.assertFalse(tasks[manual_task["task_id"]]["needs_recheck"])
+        self.assertEqual(tasks[manual_task["task_id"]]["manual_dependency_revision_id"],
+                         saved["revision_id"])
+        self.assertNotIn("Marker pending.",str(tasks))
+
+        with self.engine.connect() as db:
+            row=db.execute(text("SELECT task_id,revision_id,references_sha256 FROM "+table)).one()
+            self.assertEqual(row[0],manual_task["task_id"])
+            self.assertEqual(row[1],saved["revision_id"])
+            self.assertEqual(row[2],fingerprint([ref]))
+        with running_server(create_app(self.settings)) as base:
+            correction=dict(synthetic=True,request_key="TASK-ANNOTATION-CORRECTION",
+                expected_revision_id=doc["annotation_revision_id"],
+                confirmed_case_id=CASE,expected_sha256=payload["expected_sha256"],
+                reason="Recheck the fictional quotation",
+                findings=[dict(key="marker",state="indeterminate",quote="pending.",line=2)])
+            code,result,_=request(base,docs+"/"+doc["source_id"]+"/annotations",
+                                  token=TOKEN_A,body=correction)
+            self.assertEqual(code,201,result)
+        after={item["task_id"]:item for item in self.listing()["tasks"]}
+        self.assertIsNone(after[task["task_id"]]["manual_context_state"])
+        self.assertFalse(after[task["task_id"]]["needs_recheck"])
+        self.assertEqual(after[manual_task["task_id"]]["manual_context_state"],"reassessment_required")
+        self.assertTrue(after[manual_task["task_id"]]["needs_recheck"])
+        self.assertEqual(after[manual_task["task_id"]]["revision"],1)
+        self.transition(manual_task["task_id"],1,"assigned",key="MANUAL-ASSIGNED")
+        self.transition(manual_task["task_id"],2,"acknowledged",key="MANUAL-ACK")
+        with self.assertRaises(PatientRegistryConflict):
+            self.transition(manual_task["task_id"],3,"completed",key="MANUAL-STALE-COMPLETE")
+        self.assertEqual(next(t for t in self.listing()["tasks"] if t["task_id"]==manual_task["task_id"])["revision"],3)
+        self.assertEqual(self.create_task(key="TASK-MANUAL-BOUND",manual_dependency=binding),
+                         manual_task|{"duplicate":True})
+        with self.assertRaises(PatientRegistryConflict):
+            self.create_task(key="TASK-MANUAL-STALE",manual_dependency=binding)
+        with self.assertRaises(PatientRegistryDenied):
+            self.create_task(key="TASK-MANUAL-CROSS-CASE",
+                             manual_dependency=binding|{"case_id":"CASE-BETA"})
+        self.creds[0]["actions"].remove("source_original_read");self.write()
+        hidden=self.listing()["tasks"]
+        self.assertNotIn("Marker pending.",str(hidden))
+        self.assertTrue(next(t for t in hidden if t["task_id"]==manual_task["task_id"])["needs_recheck"])
+        # Resolution note: HEAD revoked source_original_read above; restore it
+        # for the scope-test question setup below (base ran it with full creds).
+        self.creds[0]["actions"].append("source_original_read");self.write()
+        with running_server(create_app(self.settings)) as fresh:
+            second_question,_=create_question(self,fresh,self.patient,self.source_id,
                 request_key="TASK-MANUAL-DEPENDENCY-QUESTION-2")
         values=dict(task_id=task["task_id"],question_id=self.question,
                     revision_id=saved["revision_id"],patient_id=self.patient,
@@ -362,8 +487,10 @@ class FollowthroughPostgresTests(SourceVersionFixture):
         with self.engine.begin() as db:
             db.execute(statement,values)
         with self.engine.connect() as db:
-            row=db.execute(text("SELECT revision_id,references_sha256 FROM "+table),
-                           {}).one()
+            # Merged tree: HEAD's bound-task row already occupies the table,
+            # so scope the read to the scope-test row this block inserted.
+            row=db.execute(text("SELECT revision_id,references_sha256 FROM "+table+" WHERE task_id=:task"),
+                           {"task":task["task_id"]}).one()
             self.assertEqual(row[0],saved["revision_id"])
             self.assertEqual(row[1],fingerprint([ref]))
         # Scope fixtures: a revision with no references, and a revision owned
@@ -415,7 +542,9 @@ class FollowthroughPostgresTests(SourceVersionFixture):
         with self.assertRaises(CommandError):
             migrate(self.admin,"downgrade","0015_manual_report_context")
         with self.engine.connect() as db:
-            self.assertEqual(db.execute(text("SELECT count(*) FROM "+table)).scalar_one(),1)
+            # Merged tree holds two dependency rows (the bound manual task above plus
+            # the scope-test row for the source-only task), so the count is 2.
+            self.assertEqual(db.execute(text("SELECT count(*) FROM "+table)).scalar_one(),2)
 
     def test_stale_revision_and_changed_request_intent_cannot_write(self):
         created = self.create_task()

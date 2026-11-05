@@ -15,7 +15,8 @@ function task(n,status='created',changes={}){
   owner_label:owner,due_date:null,review_trigger:'At the recorded discussion',created_at:'2026-11-01T10:00:00Z',
   status,revision:sequence.length,source_id:'SRC-'+'C'.repeat(32),source_line:8,source_sha256:'a'.repeat(64),
   source_version:1,source_snapshot_contract:'oi.pg-source-world-model/1',source_snapshot_sha256:'b'.repeat(64),
-  preflight_sha256:'c'.repeat(64),source_context_state:'current_unreviewed_question',needs_recheck:false,
+  preflight_sha256:'c'.repeat(64),source_context_state:'current_unreviewed_question',
+  manual_dependency_revision_id:null,manual_context_state:null,needs_recheck:false,
   is_overdue:false,is_due_soon:false,clinical_approval:false,
   history:sequence.map((s,i)=>({event_id:eventId(n,i),revision:i+1,previous_status:i?sequence[i-1]:null,
    status:s,owner_label:s==='created'?'':owner,actor_label:'ACTOR-FICTIONAL',reason:'Recorded fictional work.',
@@ -32,6 +33,24 @@ function state(rows=[],changes={}){
 const project=s=>view.projectFollowthroughAttention?.(s);
 const match=(row,filter)=>view.matchesFollowthroughFilter?.(row,filter);
 const selected=(selection,attention)=>view.followthroughFilterForRead?.(selection,attention);
+
+test('explicit manual-dependent work is flagged without staling source-only work',()=>{
+ const manual=task(2,'created',{manual_dependency_revision_id:'PASSAGES-'+'E'.repeat(32),
+  manual_context_state:'reassessment_required',needs_recheck:true});
+ const attention=project(state([task(1),manual]));
+ assert.equal(attention?.counts.recheck,1);
+ assert.equal(attention?.counts.all,2);
+ assert.equal(match(manual,'recheck'),true);
+ assert.equal(match(task(1),'recheck'),false);
+ const current=task(3,'created',{manual_dependency_revision_id:'PASSAGES-'+'F'.repeat(32),
+  manual_context_state:'current_unreviewed'});
+ assert.equal(project(state([current]))?.counts.recheck,0);
+ for(const forged of [
+  {manual_dependency_revision_id:null,manual_context_state:'reassessment_required',needs_recheck:true},
+  {manual_dependency_revision_id:'PASSAGES-INVALID',manual_context_state:'reassessment_required',needs_recheck:true},
+  {manual_dependency_revision_id:'PASSAGES-'+'E'.repeat(32),manual_context_state:null,needs_recheck:true},
+ ])assert.throws(()=>state([task(4,'created',forged)]));
+});
 
 test('a successful empty read is known zero, not unavailable',()=>{
  const result=project(state());
