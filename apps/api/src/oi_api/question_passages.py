@@ -198,7 +198,9 @@ class QuestionPassages:
             recheck_authority(needs_original)
         def prepare(index):
             if purpose!='operations' or self.registry._fetchone(
-                "SELECT question_id FROM investigation.source_questions WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s AND anchor_kind='text_line'",
+                "SELECT question_id FROM investigation.source_questions "
+                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s"
+                + text_question_filter(self.registry),
                 (patient_id,case_id,organization,question_id)) is None:
                 raise PatientRegistryDenied('Question context unavailable')
             current=self.context_locked(c)

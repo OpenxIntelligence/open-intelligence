@@ -38,6 +38,26 @@ def _request_key(value: str) -> str:
     return _key(value, "request_key")
 
 
+def typed_question_schema_available(registry: PostgresPatientRegistry) -> bool:
+    """True only when the forward typed-anchor columns exist in this DB revision.
+
+    Current runtime readiness requires the latest schema, but populated migration
+    tests deliberately execute current domain code against historical published
+    revisions before upgrading them. Legacy text-question behavior must remain
+    available there; typed operations must not.
+    """
+    row = registry._fetchone(
+        "SELECT EXISTS(SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema='investigation' AND table_name='source_questions' "
+        "AND column_name='anchor_kind')"
+    )
+    return bool(row and row[0])
+
+
+def text_question_filter(registry: PostgresPatientRegistry) -> str:
+    return " AND anchor_kind='text_line'" if typed_question_schema_available(registry) else ""
+
+
 class PostgresSourceQuestions:
     """Owned, operational question intake; not a clinical review queue."""
 
@@ -161,8 +181,8 @@ class PostgresSourceQuestions:
                 "source_line,source_sha256,source_version,source_snapshot_sha256,"
                 "preflight_sha256,created_at,source_snapshot_contract "
                 "FROM investigation.source_questions "
-                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s "
-                "AND anchor_kind='text_line'",
+                "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s"
+                + text_question_filter(self.registry),
                 (patient_id, case_id, organization, question_id),
             )
             if row is None:
@@ -226,14 +246,17 @@ class PostgresSourceQuestions:
             return prepare_response(result) if prepare_response is not None else result
 
         def save(index):
+            typed_schema = typed_question_schema_available(self.registry)
             old = self.registry._fetchone(
-                "SELECT question_id,intent_sha256,source_snapshot_contract,anchor_kind "
+                "SELECT question_id,intent_sha256,source_snapshot_contract"
+                + (",anchor_kind" if typed_schema else "") + " "
                 "FROM investigation.source_questions "
                 "WHERE patient_id=%s AND request_key=%s FOR UPDATE",
                 (patient_id, request_key),
             )
             if old is not None:
-                if (old[2] != SOURCE_SNAPSHOT_CONTRACT or old[3] != "text_line"
+                anchor_kind = old[3] if typed_schema else "text_line"
+                if (old[2] != SOURCE_SNAPSHOT_CONTRACT or anchor_kind != "text_line"
                         or not hmac.compare_digest(old[1], intent)):
                     raise PatientRegistryConflict("Question request key reused with changed intent")
                 # Exact retries preserve their original anchor even after an
@@ -269,12 +292,14 @@ class PostgresSourceQuestions:
             )
             if created is None:
                 winner = self.registry._fetchone(
-                    "SELECT question_id,intent_sha256,source_snapshot_contract,anchor_kind "
+                    "SELECT question_id,intent_sha256,source_snapshot_contract"
+                    + (",anchor_kind" if typed_schema else "") + " "
                     "FROM investigation.source_questions WHERE patient_id=%s AND request_key=%s",
                     (patient_id, request_key),
                 )
+                winner_kind = winner[3] if (winner is not None and typed_schema) else "text_line"
                 if (winner is None or winner[2] != SOURCE_SNAPSHOT_CONTRACT
-                        or winner[3] != "text_line" or not hmac.compare_digest(winner[1], intent)):
+                        or winner_kind != "text_line" or not hmac.compare_digest(winner[1], intent)):
                     raise PatientRegistryConflict("Question request intent changed")
                 return receipt(winner[0], True)
             self.registry.append_event(
@@ -312,6 +337,8 @@ class PostgresSourceQuestions:
         if (type(expected_source_snapshot_sha256) is not str
                 or not SHA256.fullmatch(expected_source_snapshot_sha256)):
             raise PatientRegistryError("Source fingerprint must be SHA-256")
+        if not typed_question_schema_available(self.registry):
+            raise PatientRegistryError("Typed laboratory question owner unavailable at this schema")
         intent = self._laboratory_intent(
             patient_id, case_id, organization, actor, purpose, request_key, source_id,
             observation_reference, question, expected_source_snapshot_sha256,
@@ -408,9 +435,9 @@ class PostgresSourceQuestions:
             "source_line,source_sha256,source_version,source_snapshot_sha256,"
             "preflight_sha256,created_at,source_snapshot_contract "
             "FROM investigation.source_questions "
-            "WHERE patient_id=%s AND case_id=%s AND origin_org=%s "
-            "AND anchor_kind='text_line' "
-            "ORDER BY created_at,question_id LIMIT 251",
+            "WHERE patient_id=%s AND case_id=%s AND origin_org=%s"
+            + text_question_filter(self.registry) +
+            " ORDER BY created_at,question_id LIMIT 251",
             (patient_id, case_id, organization),
         )
         if len(rows) > 250:
@@ -448,6 +475,8 @@ class PostgresSourceQuestions:
         organization = _key(organization, "organization")
         if purpose != "operations":
             raise PatientRegistryDenied("Laboratory question intake unavailable")
+        if not typed_question_schema_available(self.registry):
+            raise PatientRegistryError("Typed laboratory question owner unavailable at this schema")
 
         def prepare(index):
             observations = PostgresLaboratoryFHIR(self.registry).current_observations_locked(case_id)
