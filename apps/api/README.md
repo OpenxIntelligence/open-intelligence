@@ -4,14 +4,24 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. The API requires `0022_lab_citation_source_scope`. Run
-`python -m oi_api.migrate upgrade head` from either published 0019 revision.
-The join retains both the [encounter and note service](#connected-encounter-and-note-service)
-and the original Observation behind each governed laboratory citation. See
+records the original integration. This revision requires `0025_clinical_source_events`.
+Run `python -m oi_api.migrate upgrade head` from either predecessor
+(`0024_clinical_execution_join` or `0020_source_event_delivery`). The join retains
+[encounters and note drafts](#connected-encounter-and-note-service), laboratory
+citation and follow-up history, and [durable execution](../../docs/engineering/H1_DURABLE_EXECUTION.md).
+The [source-event worker](../../docs/engineering/H1_SOURCE_EVENT_DELIVERY.md) reconciles changed context. See
 [the laboratory question contract](../../docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md)
 for save, retry and history behavior.
 The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)
 maps the retained source, document, image, laboratory, question, report and task owners.
+
+Follow-up tasks support both exact text lines and saved FHIR Observations.
+`GET /v1/patients/{patient_id}/cases/{case_id}/followthrough` returns the
+existing text-only list by default. Send
+`Accept: application/vnd.open-intelligence.followthrough.v2+json` to request
+`oi.pg-question-followthrough/2` with both origins. An Observation task has an
+immutable source ID, version, digest, and Observation reference. The existing
+create, transition and retry routes accept the same command bodies.
 
 ## Historical document/image checkpoint — #381
 
@@ -711,7 +721,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0022_lab_citation_source_scope; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0025_clinical_source_events; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |

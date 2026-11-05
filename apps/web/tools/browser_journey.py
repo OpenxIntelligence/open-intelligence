@@ -18,7 +18,7 @@ import tempfile
 from urllib.request import Request,urlopen
 ROOT=Path(__file__).resolve().parents[3]
 sys.path.insert(0,str(ROOT/'tests'))
-from browser_journey import ChromeSession,free_port,wait_for
+from browser_journey import LOCAL_BROWSER_NETWORK_FLAGS, ChromeSession,free_port,wait_for
 
 
 def main():
@@ -45,7 +45,7 @@ def main():
             web=subprocess.Popen(['npm','run','preview'],cwd=ROOT/'apps/web',env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
             wait_for(lambda:urlopen('http://127.0.0.1:4173',timeout=2).status==200,'built React server',30)
             port=free_port()
-            browser=subprocess.Popen([chrome,'--headless=new','--disable-gpu','--disable-dev-shm-usage','--disable-background-networking','--no-first-run','--disable-extensions','--no-default-browser-check','--remote-allow-origins=*',f'--remote-debugging-port={port}',f'--user-data-dir={directory}/chrome','about:blank'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+            browser=subprocess.Popen([chrome,'--headless=new','--disable-gpu','--disable-dev-shm-usage',*LOCAL_BROWSER_NETWORK_FLAGS,'--no-first-run','--disable-extensions','--no-default-browser-check','--remote-allow-origins=*',f'--remote-debugging-port={port}',f'--user-data-dir={directory}/chrome','about:blank'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
             targets=wait_for(lambda:json.load(urlopen(f'http://127.0.0.1:{port}/json/list',timeout=2)),'Chromium target',30)
             cd=ChromeSession(next(t['webSocketDebuggerUrl'] for t in targets if t['type']=='page'))
             cd.command('Page.enable');cd.command('Runtime.enable');cd.command('Page.navigate',{'url':'http://127.0.0.1:4173'})
@@ -134,7 +134,22 @@ def main():
             from followthrough_journey import exercise as exercise_followthrough, exercise_case_switch
             from question_metadata_journey import exercise as exercise_question_evidence
             from connected_question_review_journey import exercise as exercise_connected_question_review
-            with exercise_source_questions(cd,original_id,credentials,write_grants) as questions, \
+            def run_brief_worker():
+                # Same original fictional actor, supplied independently to the worker process.
+                token_file = directory / 'brief-worker-token'
+                with token_file.open('x', encoding='ascii') as stream:
+                    os.chmod(token_file, 0o600)
+                    stream.write(tokens[0])
+                try:
+                    process = subprocess.run(
+                        [sys.executable, '-m', 'oi_api.worker', '--once', '--patient', pid, '--case', case],
+                        cwd=ROOT, env={**env, 'OI_API_WORKER_TOKEN_FILE': str(token_file)},
+                        capture_output=True, text=True, timeout=30, check=True)
+                    assert json.loads(process.stdout) == {'status': 'completed', 'attempt_count': 1}
+                finally:
+                    token_file.unlink(missing_ok=True)
+
+            with exercise_source_questions(cd,original_id,credentials,write_grants,run_brief_worker) as questions, \
                  exercise_question_review(cd,pid,case,questions.original_question_id,original_id,
                      credentials,write_grants) as reviews, \
                  exercise_followthrough(cd,pid,case,questions.original_question_id,original_id,

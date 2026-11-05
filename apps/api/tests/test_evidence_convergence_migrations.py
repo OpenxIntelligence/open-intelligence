@@ -6,6 +6,7 @@ Current authenticated HTTP is exercised only after the real converging upgrade.
 """
 from contextlib import contextmanager
 
+from alembic.util.exc import CommandError
 from sqlalchemy import text
 
 from http_support import running_server
@@ -15,7 +16,6 @@ from oi_api.case_bindings import CanonicalCaseBindings
 from oi_api.composer_preflight import PostgresSourceComposerPreflight
 from oi_api.contracts import SCHEMA_REVISION
 from oi_api.database import Database
-from oi_api.contracts import SCHEMA_REVISION
 from oi_api.evidence_catalog import fictional_records, seed_fictional_records
 from oi_api.migrate import migrate
 from oi_api.question_evidence import PostgresQuestionEvidence as MetadataEvidence
@@ -92,9 +92,15 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
                     "WHERE table_schema IN ('identity','coordination','clinical_source','investigation') "
                     "AND table_type='BASE TABLE' ORDER BY table_schema,table_name")).all()
                 names = [f"{schema}.{name}" for schema, name in rows]
-            tables = {name: connection.execute(text(
-                f"SELECT row_to_json(t)::text FROM {name} t ORDER BY row_to_json(t)::text"
-            )).scalars().all() for name in names}
+            tables = {}
+            for name in names:
+                # Text tasks predate the nullable 0023 observation column. Give
+                # their snapshots that exact default while preserving every value.
+                row = ("(jsonb_build_object('observation_reference', NULL) || to_jsonb(t))::text"
+                       if name == "coordination.question_followthrough_tasks" else "row_to_json(t)::text")
+                tables[name] = connection.execute(text(
+                    f"SELECT {row} FROM {name} t ORDER BY 1"
+                )).scalars().all()
             sequences = {}
             for schema, name in connection.execute(text(
                 "SELECT schemaname,sequencename FROM pg_sequences "
@@ -163,6 +169,13 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
             original = owner.import_evidence(patient, "CASE-ALPHA", question, **OPTIONS,
                 payload={"synthetic": True, "request_key": "UPGRADE-ORIGINAL", "original_text": ORIGINAL_EVIDENCE,
                          "content_item": "api_output", "permissions": rights})
+        # Verify the authored-evidence guard before later outbox history exists.
+        before = self.snapshot()
+        with self.assertRaisesRegex(CommandError, "Evidence history requires explicit reconciliation"):
+            migrate(self.admin, "downgrade", "0008_review_convergence")
+        self.assertEqual(self.snapshot(), before)
+        with self.services() as registry:
+            owner = AuthoredEvidence(registry)
             packet = owner.packet(patient, "CASE-ALPHA", question, **OPTIONS)
             evidence, = packet["evidence"]
             assessment_intent = {

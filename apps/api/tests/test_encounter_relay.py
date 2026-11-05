@@ -173,12 +173,28 @@ class RelayHTTPTests(unittest.TestCase):
         self.addCleanup(thread.join, 5)
         self.addCleanup(server.shutdown)
 
-    def run_cli(self):
+    def run_cli(self, *args):
         return subprocess.run(
             [sys.executable, "-m", "oi_api.encounter_relay", "--patient", PATIENT, "--port", str(self.port),
-             "--database", str(self.db), "--token-file", str(self.token)],
+             "--database", str(self.db), "--token-file", str(self.token), *args],
             text=True, capture_output=True, timeout=10,
         )
+
+    def test_operational_inbox_cli_acknowledges_an_exact_draft_only_with_current_access(self):
+        self.document = page(event(5, NOTE))
+        result = self.run_cli("--pending-drafts-after", "0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["pending_drafts"][0]["event_id"], 5)
+        self.status = 403
+        denied = self.run_cli("--acknowledge-draft-event", "5")
+        self.assertEqual((denied.returncode, json.loads(denied.stdout)), (2, {"status": "unavailable"}))
+        self.status = 200
+        self.assertEqual(json.loads(self.run_cli("--pending-drafts-after", "0").stdout)["pending_drafts"][0]["event_id"], 5)
+        self.assertEqual(json.loads(self.run_cli("--acknowledge-draft-event", "5").stdout)["acknowledged_event"], 5)
+        self.assertEqual(json.loads(self.run_cli("--pending-drafts-after", "0").stdout)["pending_drafts"], [])
+        self.document = page(event(5, NOTE), dict(event(9, NOTE), note_version=2))
+        stale = self.run_cli("--acknowledge-draft-event", "5")
+        self.assertEqual((stale.returncode, json.loads(stale.stdout)["status"]), (3, "superseded_or_unknown"))
 
     def test_mid_page_process_kill_replays_once(self):
         self.assertEqual(self.run_cli().returncode, 0)

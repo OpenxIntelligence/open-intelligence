@@ -166,8 +166,8 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
             url = f"/v1/patients/{patient}/encounters"
             port = urlsplit(base).port
 
-            def deliver(token=TOKEN_A):
-                return receive_once(receiver, port, patient, lambda: token)
+            def deliver(token=TOKEN_A, **operation):
+                return receive_once(receiver, port, patient, lambda: token, **operation)
 
             def post(path, body):
                 code, data, _ = request(base, path, token=TOKEN_A, body=body)
@@ -195,17 +195,24 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
                 self.assertEqual(db.execute("SELECT count(*) FROM activity_totals").fetchone(), (0,))
             result = deliver()
             self.assertEqual((result["applied"], result["counts"]), (3, expected))
-            self.assertEqual(deliver()["applied"], 0)
+            item, = deliver(inbox_after=0)["pending_drafts"]
+            self.assertEqual((item["encounter_id"], item["note_version"]), (first["encounter_id"], 1))
+            self.assertEqual(deliver(acknowledge=item["event_id"])["acknowledged_event"], item["event_id"])
+            self.assertEqual(deliver(inbox_after=0)["pending_drafts"], [])
             post(note, dict(draft, request_key="WRITE-TWO", expected_version=1, body="Fictional revision."))
             with self.assertRaises(FeedUnavailable):
-                deliver(TOKEN_B)
+                deliver(TOKEN_B, inbox_after=0)
             self.creds[0]["actions"].remove("note.read")
             self.write()
             with self.assertRaises(FeedUnavailable):
-                deliver()
+                deliver(acknowledge=item["event_id"])
             with closing(sqlite3.connect(receiver)) as db:
                 self.assertEqual(db.execute("SELECT count(*) FROM activity_receipts").fetchone()[0], 3)
             self.creds[0]["actions"].append("note.read")
             self.write()
-            self.assertEqual(deliver()["applied"], 1)
+            stale = deliver(acknowledge=item["event_id"])
+            self.assertEqual((stale["applied"], stale["status"]), (1, "superseded_or_unknown"))
+            revised, = deliver(inbox_after=0)["pending_drafts"]
+            self.assertEqual(revised["note_version"], 2)
+            self.assertGreater(revised["event_id"], item["event_id"])
             self.assertNotIn(draft["body"].encode(), receiver.read_bytes())

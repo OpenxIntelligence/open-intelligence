@@ -21,11 +21,11 @@ from open_intelligence.store import InvalidInput, parse_report, parse_synthetic_
 
 from .case_bindings import _case_id
 from .composer_preflight import PostgresSourceComposerPreflight
-from .authored_evidence_contracts import (AssessEvidence, EvidenceAssessment, EvidenceVersion,
+from .authored_evidence_contracts import (AssessEvidence, EvidenceAssessment, EvidenceReport, EvidenceVersion,
                                  PrepareEvidenceReport, checked_report_snapshot)
 from .evidence_report import (canonical_hash, canonical_json, human_content_allowed,
                               packet_hash, quote_offset, render_evidence_report, visible_line)
-from .patients import QuestionSourceState
+from .source_question_contracts import QuestionSourceState
 from .question_review_returns import _question_id
 from .source_questions import PostgresSourceQuestions
 from .source_world_model import project_source_world_model
@@ -58,6 +58,45 @@ def _time(value) -> str:
 
 def _new(prefix: str) -> str:
     return prefix + "-" + uuid.uuid4().hex.upper()
+
+
+def verify_report_passages(report: EvidenceReport, run_id: str, result_sha256: str) -> tuple[dict, list[dict]]:
+    """Digest the exact ranges in an authorized, original-verified report and pin the returned run."""
+    if report.state == "content_withheld":
+        raise PatientRegistryDenied("Evidence report unavailable")
+    if report.state != "current_unreviewed" or report.snapshot is None:
+        raise PatientRegistryConflict("Evidence report needs reassessment")
+    snapshot = report.snapshot
+    source = snapshot.selected_source
+    inputs = {
+        "verifier": "oi.h1-literal-evidence-verifier/1", "verification_outcome": "exact_quoted_ranges_matched",
+        "patient_id": report.patient_id, "case_id": report.case_id, "question_id": report.question_id,
+        "source_id": source.source_id, "source_version": source.version, "source_sha256": source.sha256,
+        "source_line": source.line, "source_snapshot_sha256": snapshot.question.source_snapshot_sha256,
+        "run_id": run_id, "result_sha256": result_sha256, "report_id": report.report_id,
+        "report_snapshot_sha256": report.snapshot_sha256, "report_body_sha256": report.body_sha256,
+        "comparison_count": len(snapshot.comparisons),
+    }
+    passages = []
+    for comparison in snapshot.comparisons:
+        evidence, assessment = comparison.evidence, comparison.assessment
+        # report() has checked the immutable originals and current family grants under the case lock.
+        if not human_content_allowed(evidence.permissions, evidence.permissions, evidence.content_item, export=True):
+            raise PatientRegistryDenied("Evidence export unavailable")
+        start = quote_offset(evidence.statement, assessment.quote)
+        if start != assessment.quote_start:
+            raise PatientRegistryConflict("Evidence passage differs from its recorded range")
+        end = start + len(assessment.quote)
+        matched = evidence.statement[start:end]
+        passages.append({
+            "assessment_id": assessment.assessment_id, "evidence_id": evidence.evidence_id,
+            "evidence_version": evidence.version, "evidence_sha256": evidence.sha256,
+            "rights_sha256": evidence.rights_sha256, "content_item": evidence.content_item,
+            "statement_line": evidence.statement_line, "start_codepoint": start, "end_codepoint": end,
+            "quote_sha256": hashlib.sha256(matched.encode("utf-8")).hexdigest(),
+        })
+    digest = canonical_hash({"inputs": inputs, "passages": passages})
+    return {**inputs, "verification_sha256": digest}, passages
 
 
 class PostgresQuestionEvidence:
@@ -660,6 +699,18 @@ class PostgresQuestionEvidence:
                 return {"report_id": rid, "question_id": c["question_id"]}
             return self._command(c, "report", normalized, apply)
         return self._run(patient_id, case_id, question_id, action="evidence_report_export", operation=operation, **kwargs)
+
+    def record_passage_verification(self, report: EvidenceReport, receipt: dict):
+        """Commit bounded provenance beside a newly created, authorized return."""
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("A locked evidence return is required")
+        proof, passages = verify_report_passages(report, receipt["run_id"], receipt["result_sha256"])
+        for passage in passages:
+            self.registry.append_event(report.patient_id, "investigation.evidence.passage_verified",
+                receipt_id=receipt["receipt_id"], verification_sha256=proof["verification_sha256"], **passage)
+        patient_id = proof.pop("patient_id")  # The journal stores the patient ID in its scoped column.
+        self.registry.append_event(patient_id, "investigation.evidence.passages_verified",
+            receipt_id=receipt["receipt_id"], **proof)
 
     def report(self, patient_id, case_id, question_id, report_id, **kwargs):
         report_id = _id(report_id, "REPORT")

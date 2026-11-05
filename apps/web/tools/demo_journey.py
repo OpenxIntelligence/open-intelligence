@@ -17,7 +17,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT / 'tools'), str(ROOT / 'tests')]
 import h1_demo as demo
-from browser_journey import ChromeSession, free_port, wait_for, wait_for_browser
+from browser_journey import LOCAL_BROWSER_NETWORK_FLAGS, ChromeSession, free_port, wait_for, wait_for_browser
 
 
 def main():
@@ -45,7 +45,7 @@ def main():
                 wait_for(lambda: urlopen('http://127.0.0.1:4173', timeout=2).status == 200, 'built demo UI', 30)
                 port = free_port()
                 browser = subprocess.Popen([chrome, '--headless=new', '--disable-gpu', '--disable-dev-shm-usage',
-                    '--disable-background-networking', '--no-first-run', '--disable-extensions',
+                    *LOCAL_BROWSER_NETWORK_FLAGS, '--no-first-run', '--disable-extensions',
                     '--no-default-browser-check', '--remote-allow-origins=*', f'--remote-debugging-port={port}',
                     f'--user-data-dir={temporary}/chrome', 'about:blank'], stdout=subprocess.DEVNULL,
                     stderr=chrome_log, start_new_session=True)
@@ -95,6 +95,22 @@ def main():
                 click('[data-testid=evidence-report-open]')
                 cd.wait("Boolean(document.querySelector('[data-testid=evidence-report-body]'))", 'preserved report')
                 body = cd.evaluate("document.querySelector('[data-testid=evidence-report-body]').textContent")
+                # The operator explicitly selects the two opened documents and supplies a return reason.
+                click('[data-testid=run-open]')
+                cd.wait("document.querySelector('[data-testid=run-status]')?.dataset.state==='queued'", 'queued source brief')
+                worker = subprocess.run(command + ['exec', '-T', 'api', 'python', '-c',
+                    'import json,sys; from oi_api.worker import run_once; from oi_api.config import Settings; '
+                    'token=sys.stdin.readline().strip(); print(json.dumps(run_once(Settings.from_env(),lambda:token,*sys.argv[1:])))',
+                    state['patient_id'], demo.CASE], input=state['token']+'\n', text=True,
+                    capture_output=True, env=env, cwd=ROOT, check=True, timeout=30)
+                assert json.loads(worker.stdout) == {'status':'completed','attempt_count':1}
+                click('[data-testid=run-refresh]'); click('[data-testid=run-result]')
+                click('[data-testid=check-brief-report-inbox]')
+                cd.wait("!!document.querySelector('[data-testid=brief-return-reason]')", 'paired review input')
+                value('[data-testid=brief-return-reason]', 'Please verify the source brief and the comparison against the fictional assay limitation.')
+                click('[data-testid=return-brief-and-report]')
+                cd.wait("document.querySelector('.background-brief')?.textContent.includes('Verification return recorded')",
+                        'recorded human return')
                 click('[data-testid=followthrough-open-create]')
                 value('[data-testid=followthrough-title]', 'Obtain the fictional final assay report')
                 value('[data-testid=followthrough-owner]', 'Fictional coordinator')
@@ -115,6 +131,8 @@ def main():
                 report = demo.request(scope + '/evidence-reports/' + report_id, state['token'])
                 assert report['body'] == body
                 assert hashlib.sha256(body.encode()).hexdigest() == report['body_sha256']
+                inbox = demo.request(root + '/review-queue', state['token'])
+                assert len(inbox['receipts']) == 1 and inbox['items'][0]['review_state'] == 'returned_for_independent_verification'
                 before = demo.request(root + '/followthrough', state['token'])['tasks']
                 assert len(before) == 1 and before[0]['question_id'] == qid
                 navigate('Overview')
@@ -127,10 +145,11 @@ def main():
                 restored = demo.request(scope + '/evidence-reports/' + report_id, state['token'])
                 assert restored['body'] == body and restored['snapshot_sha256'] == report['snapshot_sha256']
                 assert demo.request(root + '/followthrough', state['token'])['tasks'] == before
+                assert demo.request(root + '/review-queue', state['token'])['receipts'] == inbox['receipts']
                 (artifacts / 'demo-journey.json').write_text(json.dumps({
                     'synthetic': True, 'patient_id': state['patient_id'], 'source_id': state['source_id'],
                     'question_id': qid, 'report_id': report_id, 'report_body_sha256': report['body_sha256'],
-                    'task_id': before[0]['task_id'], 'repeat_setup_same_identity': True,
+                    'task_id': before[0]['task_id'], 'verification_return_id': inbox['receipts'][0]['receipt_id'], 'repeat_setup_same_identity': True,
                     'restart_preserves_report_and_task': True, 'clinical_approval': False}, indent=2) + '\n')
                 print('PASS PERSISTENT DEMO: exact seeded original → authored question → fictional evidence → preserved report → follow-up; repeated setup and restart retain identities and history.')
             except Exception:
