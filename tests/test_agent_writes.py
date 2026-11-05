@@ -30,6 +30,7 @@ from open_intelligence.agent_writes import (
     validate_write_contract,
 )
 from open_intelligence.investigation import ValidatedInvestigation, validate_output
+from open_intelligence.orchestrator import decide_route
 from open_intelligence.store import CaseStore, InvalidInput, now_utc
 
 
@@ -50,8 +51,16 @@ def seed_case(store, case_id="CASE-ALPHA"):
     return source_id, question_id
 
 
-def save_run(store, case_id, question_id, source_id, *, model="recorded-replay"):
-    """Save one completed replay investigation with its contract."""
+def save_run(store, case_id, question_id, source_id, *, model="recorded-replay",
+             route=True):
+    """Save one completed replay investigation with its contract.
+
+    The route is decided first (program plan C3): a run without a
+    route.decided record is not reproducible. Pass route=False only
+    for the test that proves the missing-route replay failure.
+    """
+    if route:
+        decide_route(store, case_id, "evidence-summary", question_id, "clinician")
     facts = store.investigation_facts(case_id, question_id)
     validated = validate_output(
         {"claims": [claim(source_id=source_id)], "abstentions": []},
@@ -354,6 +363,17 @@ class ReplayTests(unittest.TestCase):
         self.assertFalse(result["reproducible"])
         self.assertEqual(result["reason"], "route_mismatch")
 
+    def test_missing_route_invalidates_the_replay(self):
+        # Slice 3 (program plan C3): a run whose route was never
+        # decided is not reproducible, even though the save itself
+        # accepts it (the pre-C3 grandfather path).
+        run_id, _ = save_run(
+            self.store, "CASE-ALPHA", self.question_id, self.source_id,
+            route=False)
+        result = check_replay(self.store, "CASE-ALPHA", run_id)
+        self.assertFalse(result["reproducible"])
+        self.assertEqual(result["reason"], "missing_route")
+
     def test_missing_contract_invalidates_the_replay(self):
         facts = self.store.investigation_facts("CASE-ALPHA", self.question_id)
         validated = validate_output(
@@ -430,6 +450,34 @@ class HttpWriteContractTests(unittest.TestCase):
         self.assertEqual(row["write_id"], contract["writeId"])
         self.assertEqual(row["agent_role"], "A1")
         self.assertEqual(row["route_id"], contract["routeId"])
+
+    def test_replay_investigation_decides_its_route_first(self):
+        # Slice 3 (program plan C3): the run path decides the route
+        # before any agent event, so the route.decided ledger event
+        # precedes the investigation_created event for the same run.
+        status, data = self.request("/api/cases/CASE-ALPHA/questions",
+                                    {"question": "What do the sources report about this case?"})
+        self.assertEqual(status, 201)
+        status, data = self.request("/api/cases/CASE-ALPHA/investigations",
+                                    {"question_id": data["question_id"],
+                                     "template": "evidence-summary", "mode": "replay"})
+        self.assertEqual(status, 201, data)
+        route_id = data["write_contract"]["routeId"]
+        store = CaseStore(self.path)
+        try:
+            route = store.get_route_decided("CASE-ALPHA", route_id)
+            self.assertIsNotNone(route)
+            self.assertEqual(route["agents"], ["A1"])
+            self.assertEqual(route["authority"], "clinician")
+            rows = store.db.execute(
+                "SELECT id, kind FROM events WHERE case_id=? ORDER BY id",
+                ("CASE-ALPHA",)).fetchall()
+            route_event = next(int(row[0]) for row in rows if row[1] == "route.decided")
+            created_event = next(
+                int(row[0]) for row in rows if row[1] == "investigation_created")
+            self.assertLess(route_event, created_event)
+        finally:
+            store.close()
 
 
 if __name__ == "__main__":
