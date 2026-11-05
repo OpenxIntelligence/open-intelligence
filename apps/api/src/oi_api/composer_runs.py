@@ -264,9 +264,22 @@ class PostgresComposerRuns:
             recheck_authority=recheck_authority, prepare_response=queue)
 
     def _inspect(self, patient_id, case_id, question_id, run_id, *, organization, actor, purpose,
-                 recheck_authority, prepare_response=None, cancel=False, private=False):
+                 recheck_authority, prepare_response=None, cancel=False, private=False, latest=False):
         with self.registry.transaction():
             self._scope(patient_id, case_id, organization, actor, purpose, recheck_authority)
+            if latest:
+                # Discovery uses the same actor scope as an exact status read. Ignore
+                # the last transition time: it could belong to an older run.
+                self._identifier(question_id, "QUESTION")
+                match = self.registry._fetchone(
+                    "SELECT run_id FROM investigation.composer_tool_runs "
+                    "WHERE patient_id=%s AND case_id=%s AND question_id=%s "
+                    "AND origin_org=%s AND actor=%s AND purpose=%s "
+                    "ORDER BY created_at DESC,run_id DESC LIMIT 1",
+                    (patient_id, case_id, question_id, organization, actor, purpose))
+                if match is None:
+                    raise PatientRegistryDenied("Composer run unavailable")
+                run_id = match[0]
             row = self._load(patient_id, case_id, question_id, run_id, organization, actor, purpose, lock=cancel)
             if cancel and row["state"] not in TERMINAL:
                 row = self._transition(row, "cancelled", "cancelled")
@@ -280,6 +293,9 @@ class PostgresComposerRuns:
 
     def get(self, patient_id, case_id, question_id, run_id, **kwargs):
         return self._inspect(patient_id, case_id, question_id, run_id, **kwargs)
+
+    def latest(self, patient_id, case_id, question_id, **kwargs):
+        return self._inspect(patient_id, case_id, question_id, None, latest=True, **kwargs)
 
     def cancel(self, patient_id, case_id, question_id, run_id, **kwargs):
         return self._inspect(patient_id, case_id, question_id, run_id, cancel=True, **kwargs)
@@ -301,9 +317,9 @@ class PostgresComposerRuns:
                 recheck_authority()
                 return None
             if row["attempt_count"] >= row["max_attempts"]:
-                self._transition(row, "failed", "attempts_exhausted")
+                exhausted = self._transition(row, "failed", "attempts_exhausted")
                 recheck_authority()
-                return None
+                return exhausted
             token = "LEASE-" + uuid.uuid4().hex.upper()
             self.registry._execute(
                 "UPDATE investigation.composer_tool_runs SET state='running',revision=revision+1,"
@@ -339,8 +355,22 @@ class PostgresComposerRuns:
         return result
 
     def complete(self, claim: dict, *, recheck_authority: Callable[[], None]):
+        # Completing clears the lease columns. Keep the deadline read under
+        # the run lock so a slow final source audit cannot publish an expired
+        # attempt. Neither the worker's clock nor its copy of the claim is authoritative.
+        lease_deadline = None
+
+        def recheck_before_commit():
+            recheck_authority()
+            if lease_deadline is not None and not self.registry._fetchone(
+                "SELECT clock_timestamp() < %s", (lease_deadline,)
+            )[0]:
+                raise RunLeaseLost("Execution lease expired before result publication")
+
         def persist(brief):
+            nonlocal lease_deadline
             row = self._fence(claim)
+            lease_deadline = row["lease_expires_at"]
             artifact = self._validate_artifact(row, brief)
             encoded = canonical_result(artifact)
             digest = hashlib.sha256(encoded).hexdigest()
@@ -362,7 +392,7 @@ class PostgresComposerRuns:
             source_snapshot_contract=claim["source_snapshot_contract"],
             expected_source_snapshot_sha256=claim["source_snapshot_sha256"],
             expected_preflight_sha256=claim["preflight_sha256"],
-            recheck_authority=recheck_authority, prepare_response=persist)
+            recheck_authority=recheck_before_commit, prepare_response=persist)
 
     def finish_failure(self, claim: dict, *, reason_code: str) -> str:
         """Record only a held attempt's bounded failure, without source access.

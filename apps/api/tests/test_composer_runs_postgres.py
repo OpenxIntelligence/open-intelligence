@@ -225,6 +225,40 @@ class ComposerRunsPostgresTests(source_fixture.SourceVersionFixture):
             self.creds[0] = original; self.write()
             self.assertEqual(self.status(base, patient, question, run)[0], 200)
 
+    def test_latest_status_is_scoped_read_only_and_survives_amendment(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, question, preflight = self.seed(base)
+            path = self.run_path(patient, question)
+            def lookup(route=path):
+                return patient_fixture.request(base, route, token=TOKEN)
+            self.assertEqual(lookup()[0], 404)
+            first = self.enqueue(base, patient, question, preflight)[1]['run']['run_id']
+            latest = self.enqueue(base, patient, question, preflight, key='ANOTHER-RUN')[1]['run']['run_id']
+            self.cancel(base, patient, question, first)  # older intent now has the newest transition
+            self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
+            before = self.stored(latest)
+            code, status, headers = lookup()
+            self.assertEqual((code, status['run_id'], headers['Cache-Control']), (200, latest, 'no-store'))
+            self.assertNotIn('brief', status)
+            self.assertEqual(self.stored(latest), before)
+            self.assertEqual(self.events()[-1][1]['run_id'], latest)
+            for wrong in [path.replace(question, 'QUESTION-' + 'F' * 32), path.replace(CASE, 'CASE-BETA')]:
+                self.assertEqual(lookup(wrong)[0], 404)
+            for change in [{'actor': 'ACTOR-DIFFERENT'}, {'organization': 'ORG-DIFFERENT'}, {'patient_ids': []},
+                           {'purpose': 'research'},
+                           {'actions': [a for a in self.creds[0]['actions'] if a != 'source_brief_export']}]:
+                original = deepcopy(self.creds[0])
+                self.creds[0].update(change)
+                self.write()
+                try:
+                    code, denied, _ = lookup()
+                    self.assertIn(code, (403, 404))
+                    self.assertEqual(set(denied), {'detail'})
+                finally:
+                    self.creds[0] = original
+                    self.write()
+            self.assertEqual(self.stored(latest), before)
+
     def test_amendment_before_work_marks_stale_without_result(self):
         with running_server(create_app(self.settings)) as base:
             patient, question, _, run = self.seeded_run(base)
@@ -289,16 +323,55 @@ class ComposerRunsPostgresTests(source_fixture.SourceVersionFixture):
 
     def test_expired_attempts_are_bounded(self):
         with running_server(create_app(self.settings)) as base:
-            patient, _, _, run = self.seeded_run(base)
+            patient, question, preflight, run = self.seeded_run(base)
+            code, second, _ = self.enqueue(base, patient, question, preflight, key='AFTER-EXHAUSTION')
+            self.assertEqual(code, 201, second)
             for attempt in range(1, 4):
                 claim = self.claim(patient, 1)
                 self.assertIsNotNone(claim)
                 self.assertEqual(claim['attempt_count'], attempt)
                 time.sleep(1.1)
-            self.assertIsNone(self.claim(patient))
+            self.assertEqual(self.work(patient), {'status': 'failed', 'attempt_count': 3})
+            self.assertEqual(self.stored(second['run']['run_id'])[0]['state'], 'queued')
+            self.assertEqual(self.work(patient), {'status': 'completed', 'attempt_count': 1})
+            self.assertEqual(self.work(patient), {'status': 'idle'})
             row, count, history = self.stored(run)
             self.assertEqual((row['state'], row['attempt_count'], count), ('failed', 3, 0))
             self.assertEqual(history[-1][2], 'attempts_exhausted')
+
+    def test_expiry_during_source_audit_cannot_publish_a_worker_result(self):
+        from oi_api.composer_runs import RunLeaseLost
+        from open_intelligence.postgres_registry import PostgresPatientRegistry
+
+        with running_server(create_app(self.settings)) as base:
+            patient, question, _, run = self.seeded_run(base)
+            claim = self.claim(patient, lease=2)
+            before, events = self.stored(run), self.events()
+            append = PostgresPatientRegistry.append_event
+            seen = []
+
+            def stall_after_audit(registry, pid, kind, **details):
+                result = append(registry, pid, kind, **details)
+                if kind == 'source.read_authorized':
+                    # Wait for the database's own lease clock to pass its deadline
+                    # after the tentative result and receipt have both been written.
+                    remaining, = registry._fetchone(
+                        "SELECT GREATEST(0, EXTRACT(EPOCH FROM "
+                        "(CAST(%s AS timestamptz) - clock_timestamp())))",
+                        (claim['lease_expires_at'],))
+                    time.sleep(float(remaining) + 0.05)
+                    seen.append(kind)
+                return result
+
+            with patch.object(PostgresPatientRegistry, 'append_event', stall_after_audit):
+                with self.assertRaises(RunLeaseLost):
+                    self.complete(claim)
+            self.assertEqual(seen, ['source.read_authorized'])
+            self.assertEqual(self.stored(run), before)
+            self.assertEqual(self.events(), events)
+            self.assertEqual(self.status(base, patient, question, run, '/result')[0], 409)
+            self.assertEqual(self.work(patient), {'status': 'completed', 'attempt_count': 2})
+            self.assertEqual(self.stored(run)[1], 1)
 
     def test_prepared_result_authority_denial_rolls_back_result_and_events(self):
         with running_server(create_app(self.settings)) as base:
@@ -381,6 +454,20 @@ raise SystemExit(main(["--once", "--patient", sys.argv[2], "--case", "CASE-ALPHA
             child.kill()
             child.communicate(timeout=5)
         time.sleep(1.1)
+        # A crashed worker's durable claim cannot carry its old read grant
+        # into a new process. Until reauthorization even recovery is a no-op.
+        before = self.stored(run)
+        self.creds[0]['actions'].remove('source_brief_export')
+        self.write()
+        denied = subprocess.run([sys.executable, '-m', 'oi_api.worker', '--once', '--patient', patient,
+                                 '--case', CASE], env=self.worker_env(), capture_output=True, text=True, timeout=15)
+        self.assertEqual(denied.returncode, 2, denied.stderr)
+        self.assertEqual(json.loads(denied.stdout), {'status': 'blocked'})
+        self.assertEqual(self.stored(run), before)
+        with running_server(create_app(self.settings)) as base:
+            self.assertEqual(self.status(base, patient, question, run, '/result')[0], 404)
+        self.creds[0]['actions'].append('source_brief_export')
+        self.write()
         restarted = subprocess.run([sys.executable, '-m', 'oi_api.worker', '--once', '--patient', patient,
                                     '--case', CASE], env=self.worker_env(), capture_output=True, text=True, timeout=15)
         self.assertEqual(restarted.returncode, 0, restarted.stderr)

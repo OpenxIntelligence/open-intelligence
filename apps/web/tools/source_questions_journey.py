@@ -246,6 +246,9 @@ class SourceQuestionChecks:
         run_worker()
         click('run-refresh')
         assert read_status('completed') == replacement
+        self.history('Current source context')
+        click('run-latest')
+        assert read_status('completed') == replacement
         click('run-result')
         body = "document.querySelector('[data-testid=run-result-body]')"
         self.cd.wait(f'{body}?.textContent.includes({json.dumps(self.original_question_id)})',
@@ -285,12 +288,23 @@ class SourceQuestionChecks:
         self.inspect_quote(self.original_question_id,current=True,
             expected_text='Fictional café <script>literal</script>.')
 
-    def after_amendment(self, replacement_source_id):
+    def after_amendment(self, replacement_source_id, stale_run, credentials, write_grants):
         self.navigate('Investigations')
         history = self.history('Source changed')
         assert self.original_question_id in history and self.original_source_id in history
         assert replacement_source_id not in history
         self.overview_counts(current=0, reassessment=1)
+        row = f'.question-items li[data-question-id="{self.original_question_id}"]'
+        check = f'document.querySelector({json.dumps(row + " [data-testid=run-latest]")})'
+        self.cd.wait(f'{check}?.disabled === false', 'read-only historical run lookup')
+        self.cd.evaluate(f'{check}.click()')
+        panel = f'document.querySelector({json.dumps(row + " [data-testid=run-status]")})'
+        self.cd.wait(f'{panel}?.dataset.state === "stale"', 'relay marked the previous run stale')
+        assert self.cd.evaluate(f'{panel}.dataset.runId') == stale_run
+        assert 'reassessment required' in self.cd.evaluate(f'{panel}.textContent')
+        for control in ('run-open', 'run-result', 'run-result-body', 'run-retry', 'run-cancel', 'return-brief-and-report'):
+            assert not self.cd.evaluate(f'Boolean(document.querySelector({json.dumps(row + " [data-testid=" + control + "]")}))')
+
         assert self.original_download.read_bytes() == self.original_download_bytes
         assert not self.cd.evaluate("Boolean(document.querySelector('[data-testid=source-brief-preview]'))")
         stale = f'.question-items li[data-question-id="{self.original_question_id}"] [data-testid=brief-prepare]'
@@ -307,6 +321,27 @@ class SourceQuestionChecks:
         self.cd.wait("document.querySelector('[data-testid=composer-status]').textContent.includes('original source changed')",
                      'stale source fingerprint cannot prepare a replacement context')
         assert self.cd.evaluate("!document.querySelector('[data-testid=composer-context]') && !document.querySelector('[data-testid=world-projection]')")
+        # The independent denial recheck reloads the current World Model, so
+        # exercise it only after the stale preflight above rejected the old one.
+        self.cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=world-projection]'))", 'fresh source context')
+        self.history('Source changed')
+        credentials[0]['actions'].remove('source_brief_export')
+        write_grants()
+        try:
+            self.cd.evaluate(f'{check}.click()')
+            self.cd.wait("document.querySelector('[data-testid=brief-status]')?.textContent.includes("
+                         "'No previous background run is visible')", 'revoked historical status withheld')
+            assert stale_run not in self.cd.evaluate('document.body.textContent')
+            assert not self.cd.evaluate("Boolean(document.querySelector('[data-testid=run-status], [data-testid=run-result-body]'))")
+        finally:
+            credentials[0]['actions'].append('source_brief_export')
+            write_grants()
+        self.cd.wait(f'{check}?.disabled === false', 'reopen authorized historical status')
+        self.cd.evaluate(f'{check}.click()')
+        self.cd.wait(f'{panel}?.dataset.runId === {json.dumps(stale_run)}', 'fresh read after grant restoration')
+        print('PASS AMENDED BACKGROUND BRIEF: browser reopened the exact stale run after SIGKILL and relay restart; '
+              'one receipt and one stale transition after replaying the amendment; a second patient completed while the relay was down.')
         self.navigate('Records')
 
     def finish(self, replacement_source_id, credentials, write_grants, screenshots):

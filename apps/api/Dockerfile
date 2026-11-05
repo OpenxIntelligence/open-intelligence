@@ -1,8 +1,7 @@
 # Synthetic H1 development image. Python/OS/container layers have separate
 # provenance and licensing obligations; the application lock does not clear them.
-# Patch tag verified against docker-library/official-images on 2026-11-02.
-# This tag is not a digest pin. CI records the resolved image identity.
-FROM python:3.12.16-slim-bookworm
+# The pinned index and its linux/amd64 manifest are recorded in container-image-pins.json.
+FROM python:3.12.16-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

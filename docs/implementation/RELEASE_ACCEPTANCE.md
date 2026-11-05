@@ -1,5 +1,24 @@
 # Release acceptance
 
+This register applies to one candidate revision, use and deployment profile at a time. A draft pull request is inspectable source. Passing software checks authorizes no clinical use. Keep the commit, tree, dependency artifacts, check results, reviewer, decision date, use scope and open exceptions with every release record.
+
+| Gate | Evidence required | Owner and decision |
+|---|---|---|
+| Synthetic engineering | Exact commit; clean migration and populated upgrade paths; no skipped required PostgreSQL cases; compiled UI plus real browser journey; all restore/revocation checks; no weakening of access, receipts or currentness; actual installed package gates. | Engineering reviewer inspects the exact workflow results. See [implementation status](IMPLEMENTATION_STATUS.md) for this candidate. Merge requires project authorization. |
+| Dependency and distribution | Wheel and npm checks, container layers and build digests, transitive licenses/notices, vulnerability triage, source/weight/asset/content separation, chosen distribution terms and intended jurisdiction. | Rights and security reviewers approve the specific artifact and use. Local synthetic approval is narrower. |
+| Operational staging | Issuer/tenant isolation, secrets and key handling, deny-default egress, instrumented availability, measured resource/load limits, crash/retry/restore and incident exercises with responsible operators. | Operations and security sign a named environment. Production setup is open. |
+| Real patient data | Intended use, agreements, identity proofing, institutional scope, purpose/consent/delegation, revocation, access history, retention/deletion, approved jurisdictions and emergency procedures. | Data governance and accountable clinical organization explicitly accept the proposed use. Synthetic-only policy applies until then. |
+| Clinical decision support | Independent adjudication under a frozen protocol; critical error counts by type, citation support, abstention, bias/representativeness, human override/review and change control. | Named clinical reviewers and authorized release decision. Engineering, a model score or a completed job cannot sign the clinical result. |
+| Scientific results and discovery | Versioned input/reference/parameter/tool/container hashes, QC and negative controls; permitted dataset and model use; independently reproducible outcome or predefined tolerances. | Scientific reviewer identifies a research result and its limits. Promotion to clinical knowledge or treatment is a separate decision. |
+
+Withhold release when a required suite skips its necessary backend, a result belongs to a different commit, a backup lacks original bytes or restores an expired grant, a run omits an expected source, or rights are unknown. Record the specific failing check and how to reproduce it. Remediation starts a new candidate evaluation. Separate approval is required for production deployment, real clinical use, external data sharing and irreversible operations.
+
+For this synthetic build, retain the source commit, package locks, API BOM, web BOM and web notice inventory together. The combined verifier must reject a wrong archive digest, alias substitution, repeated or missing location, or inclusion of an omitted optional package. The hosted database image configuration must match the selected platform in the image register. A package or image identity alone leaves layer contents, vulnerability triage and distribution approval open.
+
+## Clinical base acceptance record for #542
+
+The following record belongs to the pinned clinical base. Its named revisions, gates and donor observations are retained for traceability. The current platform increment and its own acceptance are described above.
+
 Date: 2026-11-05. Scope: independently fictional H1 engineering consolidation.
 No clinical validation, real-patient qualification, merge or deployment is implied.
 

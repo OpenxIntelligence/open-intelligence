@@ -4,7 +4,7 @@ on:
     branches: [feat/h1-react-patient-entry-20261102, integration/h1-react-source-records-20261102, feat/h1-react-record-import-20261102]
   pull_request:
     # The API imports shared src; the browser harness imports tests/browser_journey.py.
-    paths: ['apps/web/**', 'apps/api/**', 'src/**', 'tests/**', 'tools/audit_ci_data_boundaries.py', 'tools/h1_demo.py', 'examples/synthetic/h1-demo-report.txt', 'examples/synthetic/demo-evidence.txt', '.github/workflows/h1-web.yml']
+    paths: ['apps/web/**', 'apps/api/**', 'src/**', 'tests/**', 'tools/audit_ci_data_boundaries.py', 'tools/h1_demo.py', 'tools/h1_build_inputs.py', 'examples/synthetic/h1-demo-report.txt', 'examples/synthetic/demo-evidence.txt', '.github/workflows/h1-web.yml']
 permissions:
   contents: read
 jobs:
@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 25
     services:
       postgres:
-        image: postgres:16.15-bookworm
+        image: postgres:16.15-bookworm@sha256:5264710be20f409750ac6dc4e5706dcef929c87e241605463f0f9aefa932a8d9
         env:
           POSTGRES_USER: oi_api
           POSTGRES_PASSWORD: oi_h1_synthetic_only
@@ -65,9 +65,13 @@ jobs:
       - name: Preserve upstream reviewed backend dependency gate
         run: |
           python apps/api/tools/prepare_dependencies.py --wheel-dir /tmp/oi-h1-wheels
-          python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom /tmp/oi-h1-sbom.json
+          python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-h1-wheels --sbom verification-web/api.cdx.json
           python -m pip install --force-reinstall --no-deps --no-index --find-links /tmp/oi-h1-wheels --require-hashes -r apps/api/requirements.lock
           python -m pip check
+      - name: Reconcile installed web notices and API SBOM with pinned build inputs
+        run: |
+          python tools/h1_build_inputs.py --output verification-web/build-inputs.json
+          python tools/h1_build_inputs.py --verify verification-web/build-inputs.json --api-sbom verification-web/api.cdx.json --web-receipt apps/web/.licenses/inventory.json
       - name: Actual PostgreSQL API and built React browser journey
         shell: bash
         run: |
