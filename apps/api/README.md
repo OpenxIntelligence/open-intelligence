@@ -4,8 +4,13 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. The current API requires `0018_laboratory_questions`,
-which adds a typed Observation reference to the existing question registry. See
+records the original integration. This candidate requires `0019_composer_runs`,
+which extends `0018_laboratory_questions` with durable synthetic source-brief runs.
+The [execution guide](../../docs/engineering/H1_DURABLE_EXECUTION.md) covers the
+actor-bound worker, current authority, run controls and publication-time verification.
+[PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529) maintains
+current exact-source hosted acceptance.
+The prior revision adds a typed Observation reference to the existing question registry. See
 [the laboratory question contract](../../docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md)
 for save, retry and history behavior.
 The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)

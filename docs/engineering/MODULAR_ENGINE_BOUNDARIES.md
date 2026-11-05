@@ -194,3 +194,22 @@ identity/consent, distribution clearance or deployment.
 The implementation PR carries the exact commit and hosted checks. A local pass
 is not a hosted result; the CI report records source-file and manifest hashes
 for the actual checkout it examines.
+
+## Continuation — governed H1 execution, 5 November 2026
+
+The founder's instruction to continue infrastructure implementation advances
+steps 2–3 above. The [durable execution candidate](H1_DURABLE_EXECUTION.md) extracts
+shared source/question contracts and implements one actor-bound PostgreSQL
+Composer run with a separately invoked worker for `source-question-brief/1`.
+It retains existing patient/source/question authority and the four existing
+scope grants; historical #90/#126 are contract lineage, not installed H1 code.
+Human follow-through remains a separate owner.
+
+The worker, migration and process-kill/populated-restore tests are implemented;
+final combined hosted acceptance was pending at this source-publication checkpoint.
+[PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529) maintains
+current exact-source receipts. An intermediate PostgreSQL
+run reproduced an accepted-intent retry failure after source amendment, now
+corrected with a regression. The [execution plan](../superpowers/plans/2026-11-05-governed-execution-foundation.md)
+and durable guide track this continuation separately from the original static
+gate receipts above. This does not qualify other engines or independent deployment.

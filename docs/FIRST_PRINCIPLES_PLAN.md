@@ -159,6 +159,15 @@ coupling debt. Registration metadata is not execution permission, and logical
 ownership is not evidence of independent deployment. This extends the accepted
 architecture without selecting new infrastructure or changing clinical authority.
 
+**Implementation continuation — 5 November 2026:** the
+[H1 durable execution candidate](engineering/H1_DURABLE_EXECUTION.md) now adds
+independent source/question contracts and one PostgreSQL-backed synthetic
+source-brief worker. Existing scope grants and canonical owners remain in force.
+Process-kill and populated-restore tests are implemented; final combined hosted
+acceptance was pending at source publication. [PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
+maintains current exact-source receipts. This bounded capability does not complete the specialist
+engines or establish production identity, clinical authority or deployment.
+
 The durable data model needs the following objects:
 
 | Object group | Purpose |

@@ -1,9 +1,14 @@
 # H1 durable Composer execution
 
-**Status — 5 November 2026:** implemented candidate; real PostgreSQL and hosted
-acceptance are pending. Full process-kill and backup/restore acceptance is still
-being built. Database-dependent tests skipped locally are unexecuted coverage,
-not passing database tests. No deployment or clinical qualification is claimed.
+**Source-publication checkpoint — 5 November 2026:** implemented synthetic
+candidate. This checkpoint records the preflight evidence below; current
+exact-source hosted acceptance is maintained in
+[PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529).
+At publication, process-kill and populated backup/restore tests were implemented
+and awaiting real-runner acceptance. An intermediate hosted run reproduced the
+retry defect described below. Database-dependent tests skipped locally are
+unexecuted coverage, not passing database tests. No deployment or clinical
+qualification is claimed.
 
 This increment makes one existing deterministic source-question brief executable
 through a durable PostgreSQL run and a separately invoked worker. It continues
@@ -15,8 +20,9 @@ The implementation starts from accepted main
 `57b8fd9f2b201ab46d338743aaab9f3f980b8a59` and architecture candidate
 [#529](https://github.com/OpenxIntelligence/open-intelligence/pull/529).
 [The execution plan](../superpowers/plans/2026-11-05-governed-execution-foundation.md)
-records the authorized scope and acceptance requirements. An exact final source
-revision, test results and hosted receipts must be added after verification.
+records the authorized scope and acceptance requirements. Exact source revisions,
+test results and hosted receipts are recorded in PR #529 after verification;
+this document preserves its source-publication checkpoint.
 
 ## Lineage and ownership
 
@@ -58,9 +64,14 @@ Each run pins the canonical patient, case and question; source-snapshot contract
 and fingerprint; preflight fingerprint; exact source ID, version, SHA-256 and
 line; executable kind; and request key/digest. The source owner validates those
 references before the intent is inserted. The unique request scope is
-`(origin_org, actor, purpose, request_key)`: an identical authorized retry returns
-the same run, while reuse with a changed intent is rejected. A retry still
-passes current source and authority checks.
+`(origin_org, actor, purpose, request_key)`: an exact previously accepted key and
+intent can recover the same historical run receipt even after source amendment.
+Recovery reauthenticates the original actor, organization and purpose and checks
+the existing patient/case scope grants. It creates no work, discloses no result
+body and does not treat the old source as fresh. Reuse with a changed intent is
+rejected. New intents and result disclosure still require current source
+validation; losing the original response must not make its accepted intent
+unrecoverable.
 
 ## Persistence and lifecycle
 
@@ -132,7 +143,7 @@ All paths below share the prefix
 
 | Method and suffix | Behavior |
 | --- | --- |
-| `POST` at the prefix | Enqueue: 201 for a new run; 200 for an identical authorized retry |
+| `POST` at the prefix | Enqueue: 201 for a new run; 200 to recover an exact accepted intent under current authority, including after amendment |
 | `GET /{run_id}` | Read scoped run status |
 | `POST /{run_id}/cancel` | Cancel queued/running work or return existing terminal status |
 | `GET /{run_id}/result` | Read a completed brief after fresh authority, source and integrity checks |
@@ -179,24 +190,50 @@ count. It never prints the brief or credential. `idle` means no run was claimed;
 `unavailable` can leave a claim awaiting lease recovery and does not prove that
 work rolled back. A recurring scheduler or service manager is not installed.
 
-## Verification record and remaining acceptance
+## Source-publication verification checkpoint
 
-Implementation and tests are present, but this document records **no passing
-real-database or hosted result yet**. The current local environment cannot run
-PostgreSQL; database-dependent skips must remain explicit. Relevant coverage is
-in `test_source_question_contracts.py`, `test_composer_run_contracts.py`,
+Implementation and tests were present at publication; final combined acceptance
+was pending. PR #529 maintains subsequent exact-source results. The local
+environment could not run PostgreSQL, so database-dependent skips remain
+explicit. Relevant coverage is in
+`test_source_question_contracts.py`, `test_composer_run_contracts.py`,
 `test_composer_run_worker.py`, `test_composer_run_routes.py`,
 `test_composer_runs_postgres.py` and `test_composer_run_migrations.py` under
 `apps/api/tests`.
+
+Intermediate source `2f6e46862d119cd9c223022ebed77f7010fa63b9` ran
+[39 focused tests on real PostgreSQL](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42088796360):
+38 passed, one reproduced regression failed, and none were skipped. The failed
+lost-enqueue-response test received 409 instead of recovering the original
+receipt with 200 after source amendment. Independent review confirmed this
+Important finding. The publication candidate adds the accepted-intent recovery
+path above; its final PostgreSQL acceptance was pending. The earlier audit-argument
+collision in runtime enqueue has also been corrected.
+
+The publication-time focused selection contains 43 tests: the local run passed nine and
+explicitly skipped 34 PostgreSQL-dependent cases. Separate local checks passed
+10 HTTP contract tests and 31 architecture-gate tests; the gate maps 52 modules
+to 10 owners with 77 recorded legacy imports. These local results do not qualify
+the database-dependent paths or the final hosted composition.
+
+The local full-suite attempt discovered 833 tests: 247 passed, 511 database
+cases skipped and 75 errored. Every error was an environment `PermissionError`
+(`Errno 1`); there were no assertion failures. This is not a full-suite pass.
 
 Before accepting the candidate, record the exact source revision and combined
 results for populated migration, lifecycle/history/result guards, duplicate
 intent, concurrent claims, lease expiry, stale-worker fencing, cancellation,
 source amendment, credential/grant changes, serialization/audit rollback and
-actual PostgreSQL persistence. Full process-kill/restart and populated
-backup/restore acceptance is still being built. Existing API, frontend/browser,
-reference and recovery regressions remain required; prior branch receipts do
-not qualify this composition.
+actual PostgreSQL persistence. The implemented process test kills a worker after
+its durable claim and restarts it after lease expiry. The populated `pg_dump` /
+`pg_restore` test checks retained histories and result bytes, resumes running
+work in a separate restored database, checks revoked result access and preserves
+the original database. Both awaited real-runner acceptance at publication. Existing API,
+frontend/browser, reference and recovery regressions remain required; prior
+branch receipts do not qualify this composition.
+The recovery harness and CI select PostgreSQL 16 client tools and check their
+major version for compatible dump/restore execution. PR #529 records subsequent
+acceptance against the actual tested source.
 
 No new model, delegated agent, external broker, cloud platform or orchestration
 framework is adopted. The worker is one synthetic execution foundation, not

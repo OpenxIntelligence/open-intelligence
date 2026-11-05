@@ -113,3 +113,17 @@ Track this work under existing OI-005 and OI-018, with OI-009/OI-013/OI-016 for
 subsequent freshness, authority/recovery and specialist-execution work. Test
 evidence belongs to the implementation revision/PR, not to adoption of the idea.
 
+### Governed execution continuation — 5 November 2026
+
+The founder's explicit continuation authorizes the bounded implementation in
+[H1 durable execution](../engineering/H1_DURABLE_EXECUTION.md): extracted
+source/question contracts, one PostgreSQL Composer run kind, its additive
+`0019_composer_runs` migration and scoped enqueue/status/cancel/result controls.
+The worker uses fresh credentials for the original actor and existing four
+`operations` grants; human follow-through is not repurposed as a job queue.
+Historical #90/#126 remain unmerged lineage. Implementation and process-kill /
+populated-restore tests are present; final combined hosted acceptance was pending
+at source publication. [PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
+maintains current exact-source receipts. The original static-gate checkpoint
+above remains separate evidence.
+

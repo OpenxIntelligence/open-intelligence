@@ -135,6 +135,26 @@ class PostgresComposerRuns:
                       **request.model_dump(exclude={"synthetic"}))
         digest = hashlib.sha256(canonical_result(intent)).hexdigest()
 
+        # A committed intent is recoverable even after its inputs become stale.
+        # Return only its bounded receipt under CURRENT scope/authority; fresh
+        # source validation still governs every genuinely new run and result.
+        with self.registry.transaction():
+            self._scope(patient_id, case_id, organization, actor, purpose, recheck_authority)
+            old = self.registry._fetchone(
+                "SELECT run_id,request_digest FROM investigation.composer_tool_runs "
+                "WHERE origin_org=%s AND actor=%s AND purpose=%s AND request_key=%s",
+                (organization, actor, purpose, request_key))
+            if old is not None:
+                if not hmac.compare_digest(old[1], digest):
+                    raise PatientRegistryConflict("Execution request key reused with changed intent")
+                row = self._load(patient_id, case_id, question_id, old[0], organization, actor, purpose)
+                result = self._prepared({"run": self._status(row), "duplicate": True}, prepare_response)
+                recheck_authority()
+                self.registry.append_event(patient_id, "composer.run.read_authorized", run_id=old[0],
+                                           case_id=case_id, actor=actor, purpose=purpose)
+                recheck_authority()
+                return result
+
         def queue(brief):
             validated = SourceQuestionBrief(**brief)
             recheck_authority()

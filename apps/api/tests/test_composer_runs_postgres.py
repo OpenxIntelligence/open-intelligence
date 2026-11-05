@@ -7,15 +7,22 @@ from contextlib import contextmanager
 from copy import deepcopy
 import hashlib
 import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
 import time
 import threading
 from unittest.mock import patch
 
 from pydantic import ValidationError
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from oi_api.app import create_app
 from oi_api.access import SyntheticFileAuthentication, authenticate_token
 from oi_api.database import Database
+from oi_api.config import Settings
 from oi_api.registry_context import registry_for_principal
 from open_intelligence.patient_registry import PatientRegistryConflict, PatientRegistryDenied
 from http_support import running_server
@@ -126,6 +133,31 @@ class ComposerRunsPostgresTests(source_fixture.SourceVersionFixture):
             code, resumed, _ = self.status(base, patient, question, run)
             self.assertEqual((code, resumed['state']), (200, 'queued'))
 
+    def test_request_key_reuse_across_authorized_patients_conflicts_without_disclosure(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, question, _, run = self.seeded_run(base)
+            other = self.setup_case(base, case='CASE-BETA', key='CREATE-BETA', source_subject='SUBJECT-BETA')
+            code, source, _ = self.ingest(base, other, source_fixture.DIFFERENT, case='CASE-BETA')
+            self.assertEqual(code, 201, source)
+            code, world, _ = patient_fixture.request(
+                base, f'/v1/patients/{other}/cases/CASE-BETA/world-model', token=TOKEN)
+            self.assertEqual(code, 200, world)
+            code, preflight, _ = self.preflight(base, other, source['source_id'], world['snapshot_fingerprint'],
+                                               case='CASE-BETA', line=7)
+            self.assertEqual(code, 200, preflight)
+            code, saved, _ = self.save(base, other, preflight, case='CASE-BETA', request_key='SECOND-QUESTION')
+            self.assertEqual(code, 201, saved)
+            payload = {**brief_fixture.QuestionSourceBriefPostgresTests.brief_intent(preflight),
+                       'request_key': 'RUN-INTENT-ONE'}
+            before = self.stored(run)
+            code, body, _ = patient_fixture.request(
+                base, f'/v1/patients/{other}/cases/CASE-BETA/questions/{saved["question_id"]}/runs',
+                token=TOKEN, body=payload)
+            self.assertEqual(code, 409, body)
+            self.assertEqual(set(body), {'detail'})
+            self.assertNotIn(run, json.dumps(body))
+            self.assertEqual(self.stored(run), before)
+
     def test_concurrent_duplicate_enqueue_has_one_intent(self):
         with running_server(create_app(self.settings)) as base:
             patient, question, preflight = self.seed(base)
@@ -150,6 +182,11 @@ class ComposerRunsPostgresTests(source_fixture.SourceVersionFixture):
             self.assertEqual(self.stored(run), before)
             self.assertEqual(self.enqueue(base, patient, question, preflight,
                                          expected_preflight_sha256='0' * 64)[0], 409)
+            self.creds[0]['actions'].remove('source_brief_export'); self.write()
+            denied = self.enqueue(base, patient, question, preflight)
+            self.assertIn(denied[0], (403, 404))
+            self.assertEqual(set(denied[1]), {'detail'})
+            self.assertEqual(self.stored(run), before)
 
     def test_real_worker_result_digest_restart_and_current_read_grants(self):
         with running_server(create_app(self.settings)) as base:
@@ -263,7 +300,7 @@ class ComposerRunsPostgresTests(source_fixture.SourceVersionFixture):
             self.assertEqual((row['state'], row['attempt_count'], count), ('failed', 3, 0))
             self.assertEqual(history[-1][2], 'attempts_exhausted')
 
-    def test_final_authority_denial_rolls_back_result_and_events(self):
+    def test_prepared_result_authority_denial_rolls_back_result_and_events(self):
         with running_server(create_app(self.settings)) as base:
             patient, _, _, run = self.seeded_run(base)
             claim = self.claim(patient)
@@ -279,6 +316,20 @@ class ComposerRunsPostgresTests(source_fixture.SourceVersionFixture):
             self.assertEqual(self.stored(run), before)
             self.assertEqual(self.events(), events)
 
+    def test_worker_credential_identity_switch_after_claim_blocks_result(self):
+        from oi_api.composer_runs import PostgresComposerRuns
+        with running_server(create_app(self.settings)) as base:
+            patient, _, _, run = self.seeded_run(base)
+            claim = PostgresComposerRuns.claim_next
+            def switch_actor(store, *args, **kwargs):
+                result = claim(store, *args, **kwargs)
+                self.creds[0]['actor'] = 'ACTOR-CHANGED'; self.write()
+                return result
+            with patch.object(PostgresComposerRuns, 'claim_next', switch_actor):
+                self.assertEqual(self.work(patient)['status'], 'blocked')
+            row, count, _ = self.stored(run)
+            self.assertEqual((row['state'], count), ('blocked', 0))
+
     def test_audit_failure_rolls_back_completion(self):
         from open_intelligence.postgres_registry import PostgresPatientRegistry
         with running_server(create_app(self.settings)) as base:
@@ -290,6 +341,116 @@ class ComposerRunsPostgresTests(source_fixture.SourceVersionFixture):
                     self.complete(claim)
             self.assertEqual(self.stored(run), before)
             self.assertEqual(self.events(), events)
+
+    def worker_env(self, settings=None):
+        token_path = Path(self.temp.name) / 'worker-token.txt'
+        token_path.write_text(TOKEN)
+        settings = settings or self.settings
+        return {**os.environ, 'OI_API_DATABASE_URL': settings.database_url,
+                'OI_API_ACCESS_FILE': str(self.access), 'OI_API_WORKER_TOKEN_FILE': str(token_path),
+                'OI_API_ENVIRONMENT': 'synthetic'}
+
+    def test_killed_worker_process_recovers_same_run_with_a_new_fenced_attempt(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, question, _, run = self.seeded_run(base)
+        marker = Path(self.temp.name) / 'claimed.txt'
+        script = '''
+import os, signal, sys
+from pathlib import Path
+from oi_api.composer_runs import PostgresComposerRuns
+from oi_api.worker import main
+original = PostgresComposerRuns.claim_next
+def stop_after_durable_claim(self, *args, **kwargs):
+    claim = original(self, *args, **kwargs)
+    if claim is not None:
+        Path(sys.argv[1]).write_text("claimed")
+        os.kill(os.getpid(), signal.SIGSTOP)
+    return claim
+PostgresComposerRuns.claim_next = stop_after_durable_claim
+raise SystemExit(main(["--once", "--patient", sys.argv[2], "--case", "CASE-ALPHA", "--lease-seconds", "1"]))
+'''
+        child = subprocess.Popen([sys.executable, '-c', script, str(marker), patient],
+                                 env=self.worker_env(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            until = time.monotonic() + 10
+            while not marker.exists() and child.poll() is None and time.monotonic() < until:
+                time.sleep(0.05)
+            self.assertTrue(marker.exists(), 'Worker did not reach its durable claim')
+            self.assertEqual(self.stored(run)[0]['state'], 'running')
+        finally:
+            child.kill()
+            child.communicate(timeout=5)
+        time.sleep(1.1)
+        restarted = subprocess.run([sys.executable, '-m', 'oi_api.worker', '--once', '--patient', patient,
+                                    '--case', CASE], env=self.worker_env(), capture_output=True, text=True, timeout=15)
+        self.assertEqual(restarted.returncode, 0, restarted.stderr)
+        self.assertEqual(json.loads(restarted.stdout), {'status': 'completed', 'attempt_count': 2})
+        row, count, history = self.stored(run)
+        self.assertEqual((row['state'], row['attempt_count'], count), ('completed', 2, 1))
+        self.assertEqual([h[2] for h in history], ['queued', 'claimed', 'lease_recovered', 'completed'])
+        with running_server(create_app(self.settings)) as base:
+            self.assertEqual(self.status(base, patient, question, run, '/result')[0], 200)
+
+    def test_populated_backup_restore_preserves_results_and_recovers_running_work(self):
+        for binary in ('pg_dump', 'pg_restore', 'psql'):
+            self.assertIsNotNone(shutil.which(binary), f'PostgreSQL acceptance needs {binary}')
+            version = subprocess.run([binary, '--version'], capture_output=True, text=True, timeout=5)
+            self.assertEqual(version.returncode, 0, version.stderr)
+            self.assertRegex(version.stdout, r'\(PostgreSQL\) 16\.',
+                             f'Backup acceptance requires matching PostgreSQL 16 client: {binary}')
+        with running_server(create_app(self.settings)) as base:
+            patient, question, preflight, run = self.seeded_run(base)
+            self.assertEqual(self.work(patient)['status'], 'completed')
+            code, result, _ = self.status(base, patient, question, run, '/result')
+            self.assertEqual(code, 200, result)
+            code, pending, _ = self.enqueue(base, patient, question, preflight, key='RUN-RESTORE-TWO')
+            self.assertEqual(code, 201, pending)
+            pending_id = pending['run']['run_id']
+            self.assertEqual(self.claim(patient, 1)['run_id'], pending_id)
+        original = {key: self.stored(key) for key in (run, pending_id)}
+        url = make_url(self.admin.database_url)
+        import uuid
+        name = 'oi_api_test_execution_restore_' + uuid.uuid4().hex[:12]
+        env = {**os.environ, 'PGHOST': url.host, 'PGPORT': str(url.port or 5432),
+               'PGUSER': url.username, 'PGPASSWORD': url.password or ''}
+        dump = str(Path(self.temp.name) / 'execution.backup')
+        def command(args):
+            done = subprocess.run(args, env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(done.returncode, 0, done.stderr)
+        command(['pg_dump', '--format=custom', '--no-owner', '--no-acl', '--dbname', url.database, '--file', dump])
+        command(['psql', '--dbname', 'postgres', '-v', 'ON_ERROR_STOP=1', '--command', 'CREATE DATABASE ' + name])
+        try:
+            command(['pg_restore', '--no-owner', '--no-acl', '--dbname', name, dump])
+            restored = Settings(database_url=url.set(database=name).render_as_string(hide_password=False),
+                                access_file=str(self.access))
+            database = Database(restored)
+            try:
+                with database.registry_connection() as connection:
+                    cursor = connection.cursor()
+                    for run_id in (run, pending_id):
+                        cursor.execute('SELECT state,attempt_count FROM investigation.composer_tool_runs WHERE run_id=%s', (run_id,))
+                        self.assertEqual(tuple(cursor.fetchone()), (original[run_id][0]['state'], original[run_id][0]['attempt_count']))
+                        cursor.execute('SELECT revision,state,reason_code FROM investigation.composer_tool_run_events WHERE run_id=%s ORDER BY revision', (run_id,))
+                        self.assertEqual([tuple(row) for row in cursor.fetchall()], original[run_id][2])
+                    cursor.close()
+            finally:
+                database.close()
+            time.sleep(1.1)
+            resumed = subprocess.run([sys.executable, '-m', 'oi_api.worker', '--once', '--patient', patient,
+                                      '--case', CASE], env=self.worker_env(restored), capture_output=True, text=True, timeout=15)
+            self.assertEqual(resumed.returncode, 0, resumed.stderr)
+            self.assertEqual(json.loads(resumed.stdout), {'status': 'completed', 'attempt_count': 2})
+            with running_server(create_app(restored)) as base:
+                code, reopened, _ = self.status(base, patient, question, run, '/result')
+                self.assertEqual(code, 200, reopened)
+                self.assertEqual(reopened['brief'], result['brief'])
+                self.assertEqual(reopened['result_sha256'], result['result_sha256'])
+                self.assertEqual(self.status(base, patient, question, pending_id, '/result')[0], 200)
+                self.creds[0]['actions'].remove('source_brief_export'); self.write()
+                self.assertIn(self.status(base, patient, question, run, '/result')[0], (403, 404))
+            self.assertEqual({key: self.stored(key) for key in (run, pending_id)}, original)
+        finally:
+            command(['psql', '--dbname', 'postgres', '-v', 'ON_ERROR_STOP=1', '--command', 'DROP DATABASE ' + name])
 
     def test_invalid_serialized_brief_rolls_back_result_and_audit(self):
         from oi_api import source_questions

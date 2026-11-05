@@ -86,6 +86,11 @@ actor/organization/purpose. It uses independently supplied local credentials,
 never a bearer stored in a run. The existing patient_read, question_read,
 source_read and source_brief_export actions remain necessary.
 
+An exact accepted request key and intent recover the historical run receipt
+under current original-actor/organization/purpose and scope checks even after
+source amendment. Recovery creates no work and releases no result. Freshness
+still gates new intents, computation and result disclosure.
+
 Claims are short transactions with SKIP LOCKED, database time, a bounded lease,
 three attempts and bounded retry delay. Computation follows claim commit.
 The existing brief owner validates the exact question and source snapshot.
@@ -113,7 +118,12 @@ serialization/audit rollback, restart and real PostgreSQL persistence. PostgreSQ
 acceptance must run without skips. Existing API, migration, frontend/browser and
 backup/restore checks remain required; record exact hosted source identity.
 
-## Execution ledger
+## Execution ledger — source-publication checkpoint
+
+This ledger preserves the implementation and preflight state at publication.
+[PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529) maintains
+subsequent exact-source test and hosted acceptance receipts; pending entries
+below describe this checkpoint rather than the PR's later status.
 
 - Repository merge: retained both architecture backlog additions and concurrent
   main backlog edits; no application conflict. Combined checkpoint `463c545`.
@@ -129,3 +139,35 @@ backup/restore checks remain required; record exact hosted source identity.
   and Docker are unavailable; package bootstrap failed on container privilege
   restrictions. Real database acceptance will be obtained in hosted PostgreSQL
   CI, and local skips will remain explicitly distinguished.
+- Independent review identified an Important retry-recovery defect: source
+  amendment prevented recovery of an already accepted enqueue whose response
+  was lost. The current correction resolves accepted intent before new-source
+  validation, checks current original-actor scope and returns only the bounded
+  historical receipt. The lost-response-after-amendment regression is included;
+  final PostgreSQL verification of the correction is pending.
+- Initial hosted migration coverage passed 13 tests. Runtime enqueue then exposed
+  an audit argument collision; its wiring was corrected. Intermediate source
+  `2f6e46862d119cd9c223022ebed77f7010fa63b9` in
+  [focused PostgreSQL run 42088796360](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42088796360)
+  executed 39 tests: 38 passed, the retry-recovery regression failed with 409
+  instead of 200, and zero tests skipped. This is a reproduced defect receipt,
+  not final candidate acceptance.
+- Four further PostgreSQL cases bring the focused selection to 43 tests. The
+  current local selection reports nine passes and 34 explicit PostgreSQL skips;
+  10 HTTP contract tests and 31 architecture tests pass separately. The current
+  gate covers 52 modules, 10 owners and 77 recorded legacy imports. Final hosted
+  verification remains pending.
+- Local full-suite classification: 833 discovered, 247 passed, 511 database
+  skips and 75 errors, all environment `PermissionError` (`Errno 1`), with no
+  assertion failures. This does not establish a passing full suite.
+- Process-kill/restart and populated `pg_dump`/`pg_restore` tests are implemented
+  in `test_composer_runs_postgres.py`. They cover a committed claim abandoned by
+  a killed process, recovery with a new attempt, preserved restored histories and
+  result bytes, resumed restored work, revoked result access and an unchanged
+  original database. These paths await real-runner acceptance.
+- Following focused harness review, CI selects PostgreSQL 16 client binaries
+  and the restore test checks their exact major version. This addresses
+  dump/restore compatibility without treating unexecuted acceptance as a pass.
+- [The durable execution guide](../../engineering/H1_DURABLE_EXECUTION.md),
+  existing architecture records and OI-009/OI-013/OI-018 now cross-reference this
+  candidate while preserving the earlier static-gate and historical checkpoints.

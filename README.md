@@ -20,8 +20,9 @@ the retained contributions. This candidate requires `0019_composer_runs`, extend
 [saved laboratory questions](docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md).
 The [durable execution guide](docs/engineering/H1_DURABLE_EXECUTION.md) describes
 the new actor-bound, synthetic source-brief worker and its enqueue/status/cancel/result
-controls. Real PostgreSQL, process-recovery, backup/restore and hosted acceptance
-for this execution candidate are pending; implementation is not a verification receipt.
+controls. Its source-publication checkpoint records pending PostgreSQL and
+recovery acceptance; [PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
+maintains current exact-source test and hosted receipts.
 The Python/SQLite application is retained as a separate reference implementation.
 
 Use independently authored fictional data only. This application does not establish
