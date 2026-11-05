@@ -1,5 +1,13 @@
 # Open Intelligence H1 patient workspace
 
+For the complete connected application, start with the
+[persistent fictional demo](../../docs/H1_DEMO.md).
+[Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
+records the integrated revision and verification, and the
+[convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)
+maps its preserved contributions. The increment descriptions below retain their
+original implementation scope; their old PR numbers do not define the current head.
+
 This is the first **React + Vite + TypeScript** entry connected to the existing
 **FastAPI/PostgreSQL 16** patient registry (#172, #162). It does not replace the
 canonical identity owner, existing source-ledger application (#166), or accepted

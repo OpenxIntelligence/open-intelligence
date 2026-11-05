@@ -65,6 +65,28 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, screen
         assert cd.evaluate("document.querySelectorAll('[data-testid=local-original] script').length===0")
         # Selecting a file does not write; only the subsequent explicit submission does.
         assert len(operator(index_path)['sources']) == original_count
+        if name == 'original.txt':
+            viewport=cd.evaluate('({width:innerWidth,height:innerHeight})')
+            cd.command('Emulation.setDeviceMetricsOverride',{'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
+            cd.evaluate("document.querySelector('[data-testid=local-original]').style.fontSize='32px';document.querySelector('#original-file').focus()")
+            def key(name,code):
+                cd.command('Input.dispatchKeyEvent',{'type':'rawKeyDown','key':name,'code':name,'windowsVirtualKeyCode':code})
+                cd.command('Input.dispatchKeyEvent',{'type':'keyUp','key':name,'code':name,'windowsVirtualKeyCode':code})
+            key('Tab',9)
+            cd.wait("document.activeElement===document.querySelector('[data-testid=local-original]')", 'Tab reaches local preview before confirmation')
+            assert cd.evaluate("document.activeElement.scrollHeight>document.activeElement.clientHeight"), 'Enlarged preview exercises overflow'
+            key('PageDown',34)
+            cd.wait("document.querySelector('[data-testid=local-original]').scrollTop>0", 'keyboard scrolls selected file before import')
+            cd.wait("(()=>{const r=document.activeElement.getBoundingClientRect();const h=document.querySelector('.topbar');return r.bottom<=innerHeight&&r.top>=(h.dataset.sticky==='false'?0:h.getBoundingClientRect().bottom)})()", 'entire preview is visible below patient context')
+            assert cd.evaluate("!document.querySelector('#original-confirm').checked && document.querySelector('[data-testid=import-original]').disabled"), 'Reading is not confirmation'
+            assert len(operator(index_path)['sources']) == original_count, 'Keyboard inspection must not import'
+            (screenshots/'local-preview-keyboard-390.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot',{'format':'png'})['data']))
+            key('Tab',9)
+            assert cd.evaluate("document.activeElement===document.querySelector('#original-confirm') && !document.activeElement.checked"), 'Tab exits reader to an unchecked confirmation'
+            assert cd.evaluate("document.querySelector('[data-testid=local-original]').textContent")==raw.decode(), 'Keyboard reading preserves exact local bytes'
+            cd.evaluate("document.querySelector('[data-testid=local-original]').style.removeProperty('font-size')")
+            cd.command('Emulation.setDeviceMetricsOverride',{**viewport,'deviceScaleFactor':1,'mobile':False})
+            print('PASS LOCAL PREVIEW KEYBOARD: actual selected file, native Tab and PageDown, visible enlarged reader, unchecked confirmation, no implicit import, exact bytes preserved.')
         cd.evaluate("document.querySelector('#original-confirm').click()")
         toggle_import()
         cd.wait("!document.querySelector('[data-testid=record-import-disclosure]').open", 'keyboard collapses import with a selection')

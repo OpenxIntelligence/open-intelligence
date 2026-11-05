@@ -14,5 +14,9 @@ const headers={
 export default defineConfig({
  server:{host:'127.0.0.1',port:5173,strictPort:true,cors:false,hmr:false,proxy,headers},
  preview:{host:'127.0.0.1',port:4173,strictPort:true,cors:false,proxy,headers},
- build:{target:'es2022',sourcemap:false},
+ build:{target:'es2022',sourcemap:false,rollupOptions:{output:{
+  // Keep the existing React runtime separate from application code. This
+  // changes packaging only; it adds no dependency or assumed latency benefit.
+  manualChunks(id){if(id.includes('/node_modules/'))return 'react-runtime';}
+ }}},
 });

@@ -26,37 +26,77 @@ Local checks: eight pure FHIR parser tests, Python compilation, whitespace check
 
 No dependency, external service, production identity mechanism, clinical interpretation, licensing decision or deployment is introduced. Review-return manual binding, clinical validation and production release remain separate work.
 
-## Populated manual-task recovery extension
 
-The existing source Compose gate now also invokes `apps/api/tools/manual_task_recovery.py`.
-This closes the specific missing acceptance case recorded on #471: backup/restore
-with a populated optional manual-task dependency. It continues OI-006/OI-009 and
-#442, using the existing patient, source, question, passage and task APIs.
+## Populated manual-task recovery on the accepted application
 
-Two acknowledged tasks share a current source question. Only one explicitly
-binds the saved manual-passage revision and reference digest. The gate compares
-all application rows and sequence state across a readable restore, then proves
-the original task anchors, timestamps, history and command receipts through HTTP
-and API/database restarts. A correction made on the restored copy must stale only
-the manual-dependent task. Its completion must fail without writes; the source-only
-control must still complete. A second restore preserves that stale state and the
-original dependency, with exact retries and independent permission denials. A
-third restore preserves a revoked binding and denies task/context reads and writes.
-Source-context freshness is asserted throughout so source staleness cannot explain
-the manual-dependent completion denial. The original database stays unchanged.
+This section supersedes the pending-composition language above for the application
+baseline, but does not claim acceptance of this new recovery composition. The
+application was consolidated by #481 and is on `main` at
+`62e218e1e2bd6996bb126fcc1ea956fcf18199e6`. The existing recovery-only draft #483
+is being reconciled with that mainline; it is not a new runtime implementation.
 
-The helper adds no production behavior, schema, dependency or workflow. All seven
-existing API recovery stages remain in place. Successful acceptance adds the
-`manual_task_dependency_recovery` receipt to the existing source-document recovery
-artifact; the receipt is written only after every new assertion succeeds.
+### Preserved sources and bounded changes
 
-Local compilation, the synthetic-data audit, 13 existing recovery-oracle tests
-and four new negative-control tests pass at this source checkpoint. Retries retain
-exact business state while allowing only their expected scoped access audits;
-negative controls reject lost dependencies, unexpected events and sequence drift.
-The broader local reference run executed 765 tests with nine failures and eight
-errors because the local pypdf installation differs from the pinned 6.21.4. No
-reference-suite success is claimed; hosted CI installs the reviewed locked runtime. Docker/PostgreSQL are unavailable locally; full
-hosted acceptance is pending and must be tied to this candidate's exact head.
-The separate #471/#473 frontend integration work is not included or claimed tested
-by this recovery-only extension. No merge, deployment or clinical validation.
+- Main supplies the patient application, persistent fictional demo, laboratory
+  workspace, all published migrations through `0017_lab_manual_convergence`,
+  dependency locks, authority boundaries and all seven recovery stages.
+- Recovery source: #483 at `076c08a67d9712a2e27ec188ed4c5f41509b8a11`. Its three
+  verification files are retained byte-for-byte:
+  `apps/api/tools/manual_task_recovery.py`,
+  `apps/api/tests/test_manual_task_recovery_assertions.py`, and
+  `apps/api/tools/verify_sources_compose.py`.
+- Main's source recovery driver differs from the donor only by the nine added
+  lines that invoke the populated-task recovery proof and retain its receipt.
+  No existing assertion, timeout, workflow, runtime, schema or dependency changes.
+- The current `docs/EXECUTION_BACKLOG.csv` is retained unchanged. Its newer
+  accepted-demo notes must not be replaced with the donor's older pending notes.
+  Work remains mapped to OI-006, OI-009, GH-112 and issue #442.
+
+### Recovery behavior to establish on the combined head
+
+The existing source Compose gate creates a separate fictional patient, one
+canonical question, one saved manual-passage revision and two tasks: an explicitly
+bound task and an unrelated source-only control. It restores readable, stale and
+binding-revoked databases with actual PostgreSQL dump/restore, compares all owned
+rows and sequence state, and exercises API/database restarts. A correction after
+restore must stale only the bound task. Its attempted completion must have no
+business effects; the source-only task must still complete. The canonical
+question's structured source remains current, so its staleness cannot explain
+selective denial. Exact retries and independent grant withdrawals preserve
+identity and history without disclosing original quotations. The original
+source database remains unchanged.
+
+The `oi.manual-task-recovery/1` receipt is added to the existing source recovery
+artifact only after every assertion passes. Negative controls reject lost
+provenance, changed business rows, wrong or reused audit receipts, and sequence
+drift. Read audits may change only as explicitly expected; no clinical approval
+is manufactured.
+
+### Evidence and acceptance boundary
+
+The prior #483 source has recorded successful API/recovery run `41930712845`
+and browser run `41930712898`; those are donor evidence, not qualification of the
+new mainline composition. Its retained web archive SHA-256 was independently
+recomputed as `17cefe6f37340bfba465a1ae40eac46e6fb9a82a0e5861b704a5988d43baffd6`.
+The accepted #481 web archive independently matched
+`e5d65fc26533c1de2c7afb98b708f332ac05777f626adebf84f24edf86f2887b`.
+A Git comparison confirms main differs from that tested #481 source only in
+three research documents; using the full main tree preserves all three.
+
+Local continuation evidence: 13 existing recovery-assertion tests passed before
+composition; all 17 recovery-assertion tests passed afterward. Python compilation
+and whitespace checks passed. These are proof-helper tests, not a local database
+or browser run. Docker/PostgreSQL are unavailable. A full local baseline API
+attempt ran 257 tests with 67 errors and 27 skips in an environment missing
+`pydicom` and using `pypdf` 5.9.0 rather than the pinned 6.21.4. The composed full
+API diagnostic was interrupted without a final result. Neither is counted as
+passing acceptance.
+
+Fresh hosted validation must cover the exact reconciled commit: full hash-locked
+API/PostgreSQL contracts, populated migrations, all seven restart/restore stages
+including this populated dependency, original reference checks, React/rights/build,
+actual Chromium and the persistent fictional demo. Preserve donor and main
+ancestry and verify the final tree. New combined hosted results and independent
+review remain pending at this source checkpoint; the draft PR records their
+subsequent exact-head outcome. No merge to main, deployment, real patient data,
+clinical validation or manual-dependent Review-return behavior is authorized.
