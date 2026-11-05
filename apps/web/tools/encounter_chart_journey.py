@@ -176,12 +176,23 @@ def exercise(cd, patient_id, token, credentials, write_grants, case, source_id, 
         click('encounter-note-save')
         press(open_history, 'read explicitly rebased draft')
         history(FIRST, SECOND, CONCURRENT, LOCAL_EDIT)
+        detail='document.querySelector("[data-testid=encounter-version-row] .version-details")'
+        cd.evaluate(detail+'.querySelector("summary").click()')
+        assert cd.evaluate(detail+'.open')
+        assert hashlib.sha256(FIRST.encode()).hexdigest() in cd.evaluate(detail+'.innerText')
+        assert 'FICTIONAL-FACILITY' in cd.evaluate(detail+'.innerText')
+        cd.evaluate(detail+'.querySelector("summary").click()')
         for width in (1280,360):
             cd.command('Emulation.setDeviceMetricsOverride',{'width':width,'height':800,'deviceScaleFactor':1,'mobile':width==360})
-            cd.wait('document.documentElement.scrollWidth<=innerWidth+1','visit chart reflow at width '+str(width))
-            cd.evaluate('document.querySelector("[aria-label=\\"Saved note history\\"]").scrollIntoView()')
+            cd.command('Emulation.setPageScaleFactor', {'pageScaleFactor':1})
+            cd.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>done(true))))')
+            layout=cd.evaluate('({width:document.documentElement.clientWidth,overflow:document.documentElement.scrollWidth,viewport:visualViewport.width})')
+            assert layout['overflow'] <= width+1 and abs(layout['viewport']-width)<=20, (width, layout)
+            history_selector='document.getElementById("encounter-history-heading")'
+            cd.evaluate(history_selector+'.scrollIntoView({block:"start"})')
+            cd.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>done(true))))')
             (artifacts / ('visits-history-'+str(width)+'.png')).write_bytes(base64.b64decode(
-                cd.command('Page.captureScreenshot',{'format':'png'})['data']))
+                cd.command('Page.captureScreenshot',{'format':'png','captureBeyondViewport':False})['data']))
         cd.command('Emulation.clearDeviceMetricsOverride')
         saved = operator(path)['versions']
         assert [(v['version'], v['body'], v['facility_id'], v['note_kind']) for v in saved] == [

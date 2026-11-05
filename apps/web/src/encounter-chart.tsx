@@ -29,6 +29,8 @@ const fieldsOf = (v:NoteVersion):Readonly<Fields> => Object.freeze({kind:v.note_
 const fieldNames = ['kind','facility','department','body'] as const;
 const changedFields = (d:Draft) => fieldNames.filter(k=>d[k]!==d.original[k]||d.recoveredChanges?.includes(k));
 const label = (value:string) => value.replaceAll('_',' ').replace(/^./, c=>c.toUpperCase());
+const recordedTime = new Intl.DateTimeFormat(undefined,{year:'numeric',month:'short',day:'numeric',
+  hour:'numeric',minute:'2-digit',timeZoneName:'short'});
 const keyPattern = String.raw`[A-Z][A-Z0-9\-]{1,39}`;
 const attributionPattern = String.raw`[A-Za-z0-9_.:\-]{8,100}`;
 const isDraft = (version:NoteVersion) => version.status==='draft'||version.status==='draft_correction';
@@ -283,10 +285,18 @@ export function EncounterChart({scope,dirtyRef,onRecords}:{scope:Scope;dirtyRef:
           <h5 id="encounter-history-heading" data-workspace-anchor="Note history">Saved versions · {history.key}</h5>
           {!history.items.length&&<p>No saved versions were returned.</p>}
           <ol className="case-list">{history.items.map(version=><li key={version.id} className="encounter-version" data-testid="encounter-version-row">
-            <strong>Version {version.version}{version.version===1?' · Original':''}</strong> <span className="record-state">{label(version.status)}</span>
-            <div>{version.note_kind?label(version.note_kind):'Note type not recorded'} · {version.created_at}</div>
-            <div>Author: <code>{version.authored_by}</code> · Facility: {version.facility_id??'Not recorded'} · Department: {version.department_id??'Not recorded'}</div>
-            <pre>{version.body}</pre>
+            <div className="version-heading"><strong>Version {version.version}{version.version===1?' · Original':''}</strong>
+              <span className="record-state">{label(version.status)}</span></div>
+            <p className="version-byline">{version.note_kind?label(version.note_kind):'Note type not recorded'} · {version.authored_by}<br/>
+              <time dateTime={version.created_at}>{recordedTime.format(new Date(version.created_at))}</time></p>
+            <pre dir="auto">{version.body}</pre>
+            <details className="version-details"><summary>Version details</summary>
+              <dl><dt>Recorded at source</dt><dd><code>{version.created_at}</code></dd>
+                <dt>Facility</dt><dd>{version.facility_id??'Not recorded'}</dd>
+                <dt>Department</dt><dd>{version.department_id??'Not recorded'}</dd>
+                {version.amendment_reason&&<><dt>Amendment reason</dt><dd>{version.amendment_reason}</dd></>}
+                <dt>Content SHA-256</dt><dd><code>{version.sha256}</code></dd></dl>
+            </details>
           </li>)}</ol>
           {history.next!==null&&<button type="button" data-testid="encounter-history-more" disabled={blocked} onClick={()=>readHistory(history.key,history.next!)}>Show more versions</button>}
           {writableVisit&&!draft&&latest&&isDraft(latest)&&<button type="button" data-testid="encounter-note-edit" disabled={blocked} onClick={editLatest}>Edit version {latest.version}</button>}
