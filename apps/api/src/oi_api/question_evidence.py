@@ -49,14 +49,7 @@ class PostgresQuestionEvidence:
                 self.registry._allow(actor, patient_id, action, purpose)
             # Record row locks serialize a different connection's rights append.
             # Also refuse a same-transaction callback changing inspected rights.
-            for (record_id, version), expected in rights_versions.items():
-                latest = self.registry._fetchone(
-                    "SELECT decision_id FROM investigation.evidence_rights_decisions "
-                    "WHERE record_id=%s AND version=%s ORDER BY revision DESC LIMIT 1",
-                    (record_id, version),
-                )
-                if (latest[0] if latest else None) != expected:
-                    raise PatientRegistryDenied("Evidence rights changed")
+            self._check_decisions(rights_versions)
 
         def prepare(index):
             items = self.question_owner(self.registry).project_locked(
@@ -105,6 +98,52 @@ class PostgresQuestionEvidence:
         record, digest, decision = materialize_locked(self.registry, row)
         rights_versions[(record.id, record.version)] = decision
         return record, digest
+
+    def permitted_review_link_locked(self, question, link_id, citation, expected_sha256, *,
+                                     organization, actor, purpose):
+        """Resolve only this question's exact linked metadata, under the review transaction.
+
+        Return a fresh-decision check to run after response preparation and audit insertion.
+        The same record share lock serializes a concurrent rights writer until commit.
+        """
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("Evidence verification requires a source-owner transaction")
+        patient_id, case_id = question["patient_id"], question["case_id"]
+        self.registry._allow(actor, patient_id, "evidence_read", purpose)
+        link = self.registry._fetchone(
+            "SELECT record_id,version,metadata_sha256,source_snapshot_contract,source_snapshot_sha256,"
+            "preflight_sha256 FROM investigation.question_evidence_links "
+            "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND question_id=%s AND link_id=%s",
+            (patient_id, case_id, organization, question["question_id"], link_id))
+        if link is None:
+            raise PatientRegistryDenied("Evidence unavailable")
+        record_id, version, linked_sha, contract, snapshot, preflight = link
+        decisions = {}
+        record, digest = self._record(record_id, version, decisions)
+        if (record is None or record.superseded or not verify_record(
+                record, f"{record_id}@{version}", case_id=case_id, organization=organization).ok
+                or public_metadata(record, digest, case_id=case_id, organization=organization) is None):
+            raise PatientRegistryDenied("Evidence unavailable")
+        if not hmac.compare_digest(digest, linked_sha):
+            raise PatientRegistryError("Immutable citation metadata changed")
+        if ((contract, snapshot, preflight, f"{record_id}@{version}", digest) !=
+                (question["source_snapshot_contract"], question["source_snapshot_sha256"],
+                 question["preflight_sha256"], citation, expected_sha256)):
+            raise PatientRegistryConflict("Linked citation or source context differs from selection")
+
+        def recheck():
+            self.registry._allow(actor, patient_id, "evidence_read", purpose)
+            self._check_decisions(decisions)
+        return recheck
+
+    def _check_decisions(self, versions):
+        for (record_id, version), expected in versions.items():
+            latest = self.registry._fetchone(
+                "SELECT decision_id FROM investigation.evidence_rights_decisions "
+                "WHERE record_id=%s AND version=%s ORDER BY revision DESC LIMIT 1",
+                (record_id, version))
+            if (latest[0] if latest else None) != expected:
+                raise PatientRegistryDenied("Evidence rights changed")
 
     def search(self, patient_id, case_id, question_id, *, organization, actor, purpose,
                query, recheck_authority, prepare_response=None):

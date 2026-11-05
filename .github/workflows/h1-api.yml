@@ -74,6 +74,12 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12.16'
+      - name: Select matching PostgreSQL 16 backup clients
+        run: |
+          test -x /usr/lib/postgresql/16/bin/pg_dump
+          test -x /usr/lib/postgresql/16/bin/pg_restore
+          test -x /usr/lib/postgresql/16/bin/psql
+          echo /usr/lib/postgresql/16/bin >> "$GITHUB_PATH"
       - name: Check the inherited synthetic-data boundary
         run: python tools/audit_ci_data_boundaries.py
       - name: Prepare hash-locked runtime wheels with code-only pydicom
@@ -95,6 +101,8 @@ jobs:
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           raise SystemExit(0 if result.wasSuccessful() and result.testsRun and not result.skipped else 1)
           PYTEST
+      - name: Verify paired PostgreSQL and receiver restore, restart and revocation
+        run: python apps/api/tools/verify_registry_compose.py
       - name: Verify joined EHR and laboratory freshness against populated data
         run: |
           python - <<'PYTEST'
@@ -139,8 +147,6 @@ jobs:
         run: |
           python tests/browser_journey.py
           python tests/patient_mission_browser_journey.py
-      - name: Verify actual patient HTTP, restart, backup restore and access revocation
-        run: python apps/api/tools/verify_registry_compose.py
       - name: Verify source HTTP, fresh authority, source receipts and restored originals
         env:
           OI_SOURCE_ACCEPTANCE_FILE: verification-api/source-document-recovery.json

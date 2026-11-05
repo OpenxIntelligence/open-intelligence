@@ -15,7 +15,6 @@ from oi_api.case_bindings import CanonicalCaseBindings
 from oi_api.composer_preflight import PostgresSourceComposerPreflight
 from oi_api.contracts import SCHEMA_REVISION
 from oi_api.database import Database
-from oi_api.contracts import SCHEMA_REVISION
 from oi_api.evidence_catalog import fictional_records, seed_fictional_records
 from oi_api.migrate import migrate
 from oi_api.question_evidence import PostgresQuestionEvidence as MetadataEvidence
@@ -31,6 +30,18 @@ from test_source_versions import ORIGINAL, SourceVersionFixture
 
 COMMON = {"organization": "ORG-ALPHA", "actor": "ACTOR-ALPHA", "purpose": "operations"}
 OPTIONS = {**COMMON, "recheck_authority": lambda: None, "prepare_response": None}
+
+
+def seed_historical_source(registry):
+    patient = registry.create_patient(**COMMON, request_key="UPGRADE-PATIENT")["patient_id"]
+    CanonicalCaseBindings(registry).bind(
+        patient, **COMMON, case_id="CASE-ALPHA", source_organization="ORG-INSTITUTION",
+        source_system="SYS-SYNTH", source_subject_ref="UPGRADE-SUBJECT", review_ref="UPGRADE-REVIEW")
+    source = PostgresSourceVersions(registry).import_original(
+        patient, "CASE-ALPHA", ORIGINAL.encode("utf-8"), **OPTIONS)["source_id"]
+    index = PostgresSourceVersions(registry).list(patient, "CASE-ALPHA", **OPTIONS)
+    snapshot = project_source_world_model(index)["snapshot_fingerprint"]
+    return patient, source, snapshot
 
 
 class EvidenceConvergenceMigrationTests(SourceVersionFixture):
@@ -60,14 +71,7 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
             with probe.registry_connection():
                 self.fail("Current application accepted an older evidence schema")
         with self.services() as registry:
-            patient = registry.create_patient(**COMMON, request_key="UPGRADE-PATIENT")["patient_id"]
-            CanonicalCaseBindings(registry).bind(
-                patient, **COMMON, case_id="CASE-ALPHA", source_organization="ORG-INSTITUTION",
-                source_system="SYS-SYNTH", source_subject_ref="UPGRADE-SUBJECT", review_ref="UPGRADE-REVIEW")
-            source = PostgresSourceVersions(registry).import_original(
-                patient, "CASE-ALPHA", ORIGINAL.encode("utf-8"), **OPTIONS)["source_id"]
-            index = PostgresSourceVersions(registry).list(patient, "CASE-ALPHA", **OPTIONS)
-            snapshot = project_source_world_model(index)["snapshot_fingerprint"]
+            patient, source, snapshot = seed_historical_source(registry)
             question_text = "Which fictional continuity details require independent review?"
             prepared = PostgresSourceComposerPreflight(registry).preview(
                 patient, "CASE-ALPHA", **OPTIONS, expected_source_snapshot_sha256=snapshot,
@@ -152,7 +156,7 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
             self.assertEqual(code, 200, packet)
             self.assertEqual((packet["evidence"], packet["assessments"], packet["reports"]), ([], [], []))
 
-    def test_populated_authored_head_upgrades_without_changing_report_bytes_or_retry_identity(self):
+    def seed_authored_report(self):
         patient, question, prepared = self.start_at("0010_authored_evidence_origin")
         rights = {item: {use: "unknown" for use in ("store", "display", "redistribute", "ml_use")}
                   for item in ("metadata", "abstract", "full_text", "figures", "terminology", "api_output")}
@@ -180,6 +184,14 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
                              "assessment_ids": [assessment["assessment_id"]]}
             report = owner.create_report(patient, "CASE-ALPHA", question, **OPTIONS, payload=report_intent)
             frozen = owner.report(patient, "CASE-ALPHA", question, report["report_id"], **OPTIONS)
+        return {"patient": patient, "question": question, "assessment_body": assessment_intent,
+                "assessment": assessment, "report_body": report_intent, "report": report,
+                "report_id": report["report_id"], "prepared": frozen}
+
+    def test_populated_authored_head_upgrades_without_changing_report_bytes_or_retry_identity(self):
+        state = self.seed_authored_report()
+        patient, question = state["patient"], state["question"]
+        report, frozen = state["report"], state["prepared"]
         self.upgrade_preserving(self.snapshot())
         prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA/questions/{question}"
         with running_server(create_app(self.settings)) as base:
@@ -187,8 +199,8 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
             self.assertEqual(code, 200, reopened)
             for field in ("report_id", "body", "body_sha256", "snapshot", "snapshot_sha256", "prepared_at"):
                 self.assertEqual(reopened[field], frozen[field])
-            for suffix, intent, receipt in (("/evidence-assessments", assessment_intent, assessment),
-                                           ("/evidence-reports", report_intent, report)):
+            for suffix, intent, receipt in (("/evidence-assessments", state["assessment_body"], state["assessment"]),
+                                           ("/evidence-reports", state["report_body"], report)):
                 code, actual, _ = request(base, prefix + suffix, token=TOKEN_A, body=intent)
                 self.assertEqual((code, actual), (200, {**receipt, "duplicate": True}))
             code, metadata, _ = request(base, prefix + "/evidence-links", token=TOKEN_A)

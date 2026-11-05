@@ -154,7 +154,7 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
         import sqlite3
         from urllib.parse import urlsplit
         import signal
-        from oi_api.encounter_relay import FeedUnavailable, receive_once
+        from oi_api.encounter_relay import FeedUnavailable, receive_once, verify_history
         from test_encounter_relay import interrupt_receiver
 
         self.creds[0]["actions"].extend(["encounter.read", "encounter.schedule", "encounter.transition",
@@ -196,6 +196,8 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
             result = deliver()
             self.assertEqual((result["applied"], result["counts"]), (3, expected))
             self.assertEqual(deliver()["applied"], 0)
+            verification = verify_history(receiver, port, patient, lambda: TOKEN_A)
+            self.assertEqual(verification["verified_events"], 3)
             post(note, dict(draft, request_key="WRITE-TWO", expected_version=1, body="Fictional revision."))
             with self.assertRaises(FeedUnavailable):
                 deliver(TOKEN_B)
@@ -203,9 +205,13 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
             self.write()
             with self.assertRaises(FeedUnavailable):
                 deliver()
+            with self.assertRaises(FeedUnavailable):
+                verify_history(receiver, port, patient, lambda: TOKEN_A)
             with closing(sqlite3.connect(receiver)) as db:
                 self.assertEqual(db.execute("SELECT count(*) FROM activity_receipts").fetchone()[0], 3)
             self.creds[0]["actions"].append("note.read")
             self.write()
             self.assertEqual(deliver()["applied"], 1)
+            verification = verify_history(receiver, port, patient, lambda: TOKEN_A)
+            self.assertEqual(verification["verified_events"], 4)
             self.assertNotIn(draft["body"].encode(), receiver.read_bytes())

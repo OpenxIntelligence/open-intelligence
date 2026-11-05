@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import closing
+from contextlib import closing, contextmanager
 from datetime import datetime
 import hashlib
 from http.client import HTTPConnection, HTTPException
@@ -12,12 +12,14 @@ from pathlib import Path
 import re
 import sqlite3
 import stat
+import tempfile
 
 from .encounter_event_contract import EncounterEvents
 
 PAGE_SIZE = 25
 MAX_BODY = 32768
 MAX_ID = 2**63 - 1
+ACCESS_RECEIPT = re.compile(r"ACCESS-[0-9A-F]{32}")
 
 
 class FeedUnavailable(RuntimeError):
@@ -44,7 +46,7 @@ def read_page(port, patient, token, after_id):
 
 def checked_events(document, patient, cursor):
     page = EncounterEvents.model_validate(document, strict=True)
-    if (page.patient_id != patient or not re.fullmatch(r"ACCESS-[0-9A-F]{32}", page.access_receipt_id)
+    if (page.patient_id != patient or not ACCESS_RECEIPT.fullmatch(page.access_receipt_id)
             or len(page.events) > PAGE_SIZE or (page.has_more and len(page.events) != PAGE_SIZE)):
         raise ValueError("Unexpected patient, authorization receipt or page size")
     # Re-read the last committed event. A reset/truncated upstream cannot silently
@@ -72,10 +74,10 @@ def checked_events(document, patient, cursor):
     return page
 
 
-def bind_store(db, scope):
-    # Caller holds BEGIN IMMEDIATE, including while initializing a fresh receiver.
+def bind_store(db, scope, *, initialize=True):
+    # Caller holds a transaction; fresh receivers require BEGIN IMMEDIATE.
     version = db.execute("PRAGMA user_version").fetchone()[0]
-    if version == 0:
+    if version == 0 and initialize:
         if db.execute("SELECT 1 FROM sqlite_schema LIMIT 1").fetchone():
             raise ValueError("Use a dedicated receiver database")
         db.execute("CREATE TABLE activity_scope (scope_sha256 TEXT PRIMARY KEY)")
@@ -94,19 +96,36 @@ def checkpoint(db):
     return db.execute("SELECT COALESCE(MAX(event_id), 0) FROM activity_receipts").fetchone()[0]
 
 
-def receive_once(path: Path, port, patient, token_provider):
+def source_scope(port, patient):
     if not re.fullmatch(r"PAT-[0-9A-F]{32}", patient) or type(port) is not int or not 1 <= port <= 65535:
         raise ValueError("Expected a synthetic patient and a local API port")
-    scope = hashlib.sha256(f"encounter-activity/1:127.0.0.1:{port}:{patient}".encode("ascii")).hexdigest()
+    return hashlib.sha256(f"encounter-activity/1:127.0.0.1:{port}:{patient}".encode("ascii")).hexdigest()
+
+
+@contextmanager
+def open_receiver(path: Path, *, read_only=False):
     # A private operator directory is required for the database and SQLite journal.
-    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    mode = os.O_RDONLY if read_only else os.O_CREAT | os.O_RDWR
+    fd = os.open(path, mode | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077 or info.st_uid != os.geteuid():
             raise ValueError("Receiver database must be private to its operator")
     finally:
         os.close(fd)
-    with closing(sqlite3.connect(path)) as db:
+    uri = path.absolute().as_uri() + ("?mode=ro" if read_only else "?mode=rw")
+    with closing(sqlite3.connect(uri, uri=True)) as db:
+        yield db
+
+
+def event_digest(event):
+    canonical = json.dumps(event.model_dump(), sort_keys=True, separators=(",", ":")).encode("ascii")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def receive_once(path: Path, port, patient, token_provider):
+    scope = source_scope(port, patient)
+    with open_receiver(path) as db:
         with db:
             db.execute("BEGIN IMMEDIATE")
             bind_store(db, scope)
@@ -127,8 +146,7 @@ def receive_once(path: Path, port, patient, token_provider):
                 raise ValueError("Producer omitted a previously delivered event")
             applied = 0
             for event in page.events:
-                canonical = json.dumps(event.model_dump(), sort_keys=True, separators=(",", ":")).encode("ascii")
-                digest = hashlib.sha256(canonical).hexdigest()
+                digest = event_digest(event)
                 if event.id in prior_hashes:
                     if prior_hashes[event.id] != digest:
                         raise ValueError("Producer changed a previously delivered event")
@@ -143,12 +161,95 @@ def receive_once(path: Path, port, patient, token_provider):
         return {"status": "ok", "applied": applied, "has_more": page.has_more, "counts": counts}
 
 
+def verify_history(path: Path, port, patient, token_provider):
+    """Reconcile all deliveries through a captured checkpoint without applying any events."""
+    scope = source_scope(port, patient)
+    with open_receiver(path, read_only=True) as db:
+        # Capture the receiver's checkpoint and effects together. Leave no SQLite
+        # transaction open across network I/O: normal delivery may append later IDs.
+        with db:
+            db.execute("BEGIN")
+            bind_store(db, scope, initialize=False)
+            through = checkpoint(db)
+            if db.execute("SELECT 1 FROM activity_receipts WHERE event_id <= 0 LIMIT 1").fetchone():
+                raise ValueError("Invalid receiver event identity")
+            totals = dict(db.execute("SELECT event_type, total FROM activity_totals"))
+        cursor = 0
+        verified = {}
+        while True:
+            document = read_page(port, patient, token_provider(), max(0, cursor - 1))
+            page = checked_events(document, patient, cursor)
+            end = min(page.resume_after_id, through)
+            # Repeat the page boundary to verify continuity across HTTP reads.
+            events = [e for e in page.events if e.id <= through]
+            received = db.execute("""SELECT event_id, event_sha256, event_type, access_receipt FROM activity_receipts
+                WHERE event_id BETWEEN ? AND ? ORDER BY event_id LIMIT ?""",
+                (cursor, end, PAGE_SIZE + 1)).fetchall()
+            expected = [(e.id, event_digest(e), e.event_type) for e in events]
+            if (any(not isinstance(r[3], str) or not ACCESS_RECEIPT.fullmatch(r[3]) for r in received)
+                    or [row[:3] for row in received] != expected):
+                raise ValueError("Producer history and receiver receipts differ")
+            for event in events:
+                if event.id > cursor:
+                    verified[event.event_type] = verified.get(event.event_type, 0) + 1
+            if end == through:
+                if verified != totals:
+                    raise ValueError("Receiver activity totals differ from replay")
+                return {"status": "verified", "through_event_id": through,
+                        "verified_events": sum(verified.values())}
+            if not page.has_more or end <= cursor:
+                raise ValueError("Producer history ends before the receiver checkpoint")
+            cursor = end
+
+
+def backup_receiver(path: Path, destination: Path, port, patient, token_provider):
+    """Publish one consistent, independently verified receiver snapshot without replacing a file."""
+    scope = source_scope(port, patient)
+    directory = destination.parent
+    info = directory.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+        raise ValueError("Use an operator-private backup directory")
+    if os.path.lexists(destination):
+        raise FileExistsError("Choose an unused backup path")
+    # Require current feed access both before staging private records and while
+    # verifying the copied prefix immediately before publication.
+    checked_events(read_page(port, patient, token_provider(), 0), patient, 0)
+    # Copy only the three receiver-owned tables, from one read transaction. Do
+    # not export unused pages, triggers or unrelated objects from the source.
+    with tempfile.TemporaryDirectory(prefix=".encounter-backup-", dir=directory) as working:
+        temporary = Path(working) / "activity.sqlite"
+        with open_receiver(path, read_only=True) as original, open_receiver(temporary) as copied:
+            with original, copied:
+                original.execute("BEGIN")
+                copied.execute("BEGIN IMMEDIATE")
+                bind_store(original, scope, initialize=False)
+                bind_store(copied, scope)
+                copied.executemany("INSERT INTO activity_receipts VALUES (?,?,?,?)",
+                    original.execute("SELECT event_id,event_sha256,event_type,access_receipt FROM activity_receipts"))
+                copied.executemany("INSERT INTO activity_totals VALUES (?,?)",
+                    original.execute("SELECT event_type,total FROM activity_totals"))
+        verified = verify_history(temporary, port, patient, token_provider)
+        # A same-filesystem hard link exposes the checked bytes atomically and
+        # fails if another process published to this name in the meantime.
+        os.link(temporary, destination)
+        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        return {**verified, "status": "backup_verified"}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--patient", required=True)
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--token-file", type=Path, required=True)
+    recovery = parser.add_mutually_exclusive_group()
+    recovery.add_argument("--backup-to", type=Path, help="Publish a verified copy at a new private path")
+    recovery.add_argument("--verify-history", action="store_true",
+                        help="Recheck all delivered events and totals without applying new events")
     args = parser.parse_args(argv)
 
     def token():
@@ -159,7 +260,11 @@ def main(argv=None):
         return raw.decode("ascii").rstrip("\r\n")
 
     try:
-        result = receive_once(args.database, args.port, args.patient, token)
+        if args.backup_to is not None:
+            result = backup_receiver(args.database, args.backup_to, args.port, args.patient, token)
+        else:
+            operation = verify_history if args.verify_history else receive_once
+            result = operation(args.database, args.port, args.patient, token)
     except (OSError, sqlite3.Error, HTTPException, FeedUnavailable, ValueError, RecursionError):
         print(json.dumps({"status": "unavailable"}))
         return 2

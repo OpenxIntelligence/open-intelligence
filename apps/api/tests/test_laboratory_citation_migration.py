@@ -6,7 +6,6 @@ from alembic.util.exc import CommandError
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from oi_api.contracts import SCHEMA_REVISION
 from oi_api.evidence_catalog import append_rights_decision, fictional_records, seed_fictional_records
 from oi_api.migrate import migrate
 from oi_api.question_evidence import PostgresLaboratoryQuestionEvidence
@@ -16,6 +15,7 @@ import test_laboratory_question_migration as previous
 from test_source_versions import SourceVersionFixture
 
 PREVIOUS = previous.QUESTION_REVISION
+CITATION_HEAD = "0022_lab_citation_source_scope"
 
 
 class LaboratoryCitationMigrationTests(SourceVersionFixture):
@@ -29,12 +29,12 @@ class LaboratoryCitationMigrationTests(SourceVersionFixture):
         with self.services() as registry:
             seed_fictional_records(registry, fictional_records(), recorded_by="FICTIONAL-AUTHOR")
         before = self.snapshot()
-        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        migrate(self.admin, "upgrade", CITATION_HEAD)
         self.assertEqual(self.snapshot(before[0]), before)
         self.assertEqual(self.snapshot()[0]["investigation.laboratory_citation_anchors"], [])
         migrate(self.admin, "downgrade", PREVIOUS)
         self.assertEqual(self.snapshot(), before)
-        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        migrate(self.admin, "upgrade", CITATION_HEAD)
 
         qid = saved["question_id"]
         scope = (patient, "CASE-ALPHA", qid)
@@ -112,4 +112,4 @@ class LaboratoryCitationMigrationTests(SourceVersionFixture):
         self.assertEqual(self.snapshot(), preserved)
         with self.engine.connect() as conn:
             self.assertEqual(conn.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(),
-                             SCHEMA_REVISION)
+                             CITATION_HEAD)

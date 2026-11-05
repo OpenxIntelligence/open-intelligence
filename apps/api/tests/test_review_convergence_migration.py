@@ -13,6 +13,7 @@ from sqlalchemy import text
 from oi_api.app import create_app
 from oi_api.migrate import migrate
 from http_support import running_server
+import test_evidence_convergence_migrations as fixtures
 from test_canonical_review_flow import RETURN_REASON, create_question
 from test_patients import TOKEN_A, request
 from test_source_versions import ORIGINAL, SourceVersionFixture
@@ -37,6 +38,8 @@ def legacy_hash(value):
 
 
 class ReviewConvergenceMigrationTests(SourceVersionFixture):
+    services = fixtures.EvidenceConvergenceMigrationTests.services
+
     def rows(self, table, patient):
         with self.engine.connect() as connection:
             return [dict(row) for row in connection.execute(text(
@@ -144,21 +147,14 @@ class ReviewConvergenceMigrationTests(SourceVersionFixture):
 
     def exercise_upgrade(self, starting_revision):
         snapshot_branch = starting_revision == "0007_question_snapshot_contract"
-        # Current HTTP readiness correctly requires head. Seed only unchanged
-        # patient/source owners there, then establish each real old schema.
-        with running_server(create_app(self.settings)) as base:
-            patient = self.setup_case(base)
-            status, source, _ = self.ingest(base, patient)
-            self.assertEqual(status, 201, source)
-            prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA"
-            status, world, _ = request(base, prefix + "/world-model", token=TOKEN_A)
-            self.assertEqual(status, 200, world)
-            fingerprint = world["snapshot_fingerprint"]
-        # No question, return or image history exists yet. Recreate the exact
-        # original review branch from the shared source owner, excluding the
-        # independent image sibling retained by a question-only downgrade.
-        migrate(self.admin, "downgrade", "0005_source_versions")
+        # Build the populated parent with its original source writer before
+        # outbox publication. The current API only serves the joined revision.
+        migrate(self.admin, "downgrade", "base")
         migrate(self.admin, "upgrade", starting_revision)
+        with self.services() as registry:
+            patient, source_id, fingerprint = fixtures.seed_historical_source(registry)
+        self.creds[0]["patient_ids"].append(patient)
+        prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA"
         with self.engine.connect() as connection:
             self.assertEqual(connection.execute(text(
                 "SELECT version_num FROM public.alembic_version"
@@ -169,7 +165,7 @@ class ReviewConvergenceMigrationTests(SourceVersionFixture):
             )).scalars())
             self.assertEqual("source_snapshot_contract" in question_columns, snapshot_branch)
         old_queue_hash = self.seed_old_history(
-            patient, source["source_id"], fingerprint, snapshot_branch=snapshot_branch
+            patient, source_id, fingerprint, snapshot_branch=snapshot_branch
         )
         questions_before = self.rows("source_questions", patient)
         receipts_before = [] if snapshot_branch else self.rows("question_review_receipts", patient)
@@ -224,7 +220,7 @@ class ReviewConvergenceMigrationTests(SourceVersionFixture):
             self.assertEqual(len(self.rows("question_review_receipts", patient)), len(receipts_before))
 
             new_question, _ = create_question(
-                self, base, patient, source["source_id"], request_key="QUESTION-AFTER-MERGE"
+                self, base, patient, source_id, request_key="QUESTION-AFTER-MERGE"
             )
             status, current, _ = request(base, prefix + "/review-queue", token=TOKEN_A)
             self.assertEqual(status, 200, current)

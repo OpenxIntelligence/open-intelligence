@@ -134,7 +134,22 @@ def main():
             from followthrough_journey import exercise as exercise_followthrough, exercise_case_switch
             from question_metadata_journey import exercise as exercise_question_evidence
             from connected_question_review_journey import exercise as exercise_connected_question_review
-            with exercise_source_questions(cd,original_id,credentials,write_grants) as questions, \
+            def run_brief_worker():
+                # Same original fictional actor, supplied independently to the worker process.
+                token_file = directory / 'brief-worker-token'
+                with token_file.open('x', encoding='ascii') as stream:
+                    os.chmod(token_file, 0o600)
+                    stream.write(tokens[0])
+                try:
+                    process = subprocess.run(
+                        [sys.executable, '-m', 'oi_api.worker', '--once', '--patient', pid, '--case', case],
+                        cwd=ROOT, env={**env, 'OI_API_WORKER_TOKEN_FILE': str(token_file)},
+                        capture_output=True, text=True, timeout=30, check=True)
+                    assert json.loads(process.stdout) == {'status': 'completed', 'attempt_count': 1}
+                finally:
+                    token_file.unlink(missing_ok=True)
+
+            with exercise_source_questions(cd,original_id,credentials,write_grants,run_brief_worker) as questions, \
                  exercise_question_review(cd,pid,case,questions.original_question_id,original_id,
                      credentials,write_grants) as reviews, \
                  exercise_followthrough(cd,pid,case,questions.original_question_id,original_id,
@@ -265,7 +280,7 @@ def main():
                     on_report=lambda report,path,body:exercise_evidence_continuity(cd,pid,case,
                         connected_question['question_id'],new_receipt['source_id'],credentials,
                         write_grants,questions.artifacts,report,path,body),
-                    manual_document=manual_document)
+                    manual_document=manual_document, run_worker=run_brief_worker)
             # Current source metadata access is independent from the historical original bytes.
             # World Model recheck must clear the old view after source-read grant withdrawal.
             credentials[0]['actions'].remove('source_read');write_grants()

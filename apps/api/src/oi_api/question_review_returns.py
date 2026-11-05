@@ -172,8 +172,9 @@ class PostgresQuestionReviewReturns:
 
     def return_for_verification(self, patient_id: str, case_id: str, question_id: str, *,
                                 organization: str, actor: str, purpose: str,
-                                request_key: str, expected_queue_fingerprint: str, reason: str,
+                                request_key: str, expected_queue_fingerprint: str | None, reason: str,
                                 recheck_authority: Callable[[], None],
+                                verify_handoff: Callable[[dict, dict], dict[str, str | int]] | None = None,
                                 prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
@@ -184,23 +185,15 @@ class PostgresQuestionReviewReturns:
         reason = _reason(reason)
         if purpose != "operations":
             raise PatientRegistryDenied("Review return purpose unavailable")
-        if (type(expected_queue_fingerprint) is not str
-                or SHA256.fullmatch(expected_queue_fingerprint) is None):
+        if ((expected_queue_fingerprint is None and verify_handoff is None)
+                or (expected_queue_fingerprint is not None and (type(expected_queue_fingerprint) is not str
+                    or SHA256.fullmatch(expected_queue_fingerprint) is None))):
             raise PatientRegistryError("Invalid queue fingerprint")
-        intent = _digest({
-            "patient_id": patient_id, "case_id": case_id, "question_id": question_id,
-            "organization": organization, "actor": actor, "purpose": purpose,
-            "request_key": request_key, "queue_fingerprint": expected_queue_fingerprint,
-            "source_snapshot_contract": SOURCE_SNAPSHOT_CONTRACT,
-            "queue_fingerprint_contract": FINGERPRINT_CONTRACT,
-            "reason": reason, "action": ACTION,
-        })
-
         def response(receipt_id, duplicate):
             result = {"receipt_id": receipt_id, "question_id": question_id, "duplicate": duplicate}
             return prepare_response(result) if prepare_response is not None else result
 
-        def matching_prior(row):
+        def matching_prior(row, intent):
             return (row is not None and row[2] == question_id
                     and row[3] == SOURCE_SNAPSHOT_CONTRACT and row[4] == FINGERPRINT_CONTRACT
                     and hmac.compare_digest(row[1], intent))
@@ -213,9 +206,28 @@ class PostgresQuestionReviewReturns:
 
         def save(index):
             items, receipts = self._read_locked(patient_id, case_id, organization, index)
+            item = next((i for i in items if i["question_id"] == question_id), None)
+            fingerprint = expected_queue_fingerprint
+            context = {}
+            if verify_handoff is not None:
+                if item is None:
+                    raise PatientRegistryDenied("Question review target unavailable")
+                if item["queue_fingerprint"] is None:
+                    raise PatientRegistryConflict("Question source changed; reassessment required")
+                # Run and current metadata rights are verified on every request, including retries.
+                context = verify_handoff(item, index)
+                fingerprint = item["queue_fingerprint"]
+            intent = _digest({
+                "patient_id": patient_id, "case_id": case_id, "question_id": question_id,
+                "organization": organization, "actor": actor, "purpose": purpose,
+                "request_key": request_key, "queue_fingerprint": fingerprint,
+                "source_snapshot_contract": SOURCE_SNAPSHOT_CONTRACT,
+                "queue_fingerprint_contract": FINGERPRINT_CONTRACT,
+                "reason": reason, "action": ACTION, **context,
+            })
             prior = self.registry._fetchone(prior_sql + " FOR UPDATE", (patient_id, request_key))
             if prior is not None:
-                if not matching_prior(prior):
+                if not matching_prior(prior, intent):
                     raise PatientRegistryConflict("Review request key reused with changed intent")
                 # Recover the original canonical receipt after an amendment;
                 # legacy keys never become canonical through a retry. The source
@@ -224,12 +236,11 @@ class PostgresQuestionReviewReturns:
                 return response(prior[0], True)
             if len(receipts) >= MAX_RECEIPTS:
                 raise PatientRegistryError("Review receipt history exceeds bounded limit")
-            item = next((i for i in items if i["question_id"] == question_id), None)
             if item is None:
                 raise PatientRegistryDenied("Question review target unavailable")
             if item["queue_fingerprint"] is None:
                 raise PatientRegistryConflict("Question source has changed; source reassessment required")
-            if not hmac.compare_digest(expected_queue_fingerprint, item["queue_fingerprint"]):
+            if not hmac.compare_digest(fingerprint, item["queue_fingerprint"]):
                 raise PatientRegistryConflict("Review queue item changed; refresh")
             self.registry._allow(actor, patient_id, "review_return", purpose)
             recheck_authority()
@@ -242,18 +253,18 @@ class PostgresQuestionReviewReturns:
                 "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'returned',%s,%s,%s) "
                 "ON CONFLICT (patient_id,request_key) DO NOTHING RETURNING receipt_id",
                 (receipt_id, question_id, patient_id, case_id, organization, request_key,
-                 intent, expected_queue_fingerprint, item["source_snapshot_sha256"],
+                 intent, fingerprint, item["source_snapshot_sha256"],
                  actor, purpose, reason, SOURCE_SNAPSHOT_CONTRACT, FINGERPRINT_CONTRACT),
             )
             if inserted is None:
                 winner = self.registry._fetchone(prior_sql, (patient_id, request_key))
-                if not matching_prior(winner):
+                if not matching_prior(winner, intent):
                     raise PatientRegistryConflict("Review request key belongs to different intent")
                 return response(winner[0], True)
             self.registry.append_event(
                 patient_id, "investigation.review.returned_for_verification",
                 case_id=case_id, question_id=question_id, receipt_id=receipt_id,
-                queue_fingerprint=expected_queue_fingerprint,
+                queue_fingerprint=fingerprint, **context,
                 source_snapshot_sha256=item["source_snapshot_sha256"],
                 source_snapshot_contract=SOURCE_SNAPSHOT_CONTRACT,
                 queue_fingerprint_contract=FINGERPRINT_CONTRACT, actor=actor,

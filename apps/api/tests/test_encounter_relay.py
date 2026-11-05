@@ -127,6 +127,73 @@ class ReceiverTests(unittest.TestCase):
             self.deliver(page(resume_after_id=6))
         self.assertEqual(self.deliver(page(event(7, NOTE)))[0]["applied"], 0)
 
+    def test_full_replay_detects_earlier_changed_missing_or_inserted_events_with_intact_anchor(self):
+        accepted = [event(2), event(5, CHANGED), event(11, NOTE)]
+        self.deliver(page(*accepted))
+        original = self.db.read_bytes()
+        # Ordinary continuation legitimately sees only the unchanged last anchor.
+        self.assertEqual(self.deliver(page(accepted[-1]))[0]["applied"], 0)
+        for divergent in [
+            [dict(accepted[0], encounter_id=4), *accepted[1:]],
+            accepted[1:],
+            [accepted[0], event(3), *accepted[1:]],
+            accepted[:1],
+        ]:
+            with self.subTest(events=divergent), patch.object(relay, "read_page", return_value=page(*divergent)):
+                with self.assertRaises(ValueError):
+                    relay.verify_history(self.db, 8000, PATIENT, lambda: "test")
+        self.assertEqual(original, self.db.read_bytes())
+
+    def test_verify_reauthorizes_each_page_and_pins_receiving_checkpoint_across_new_deliveries(self):
+        events = [event(3*i) for i in range(1, 51)]
+        self.deliver(page(*events[:25], has_more=True))
+        self.deliver(page(*events[24:29]))
+        observed = []
+        def get(_port, _patient, token, after):
+            observed.append((after, token))
+            if after == 0:
+                # A second receiver advances while verification is awaiting HTTP.
+                self.deliver(page(*events[28:]))
+            later = [e for e in events if e["id"]>after]
+            return page(*later[:25], has_more=len(later)>25)
+        with patch.object(relay, "read_page", side_effect=get):
+            result = relay.verify_history(self.db, 8000, PATIENT, iter(["first", "renewed"]).__next__)
+        self.assertEqual(result, {"status": "verified", "through_event_id": 87, "verified_events": 29})
+        self.assertEqual(observed, [(0, "first"), (74, "renewed")])
+        before = self.db.read_bytes()
+        with patch.object(relay, "read_page", side_effect=[page(*events[:25], has_more=True),
+                                                           relay.FeedUnavailable("grant withdrawn")]):
+            with self.assertRaises(relay.FeedUnavailable):
+                relay.verify_history(self.db, 8000, PATIENT, lambda: "test")
+        self.assertEqual(before, self.db.read_bytes())
+
+    def test_verify_detects_wrong_scope_and_corrupt_persisted_receipts(self):
+        self.deliver(page(event(7)))
+        with patch.object(relay, "read_page") as read, self.assertRaisesRegex(ValueError, "source scope"):
+            relay.verify_history(self.db, 8001, PATIENT, lambda: "test")
+        read.assert_not_called()
+        for statement in [
+            "UPDATE activity_receipts SET access_receipt='ACCESS-INVALID'",
+            "INSERT INTO activity_receipts SELECT -7, event_sha256, event_type, access_receipt FROM activity_receipts",
+        ]:
+            with self.subTest(statement=statement), closing(sqlite3.connect(self.db)) as db, db:
+                db.execute(statement)
+                db.commit()
+                with patch.object(relay, "read_page", return_value=page(event(7))), self.assertRaises(ValueError):
+                    relay.verify_history(self.db, 8000, PATIENT, lambda: "test")
+                db.execute("UPDATE activity_receipts SET access_receipt=?", (RECEIPT,))
+
+    def test_verify_detects_inconsistent_local_effect_and_never_initializes_a_missing_store(self):
+        with self.assertRaises(FileNotFoundError):
+            relay.verify_history(self.db, 8000, PATIENT, lambda: "test")
+        self.assertFalse(self.db.exists())
+        self.deliver(page(event(7)))
+        with closing(sqlite3.connect(self.db)) as db, db:
+            db.execute("UPDATE activity_totals SET total=2")
+        with patch.object(relay, "read_page", return_value=page(event(7))):
+            with self.assertRaisesRegex(ValueError, "totals"):
+                relay.verify_history(self.db, 8000, PATIENT, lambda: "test")
+
 
 def interrupt_receiver(database, patient, port, token_file):
     """Kill the real command before its second new receipt, inside the page transaction."""
@@ -173,10 +240,10 @@ class RelayHTTPTests(unittest.TestCase):
         self.addCleanup(thread.join, 5)
         self.addCleanup(server.shutdown)
 
-    def run_cli(self):
+    def run_cli(self, *options):
         return subprocess.run(
             [sys.executable, "-m", "oi_api.encounter_relay", "--patient", PATIENT, "--port", str(self.port),
-             "--database", str(self.db), "--token-file", str(self.token)],
+             "--database", str(self.db), "--token-file", str(self.token), *options],
             text=True, capture_output=True, timeout=10,
         )
 
@@ -191,6 +258,18 @@ class RelayHTTPTests(unittest.TestCase):
         recovered = json.loads(self.run_cli().stdout)
         self.assertEqual((recovered["applied"], sum(recovered["counts"].values())), (2, 3))
         self.assertTrue(self.requests[-1][0].endswith("after_id=4"))
+
+    def test_verify_cli_rechecks_live_access_even_for_empty_delivered_history(self):
+        self.document = page()
+        self.assertEqual(self.run_cli().returncode, 0)
+        self.document = page(event(3))
+        verified = self.run_cli("--verify-history")
+        self.assertEqual((verified.returncode, json.loads(verified.stdout)),
+                         (0, {"status":"verified", "through_event_id":0, "verified_events":0}))
+        self.status = 403
+        denied = self.run_cli("--verify-history")
+        self.assertEqual((denied.returncode, json.loads(denied.stdout)), (2, {"status":"unavailable"}))
+        self.assertTrue(self.requests[-1][0].endswith("after_id=0"))
 
     def test_cli_uses_authorized_loopback_page_and_withholds_totals_after_denial(self):
         for status, expected_code in ((200, 0), (302, 2), (403, 2), (200, 0)):

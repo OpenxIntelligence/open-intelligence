@@ -9,26 +9,25 @@ from oi_api.app import create_app
 from oi_api.contracts import SCHEMA_REVISION
 from oi_api.migrate import migrate
 from http_support import running_server
+import test_evidence_convergence_migrations as fixtures
 from test_patients import TOKEN_A, request
 from test_source_versions import ORIGINAL, SourceVersionFixture
 
 
 class QuestionFingerprintMigrationTests(SourceVersionFixture):
-    def test_legacy_upgrade_preserves_history_even_when_hash_matches_canonical(self):
-        # The current API requires the head schema. Create its source fixture
-        # first, then recreate the actual old question schema before insertion.
-        with running_server(create_app(self.settings)) as base:
-            patient = self.setup_case(base)
-            status, imported, _ = self.ingest(base, patient)
-            self.assertEqual(status, 201, imported)
-            source_id = imported["source_id"]
-            prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA"
-            status, world, _ = request(base, prefix + "/world-model", token=TOKEN_A)
-            self.assertEqual(status, 200, world)
-            self.assertEqual(world["contract"], "oi.pg-source-world-model/1")
-            fingerprint = world["snapshot_fingerprint"]
+    services = fixtures.EvidenceConvergenceMigrationTests.services
 
-        migrate(self.admin, "downgrade", "0006_source_questions")
+    def test_legacy_upgrade_preserves_history_even_when_hash_matches_canonical(self):
+        # Seed the published source owner before the outbox exists. A populated
+        # current outbox correctly prevents destructive rewinding to 0006.
+        migrate(self.admin, "downgrade", "base")
+        migrate(self.admin, "upgrade", "0007_question_snapshot_contract")
+        migrate(self.admin, "upgrade", "0006_image_custody")
+        with self.services() as registry:
+            patient, source_id, fingerprint = fixtures.seed_historical_source(registry)
+        self.creds[0]["patient_ids"].append(patient)
+        prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA"
+        migrate(self.admin, "downgrade", "0007_question_snapshot_contract@-1")
         legacy_id = "QUESTION-" + "A" * 32
         with self.engine.begin() as connection:
             # Downgrading the question branch retains the independent image

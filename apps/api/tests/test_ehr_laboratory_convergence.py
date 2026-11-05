@@ -39,7 +39,10 @@ class EHRLaboratoryGraphTests(unittest.TestCase):
     def test_single_head_depends_on_both_published_owners(self):
         script = graph()
         self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
-        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0021_lab_citation_freshness")
+        self.assertEqual(set(script.get_revision(SCHEMA_REVISION).down_revision),
+                         {"0020_source_event_delivery", "0022_lab_citation_source_scope"})
+        self.assertEqual(script.get_revision("0022_lab_citation_source_scope").down_revision,
+                         "0021_lab_citation_freshness")
         self.assertEqual(script.get_revision("0021_lab_citation_freshness").down_revision,
                          "0020_ehr_lab_convergence")
         self.assertEqual(set(script.get_revision("0020_ehr_lab_convergence").down_revision), {EHR, LAB})
@@ -89,6 +92,8 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
         patient, url, command, receipt = self.seed_citation()
         previous = "0021_lab_citation_freshness"
         migrate(self.admin, "upgrade", previous)
+        # Exercise the citation guard with the independent execution parent already present.
+        migrate(self.admin, "upgrade", "0020_source_event_delivery")
         # Ordinary reviewed bytes and user selections are outside this saved
         # laboratory question's canonical structured-source snapshot. Import
         # them after the question, while the published guard is still present.
@@ -265,7 +270,7 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
         migrate(self.admin, "upgrade", "head")
         self.assertEqual(self.heads(), {SCHEMA_REVISION})
         self.readiness(True)
-        self.assertEqual(self.snapshot(names), before)
+        laboratory.LabManualPopulatedMigrationTests.assert_existing_history_preserved(self, before)
 
     def check_note(self, base, url, receipt):
         self.assertEqual(request(base, url, token=TOKEN_A, body={"synthetic": True, **NOTE})[:2],
@@ -288,12 +293,16 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
     def test_populated_ehr_parent_upgrades_and_keeps_note_retry(self):
         patient, _, _ = self.start_at(EHR)
         note = self.seed_encounter(patient)
+        with self.assertRaisesRegex(CommandError, "Populated encounter"):
+            migrate(self.admin, "downgrade", COMMON)
         self.upgrade({EHR})
         with running_server(create_app(self.settings)) as base:
             self.check_note(base, *note)
-        with self.assertRaisesRegex(CommandError, "Populated encounter"):
+        before = self.snapshot(EHR_TABLES)
+        with self.assertRaisesRegex(CommandError, "Populated encounter|Stored source delivery history"):
             migrate(self.admin, "downgrade", COMMON)
         self.assertEqual(self.heads(), {SCHEMA_REVISION})
+        self.assertEqual(self.snapshot(EHR_TABLES), before)
 
     def test_populated_lab_parent_upgrades_and_accepts_same_patient_encounter(self):
         patient, url, command, receipt = self.seed_citation()

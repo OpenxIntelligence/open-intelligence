@@ -11,7 +11,7 @@ from pydantic import Field, StrictBool, StrictInt, field_validator, model_valida
 from open_intelligence.patient_registry import _key
 from open_intelligence.rights import normalize_permissions, permitted
 from .contracts import Contract
-from .patients import QuestionSourceState, SelectedComposerSource
+from .source_question_contracts import QuestionSourceState, SelectedComposerSource
 from .evidence_report import canonical_hash, packet_hash, quote_offset, visible_line
 from .question_passage_contracts import ManualContext
 

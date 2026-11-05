@@ -1,3 +1,4 @@
+import {BackgroundBriefPanel} from './background-brief-panel';
 import {SourceOncologyLabel} from './source-oncology-label';
 import type {RegistrySession,ViewState} from './registry-client';
 import {canPrepareSourceBrief,downloadSourceBrief} from './source-brief';
@@ -119,6 +120,7 @@ export function SourceQuestionPanel({state,session,busy,onReview}:{state:ViewSta
             disabled={busy||state.briefPhase==='loading'||state.worldPhase!=='ready'||
               !canPrepareSourceBrief(item,state.worldModel)}
             onClick={()=>void session.prepareSourceBrief(item.question_id)}>Prepare source brief</button>
+          <BackgroundBriefPanel question={item} state={state} session={session} busy={busy}/>
           {!canPrepareSourceBrief(item,state.worldModel)&&<p className="muted">
             Prepare a new question from the current source context before exporting a brief.</p>}
           <FollowthroughCreate key={item.question_id+':'+item.preflight_sha256}
