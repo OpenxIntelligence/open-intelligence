@@ -51,7 +51,7 @@ def fictional_bundle(*, amended=False):
 
 
 def exercise(cd, patient_id, directory, token, credentials, write_grants, artifacts):
-    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read'}
+    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'composer_context_read'}
     credentials[0]['actions'] = sorted(set(credentials[0]['actions']) | grants)
     write_grants()
     root = '/v1/patients/' + patient_id
@@ -191,7 +191,33 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         assert cd.evaluate('document.querySelectorAll("[data-testid=world-laboratory-observation] script").length===0')
         return rows
 
+    def draft_question(source_id, suffix, question):
+        before = cd.evaluate('window.__oiLabRequests')
+        target = source_id + '|Observation/FICT-WEB-' + suffix
+        cd.evaluate("(() => {const e=document.querySelector('[data-testid=lab-question-result]');"
+                    "e.value=" + json.dumps(target) + ";e.dispatchEvent(new Event('change',{bubbles:true}));})()")
+        cd.wait("Boolean(document.querySelector('[data-testid=lab-question-text]'))", 'editable question for selected lab result')
+        cd.evaluate("(() => {const e=document.querySelector('[data-testid=lab-question-text]');"
+                    "Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e," + json.dumps(question) + ");"
+                    "e.dispatchEvent(new Event('input',{bubbles:true}));})()")
+        cd.wait("document.querySelector('[data-testid=lab-question-prepare]')?.disabled===false", 'human question ready')
+        assert cd.evaluate('window.__oiLabRequests') == before, 'Selection and editing must make no network request'
+
+    def submit_question():
+        cd.evaluate("document.querySelector('[data-testid=lab-question-prepare]').click()")
+
+    question = 'What does this report say about my fictional specimen?'
+    questions_path = '/cases/' + CASE + '/questions'
     journey('0')
+    assert operator(questions_path)['questions'] == []
+    draft_question(first['source_id'], 'ZERO', question)
+    submit_question()
+    cd.wait("document.querySelector('[data-testid=lab-question-receipt]')?.textContent.includes('Question prepared')", 'authorized initial preparation')
+    prepared = cd.evaluate("document.querySelector('[data-testid=lab-question-receipt]').textContent")
+    assert all(x in prepared for x in (question, first['source_id'], first['sha256'], 'Observation/FICT-WEB-ZERO', 'ACCESS-'))
+    draft_question(first['source_id'], 'ABSENT', 'Why was the selected result not performed?')
+    assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))"), 'Editing clears previous receipt'
+    assert operator(questions_path)['questions'] == []
     records()
     amended = fictional_bundle(amended=True)
     select(amended, 'fictional-lab-amended.json')
@@ -209,6 +235,25 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     inspect(current['source_id'], amended)
     rows = journey('1')
     assert all(current['source_id'] in row and first['source_id'] not in row for row in rows)
+    assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))")
+    draft_question(current['source_id'], 'ABSENT', question)
+    submit_question()
+    cd.wait("document.querySelector('[data-testid=lab-question-receipt]')?.textContent.includes('Observation/FICT-WEB-ABSENT')", 'absent result prepared on amended report')
+    amended_receipt = cd.evaluate("document.querySelector('[data-testid=lab-question-receipt]').textContent")
+    assert current['sha256'] in amended_receipt and first['source_id'] not in amended_receipt
+    credentials[0]['actions'].remove('composer_context_read');write_grants()
+    submit_question()
+    cd.wait("!document.querySelector('[data-testid=world-projection]') && document.querySelector('[data-testid=world-status]').textContent.includes('Recheck access')", 'Composer denial withholds projection and prepared answer')
+    assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))")
+    assert operator(questions_path)['questions'] == []
+    credentials[0]['actions'].append('composer_context_read');write_grants()
+    (artifacts / 'laboratory-question-preparation.json').write_text(json.dumps({
+        'synthetic': True, 'case_id': CASE, 'original': prepared, 'amendment': amended_receipt,
+        'requests_on_selection_or_edit': 0, 'saved_questions_after_preparation': 0,
+        'edited_receipt_cleared': True, 'denied_projection_withheld': True,
+    }, indent=2) + '\n')
+    print('PASS LAB QUESTION: exact current and amended results, explicit human question, zero implicit requests or saved questions, Composer revocation withheld the preview.')
+    journey('1')
     # The integrated Journey action must re-read this case's source metadata
     # without automatically disclosing an original or creating a new source.
     writes_before_navigation = cd.evaluate('window.__oiLabWrites.length')

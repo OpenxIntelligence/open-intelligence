@@ -9,8 +9,10 @@ Based on the accepted H1 application at `62e218e1e2bd6996bb126fcc1ea956fcf18199e
 The earlier #473-based local patch (SHA-256
 `337be71b6c34fffac73b348d3dafe425faf2d14e42bc95e9d86dea9f22adec4e`)
 is the source of the preparation implementation; its historical, partial test
-results are not evidence for this revision. No schema, model, dependency,
-frontend or permission changes.
+results are not evidence for this revision. Sibling #503 publishes the same source preparation on #480. The projection, API contracts
+and route are byte-identical to its 73bfdb75; this main-based integration retains the
+accepted request-size protections and uses the existing loopback route-test harness.
+No schema, model, dependency or permission changes.
 
 ## Why this step
 
@@ -59,6 +61,17 @@ source-read receipt; it is not a zero-write database operation.
 Final denial, serialization failure or source audit failure must withhold the
 response and roll back the transaction.
 
+## Patient workflow
+
+In Journey, open an authorized case and choose a result under **Prepare a
+question about a result**. Selection and editing are local. On **Check question
+against report**, the server rechecks access and the current source. The client
+compares the returned patient, case, question, source snapshot, report version
+and digest, full literal result, and limitations with the selected observation.
+Editing, changing the selection or leaving the scope discards the earlier preview.
+A stale report or denied response clears the projection. A preview is never a
+saved question, a message to a clinician, or authority for a later write.
+
 ## Verification
 
 The original patch put five PostgreSQL test methods below the module's
@@ -72,7 +85,10 @@ client; no optional TestClient dependency is required.
 - Hosted acceptance: check this revision's API run for all five laboratory
   preparation tests, all nine scoped route tests, migration and regression checks,
   and existing recovery jobs. The PR records actual results by commit.
-- No new browser workflow or durable-question recovery is claimed. No question
+- The connected Chromium gate exercises explicit selection, preparation before and
+  after an amendment, absent results, unchanged saved-question history and denied
+  Composer access. Existing recovery jobs exercise existing durable records;
+  there is no new durable question or recovery claim. No question
   or report is created. A future save must revalidate authority and the exact
   source/Observation before committing to the existing question owner.
 
