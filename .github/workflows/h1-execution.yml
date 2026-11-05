@@ -72,6 +72,7 @@ jobs:
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_composer_run*.py'),
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_event*.py'),
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_composer_laboratory_convergence.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_authored_evidence_handoff.py'),
           ])
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           if result.skipped:

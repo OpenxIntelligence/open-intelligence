@@ -23,6 +23,8 @@ from http_support import running_server
 from oi_api.app import create_app
 from oi_api.contracts import SCHEMA_REVISION
 from oi_api.migrate import migrate
+from oi_api.authored_evidence import PostgresQuestionEvidence
+import test_evidence_convergence_migrations as history
 from test_patients import TOKEN_A, request
 from test_authored_evidence_postgres import (
     EvidenceFixture, PACKET_CONTRACT, REPORT_CONTRACT, PRIVATE_FAILURE,
@@ -425,18 +427,36 @@ class QuestionEvidenceAuthorityTests(EvidenceFixture):
                     finally:
                         replace(field, original[field])
 
+    services = history.EvidenceConvergenceMigrationTests.services
+
     def test_migration_downgrade_refuses_to_discard_authored_evidence_history(self):
-        # Empty schema can return to the real existing migration, then forward.
-        migrate(self.admin, "downgrade", "0008_review_convergence")
+        # Import on the historical schema so the evidence owner's downgrade
+        # guard is reached before an independently populated source outbox.
+        revision = "0010_authored_evidence_origin"
+        patient, question, _ = history.EvidenceConvergenceMigrationTests.start_at(self, revision)
+        with self.services() as registry:
+            imported = PostgresQuestionEvidence(registry).import_evidence(
+                patient, "CASE-ALPHA", question, **history.OPTIONS,
+                payload={"synthetic": True, "request_key": "IMPORT-SUPPORT",
+                         "original_text": evidence_text(), "content_item": "full_text",
+                         "permissions": permissions("full_text")})
+        before = self.persisted_state()
+        with self.assertRaisesRegex(CommandError, "Evidence history requires explicit reconciliation"):
+            migrate(self.admin, "downgrade", "0008_review_convergence")
+        self.assertEqual(self.persisted_state(), before)
+        with self.engine.connect() as db:
+            self.assertEqual(db.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), revision)
+
         migrate(self.admin, "upgrade", "head")
+        current = self.persisted_state()
+        with self.assertRaisesRegex(CommandError, "Stored source delivery history"):
+            migrate(self.admin, "downgrade", "0008_review_convergence")
+        self.assertEqual(self.persisted_state(), current)
+        with self.engine.connect() as db:
+            self.assertEqual(db.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(),
+                             SCHEMA_REVISION)
         with running_server(create_app(self.settings)) as base:
-            p, q, _ = self.start(base)
-            self.assertEqual(self.imported(base, p, q)[0], 201)
-            before = self.persisted_state()
-            with self.assertRaisesRegex(CommandError, "Evidence history requires explicit reconciliation"):
-                migrate(self.admin, "downgrade", "0008_review_convergence")
-            self.assertEqual(self.persisted_state(), before)
-            with self.engine.connect() as db:
-                revision = db.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one()
-            self.assertEqual(revision, SCHEMA_REVISION)
-            self.assertEqual(len(self.packet(base, p, q)["evidence"]), 1)
+            code, retry, _ = self.imported(base, patient, question)
+            self.assertEqual((code, retry["duplicate"], retry["evidence_id"]),
+                             (200, True, imported["evidence_id"]))
+            self.assertEqual(len(self.packet(base, patient, question)["evidence"]), 1)

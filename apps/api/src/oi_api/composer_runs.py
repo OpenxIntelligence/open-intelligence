@@ -384,6 +384,34 @@ class PostgresComposerRuns:
                              delay=min(2 ** row["attempt_count"], 30) if state == "queued" else 0)
             return state
 
+    def _stored_artifact(self, row):
+        saved = self.registry._fetchone(
+            "SELECT result_json,result_sha256 FROM investigation.composer_tool_run_results WHERE run_id=%s",
+            (row["run_id"],))
+        if (saved is None or row["result_sha256"] != saved[1] or not hmac.compare_digest(
+                hashlib.sha256(canonical_result(saved[0])).hexdigest(), saved[1])):
+            raise PatientRegistryError("Stored execution result failed integrity verification")
+        return self._validate_artifact(row, saved[0]), saved[1]
+
+    def verify_review_input_locked(self, question, run_id, expected_sha256, *,
+                                   organization, actor, purpose, recheck_authority):
+        """Verify the exact completed artifact against the review owner's current source anchor."""
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("Completed run verification requires a source-owner transaction")
+        patient_id, case_id = question["patient_id"], question["case_id"]
+        self._scope(patient_id, case_id, organization, actor, purpose, recheck_authority)
+        row = self._load(patient_id, case_id, question["question_id"], run_id, organization, actor, purpose)
+        if row["state"] != "completed":
+            raise PatientRegistryConflict("Execution has no completed result")
+        artifact, digest = self._stored_artifact(row)
+        anchor = artifact["question"]
+        if (not hmac.compare_digest(expected_sha256, digest)
+                or question["source_context_state"] != "current_unreviewed_question"
+                or any(question[key] != anchor[key] for key in (
+                    "source_id", "source_sha256", "source_version", "source_line", "question",
+                    "source_snapshot_sha256", "source_snapshot_contract", "preflight_sha256"))):
+            raise PatientRegistryConflict("Completed result no longer matches the review target")
+
     def result(self, patient_id, case_id, question_id, run_id, *, organization, actor, purpose,
                recheck_authority, prepare_response=None):
         row = self._inspect(patient_id, case_id, question_id, run_id, organization=organization,
@@ -393,16 +421,10 @@ class PostgresComposerRuns:
 
         def disclose(current_brief):
             current = self._reload(row)
-            saved = self.registry._fetchone(
-                "SELECT result_json,result_sha256 FROM investigation.composer_tool_run_results WHERE run_id=%s",
-                (run_id,))
-            if saved is None or not hmac.compare_digest(
-                    hashlib.sha256(canonical_result(saved[0])).hexdigest(), saved[1]):
-                raise PatientRegistryError("Stored execution result failed integrity verification")
-            artifact = self._validate_artifact(current, saved[0])
+            artifact, digest = self._stored_artifact(current)
             response = ComposerRunResult(run=self._status(current),
                                         access_receipt_id=current_brief["access_receipt_id"],
-                                        result_sha256=saved[1], brief=artifact).model_dump(mode="json")
+                                        result_sha256=digest, brief=artifact).model_dump(mode="json")
             return self._prepared(response, prepare_response)
 
         return self.questions.prepare_brief(

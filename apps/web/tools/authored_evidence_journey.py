@@ -45,7 +45,7 @@ _OBSERVE = r"""() => {
     const path=new URL(input instanceof Request?input.url:input,location.href).pathname;
     const method=init?.method??'GET';
     const result=await fetch.call(window,input,init);
-    if(/\/questions\/QUESTION-[0-9A-F]{32}\/(?:evidence(?:[/-]|$)|manual-passages$)/.test(path)){
+    if(/\/questions\/QUESTION-[0-9A-F]{32}\/(?:evidence(?:[/-]|$)|manual-passages$|runs(?:\/|$))/.test(path)){
       const payload=await result.clone().json();
       state.responses.push({path,method,status:result.status,payload,body:method==='POST'?String(init?.body??''):null});
       if(state.loseAssessment&&method==='POST'&&path.endsWith('/evidence-assessments')&&result.ok){
@@ -68,7 +68,7 @@ _OBSERVE = r"""() => {
 
 
 def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
-             write_grants, directory, artifacts, restart_api, add_synthetic, on_report=None, manual_document=None):
+             write_grants, directory, artifacts, restart_api, add_synthetic, on_report=None, manual_document=None, run_worker=None):
     artifacts = Path(artifacts)
     artifacts.mkdir(parents=True, exist_ok=True)
     directory = Path(directory)
@@ -365,6 +365,35 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         counter = upload(COUNTER, 'api_output', 'authored-violet-counter.txt')
         counter_assessment = assess(counter, 'contradicts', 'the entry was absent in this authored example',
             'This independently invented counterexample is retained as a contradictory human proposal.', contradictory_response=True)
+        if run_worker is not None:
+            # Exercise the full RC: actual browser, worker process, canonical quote and review return.
+            credentials[0]['actions'] = sorted(set(credentials[0]['actions']) | {'source_brief_export', 'review_return'})
+            write_grants()
+            inspect()
+            click(row + ' [data-testid=run-open]')
+            cd.wait("document.querySelector('[data-testid=run-status]')?.dataset.state==='queued'", 'enqueue authored verification brief')
+            run_worker()
+            click(row + ' [data-testid=run-refresh]')
+            cd.wait("document.querySelector('[data-testid=run-status]')?.dataset.state==='completed'", 'completed authored verification brief')
+            click(row + ' [data-testid=run-result]')
+            cd.wait("Boolean(document.querySelector('[data-testid=run-result-body]'))", 'reopen completed result')
+            option = row + ' select[name=evidence] option[value="' + support_assessment['assessment_id'] + '"]'
+            cd.wait('Boolean(document.querySelector(' + json.dumps(option) + '))', 'available exact authored proposal')
+            cd.evaluate('document.querySelector(' + json.dumps(option) + ').selected=true')
+            click(row + ' [data-testid=run-verification-return]')
+            cd.wait("window.__oiAuthoredEvidenceChecks.responses.some(r=>r.path.endsWith('/verification-return')&&r.status===201)",
+                    'real canonical review return')
+            actual = next(r for r in reversed(responses()) if r['path'].endswith('/verification-return'))
+            proof = actual['payload']
+            assert proof['run_id'] in actual['path'] and proof['assessment_id'] == support_assessment['assessment_id']
+            assert proof['verification'] == 'exact_authored_quote' and proof['evidence_id'] == support['evidence_id']
+            assert proof['evidence_sha256'] == support['sha256'] and proof['evidence_version'] == 1
+            assert proof['quote_sha256'] == hashlib.sha256('café 🧪 labels matched the violet pattern'.encode()).hexdigest()
+            assert proof['clinical_approval'] is proof['model_executed'] is False
+            assert 'quote' not in proof and 'quote' not in json.loads(actual['body'])
+            cd.wait('document.querySelector(' + json.dumps(row) + ')?.textContent.includes(' +
+                    json.dumps(proof['receipt_id']) + ')', 'typed review receipt visible in browser')
+            inspect()
         first_report = report([support_assessment['assessment_id'], counter_assessment['assessment_id']])
         downloaded_path, downloaded, download_access = download(first_report)
         assert support['evidence_id'] in first_report['body'] and counter['evidence_id'] in first_report['body']

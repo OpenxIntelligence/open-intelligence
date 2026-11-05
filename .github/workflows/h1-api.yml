@@ -101,6 +101,8 @@ jobs:
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           raise SystemExit(0 if result.wasSuccessful() and result.testsRun and not result.skipped else 1)
           PYTEST
+      - name: Verify paired PostgreSQL and receiver restore, restart and revocation
+        run: python apps/api/tools/verify_registry_compose.py
       - name: Verify joined EHR and laboratory freshness against populated data
         run: |
           python - <<'PYTEST'
@@ -145,8 +147,6 @@ jobs:
         run: |
           python tests/browser_journey.py
           python tests/patient_mission_browser_journey.py
-      - name: Verify actual patient HTTP, restart, backup restore and access revocation
-        run: python apps/api/tools/verify_registry_compose.py
       - name: Verify source HTTP, fresh authority, source receipts and restored originals
         env:
           OI_SOURCE_ACCEPTANCE_FILE: verification-api/source-document-recovery.json

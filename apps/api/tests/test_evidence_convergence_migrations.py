@@ -151,7 +151,7 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
             self.assertEqual(code, 200, packet)
             self.assertEqual((packet["evidence"], packet["assessments"], packet["reports"]), ([], [], []))
 
-    def test_populated_authored_head_upgrades_without_changing_report_bytes_or_retry_identity(self):
+    def seed_authored_report(self):
         patient, question, prepared = self.start_at("0010_authored_evidence_origin")
         rights = {item: {use: "unknown" for use in ("store", "display", "redistribute", "ml_use")}
                   for item in ("metadata", "abstract", "full_text", "figures", "terminology", "api_output")}
@@ -179,6 +179,14 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
                              "assessment_ids": [assessment["assessment_id"]]}
             report = owner.create_report(patient, "CASE-ALPHA", question, **OPTIONS, payload=report_intent)
             frozen = owner.report(patient, "CASE-ALPHA", question, report["report_id"], **OPTIONS)
+        return {"patient": patient, "question": question, "assessment_body": assessment_intent,
+                "assessment": assessment, "report_body": report_intent, "report": report,
+                "report_id": report["report_id"], "prepared": frozen}
+
+    def test_populated_authored_head_upgrades_without_changing_report_bytes_or_retry_identity(self):
+        state = self.seed_authored_report()
+        patient, question = state["patient"], state["question"]
+        report, frozen = state["report"], state["prepared"]
         self.upgrade_preserving(self.snapshot())
         prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA/questions/{question}"
         with running_server(create_app(self.settings)) as base:
@@ -186,8 +194,8 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
             self.assertEqual(code, 200, reopened)
             for field in ("report_id", "body", "body_sha256", "snapshot", "snapshot_sha256", "prepared_at"):
                 self.assertEqual(reopened[field], frozen[field])
-            for suffix, intent, receipt in (("/evidence-assessments", assessment_intent, assessment),
-                                           ("/evidence-reports", report_intent, report)):
+            for suffix, intent, receipt in (("/evidence-assessments", state["assessment_body"], state["assessment"]),
+                                           ("/evidence-reports", state["report_body"], report)):
                 code, actual, _ = request(base, prefix + suffix, token=TOKEN_A, body=intent)
                 self.assertEqual((code, actual), (200, {**receipt, "duplicate": True}))
             code, metadata, _ = request(base, prefix + "/evidence-links", token=TOKEN_A)

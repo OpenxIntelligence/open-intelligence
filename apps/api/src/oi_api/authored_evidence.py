@@ -572,9 +572,75 @@ class PostgresQuestionEvidence:
             c["patient_id"], c["case_id"], organization=c["organization"], actor=c["actor"], purpose=c["purpose"],
             expected_source_snapshot_sha256=snapshot_sha, source_id=q["source_id"], source_line=q["source_line"],
             question=q["question"], source_index=c["index"])
-        if prepared["preflight_sha256"] != preflight_sha:
+        selected = prepared["selected_source"]
+        if (prepared["preflight_sha256"] != preflight_sha
+                or prepared["source_snapshot_contract"] != q["source_snapshot_contract"]
+                or (selected["source_id"], selected["line"], selected["sha256"], selected["version"]) !=
+                   (q["source_id"], q["source_line"], q["source_sha256"], q["source_version"])):
             raise PatientRegistryConflict("Question preflight changed; explicit reassessment required")
-        return prepared["selected_source"]
+        return selected
+
+    def verify_review_assessment_locked(self, item, assessment_id, *, source_index, organization, actor, purpose):
+        """Resolve one human assessment inside the review owner's locked source callback.
+
+        The caller owns the final refreshed credential check, audit, and transaction.
+        Neither the proof nor the returned rights check discloses the original passage.
+        """
+        assessment_id = _id(assessment_id, "ASSESSMENT")
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("Assessment verification requires the active review transaction")
+        patient_id = _key(item["patient_id"], "patient_id")
+        c = dict(patient_id=patient_id, case_id=_case_id(item["case_id"]), question_id=_question_id(item["question_id"]),
+                 organization=_key(organization, "organization"), actor=_key(actor, "actor"), purpose=purpose,
+                 question=item, index=source_index)
+        if purpose != "operations":
+            raise PatientRegistryDenied("Assessment unavailable")
+
+        def authorize():
+            if not self.registry._transaction_active:
+                raise PatientRegistryError("Assessment verification requires the active review transaction")
+            for permission in ("patient_read", "source_read", "question_read", "authored_evidence_read"):
+                self.registry._allow(actor, patient_id, permission, purpose)
+
+        authorize()
+        self._current_source(c, item["source_snapshot_sha256"], item["preflight_sha256"])
+
+        def current():
+            c.update(self._read_evidence(c))
+            _, comparisons = self._assessments(c)
+            comparison = next((a for a in comparisons if a["assessment_id"] == assessment_id), None)
+            if comparison is None or comparison["state"] == "content_withheld":
+                raise PatientRegistryDenied("Assessment unavailable")
+            if comparison["state"] != "current_unreviewed":
+                raise PatientRegistryConflict("Assessment needs reassessment")
+            return comparison
+
+        comparison = current()
+        evidence = c["versions"][comparison["evidence_id"]]
+        # Bind the literal and the human attribution to the original command, so
+        # even a different, otherwise valid passage from the same version fails.
+        origin = self._origin(c, "assess", assessment_id)
+        payload = {k: comparison[k] for k in ("evidence_id", "evidence_sha256", "rights_sha256", "quote",
+                                               "relation", "applicability", "rationale")}
+        payload.update(synthetic=True, request_key=origin["request_key"],
+                       expected_source_snapshot_sha256=comparison["source_snapshot_sha256"],
+                       expected_preflight_sha256=comparison["preflight_sha256"])
+        author = comparison["actor_label"]
+        if (origin["actor"] != author or
+                not hmac.compare_digest(origin["intent_sha256"], self._intent(dict(c, actor=author), "assess", payload))):
+            raise RuntimeError("Stored assessment differs from its original command")
+
+        def recheck():
+            authorize()
+            if current() != comparison:
+                raise PatientRegistryConflict("Assessment changed during review preparation")
+
+        proof = {"assessment_id": assessment_id, "evidence_id": evidence["evidence_id"],
+                 "evidence_version": evidence["version"], "evidence_sha256": evidence["sha256"],
+                 "rights_sha256": evidence["rights_sha256"], "statement_line": evidence["statement_line"],
+                 "quote_start": comparison["quote_start"], "quote_length": len(comparison["quote"]),
+                 "quote_sha256": hashlib.sha256(comparison["quote"].encode("utf-8")).hexdigest()}
+        return proof, recheck
 
     def assess(self, patient_id, case_id, question_id, *, payload, **kwargs):
         normalized = AssessEvidence(**payload).model_dump(mode="json")

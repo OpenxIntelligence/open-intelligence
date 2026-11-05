@@ -89,7 +89,7 @@ outcome has those receipts.
 | `delivered` | This attempt committed its consumer receipt and finished this actor's delivery. A zero-effect reconciliation is valid. | 0 |
 | `queued` | A bounded batch made progress with more work remaining, or a retryable failure was requeued with a delay. | 0 |
 | `idle` | No claim is eligible for this current actor/scope now. It is not proof that all actors' work is complete or that no delayed/dead-letter work exists. | 0 |
-| `fenced` | The claim expired or was replaced; this attempt did not obtain a new accepted effect/acknowledgment. | 0 |
+| `fenced` | The claim is no longer eligible for further effects or acknowledgment. A previously committed attempt may already have a receipt; this status does not assert rollback. | 0 |
 | `blocked` | Current scope or authority could not authorize a claim. | 2 |
 | `dead_letter` | This actor's delivery became terminal because authority/event validation failed or the consecutive-failure budget was exhausted. | 2 |
 | `unavailable` | Configuration/database/transport failed or the caller could not establish the commit outcome; no success or rollback is inferred. | 2 |

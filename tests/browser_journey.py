@@ -242,13 +242,23 @@ class ChromeSession:
         self.sequence += 1
         expected = self.sequence
         data = json.dumps({"id": expected, "method": method, "params": params or {}}).encode()
-        self.send_frame(data)
-        while True:
-            msg = json.loads(self.receive_frame())
-            if msg.get("id") == expected:
-                if "error" in msg:
-                    raise RuntimeError(f"CDP {method}: {msg['error']}")
-                return msg.get("result", {})
+        # PNG encoding occasionally outlasts the normal CDP read budget in the
+        # full H1 journey. Keep a bounded capture and retain other command limits.
+        timeout = self.socket.gettimeout()
+        if method == "Page.captureScreenshot":
+            self.socket.settimeout(30)
+        try:
+            self.send_frame(data)
+            while True:
+                msg = json.loads(self.receive_frame())
+                if msg.get("id") == expected:
+                    if "error" in msg:
+                        raise RuntimeError(f"CDP {method}: {msg['error']}")
+                    return msg.get("result", {})
+        finally:
+            if method == "Page.captureScreenshot":
+                self.socket.settimeout(timeout)
+
 
     def evaluate(self, expression: str):
         result = self.command("Runtime.evaluate", {

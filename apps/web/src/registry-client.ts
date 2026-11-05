@@ -21,7 +21,7 @@ import {decodeReviewQueue,decodeReviewReturnResult,validReturnReason,FICTIONAL_R
 import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
 import {canPrepareSourceBrief,decodeSourceBrief} from './source-brief.js';
 import type {SourceBrief} from './source-brief.js';
-import {canRetryRun, readRunReceipt, readRunResult, readRunStatus} from './background-brief.js';
+import {canRetryRun, readRunReceipt, readRunResult, readRunStatus, readVerificationReturn, reviewChoices, verificationIntent} from './background-brief.js';
 import type {BackgroundBrief, RunAction} from './background-brief.js';
 import {canCreateFollowthrough,decodeFollowthrough,decodeFollowthroughReceipt,
   validFollowthroughDraft,validFollowthroughTransition,followthroughTransitionContext,FOLLOWTHROUGH_TRANSITIONS} from './followthrough-view.js';
@@ -1691,7 +1691,7 @@ export class RegistrySession {
       if(query===this.#followWrite&&scope===this.#scope)this.#savingFollowthrough=false;}
   }
 
-  async backgroundBriefAction(questionId: string, action: RunAction): Promise<void> {
+  async backgroundBriefAction(questionId: string, action: RunAction, linkId?: string): Promise<void> {
     this.#focusSavedQuestion(questionId);
     const world = this.#state.worldModel;
     const question = this.#state.questions?.find(item => item.question_id === questionId);
@@ -1708,6 +1708,21 @@ export class RegistrySession {
         (action === 'cancel' && previous?.state !== 'queued' && previous?.state !== 'running') ||
         (action === 'result' && previous?.state !== 'completed') ||
         ((action === 'result' || enqueue) && !canPrepareSourceBrief(question, world))) return;
+
+    const verify = action === 'verify';
+    const selection = verify ? reviewChoices(question,
+      this.#state.evidenceFamily === 'text' && this.#state.evidenceLinksPhase === 'ready' ? this.#state.evidenceLinks : null,
+      this.#state.evidencePhase === 'ready' ? this.#state.evidencePacket : null).find(choice => choice.id === linkId) : null;
+    let quoteHash: string | undefined;
+    if (verify && (!selection || !previous?.result_sha256 || previous.state !== 'completed' || !view?.result ||
+        !canPrepareSourceBrief(question, world) || this.#savingEvidence || this.#savingReview ||
+        ['unknown', 'saving'].includes(this.#state.evidenceWritePhase) || this.#state.evidenceLinkPhase === 'unknown')) return;
+    if (verify) {
+      this.dismissEvidenceMetadata();
+      this.dismissQuestionEvidence();
+      this.#reviewRead++;
+      this.#publish({reviewQueue: null, reviewPhase: 'idle', reviewMessage: 'Refresh the review inbox for the current return history.'});
+    }
 
     const query = ++this.#briefRead;
     const scope = this.#scope;
@@ -1736,6 +1751,13 @@ export class RegistrySession {
         path += '/' + previous!.run_id;
         if (action === 'cancel') { path += '/cancel'; body = JSON.stringify({synthetic: true}); }
         if (action === 'result') path += '/result';
+        if (verify && selection) {
+          path += '/verification-return';
+          const intent = await verificationIntent(selection, previous!);
+          quoteHash = 'expected_quote_sha256' in intent ? intent.expected_quote_sha256 : undefined;
+          if (!current() || control.signal.aborted) throw Error('Review selection changed');
+          body = JSON.stringify(intent);
+        }
       }
       const response = await this.transport(path, this.#init(control, body));
       if (!current()) { void response.body?.cancel().catch(() => {}); return; }
@@ -1750,9 +1772,16 @@ export class RegistrySession {
         this.#publish({briefPhase: 'error', briefMessage: 'The source or run changed. Refresh the case before reopening the brief.'});
         return;
       }
-      if (control.signal.aborted || (enqueue ? ![200, 201].includes(response.status) : response.status !== 200))
+      if (control.signal.aborted || ((enqueue || verify) ? ![200, 201].includes(response.status) : response.status !== 200))
         throw Error('Run unavailable');
       const value = await json(response, 73728);
+      if (verify && selection) {
+        const id = readVerificationReturn(value, response.status, previous!, question, selection, quoteHash);
+        if (current() && !control.signal.aborted) this.#publish({backgroundBrief: {questionId, status: previous,
+          result: null, busy: false, message: 'Returned for independent verification. Review inbox receipt: ' + id}});
+        else if (control.signal.aborted) throw Error('Return timed out');
+        return;
+      }
       const result = action === 'result' ? await readRunResult(value, previous!, world, question) : null;
       const status = enqueue ? readRunReceipt(value, response.status, question) :
         result ? previous! : readRunStatus(value, question, previous!);
@@ -1763,7 +1792,8 @@ export class RegistrySession {
       if (control.signal.aborted) throw Error('Run request timed out');
       this.#publish({backgroundBrief: {questionId, status, result, busy: false, message: ''}});
     } catch {
-      if (current()) this.#publish({backgroundBrief: {...pending, busy: false, message: enqueue ?
+      if (current()) this.#publish({backgroundBrief: {...pending, busy: false, message: verify ?
+        'Return outcome unconfirmed. Reopen this brief and select the same evidence to recover the receipt.' : enqueue ?
         'Queue outcome unknown. Repeat the same action to recover its receipt.' :
         'The latest response could not be verified. Check the run again.'}});
     } finally {

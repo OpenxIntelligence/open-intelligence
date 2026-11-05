@@ -1,3 +1,5 @@
+import type {EvidencePacket, EvidenceAssessment, EvidenceVersion} from './authored-evidence.js';
+import type {QuestionEvidenceLinks, QuestionEvidenceLink} from './question-evidence-view.js';
 import {canonicalEvidenceJson} from './authored-evidence.js';
 import {documentByteHash} from './reviewed-documents.js';
 import {decodeSourceBrief, type SourceBrief} from './source-brief.js';
@@ -6,7 +8,7 @@ import type {SourceWorldModel} from './source-world-model.js';
 
 const states = ['queued', 'running', 'completed', 'blocked', 'stale', 'cancelled', 'failed'] as const;
 export type RunState = typeof states[number];
-export type RunAction = 'enqueue' | 'refresh' | 'cancel' | 'result' | 'retry';
+export type RunAction = 'enqueue' | 'refresh' | 'cancel' | 'result' | 'retry' | 'verify';
 export type RunStatus = Readonly<{
   run_id: string; state: RunState; revision: number; attempt_count: number; result_sha256: string | null;
 }>;
@@ -80,4 +82,67 @@ export async function readRunResult(value: unknown, previous: RunStatus, world: 
   const hash = await documentByteHash(new TextEncoder().encode(canonicalEvidenceJson(value.brief)));
   if (hash !== status.result_sha256) throw Error('Invalid stored result digest');
   return Object.freeze({brief, accessReceipt: value.access_receipt_id});
+}
+
+export type ReviewChoice = {id: string; label: string} & (
+  {kind: 'exact_version_metadata_only'; link: QuestionEvidenceLink} |
+  {kind: 'exact_authored_quote'; assessment: EvidenceAssessment; evidence: EvidenceVersion}
+);
+
+export function reviewChoices(q: SourceQuestion, links: QuestionEvidenceLinks | null,
+                              packet: EvidencePacket | null): ReviewChoice[] {
+  const choices: ReviewChoice[] = [];
+  if (packet?.patient_id === q.patient_id && packet.case_id === q.case_id && packet.question.question_id === q.question_id &&
+      packet.source_snapshot_sha256 === q.source_snapshot_sha256 && packet.question.preflight_sha256 === q.preflight_sha256) {
+    for (const a of packet.assessments) {
+      const e = packet.evidence.find(row => row.evidence_id === a.evidence_id);
+      if (a.state === 'current_unreviewed' && a.quote && a.quote_start !== null && a.question_id === q.question_id &&
+          a.source_snapshot_sha256 === q.source_snapshot_sha256 && a.preflight_sha256 === q.preflight_sha256 &&
+          e?.state === 'current' && e.sha256 === a.evidence_sha256 && e.rights_sha256 === a.rights_sha256)
+        choices.push({kind: 'exact_authored_quote', id: a.assessment_id, assessment: a, evidence: e,
+          label: 'Passage · ' + (e.title ?? e.evidence_id) + ' v' + e.version + ' · “' + a.quote + '”'});
+    }
+  }
+  if (links?.patient_id === q.patient_id && links.case_id === q.case_id && links.question_id === q.question_id &&
+      links.source_context_state === 'current_unreviewed_question')
+    for (const link of links.links) if (link.status === 'available' && link.record)
+      choices.push({kind: 'exact_version_metadata_only', id: link.link_id, link,
+        label: 'Citation only · ' + link.citation + ' · ' + link.record.title});
+  return choices;
+}
+
+export async function verificationIntent(choice: ReviewChoice, run: RunStatus) {
+  const common = {synthetic: true, verification: choice.kind, expected_result_sha256: run.result_sha256};
+  if (choice.kind === 'exact_authored_quote') {
+    const quote = choice.assessment.quote;
+    if (!quote) throw Error('Quote unavailable');
+    return {...common, assessment_id: choice.assessment.assessment_id, expected_evidence_sha256: choice.evidence.sha256,
+      expected_quote_sha256: await documentByteHash(new TextEncoder().encode(quote))};
+  }
+  return {...common, link_id: choice.link.link_id, citation: choice.link.citation, expected_metadata_sha256: choice.link.metadata_sha256};
+}
+
+export function readVerificationReturn(value: unknown, httpStatus: number, run: RunStatus,
+                                       question: SourceQuestion, choice: ReviewChoice, quoteHash?: string): string {
+  const fields = choice.kind === 'exact_authored_quote' ? ['assessment_id', 'evidence_id', 'evidence_version', 'evidence_sha256',
+    'rights_sha256', 'statement_line', 'quote_start', 'quote_length', 'quote_sha256'] : ['link_id', 'citation', 'metadata_sha256'];
+  if (!exact(value, ['contract', 'receipt_id', 'question_id', 'run_id', 'result_sha256', 'duplicate',
+      'verification', 'review_state', 'clinical_approval', 'model_executed', ...fields]) ||
+      value.contract !== 'oi.synthetic-run-evidence-review-return/1' || value.verification !== choice.kind ||
+      ![200, 201].includes(httpStatus) || value.duplicate !== (httpStatus === 200) ||
+      value.question_id !== question.question_id || run.state !== 'completed' || value.run_id !== run.run_id ||
+      !run.result_sha256 || value.result_sha256 !== run.result_sha256 ||
+      value.review_state !== 'returned_for_independent_verification' ||
+      value.clinical_approval !== false || value.model_executed !== false ||
+      typeof value.receipt_id !== 'string' || !/^REVIEW-[0-9A-F]{32}$/.test(value.receipt_id))
+    throw Error('Invalid verification return receipt');
+  if (choice.kind === 'exact_authored_quote') {
+    const a = choice.assessment, e = choice.evidence;
+    if (!a.quote || !quoteHash || value.assessment_id !== a.assessment_id || value.evidence_id !== e.evidence_id ||
+        value.evidence_version !== e.version || value.evidence_sha256 !== e.sha256 || value.rights_sha256 !== e.rights_sha256 ||
+        value.statement_line !== e.statement_line || value.quote_start !== a.quote_start ||
+        value.quote_length !== Array.from(a.quote).length || value.quote_sha256 !== quoteHash) throw Error('Invalid quote receipt');
+  } else if (value.link_id !== choice.link.link_id || value.citation !== choice.link.citation ||
+             value.metadata_sha256 !== choice.link.metadata_sha256) throw Error('Invalid metadata receipt');
+  return value.receipt_id;
 }

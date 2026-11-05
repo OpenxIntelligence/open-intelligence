@@ -33,6 +33,8 @@ from oi_api.followthrough_contracts import ManualTaskDependency
 from oi_api.composer_preflight import SOURCE_SNAPSHOT_CONTRACT
 from oi_api.migrate import migrate
 from http_support import running_server
+import test_evidence_convergence_migrations as historical
+import test_lab_manual_convergence as manual
 from test_canonical_review_flow import create_question
 from test_patients import TOKEN_A, request
 from test_source_versions import SourceVersionFixture, AMENDED
@@ -482,8 +484,6 @@ class FollowthroughPostgresTests(SourceVersionFixture):
             with self.assertRaises(DBAPIError):
                 with self.engine.begin() as db:
                     db.execute(text(statement))
-        with self.assertRaises(CommandError):
-            migrate(self.admin,"downgrade","0015_manual_report_context")
         with self.engine.connect() as db:
             self.assertEqual(db.execute(text("SELECT count(*) FROM "+table)).scalar_one(),1)
 
@@ -601,27 +601,68 @@ class FollowthroughPostgresTests(SourceVersionFixture):
                     ), candidate)
             self.assertEqual(self.rows(), before)
 
+class FollowthroughHistoricalMigrationTests(SourceVersionFixture):
+    services = historical.EvidenceConvergenceMigrationTests.services
+    start_at = historical.EvidenceConvergenceMigrationTests.start_at
+    snapshot = historical.EvidenceConvergenceMigrationTests.snapshot
+    seed_manual = manual.LabManualPopulatedMigrationTests.seed_manual
+    seed_lab = manual.LabManualPopulatedMigrationTests.seed_lab
+
+    def heads(self):
+        with self.engine.connect() as connection:
+            return set(connection.execute(text("SELECT version_num FROM public.alembic_version")).scalars())
+
+    def task_and_evidence_heads(self):
+        scope = self.start_at("0009_question_followthrough")
+        migrate(self.admin, "upgrade", "0009_question_evidence")
+        self.assertEqual(self.heads(), {"0009_question_followthrough", "0009_question_evidence"})
+        return scope
+
     def test_populated_downgrade_cannot_erase_task_history(self):
-        self.create_task()
-        before = self.rows()
-        with self.assertRaises(CommandError):
-            migrate(self.admin, "downgrade", "0008_review_convergence")
-        self.assertEqual(self.rows(), before)
+        patient, question, prepared = self.task_and_evidence_heads()
+        with self.services() as registry:
+            owner_module(self).PostgresQuestionFollowthrough(registry).create(
+                patient, CASE, question, **historical.OPTIONS, request_key="LEGACY-TASK",
+                title="Inspect the fictional source", detail="", owner_label="", due_date=None,
+                review_trigger="Source changes", reason="Keep the source reference.",
+                source_snapshot_contract=SOURCE_SNAPSHOT_CONTRACT,
+                expected_source_snapshot_sha256=prepared["source_snapshot_sha256"],
+                expected_preflight_sha256=prepared["preflight_sha256"])
+        before = self.snapshot()
+        with self.assertRaisesRegex(CommandError, "Follow-through history requires explicit reconciliation"):
+            migrate(self.admin, "downgrade", "0009_question_followthrough@-1")
+        self.assertEqual(self.heads(), {"0009_question_followthrough", "0009_question_evidence"})
+        self.assertEqual(self.snapshot(), before)
+
+    def test_populated_manual_task_guard_preserves_independent_laboratory_history(self):
+        patient, question, prepared = self.start_at(manual.MANUAL)
+        self.seed_manual(patient, question, prepared)
+        migrate(self.admin, "upgrade", manual.LAB)
+        self.seed_lab(patient)
+        before = self.snapshot()
+        with self.assertRaisesRegex(CommandError, "Stored manual task dependencies require reconciliation"):
+            migrate(self.admin, "downgrade", manual.MANUAL + "@-1")
+        self.assertEqual(self.heads(), {manual.MANUAL, manual.LAB})
+        self.assertEqual(self.snapshot(), before)
 
     def test_migration_refuses_competing_table_owner_and_preserves_existing_questions(self):
-        before_question_rows = self.rows()[2]
-        migrate(self.admin, "downgrade", "0008_review_convergence")
+        self.task_and_evidence_heads()
+        questions = ["investigation.source_questions"]
+        before = self.snapshot(questions)[0]
+        migrate(self.admin, "downgrade", "0009_question_followthrough@-1")
+        self.assertEqual(self.heads(), {"0009_question_evidence"})
         with self.engine.begin() as connection:
             connection.execute(text("CREATE TABLE coordination.question_followthrough_tasks (foreign_owner text)"))
-        with self.assertRaises(CommandError):
-            migrate(self.admin, "upgrade", "head")
+        with self.assertRaisesRegex(CommandError, "Existing follow-through owner requires explicit reconciliation"):
+            migrate(self.admin, "upgrade", "0009_question_followthrough")
+        self.assertEqual(self.heads(), {"0009_question_evidence"})
         with self.engine.begin() as connection:
             self.assertIsNone(connection.execute(text(
                 "SELECT to_regclass('coordination.question_followthrough_events')"
             )).scalar_one())
             connection.execute(text("DROP TABLE coordination.question_followthrough_tasks"))
         migrate(self.admin, "upgrade", "head")
-        self.assertEqual(self.rows()[2], before_question_rows)
+        self.assertEqual(self.snapshot(questions)[0], before)
 
 
 if __name__ == "__main__":

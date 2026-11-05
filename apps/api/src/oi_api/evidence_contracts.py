@@ -180,3 +180,50 @@ class LaboratoryEvidenceSearchResult(EvidenceSearchResult):
 
 class LaboratoryEvidenceLinks(EvidenceLinks):
     question_anchor: LaboratoryEvidenceAnchor
+
+class RunEvidenceReview(EvidenceCommand):
+    verification: Literal["exact_version_metadata_only"]
+    link_id: str = Field(strict=True, pattern=r"^EVIDENCE-LINK-[0-9A-F]{32}$")
+    citation: str = Field(strict=True, pattern=CITATION_PATTERN, max_length=193)
+    expected_metadata_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+    expected_result_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+
+
+class RunQuoteReview(EvidenceCommand):
+    verification: Literal["exact_authored_quote"]
+    assessment_id: str = Field(strict=True, pattern=r"^ASSESSMENT-[0-9A-F]{32}$")
+    expected_evidence_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+    expected_quote_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+    expected_result_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+
+
+class RunReviewReceipt(Contract):
+    contract: Literal["oi.synthetic-run-evidence-review-return/1"]
+    receipt_id: str = Field(pattern=r"^REVIEW-[0-9A-F]{32}$")
+    question_id: str = Field(pattern=r"^QUESTION-[0-9A-F]{32}$")
+    run_id: str = Field(pattern=r"^RUN-[0-9A-F]{32}$")
+    result_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    duplicate: StrictBool
+    review_state: Literal["returned_for_independent_verification"]
+    clinical_approval: Literal[False]
+    model_executed: Literal[False]
+
+
+class RunEvidenceReviewReceipt(RunReviewReceipt):
+    verification: Literal["exact_version_metadata_only"]
+    link_id: str = Field(pattern=r"^EVIDENCE-LINK-[0-9A-F]{32}$")
+    citation: str = Field(pattern=CITATION_PATTERN, max_length=193)
+    metadata_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class RunQuoteReviewReceipt(RunReviewReceipt):
+    verification: Literal["exact_authored_quote"]
+    assessment_id: str = Field(pattern=r"^ASSESSMENT-[0-9A-F]{32}$")
+    evidence_id: str = Field(pattern=r"^EVIDENCE-[0-9A-F]{32}$")
+    evidence_version: int = Field(strict=True, ge=1)
+    evidence_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    rights_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    statement_line: int = Field(strict=True, ge=1)
+    quote_start: int = Field(strict=True, ge=0)
+    quote_length: int = Field(strict=True, ge=1, le=400)
+    quote_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")

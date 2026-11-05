@@ -4,6 +4,19 @@ Observed 2026-11-05. This is the current execution index for the founder's
 post-audit mandate; existing backlog `docs/EXECUTION_BACKLOG.csv` retains work
 package ownership. Historical PR receipts describe their exact revisions only.
 
+## Event delivery, execution and the evidence-review handoff
+
+[Integration PR #563](https://github.com/OpenxIntelligence/open-intelligence/pull/563) tracks the combined synthetic implementation and its exact-revision acceptance. The accepted product scope includes every foundation, product domain and biomedical computational capability. This checkpoint exercises the following owner interfaces.
+
+| Producer and consumer | Implementation and acceptance boundary |
+|---|---|
+| EHR journal → operations receiver (#104) | An encounter command, its retry receipt and reference event commit together. An independently authorized HTTP receiver applies counts once. Full-prefix reconciliation checks receipts against every delivered event and compares totals. The private backup command verifies the copy before publication. The Compose drill restores a receiver saved one event behind its PostgreSQL producer. |
+| Source custody → Composer (#104/#103) | The source-event outbox and leased worker from #529 reconcile affected background runs against current source context. Event delivery and consumer receipts retain their respective owners. The Investigations controls from #559 queue, cancel, reopen and inspect the deterministic brief. |
+| Completed brief + exact evidence → existing review inbox (#102/#103) | A reader can select a current, human-authored assessment or a permitted catalog citation in the completed-run panel. The assessment route verifies stored source bytes, quote position and digest, original human command and current rights. The citation route checks version identity and permitted metadata use only. Each route writes references and a typed verification outcome to the existing review receipt under current authority. Independent review remains open. |
+| Clinical and execution migrations | The no-DDL `0023_composer_clinical_join` joins `0020_source_event_delivery` and `0022_lab_citation_source_scope`. The published migrations from all three inputs are retained byte-for-byte. The populated-parent suite uses actual producer, worker and laboratory records and checks the joined database after dump/restore. |
+
+Frozen input heads are [encounter relay #558](https://github.com/OpenxIntelligence/open-intelligence/commit/ba56279f0ba5641e6c130bbcc7633d3699fac72f), [corrected execution outbox #529](https://github.com/OpenxIntelligence/open-intelligence/commit/0cead40b6a5f74cdbfb75c28875f881ae5cce927) and [workspace worker controls #559](https://github.com/OpenxIntelligence/open-intelligence/commit/372d6f998872e848891f821a080cdf935dc95f70). Further migration candidates (including #552 and #557), the visit/source-navigation branch #553, general service delegation and reproducible scientific execution have their own outstanding integration gates.
+
 | Deliverable | Status | Evidence and next gate |
 |---|---|---|
 | Repository/main/audit reconciliation | Implemented | Main inspected at f188aec; #481 already merged; current source and all six named donor PRs inspected |
