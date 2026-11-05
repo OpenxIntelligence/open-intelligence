@@ -510,6 +510,21 @@ CREATE TABLE IF NOT EXISTS agent_writes (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_agent_writes_investigation ON agent_writes(investigation_id);
+-- Slice 4 (program plan C4): the verification record. Exactly one row
+-- per stored investigation, holding the Skeptic verdicts, the repair
+-- record, the T6 contradiction and gap groups, and the abstention codes
+-- as JSON; the investigations table is unchanged so pre-slice rows keep
+-- reading (their record is NULL). The record is the single typed,
+-- visible reconciliation record for the run: conflicts are listed here,
+-- never merged or voted on, and a code is blocking, not advisory.
+CREATE TABLE IF NOT EXISTS verification_records (
+  id INTEGER PRIMARY KEY,
+  investigation_id INTEGER NOT NULL UNIQUE REFERENCES investigations(id),
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  record_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_verification_records_investigation ON verification_records(investigation_id);
 -- Discovery-to-rights linkage: an item may be bound to one rights row at
 -- import (NULL means unlinked: rights unknown, never assumed permitted),
 -- and a link may cite broker links. Revocation/correction of a rights row
@@ -5950,7 +5965,8 @@ class CaseStore:
         }
 
     def save_investigation(self, case_id: str, question_id: int, template: str,
-                           validated, mode: str, write_contract: dict | None = None) -> int:
+                           validated, mode: str, write_contract: dict | None = None,
+                           verification_record: dict | None = None) -> int:
         from .agent_writes import (
             WriteContractRejected,
             parse_route_id,
@@ -6008,10 +6024,30 @@ class CaseStore:
                 VALUES (?,?,?,?,?)""",
                 (contract["writeId"], investigation_id, case_id,
                  json.dumps(contract, sort_keys=True), now_utc()))
+            # Slice 4 verification record (program plan C4): the
+            # Skeptic verdicts, repair record, T6 groups, and
+            # abstention codes for this run, stored in the same
+            # transaction as the investigation itself. None means the
+            # run predates the verification stage; such rows keep
+            # reading, and the record is NULL.
+            if verification_record is not None:
+                self.db.execute(
+                    """INSERT INTO verification_records
+                    (investigation_id,case_id,record_json,created_at)
+                    VALUES (?,?,?,?)""",
+                    (investigation_id, case_id,
+                     json.dumps(verification_record, sort_keys=True), now_utc()))
             # An abstention states there is no answer: it must not hide the
             # question as addressed. Only a non-abstained result addresses
             # it here; human drafts address on acknowledgment instead.
-            if validated.status != "abstained":
+            # Slice 4: a run carrying AB-STALE also leaves the question
+            # open — its inputs were superseded during the run, so the
+            # question is for a later run to reopen (Notion OI-09 K5).
+            stale_abstention = any(
+                isinstance(code, dict) and code.get("code") == "AB-STALE"
+                for code in (verification_record or {}).get("abstention_codes", [])
+            )
+            if validated.status != "abstained" and not stale_abstention:
                 self.db.execute("UPDATE questions SET state='addressed' WHERE id=? AND case_id=?",
                                 (question_id, case_id))
             self._event(case_id, "investigation_created", investigation_id=investigation_id,
@@ -6041,6 +6077,28 @@ class CaseStore:
             return None
         return value if isinstance(value, dict) else None
 
+    def get_verification_record(self, case_id: str, investigation_id: int) -> dict | None:
+        """Return the stored verification record for an investigation,
+        or None.
+
+        None means the investigation was stored before the verification
+        stage existed (pre-slice rows); such rows keep reading.
+        """
+        self._case(case_id)
+        if type(investigation_id) is not int:
+            raise InvalidInput("Investigation id must be an integer")
+        row = self.db.execute(
+            """SELECT record_json FROM verification_records
+            WHERE investigation_id=? AND case_id=?""",
+            (investigation_id, case_id)).fetchone()
+        if not row:
+            return None
+        try:
+            value = json.loads(row[0])
+        except (json.JSONDecodeError, TypeError):
+            return None
+        return value if isinstance(value, dict) else None
+
     def get_investigation(self, case_id: str, investigation_id: int) -> dict:
         self._case(case_id)
         if type(investigation_id) is not int:
@@ -6056,6 +6114,7 @@ class CaseStore:
         data["kind"] = "hypothesis"
         data["review_state"] = "pending"
         data["write_contract"] = self.get_write_contract(case_id, investigation_id)
+        data["verification"] = self.get_verification_record(case_id, investigation_id)
         data["disclaimer"] = ("Research demonstration only. Hypotheses are unreviewed, "
                               "fictional-data based, and not medical advice.")
         return data

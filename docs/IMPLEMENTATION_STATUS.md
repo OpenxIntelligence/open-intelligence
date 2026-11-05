@@ -180,6 +180,116 @@ failures as the main baseline run on the same machine, verified by
 diffing the two failure sets; zero new failures. This is
 fictional-only engineering, draft and undeployed.
 
+## Skeptic (A6) + one repair round + T6 reconciliation (Slice 4) — 5 November 2026
+
+Branch `program/c4-skeptic`, from main `d1730c1d`. Implements
+program-plan C4 (Notion OI-09 §4.6): the verification dimension's
+agent half — a kept claim that cites a real source but misstates its
+content gets a machine second opinion, a failing claim gets exactly
+one chance to be repaired, and conflicts become typed, visible,
+blocking records instead of silently merged.
+
+New `src/open_intelligence/skeptic.py` is the Skeptic (role A6,
+"Skeptic"): an independent model pass over the kept claims, same
+model (`muse-spark-1.3`), separate prompt and prompt version
+(`skeptic:1`), and no shared context beyond the claims under review
+and their cited evidence — the prompt never sees the template, the
+question, the other claims, or the author's reasoning, so it cannot
+inherit the author's mistake. Verdicts are `supported` (kept),
+`challenged` (held: moved to `dropped` with reason
+`skeptic_challenged` — the claim text and the challenge are preserved
+in the record, nothing is erased — and the run gets `AB-CONFLICT`
+with origin `skeptic_challenge`), and `uncertain` (kept with
+uncertainty raised to high and the reason appended to limits). The
+model calls are injectable, so the test suite runs offline
+deterministically; the live path is one bounded Meta Model API call
+with one retry.
+
+One repair round, live mode only, exactly once per run (one model
+call for all repairable drops): only content failures a restatement
+can fix are repairable (`k1_citation_format`, `k2_no_cited_facet`,
+`k2_slot_mismatch`, `k7_unsupported_token`, `k7_tier_limits`). Not
+repairable, by design: structural drops, `k4_contradiction`
+(restating one side to match the other would be merging by rewrite),
+`k6_scope` (rephrasing advice changes what the claim means), and
+`k7plus_injection`. A repaired claim is re-validated end to end
+(structural validation + K-checks); still failing, it is dropped with
+the new check and reason. The repair record (original text, failure
+reason, repaired text, re-check result) is stored visibly, never
+silently.
+
+T6 deterministic contradiction and gap grouping lives in
+`src/open_intelligence/synthesis.py` (`group_run_contradictions`,
+`group_source_contradictions`, `group_timeline_gaps`,
+`group_timeline_conflicts`): the run's K4 drops, source-vs-source
+disagreements over the case's assertion slots (same subject and
+field, different normalised values, both versions current, neither
+superseding the other, same specimen), timeline coverage gaps, and
+timeline specimen/document date conflicts. A group lists both sides
+and the evidence that would resolve it; it never merges dissent,
+never re-labels a value, and never picks a winner. A superseded
+version never joins a group (its disagreement is resolved by
+supersession); different specimens never join a group.
+
+Abstention codes, computed by `compute_abstention_codes` with one
+firing rule each: `AB-CONFLICT` with origin `agent_divergence` (an
+unresolved K4 contradiction between the run's own claims),
+`source_disagreement` (a T6 source group intersecting the run's cited
+sources), or `skeptic_challenge`; `AB-STALE` (a K5 finding or a
+`k5_stale` drop — a stale run leaves the question open:
+`save_investigation` does not mark it addressed); `AB-BUDGET` (the
+verification call budget — one Skeptic call, one repair call per run
+— was spent before a pass ran); `AB-MODEL` (a verification model call
+failed or was schema-invalid after one retry); `AB-ALL-DROPPED`
+(every attempted claim was dropped after repair and review).
+
+Two deliberate decisions: a failed Skeptic or repair call does not
+fail the run — the K-checked claims are still stored, with `AB-MODEL`
+attached, so the gap is visible and blocking instead of losing the
+whole run. And the run status is recomputed from the final kept set:
+a repair can resurrect a run `validate_output` abstained, and the
+Skeptic can hold a run's last kept claim (flipping it to abstained).
+Replay mode skips both model passes and records the skip; T6
+grouping and abstention codes still run, because they are
+deterministic.
+
+Persistence follows the C1 precedent: a new `verification_records`
+table (one row per investigation, holding the Skeptic verdicts, the
+repair record, the T6 groups, and the abstention codes as JSON); the
+`investigations` table is unchanged, so pre-slice rows keep reading
+with a null record. The run path in `__main__.py` runs verification
+after K-checks and before storage, in live and replay mode, and the
+record is stored in the same transaction as the investigation and
+returned in the response alongside `kcheck_findings`.
+
+New `tests/test_skeptic.py` (31 tests): the Skeptic prompt contains
+only the claim and its cited evidence (independence); the planted
+misstatement "31 cm" against evidence "31 mm" passes K1–K7 and is
+caught by the Skeptic; supported/uncertain verdicts keep the claim
+with the right uncertainty and limits; Skeptic failure records
+`AB-MODEL` and keeps the claims; budget exhaustion records
+`AB-BUDGET`; the repair round fixes a fixable claim, never runs
+twice, drops an unfixable claim and a restatement that still fails,
+and is never attempted for K4/K6/K5 drops; the full abstention-code
+set; replay skips the model passes but still reconciles; T6 groups
+never merge or vote; the verification record persists and a stale run
+keeps its question open.
+
+Local suite on the slice branch: 947 tests (916 on main plus 31 new),
+FAILED with 9 failures and 8 errors — the same 17 `test_pdf_intake`
+failures as the main baseline run on the same machine, verified by
+diffing the two failure sets; zero new failures. This is
+fictional-only engineering, draft and undeployed.
+
+Unproven: the live Skeptic run. Two live calls against the Meta Model
+API (the planted "31 cm" misstatement and the "31 mm" control) both
+returned HTTP 402 "Billing verification failed" from api.meta.ai — the
+key's team has a billing issue to resolve at dev.meta.ai/billing, so
+no live model call could run. The prompt is verified only through the
+stub-driven test suite; a live run proving the real model catches the
+planted misstatement is pending that billing fix, and no substitute
+model was used. No spend was incurred on the Meta budget.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)
