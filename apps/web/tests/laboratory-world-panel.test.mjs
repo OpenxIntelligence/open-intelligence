@@ -13,7 +13,8 @@ before(async()=>{
  ({WorldModelView}=await import(pathToFileURL(resolve('.test-dist/laboratory-world-ui/world-model-view.mjs')).href));
 });
 import {patient,caseId,sourceId,hash,projection} from './laboratory-projection-fixture.mjs';
-const render=model=>renderToStaticMarkup(createElement(WorldModelView,{session:{},state:{patient:{patient_id:patient},cases:[],worldPhase:'ready',recordsPhase:'ready',worldMessage:'Fresh read',worldModel:model},busy:false,onOverview(){}}));
+const idleQuestionSave = {questionSavePhase:'idle', questionSaveMessage:''};
+const render=model=>renderToStaticMarkup(createElement(WorldModelView,{session:{},state:{...idleQuestionSave,patient:{patient_id:patient},cases:[],worldPhase:'ready',recordsPhase:'ready',worldMessage:'Fresh read',worldModel:model},busy:false,onOverview(){}}));
 test('laboratory-only projection renders zero, negative and absent results with exact unreviewed provenance',()=>{
  const html=render(parseSourceWorldModel(projection(),patient,caseId));
  assert.equal((html.match(/data-testid="world-laboratory-observation"/g)||[]).length,3);
@@ -41,7 +42,7 @@ function nodes(value){
 }
 test('laboratory provenance opens the exact projected case through the Records callback',()=>{
  const calls=[],model=parseSourceWorldModel(projection(),patient,caseId);
- const tree=WorldModelView({session:{},state:{patient:{patient_id:patient},cases:[],worldPhase:'ready',recordsPhase:'ready',worldMessage:'Fresh read',worldModel:model},busy:false,onOverview(){},onRecords:id=>calls.push(id)});
+ const tree=WorldModelView({session:{},state:{...idleQuestionSave,patient:{patient_id:patient},cases:[],worldPhase:'ready',recordsPhase:'ready',worldMessage:'Fresh read',worldModel:model},busy:false,onOverview(){},onRecords:id=>calls.push(id)});
  const buttons=nodes(tree).filter(n=>n.props?.['data-testid']==='world-laboratory-records');
  assert.equal(buttons.length,3);assert.equal(calls.length,0);
  buttons[0].props.onClick();assert.deepEqual(calls,['CASE-FICTIONAL-LAB']);
@@ -49,7 +50,7 @@ test('laboratory provenance opens the exact projected case through the Records c
 });
 test('laboratory Records actions are unavailable while the scope is loading or busy',()=>{
  for(const state of [{worldPhase:'loading',recordsPhase:'ready',busy:false},{worldPhase:'ready',recordsPhase:'loading-original',busy:false},{worldPhase:'ready',recordsPhase:'ready',busy:true}]){
- const tree=WorldModelView({session:{},state:{patient:{patient_id:patient},cases:[],worldModel:parseSourceWorldModel(projection(),patient,caseId),...state},busy:state.busy,onOverview(){},onRecords(){}});
+ const tree=WorldModelView({session:{},state:{...idleQuestionSave,patient:{patient_id:patient},cases:[],worldModel:parseSourceWorldModel(projection(),patient,caseId),...state},busy:state.busy,onOverview(){},onRecords(){}});
  const buttons=nodes(tree).filter(n=>n.props?.['data-testid']==='world-laboratory-records');assert.equal(buttons.length,3);assert.ok(buttons.every(b=>b.props.disabled));
  }
 });
