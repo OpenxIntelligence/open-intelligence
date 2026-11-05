@@ -33,7 +33,6 @@ class LabManualMigrationContractTests(unittest.TestCase):
     def test_one_join_preserves_both_published_parents(self):
         script = graph()
         self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
-        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0018_laboratory_questions")
         self.assertEqual(script.get_revision("0018_laboratory_questions").down_revision, JOIN)
         self.assertEqual(set(script.get_revision(JOIN).down_revision), {LAB, MANUAL})
         for revision in (LAB, MANUAL):

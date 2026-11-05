@@ -74,7 +74,7 @@ class HTTPContractTests(unittest.TestCase):
             self.assertEqual(body["authentication"], "deny_all")
             self.assertFalse(body["patient_data_enabled"])
             self.assertTrue(body["synthetic_registry_enabled"])
-            self.assertEqual(body["capabilities"], ["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel", "synthetic_record_request_receive", "synthetic_case_binding_create", "synthetic_case_binding_list", "synthetic_case_binding_revoke", "synthetic_source_import", "synthetic_source_list", "synthetic_source_original_read", "synthetic_source_world_model_read", "synthetic_source_composer_preflight", "synthetic_source_question_create", "synthetic_source_question_list", "synthetic_image_import", "synthetic_image_list", "synthetic_image_original_read", "synthetic_source_review_queue_read", "synthetic_source_review_return", "synthetic_source_question_brief", "synthetic_source_review_packet_read", "synthetic_question_followthrough_read", "synthetic_question_followthrough_create", "synthetic_question_followthrough_update", "synthetic_question_evidence_search", "synthetic_question_evidence_link", "synthetic_question_evidence_list", "synthetic_question_evidence_read", "synthetic_question_evidence_import", "synthetic_question_evidence_assess", "synthetic_question_evidence_withdraw", "synthetic_question_evidence_original_read", "synthetic_question_evidence_report", "synthetic_laboratory_question_preflight", "synthetic_laboratory_question_save", "synthetic_laboratory_question_history", "synthetic_laboratory_question_evidence_metadata", "synthetic_laboratory_source_citation_report"])
+            self.assertEqual(body["capabilities"], ["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel", "synthetic_record_request_receive", "synthetic_case_binding_create", "synthetic_case_binding_list", "synthetic_case_binding_revoke", "synthetic_source_import", "synthetic_source_list", "synthetic_source_original_read", "synthetic_source_world_model_read", "synthetic_source_composer_preflight", "synthetic_source_question_create", "synthetic_source_question_list", "synthetic_image_import", "synthetic_image_list", "synthetic_image_original_read", "synthetic_source_review_queue_read", "synthetic_source_review_return", "synthetic_source_question_brief", "synthetic_source_review_packet_read", "synthetic_question_followthrough_read", "synthetic_question_followthrough_create", "synthetic_question_followthrough_update", "synthetic_question_evidence_search", "synthetic_question_evidence_link", "synthetic_question_evidence_list", "synthetic_question_evidence_read", "synthetic_question_evidence_import", "synthetic_question_evidence_assess", "synthetic_question_evidence_withdraw", "synthetic_question_evidence_original_read", "synthetic_question_evidence_report", "synthetic_laboratory_question_preflight", "synthetic_laboratory_question_save", "synthetic_laboratory_question_history", "synthetic_laboratory_question_evidence_metadata", "synthetic_laboratory_source_citation_report", "synthetic_ehr_encounters", "synthetic_ehr_note_drafts"])
 
     def test_missing_database_is_unready_not_a_fake_pass(self):
         with running_server(create_app(Settings.from_env({}))) as base:
@@ -132,6 +132,11 @@ class HTTPContractTests(unittest.TestCase):
                 self.assertEqual(missing_status, 404)
         self.assertEqual(status, 200)
         self.assertEqual(set(schema["paths"]), {
+            "/v1/patients/{patient_id}/encounters",
+            "/v1/patients/{patient_id}/encounters/events",
+            "/v1/patients/{patient_id}/encounters/{encounter_id}/transitions",
+            "/v1/patients/{patient_id}/encounters/{encounter_id}/notes",
+            "/v1/patients/{patient_id}/encounters/{encounter_id}/notes/{note_key}/versions",
             "/health",
             "/health/ready",
             "/v1",
