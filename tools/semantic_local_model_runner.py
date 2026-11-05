@@ -172,12 +172,18 @@ def validate_run(run: Any, packet: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Invalid model run envelope")
     if (run["contract"] != CONTRACT or run["packet_sha256"] != packet["packet_sha256"]
             or run["schema_manifest_sha256"] != packet["schema_manifest_sha256"]
-            or run["endpoint_kind"] != "unauthenticated_loopback_openai_compatible"
+            or run["endpoint_kind"] not in (
+                "unauthenticated_loopback_openai_compatible",
+                "inprocess_masked_logits_no_network",
+            )
             or run["source_attestation"] != "self_reported_unsigned"
             or type(run["declared_model_id"]) is not str
             or MODEL_RE.fullmatch(run["declared_model_id"]) is None
             or type(run["endpoint_port"]) is not int
-            or not 1024 <= run["endpoint_port"] <= 65535):
+            or (run["endpoint_kind"] == "unauthenticated_loopback_openai_compatible"
+                and not 1024 <= run["endpoint_port"] <= 65535)
+            or (run["endpoint_kind"] == "inprocess_masked_logits_no_network"
+                and run["endpoint_port"] != 0)):
         raise ValueError("Untrusted or mismatched run identity")
     for key in ("nvidia_auto_ontology_verified", "model_weights_verified",
                 "raw_responses_retained", "cost_verified"):
