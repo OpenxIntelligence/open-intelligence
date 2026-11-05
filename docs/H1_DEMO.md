@@ -51,6 +51,21 @@ Saved records, questions, reports and tasks persist. Unsubmitted text stays only
 
 If startup fails, inspect the Docker output and retry the same command/state directory. A missing or malformed state file, changed patient identity or missing original stops setup rather than silently resetting it. The launcher does not offer a destructive reset command.
 
+## Save a question about a laboratory result
+
+In Records, open the source versions for `CASE-DEMO`. Select
+[the fictional FHIR bundle](../examples/synthetic/fictional-fhir-r4-lab-bundle.json),
+confirm the file, and import it as a new report. In Journey, inspect that case and
+select `Observation/FICTIONAL-OBS-A`. Write a question, check it against the
+report, then explicitly save it. Reopen the saved laboratory questions to see
+the original question, report version, file digest and Observation reference.
+If the save response is lost, use the offered retry to recover its receipt.
+
+The stored question keeps its original source when a report is amended.
+Reopen the history after an amendment to see which questions need reassessment.
+Question history requires an active patient/case binding and current source and
+question read grants. Text-based investigations use their existing source-line history.
+
 ## Verification boundary
 
 `apps/web/tools/demo_journey.py` exercises these exact fixtures through a real built browser and a separately owned Docker/PostgreSQL application, then checks repeated setup and persistence after stopping and resuming. It deletes only its own newly created disposable test project. The ordinary launcher never deletes volumes.

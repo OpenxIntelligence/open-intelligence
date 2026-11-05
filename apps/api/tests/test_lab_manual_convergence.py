@@ -32,8 +32,8 @@ RAW = b"Independently fictional upgrade document.\nMarker pending.\n"
 class LabManualMigrationContractTests(unittest.TestCase):
     def test_one_join_preserves_both_published_parents(self):
         script = graph()
-        self.assertEqual(script.get_heads(), [JOIN])
-        self.assertEqual(SCHEMA_REVISION, JOIN)
+        self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
+        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, JOIN)
         self.assertEqual(set(script.get_revision(JOIN).down_revision), {LAB, MANUAL})
         for revision in (LAB, MANUAL):
             self.assertEqual(script.get_revision(revision).down_revision,
@@ -100,11 +100,11 @@ class LabManualPopulatedMigrationTests(SourceVersionFixture):
         self.write()
         return intent, receipt
 
-    def upgrade_preserving(self, before):
-        migrate(self.admin, "upgrade", "head")
-        self.assertEqual(self.heads(), {JOIN})
+    def upgrade_preserving(self, before, target=SCHEMA_REVISION):
+        migrate(self.admin, "upgrade", target)
+        self.assertEqual(self.heads(), {target})
         self.assertEqual(self.snapshot(before[0]), before)
-        self.readiness(True)
+        self.readiness(target == SCHEMA_REVISION)
 
     def replay(self, patient, question, *, laboratory=None, manual=None):
         prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA"
@@ -169,7 +169,7 @@ class LabManualPopulatedMigrationTests(SourceVersionFixture):
         self.assertEqual(self.heads(), {MANUAL, LAB})
         self.readiness(False)
         before, schema = self.snapshot(), self.schema_definition()
-        self.upgrade_preserving(before)
+        self.upgrade_preserving(before, JOIN)
         self.assertEqual(self.schema_definition(), schema)
         # Removing only the join is reversible and cannot erase either owner.
         migrate(self.admin, "downgrade", LAB)
