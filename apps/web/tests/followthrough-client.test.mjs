@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {RegistrySession} from '../.test-dist/registry-client.js';
-import {decodeFollowthrough,projectFollowthroughAttention} from '../.test-dist/followthrough-view.js';
+import {decodeFollowthrough,projectFollowthroughAttention,laboratoryQuestionFollowthrough} from '../.test-dist/followthrough-view.js';
 import {secondOpinionPreparation} from '../.test-dist/second-opinion-preparation.js';
 import {projection as laboratoryWorld} from './laboratory-projection-fixture.mjs';
 
@@ -861,4 +861,40 @@ test('a task replaced by a newer read or a dismissed handoff cannot open an orig
  const pending=s.loadSources(cid,s.snapshot().followthrough.tasks[0]);s.dismissOriginal();
  hold.resolve();await pending;
  assert.deepEqual(reads,[path+'/sources']);assert.equal(s.snapshot().original,null);
+});
+
+
+test('laboratory preparation distinguishes a checked empty task list from missing permission or legacy text-only coverage',async()=>{
+ const other={...savedLab(),question_id:'QUESTION-'+'9'.repeat(32)};
+ let result=mixedProjection([labRow(),taskRow()]);
+ const s=mixedTransport({questionList:()=>[savedLab(),other],list:()=>result instanceof Response?result:response(result)});
+ await ready(s);await s.loadLabQuestions(s.snapshot().worldModel);
+ const [selected,unrelated]=s.snapshot().labQuestionHistory.questions;
+ const read=q=>laboratoryQuestionFollowthrough(s.snapshot(),q);
+ assert.equal(read(selected),null);
+ await s.loadFollowthrough(cid);
+ assert.deepEqual(read(selected).tasks.map(t=>t.task_id),[labTask]);
+ assert.deepEqual(read(unrelated).tasks,[]);
+ result=projection([]);await s.loadFollowthrough(cid);assert.equal(read(unrelated),null);
+ result=response({},404);await s.loadFollowthrough(cid);assert.equal(read(selected),null);
+ assert.equal(s.snapshot().labQuestionHistory.questions[0],selected);
+});
+
+test('a colliding question ID with inconsistent origin or independent read scope withholds all task details',async()=>{
+ const s=mixedTransport({list:()=>response(mixedProjection([labRow()]))});
+ await ready(s);await s.loadLabQuestions(s.snapshot().worldModel);await s.loadFollowthrough(cid);
+ const state=s.snapshot(),q=state.labQuestionHistory.questions[0],row=state.followthrough.tasks[0];
+ assert.equal(laboratoryQuestionFollowthrough(state,q).tasks.length,1);
+ for(const patch of [{source_line:1},{observation_reference:'Observation/OTHER'},
+   {source_id:sid},{source_version:2},{source_sha256:'f'.repeat(64)},
+   {source_snapshot_sha256:'e'.repeat(64)},{preflight_sha256:'d'.repeat(64)},
+   {source_context_state:'source_reassessment_required'},{case_id:otherCase}]){
+  const changed={...state,followthrough:{...state.followthrough,tasks:[{...row,...patch}]}};
+  assert.equal(laboratoryQuestionFollowthrough(changed,q),null,JSON.stringify(patch));
+ }
+ for(const patch of [{labQuestionListPhase:'loading'},{worldPhase:'error'},
+   {labQuestionHistory:{...state.labQuestionHistory,checked_source_snapshot_sha256:'d'.repeat(64)}},
+   {labQuestionHistory:{...state.labQuestionHistory,case_id:otherCase}}]){
+  assert.equal(laboratoryQuestionFollowthrough({...state,...patch},q),null);
+ }
 });

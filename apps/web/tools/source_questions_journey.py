@@ -107,8 +107,13 @@ class SourceQuestionChecks:
         write_grants()
         count = self.cd.evaluate('window.__oiBriefChecks.reads.length')
         blobs = self.cd.evaluate('window.__oiBriefChecks.blobs')
-        downloads = sorted(path for path in self.artifacts.glob('source-brief-downloads/**/*')
-                           if not path.name.endswith('.crdownload'))
+        # Observe the denied action in its own fresh directory. Chromium may still
+        # remove bookkeeping files from the earlier successful download directory.
+        denied_destination = self.artifacts/'denied-source-brief-downloads'/self.original_question_id
+        denied_destination.mkdir(parents=True, exist_ok=False)
+        self.cd.command('Browser.setDownloadBehavior', {
+            'behavior': 'allow', 'downloadPath': str(denied_destination.resolve()),
+        })
         self.cd.evaluate("document.querySelector('[data-testid=brief-download]').click()")
         self.cd.wait("document.querySelector('[data-testid=brief-status]').textContent.includes('unavailable under current authority')",
                      'fresh download denies withdrawn export permission')
@@ -116,20 +121,12 @@ class SourceQuestionChecks:
         assert self.cd.evaluate('window.__oiBriefChecks.reads.at(-1).status') == 404
         assert self.cd.evaluate('window.__oiBriefChecks.blobs') == blobs
         assert not self.cd.evaluate("Boolean(document.querySelector('[data-testid=source-brief-preview]'))")
-        # Wait for any in-progress Chromium download marker to settle before
-        # snapshotting, and compare completed artifacts only: a *.crdownload
-        # is a download still being written, not an artifact the revoked
-        # export produced.
-        wait_for(lambda: not list(self.artifacts.glob('source-brief-downloads/**/*.crdownload')),
-                 'denied export leaves no in-progress download')
-        after_downloads = sorted(path for path in self.artifacts.glob('source-brief-downloads/**/*')
-                                 if not path.name.endswith('.crdownload'))
-        assert after_downloads == downloads, (
-            'Revoked export changed the exact source-brief artifact inventory: '
-            f"before={[str(path.relative_to(self.artifacts)) for path in downloads]!r}, "
-            f"after={[str(path.relative_to(self.artifacts)) for path in after_downloads]!r}"
-        )
+        denied_files = list(denied_destination.iterdir())
+        assert not denied_files, f'Revoked export produced files: {denied_files!r}'
         assert self.original_download.read_bytes() == self.original_download_bytes
+        self.cd.command('Browser.setDownloadBehavior', {
+            'behavior': 'allow', 'downloadPath': str(self.original_download.parent.resolve()),
+        })
         credentials[0]['actions'].append('source_brief_export')
         write_grants()
         self.cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
