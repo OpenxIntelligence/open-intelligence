@@ -172,6 +172,7 @@ class HTTPContractTests(unittest.TestCase):
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-links",
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-reports",
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-reports/{report_id}",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-reports/{report_id}/runs/{run_id}/return-for-verification",
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-search",
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence/{evidence_id}/original",
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence/{evidence_id}/withdraw",

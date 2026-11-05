@@ -21,6 +21,7 @@ from .composer_run_contracts import ComposerRunResult, ComposerRunStatus, Enqueu
 from .source_question_contracts import SourceQuestionBrief
 from .question_review_returns import PostgresQuestionReviewReturns
 from .source_questions import PostgresSourceQuestions
+from .source_event_delivery import EventLeaseLost, PostgresSourceEventDelivery
 
 KIND = "source-question-brief/1"
 ACTIONS = ("patient_read", "question_read", "source_read", "source_brief_export")
@@ -55,6 +56,72 @@ class PostgresComposerRuns:
             raise TypeError("Canonical PostgreSQL patient registry required")
         self.registry = registry
         self.questions = PostgresSourceQuestions(registry)
+
+    def source_events(self) -> PostgresSourceEventDelivery:
+        """Compose the platform transport with this owner's explicit commands."""
+        return PostgresSourceEventDelivery(
+            self.registry, authorize_scope_locked=self.questions.authorize_run_scope_locked,
+            consume_locked=self.consume_source_event_locked,
+            receipt_locked=self.source_event_receipt_locked)
+
+    def source_event_receipt_locked(self, claim: dict) -> dict | None:
+        """Read one attempt's immutable receipt after transport scope checking."""
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("Source event receipt requires caller transaction")
+        row = self.registry._fetchone(
+            "SELECT event_id,claim_token,invalidated_count,has_more "
+            "FROM investigation.composer_source_event_receipts "
+            "WHERE delivery_id=%s AND attempt_count=%s",
+            (claim["delivery_id"], claim["attempt_count"]))
+        if row is None:
+            return None
+        if (row[0] != claim["event_id"] or type(claim.get("lease_token")) is not str
+                or not hmac.compare_digest(row[1], claim["lease_token"])):
+            raise EventLeaseLost("Source event receipt does not match this claim")
+        return {"status": "queued" if row[3] else "delivered", "invalidated_count": row[2]}
+
+    def consume_source_event_locked(self, delivery: dict, *, recheck_authority: Callable[[], None]) -> dict:
+        """Reconcile at most 100 outdated pending runs and persist one receipt.
+
+        An event wakes current-context reconciliation; it is not evidence that
+        this particular historical import caused every change. Original run
+        pins are immutable and were validated at enqueue. Comparing the whole
+        current snapshot covers changes outside the selected source as well.
+        """
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("Source event consumption requires caller transaction")
+
+        def reconcile(context):
+            rows = self.registry._fetchall(
+                SELECT_RUN + "WHERE r.patient_id=%s AND r.case_id=%s AND r.origin_org=%s "
+                "AND r.actor=%s AND r.purpose=%s AND r.state IN ('queued','running') "
+                "AND (r.source_snapshot_contract<>%s OR r.source_snapshot_sha256<>%s) "
+                "ORDER BY r.created_at,r.run_id LIMIT 101 FOR UPDATE OF r",
+                (delivery["patient_id"], delivery["case_id"], delivery["origin_org"],
+                 delivery["actor"], delivery["purpose"], context["source_snapshot_contract"],
+                 context["source_snapshot_sha256"]))
+            batch, has_more = rows[:100], len(rows) > 100
+            for row in batch:
+                self._transition(self._unpack(row), "stale", "source_changed", source_event=delivery)
+            self.registry._execute(
+                "INSERT INTO investigation.composer_source_event_receipts "
+                "(delivery_id,attempt_count,event_id,claim_token,source_snapshot_contract,"
+                "source_snapshot_sha256,invalidated_count,has_more) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                (delivery["delivery_id"], delivery["attempt_count"], delivery["event_id"],
+                 delivery["lease_token"], context["source_snapshot_contract"],
+                 context["source_snapshot_sha256"], len(batch), has_more))
+            self.registry.append_event(
+                delivery["patient_id"], "composer.source_event.reconciled",
+                case_id=delivery["case_id"], actor=delivery["actor"], purpose=delivery["purpose"],
+                delivery_id=delivery["delivery_id"], source_event_id=delivery["event_id"],
+                attempt_count=delivery["attempt_count"], invalidated_count=len(batch),
+                has_more=has_more, source_snapshot_sha256=context["source_snapshot_sha256"])
+            return {"status": "queued" if has_more else "delivered", "invalidated_count": len(batch)}
+
+        return self.questions.prepare_run_context_locked(
+            delivery["patient_id"], delivery["case_id"], organization=delivery["origin_org"],
+            actor=delivery["actor"], purpose=delivery["purpose"],
+            recheck_authority=recheck_authority, prepare_response=reconcile)
 
     @staticmethod
     def _unpack(row):
@@ -96,7 +163,7 @@ class PostgresComposerRuns:
         )
         return ComposerRunStatus(**{key: row[key] for key in fields}).model_dump(mode="json")
 
-    def _event(self, row, reason_code):
+    def _event(self, row, reason_code, *, source_event=None):
         self.registry._execute(
             "INSERT INTO investigation.composer_tool_run_events "
             "(run_id,revision,state,attempt_count,reason_code) VALUES (%s,%s,%s,%s,%s)",
@@ -105,16 +172,19 @@ class PostgresComposerRuns:
             row["patient_id"], "composer.run." + row["state"], run_id=row["run_id"],
             case_id=row["case_id"], question_id=row["question_id"], capability=KIND,
             actor=row["actor"], purpose=row["purpose"], revision=row["revision"],
-            attempt_count=row["attempt_count"], reason_code=reason_code)
+            attempt_count=row["attempt_count"], reason_code=reason_code,
+            **({"source_event_id": source_event["event_id"],
+                "delivery_id": source_event["delivery_id"],
+                "delivery_attempt": source_event["attempt_count"]} if source_event else {}))
 
-    def _transition(self, row, state, reason_code, *, delay=0):
+    def _transition(self, row, state, reason_code, *, delay=0, source_event=None):
         self.registry._execute(
             "UPDATE investigation.composer_tool_runs SET state=%s,revision=revision+1,"
             "lease_token=NULL,lease_expires_at=NULL,updated_at=clock_timestamp(),"
             "available_at=clock_timestamp()+(%s * interval '1 second') WHERE run_id=%s",
             (state, delay, row["run_id"]))
         current = self._reload(row)
-        self._event(current, reason_code)
+        self._event(current, reason_code, source_event=source_event)
         return current
 
     @staticmethod

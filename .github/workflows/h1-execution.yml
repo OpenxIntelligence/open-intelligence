@@ -61,15 +61,19 @@ jobs:
           python apps/api/tools/prepare_dependencies.py --wheel-dir /tmp/oi-execution-wheels
           python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-execution-wheels
           python -m pip install --no-deps --require-hashes --no-index --find-links /tmp/oi-execution-wheels -r apps/api/requirements.lock
-      - name: Verify execution contracts and real PostgreSQL behavior without skips
+      - name: Verify execution and event delivery with real PostgreSQL and no skips
         run: |
           set -o pipefail
           mkdir -p verification-execution
           git rev-parse HEAD > verification-execution/commit.txt
           python - <<'PY' 2>&1 | tee verification-execution/tests.txt
           import sys, unittest
-          suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_composer_run*.py')
-          suite.addTests(unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_evidence_run_review.py'))
+          suite = unittest.TestSuite([
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_composer_run*.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_event*.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_evidence_run_review.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_encounter*.py'),
+          ])
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           if result.skipped:
               print('Execution acceptance must not skip:', result.skipped, file=sys.stderr)

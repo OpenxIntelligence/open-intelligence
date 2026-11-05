@@ -109,7 +109,7 @@ class LaboratoryCitationMigrationTests(SourceVersionFixture):
                     conn.execute(text(command))
         preserved = self.snapshot()
         with self.assertRaisesRegex(CommandError, "Stored laboratory citation history"):
-            migrate(self.admin, "downgrade", PREVIOUS)
+            migrate(self.admin, "downgrade", f"{CITATIONS}@{PREVIOUS}")
         self.assertEqual(self.snapshot(), preserved)
         with self.engine.connect() as conn:
             self.assertEqual(conn.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(),

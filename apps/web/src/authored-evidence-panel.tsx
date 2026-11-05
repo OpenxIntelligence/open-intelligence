@@ -3,12 +3,49 @@ import type {RegistrySession,ViewState} from './registry-client';
 import {declaredPermissions,downloadEvidenceOriginal,downloadEvidenceReport,visibleLine} from './authored-evidence';
 import type {ContentItem,Permission,Relation,Applicability} from './authored-evidence';
 import {activeComparisonDraft,evidenceSelectionMode} from './authored-evidence-session';
+import {selectedReviewEvidence,validReturnReason} from './review-queue-view';
 import './authored-evidence.css';
 import {QuestionPassagesPanel} from './question-passages-panel';
 import type {ManualPanelStatus} from './question-passages';
 
 const relationLabel={supports:'Proposed support',contradicts:'Proposed contradiction',context:'Context only',unknown:'Relation unknown'};
 const stateLabel={current_unreviewed:'Current proposal · unreviewed',reassessment_required:'Reassessment required',content_withheld:'Content withheld',historical_reassessment_required:'Historical preparation · reassessment required'};
+
+function ExecutionReviewForm({state,session,busy}:{state:ViewState;session:RegistrySession;busy:boolean}){
+ const [reason,setReason]=useState('');
+ const report=state.evidenceReport, view=state.backgroundBrief;
+ if(report?.state!=='current_unreviewed'||!report.snapshot||!view?.result||
+    view.status?.state!=='completed'||view.questionId!==report.question_id)return null;
+ const item=state.reviewQueue?.items.find(row=>row.question_id===report.question_id&&
+  row.patient_id===report.patient_id&&row.case_id===report.case_id);
+ const pins=item&&selectedReviewEvidence(item,view,report);
+ const pending=state.reviewReturnPhase==='unknown'||state.reviewReturnPhase==='saving';
+ const retained=state.reviewReturnIntent;
+ const ownReturn=retained?.evidence?.report_id===report.report_id&&retained.evidence.run_id===view.status.run_id;
+ return <section aria-label="Return brief and evidence for verification">
+  <h4>Independent verification</h4>
+  {(!pins||state.reviewPhase!=='ready')&&<button type="button" data-testid="evidence-review-check"
+   disabled={busy||pending||state.reviewPhase==='loading'} onClick={()=>void session.loadReviewQueue(report.case_id)}>
+   Check review access for this brief and report
+  </button>}
+  {pins&&state.reviewPhase==='ready'&&<>
+   <label>Reason for returning this brief and report
+    <textarea data-testid="evidence-review-reason" maxLength={600} value={reason}
+      disabled={busy||pending} onChange={e=>setReason(e.target.value)}/>
+   </label>
+   <button type="button" data-testid="return-execution-evidence"
+    disabled={busy||pending||!validReturnReason(reason)}
+    onClick={()=>void session.returnReviewQuestion(item.question_id,item.queue_fingerprint!,reason,true)}>
+    Return brief and evidence report for verification
+   </button>
+  </>}
+  {state.reviewPhase==='error'&&<p role="status">{state.reviewMessage}</p>}
+  {ownReturn&&<p role="status" data-testid="evidence-review-status">{state.reviewReturnMessage}</p>}
+  {ownReturn&&state.reviewReturnPhase==='unknown'&&<button type="button" disabled={busy}
+    onClick={()=>void session.retryReviewReturn()}>Recover this return receipt</button>}
+  {ownReturn&&state.reviewReturn&&<p>Review receipt <code data-testid="evidence-review-receipt">{state.reviewReturn.receipt_id}</code></p>}
+ </section>;
+}
 
 /** Authored fictional evidence stays visibly separate from clinical conclusions. */
 export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySession;state:ViewState;busy:boolean}){
@@ -174,6 +211,8 @@ export function AuthoredEvidencePanel({session,state,busy}:{session:RegistrySess
    {report.body!==null?<pre data-testid="evidence-report-body" className="evidence-literal">{report.body}</pre>:<p>Current content permissions withhold this report’s body and comparison snapshot. The original preparation references remain preserved.</p>}
    <details><summary>Report provenance</summary><p>Report <code>{report.report_id}</code></p><p>Prepared {report.prepared_at}</p><p>Body SHA-256 <code>{report.body_sha256}</code></p><p>Snapshot SHA-256 <code>{report.snapshot_sha256}</code></p><p>Current access receipt <code>{report.access_receipt_id}</code>. This records preparation authorization, not delivery, signoff or medical validity.</p></details>
    {report.body!==null&&<button type="button" data-testid="evidence-report-download" className="primary" disabled={locked||state.evidenceReportPhase==='loading'} onClick={()=>void downloadEvidenceReport(session,report.question_id,report.report_id)}>Recheck permission and download report</button>}
+   <ExecutionReviewForm key={report.report_id+':'+(state.backgroundBrief?.status?.run_id??'')}
+     state={state} session={session} busy={locked}/>
   </section>}
  </section>;
 }

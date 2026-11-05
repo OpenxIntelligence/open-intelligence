@@ -4,12 +4,13 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. This revision requires `0024_clinical_execution_join`.
-Run `python -m oi_api.migrate upgrade head` from either published predecessor
-(`0023_lab_question_followthrough` or `0019_composer_runs`). The join retains
+records the original integration. This revision requires `0026_integrated_core`.
+Run `python -m oi_api.migrate upgrade head` from any supported predecessor. The immediate
+parents are `0024_clinical_execution_join`, `0020_source_event_delivery`,
+and `0023_ehr_lab_ownership_join`. The join retains
 [encounters and note drafts](#connected-encounter-and-note-service), laboratory
 citation and follow-up history, and [durable execution](../../docs/engineering/H1_DURABLE_EXECUTION.md).
-See
+The event worker consumes committed source changes through the [existing delivery contract](../../docs/engineering/H1_SOURCE_EVENT_DELIVERY.md). See
 [the laboratory question contract](../../docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md)
 for save, retry and history behavior.
 The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)

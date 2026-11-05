@@ -1,6 +1,8 @@
 /** Source-owned H1 review inbox + immutable nonterminal return receipts.
  * This is not clinical approval, verified clinician identity or notification.
  */
+import type {BackgroundBrief} from './background-brief.js';
+import type {EvidenceReport} from './authored-evidence.js';
 import {citationEvidenceTimestamp as time} from './evidence-timestamp.js';
 
 export const FICTIONAL_RETURN_REASON =
@@ -70,6 +72,30 @@ export function decodeReviewReturnResult(value:unknown,question:string):ReviewRe
     value.question_id!==question||typeof value.duplicate!=='boolean')throw Error('contract');
  return Object.freeze(value as ReviewReturnResult);
 }
+export type ReviewEvidence = Readonly<{
+ run_id:string; result_sha256:string; report_id:string; report_snapshot_sha256:string;
+}>;
+
+export function selectedReviewEvidence(item:ReviewQueueItem, run:BackgroundBrief|null,
+                                       report:EvidenceReport|null):ReviewEvidence|null{
+ const brief=run?.result?.brief, snapshot=report?.snapshot, status=run?.status;
+ if(!brief||!snapshot||!status?.result_sha256||status.state!=='completed'||run?.busy||
+    report?.state!=='current_unreviewed'||item.queue_fingerprint===null||
+    [brief.question,snapshot.question].some(q=>q.patient_id!==item.patient_id||q.case_id!==item.case_id||
+      q.question_id!==item.question_id||q.source_snapshot_sha256!==item.source_snapshot_sha256||
+      q.preflight_sha256!==item.preflight_sha256))return null;
+ return Object.freeze({run_id:status.run_id,result_sha256:status.result_sha256,report_id:report.report_id,
+  report_snapshot_sha256:report.snapshot_sha256});
+}
+
+export function decodeEvidenceReturn(value:unknown,question:string,pins:ReviewEvidence,status:number):ReviewReturnResult{
+ const identifiers=['run_id','result_sha256','report_id','report_snapshot_sha256'] as const;
+ if(!exact(value,['receipt_id','question_id','duplicate',...identifiers,'verification','clinical_approval'])||
+    identifiers.some(key=>pins[key]!==value[key])||value.verification!=='matched_current_source_and_evidence'||
+    value.clinical_approval!==false||value.duplicate!==(status===200))throw Error('contract');
+ return decodeReviewReturnResult({receipt_id:value.receipt_id,question_id:value.question_id,duplicate:value.duplicate},question);
+}
+
 export function decodeReviewQueue(value:unknown,patient:string,caseId:string):ReviewQueue{
  if(!exact(value,['contract','patient_id','case_id','synthetic','items','receipts','access_receipt_id',
   'external_notification_sent','reviewer_identity_verified','clinical_approval',
