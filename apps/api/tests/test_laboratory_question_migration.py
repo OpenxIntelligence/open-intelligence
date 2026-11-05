@@ -30,7 +30,7 @@ class LaboratoryQuestionMigrationTests(SourceVersionFixture):
     seed_lab = previous.LabManualPopulatedMigrationTests.seed_lab
     assert_existing_history_preserved = previous.LabManualPopulatedMigrationTests.assert_existing_history_preserved
 
-    def seed(self, target=SCHEMA_REVISION):
+    def seed(self, target=QUESTION_REVISION):
         patient, text_question, _ = self.start_at(previous.JOIN)
         _, source = self.seed_lab(patient)
         history = self.snapshot()
@@ -104,7 +104,7 @@ class LaboratoryQuestionMigrationTests(SourceVersionFixture):
                              QUESTION_REVISION)
 
     def test_full_history_remains_readable_and_exact_requests_recover(self):
-        patient, _, payload, receipt = self.seed()
+        patient, _, payload, receipt = self.seed(target=SCHEMA_REVISION)
         self.assertEqual(MAX_LABORATORY_QUESTIONS, 250)
         # Exercise the same transaction/capacity boundary with one real row.
         with patch("oi_api.laboratory_questions.MAX_LABORATORY_QUESTIONS", 1), self.services() as registry:
