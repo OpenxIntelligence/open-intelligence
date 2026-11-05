@@ -1,6 +1,6 @@
 {
   "schema_version": "oi.engine-boundaries/1",
-  "baseline_commit": "57b8fd9f2b201ab46d338743aaab9f3f980b8a59",
+  "baseline_commit": "f188aecc70f3415741dac0e7dd5bf3f2d9fd02a9",
   "scope": {
     "package": "oi_api",
     "path": "apps/api/src/oi_api"

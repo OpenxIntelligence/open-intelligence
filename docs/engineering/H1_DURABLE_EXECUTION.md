@@ -24,6 +24,24 @@ records the authorized scope and acceptance requirements. Exact source revisions
 test results and hosted receipts are recorded in PR #529 after verification;
 this document preserves its source-publication checkpoint.
 
+## Accepted-main reconciliation — 5 November 2026
+
+The candidate now incorporates accepted main
+`f188aecc70f3415741dac0e7dd5bf3f2d9fd02a9`, including accepted
+[#527](https://github.com/OpenxIntelligence/open-intelligence/pull/527).
+The clean join preserves its 13-file contribution and per-agent provenance
+writer in the SQLite reference application. It adds no migration. That reference
+writer and the existing H1 patient/source/question/run owners keep their own
+responsibilities; the join does not introduce H1 model execution or delegation.
+
+Before this join, source `24ebf806befa1f10ac0a4e78a13f7cd1a8e28a2f`, tree
+`319bea822782fa65b9e7e4fc6fbc61feb38ff234`, passed
+[43 focused PostgreSQL tests with zero skips](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42090201333),
+including process-kill recovery, populated backup/restore and the execution
+security edge cases. This proves the bounded worker at that pre-join source;
+it is not combined acceptance of the newly joined candidate. The merged source
+requires its own exact-source CI, recorded in the living PR #529 ledger.
+
 ## Lineage and ownership
 
 Historical [#90](https://github.com/OpenxIntelligence/open-intelligence/pull/90)

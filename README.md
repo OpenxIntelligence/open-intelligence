@@ -128,6 +128,22 @@ The current synthetic-only demonstration exercises a bounded portion of the inte
 
 An incoming amendment marks affected outputs as requiring review. It does not automatically promote a replacement interpretation into a reviewed clinical conclusion.
 
+**Provenance write contract (Slice 1, 5 November 2026):** every stored
+investigation carries a per-agent write contract (program plan §5.4) —
+`writeId`, `agentId`, `agentRole` (A1–A6), `agentVersion`, `promptVersion`,
+`modelId`, `runId`, `routeId`, `snapshotAt` (L1 as-of), `inputs` (source
+versions, assertions, and evidence assessments, each with a content hash),
+and `toolCalls` — held in exactly one place, the `agent_writes` table
+(`src/open_intelligence/agent_writes.py` is the single owner of the
+contract). A write missing any contract field is rejected with a typed
+reason; a stored run can be replay-checked from its route, snapshot, and
+recorded inputs, and a superseded source version invalidates the replay.
+Local suite at the slice branch: 796 tests, with the same 17 pre-existing
+`test_pdf_intake` failures as main (missing local `pypdf`) and zero new
+failures. Not yet a clinical claim: K-checks, the Skeptic, and parallel
+role agents are later slices; the single existing model call writes as A1
+until the roster is wired.
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.

@@ -171,3 +171,14 @@ below describe this checkpoint rather than the PR's later status.
 - [The durable execution guide](../../engineering/H1_DURABLE_EXECUTION.md),
   existing architecture records and OI-009/OI-013/OI-018 now cross-reference this
   candidate while preserving the earlier static-gate and historical checkpoints.
+- Pre-join worker receipt: source `24ebf806befa1f10ac0a4e78a13f7cd1a8e28a2f`,
+  tree `319bea822782fa65b9e7e4fc6fbc61feb38ff234`, passed
+  [43/43 focused PostgreSQL tests, zero skips](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42090201333),
+  including the process-kill, populated-restore and security cases. This receipt
+  qualifies that worker source only, not the subsequent combined tree.
+- Accepted-main reconciliation: cleanly joined
+  `f188aecc70f3415741dac0e7dd5bf3f2d9fd02a9`, preserving all 13 contributed
+  files and accepted #527's per-agent provenance writer in the SQLite reference
+  application. No new migration was introduced by the join. Preserve that writer
+  alongside the existing H1 owners; no new H1 model/delegation authority follows.
+  The merged candidate requires its own exact-source CI in PR #529.
