@@ -8,6 +8,12 @@ records the integrated revision and verification, and the
 maps its preserved contributions. The increment descriptions below retain their
 original implementation scope; their old PR numbers do not define the current head.
 
+Patient lookup is available directly in Journey, Records, Investigations, Review
+and Visits. Connect the operator-issued credential, then enter the exact fictional
+patient ID. An authorized read opens the selected workflow. Each case, source
+and visit operation still checks its own grant. Overview also supports creating
+a fictional identity. Visits requires an active identity.
+
 This is the first **React + Vite + TypeScript** entry connected to the existing
 **FastAPI/PostgreSQL 16** patient registry (#172, #162). It does not replace the
 canonical identity owner, existing source-ledger application (#166), or accepted

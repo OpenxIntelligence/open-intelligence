@@ -1,3 +1,4 @@
+import type {ReactNode} from 'react';
 import {useEffect,useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
 import {FICTIONAL_RETURN_REASON,validReturnReason} from './review-queue-view';
@@ -34,8 +35,8 @@ export function useReviewReasonDrafts(state:ViewState){
 }
 
 /** Reuses the source-question review owner from PR245 in the current patient workspace. */
-export function ReviewPanel({state,session,busy,onOverview,onInvestigations,drafts}:{
- state:ViewState;session:RegistrySession;busy:boolean;onOverview:()=>void;onInvestigations:()=>void;
+export function ReviewPanel({state,session,busy,patientAccess,onInvestigations,drafts}:{
+ state:ViewState;session:RegistrySession;busy:boolean;patientAccess:ReactNode;onInvestigations:()=>void;
  drafts:ReturnType<typeof useReviewReasonDrafts>;
 }){
  const changing=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
@@ -43,14 +44,14 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,draf
  const queue=state.reviewQueue?.case_id===caseId&&!changing?state.reviewQueue:null;
  const intent=state.reviewReturnIntent;
  const returning=state.reviewReturnPhase==='saving',uncertain=state.reviewReturnPhase==='unknown';
+ if(!state.patient)return <section aria-label="Review" data-testid="review-workspace"><div data-testid="review-no-patient">{patientAccess}</div></section>;
  return <section className="panel review-panel" aria-labelledby="review-heading" data-testid="review-workspace">
   <span className="step">SAVED QUESTIONS / VERIFICATION RETURN HISTORY</span>
   <h2 id="review-heading" data-workspace-anchor="Verification queue">Questions for independent verification</h2>
   <p>Read saved questions in this patient’s source context, record why a source needs independent
    verification, and inspect the unchanged return history. Recording a return does not assign a
    clinician, send a notification or approve a clinical decision.</p>
-  {!state.patient?<div><p role="status">Open an authorized fictional patient first.</p>
-   <button onClick={onOverview}>Go to patient overview</button></div>:<>
+
    <p className="record-scope"><strong>Patient:</strong> <code>{state.patient.patient_id}</code>
     {caseId&&<> · <strong>Case:</strong> <code data-testid="review-case-id">{caseId}</code></>}</p>
    <div className="actions">
@@ -153,6 +154,6 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,draf
       <p className="muted">No clinical approval, external notification or completed review.</p>
      </li>)}</ul>}
    </div>}
-  </>}
+
  </section>;
 }

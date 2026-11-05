@@ -245,3 +245,12 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 .page-contents a{display:inline-flex;align-items:center;min-height:44px;color:#245341;text-underline-offset:3px}
 [data-workspace-anchor]{scroll-margin-block-start:var(--workspace-offset,24px)}
 [data-workspace-anchor]:focus-visible{outline:3px solid #936b25;outline-offset:3px}
+
+/* Keep section names visible as the workspace narrows. */
+.rail nav button[aria-current="page"] { box-shadow: inset 3px 0 #b3d8bd; font-weight: 650; }
+.boundary strong { display: inline; }
+footer a { color: #285b49; min-height: 44px; display: inline-flex; align-items: center; }
+@media (max-width: 600px) {
+  .rail nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .rail nav button { justify-content: center; font-size: 13px; overflow-wrap: anywhere; }
+}

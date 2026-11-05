@@ -14,6 +14,7 @@ import {SourceReading, emptySourceFilters} from './source-reading';
 import type {ReadingView} from './source-reading';
 import './styles.css';
 import './source-intake.css';
+import {PatientAccess} from './patient-access';
 import {PageContents} from './page-contents';
 import {LeaveVisitForm} from './visit-navigation';
 const session=new RegistrySession();
@@ -45,7 +46,7 @@ function WorkspaceContext({section,patientId,readiness,view,onViewChange}:{secti
   <div className="workspace-context"><div className="workspace-location-row"><span className="workspace-location">Patient workspace <span className="muted">/ {section}</span></span><a className="workspace-navigation-link" href="#workspace-navigation">Change section</a></div>
    <span className="workspace-identity" data-testid="workspace-identity">{patientId?<><span className="workspace-context-label">Authorized fictional patient</span> <code>{patientId}</code></>:<span className="muted">No authorized patient open</span>}</span>
   </div>
-  <div className="reading-controls"><div><label htmlFor="reading-view">Reading layout</label><select id="reading-view" value={view} onChange={e=>onViewChange(e.target.value as ReadingView)} aria-describedby="reading-view-help"><option value="patient">Patient reading</option><option value="clinical">Clinical reading</option></select><span id="reading-view-help">Presentation only · permissions unchanged</span></div>
+  <div className="reading-controls">{patientId&&<div><label htmlFor="reading-view">Reading layout</label><select id="reading-view" value={view} onChange={e=>onViewChange(e.target.value as ReadingView)} aria-describedby="reading-view-help"><option value="patient">Patient reading</option><option value="clinical">Clinical reading</option></select><span id="reading-view-help">Presentation only · permissions unchanged</span></div>}
   <span role="status" aria-live="polite" className={'connection '+readiness} data-testid="readiness">{readiness==='checking'?'Checking API':readiness==='ready'?'PostgreSQL API ready':'API unavailable'}</span></div>
  </header>;
 }
@@ -54,7 +55,7 @@ function App(){
  const encounterScope=useMemo(()=>state.connected&&state.phase==='ready'&&state.patient?.status==='active'
   ?createEncounterScope(session,state.patient.patient_id):null,[state.connected,state.phase,state.patient]);
  const reviewReasonDrafts=useReviewReasonDrafts(state);
- const [token,setToken]=useState(''),[patientId,setPatientId]=useState(''),[confirmed,setConfirmed]=useState(false);
+ const [patientId,setPatientId]=useState(''),[confirmed,setConfirmed]=useState(false);
  const [requestKey,setRequestKey]=useState(()=>crypto.randomUUID());
  const [readiness,setReadiness]=useState<'checking'|'ready'|'unavailable'>('checking');
  const visitDirty=useRef(false);
@@ -67,6 +68,14 @@ function App(){
  useEffect(()=>{setSourceFilters({scope:state.sourceIndex,...emptySourceFilters})},[state.sourceIndex]);
  const heading=useRef<HTMLHeadingElement>(null),moveFocus=useRef(false);
  useEffect(()=>{if(moveFocus.current){heading.current?.focus();moveFocus.current=false}},[section]);
+ // Hand keyboard focus to the section only for the read that removed its entry form.
+ const entryFocus=useRef<HTMLFormElement|null>(null);
+ useLayoutEffect(()=>{
+  const form=entryFocus.current;
+  if(!form || state.phase==='reading')return;
+  entryFocus.current=null;
+  if(state.patient && !form.isConnected && document.activeElement===document.body)heading.current?.focus();
+ },[state.phase,state.patient]);
  const passageResume=useRef<{patientId:string;questionId:string}|null>(null);
  useEffect(()=>{
   const target=passageResume.current;if(!target)return;
@@ -124,32 +133,38 @@ function App(){
   const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||state.evidenceWritePhase==='saving';
  function navigate(nextSection:string,discardVisit=false){
   if(section==='Visits'&&nextSection!==section&&visitDirty.current&&encounterScope&&!discardVisit){setLeaveFor({section:nextSection,scopeKey:encounterScope.key});return;}
+  entryFocus.current=null;
   if(nextSection!==section)setRecordsVisit(null);
   passageResume.current=null;sourceEntry.current=null;originalReturn.current=null;session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();session.dismissSourceImages();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
- function disconnect(){passageResume.current=null;sourceEntry.current=null;session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
- return <div className="app" onFocusCapture={()=>{if(sourceEntry.current&&document.activeElement!==sourceEntry.current.trigger)sourceEntry.current=null;}}>
+ function disconnect(){passageResume.current=null;sourceEntry.current=null;entryFocus.current=null;session.disconnect();setPatientId('');setConfirmed(false);}
+ const patientAccess=<PatientAccess key={section} session={session} state={state} busy={busy}
+  patientId={patientId} onPatientIdChange={setPatientId} onDisconnect={disconnect}
+  onRead={form=>{
+   entryFocus.current=section!=='Overview'&&form.contains(document.activeElement)?form:null;
+   void session.read(patientId);
+  }}/>;
+ return <div className="app" onFocusCapture={()=>{
+  if(entryFocus.current&&!entryFocus.current.contains(document.activeElement))entryFocus.current=null;
+  if(sourceEntry.current&&document.activeElement!==sourceEntry.current.trigger)sourceEntry.current=null;
+ }}>
   <a className="skip" href="#main">Skip to workspace</a>
   <aside className="rail" aria-label="Workspace navigation">
    <div className="brand"><span className="mark" aria-hidden="true">oi</span><span>Open<br/>Intelligence</span></div>
-   <div className="environment">Development · fictional identities only</div>
-   <nav id="workspace-navigation" tabIndex={-1} aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>navigate(name)}><span>{name}</span>{name==='Records'?<span className="nav-hint">Original records</span>:name==='Journey'?<span className="nav-hint">Source view</span>:name==='Investigations'?<span className="nav-hint">Source questions</span>:name==='Review'?<span className="nav-hint">Verification returns</span>:null}</button>)}</nav>
-   <div className="rail-note">One patient context.<br/>Original sources.<br/>Human clinical authority.</div>
+   <nav id="workspace-navigation" tabIndex={-1} aria-label="Patient workspace">{navigation.map(name=><button type="button" key={name} aria-current={name===section?'page':undefined} onClick={()=>navigate(name)}>{name}</button>)}</nav>
   </aside>
   <div className="body"><WorkspaceContext section={section} patientId={state.patient?.patient_id??null} readiness={readiness} view={view} onViewChange={setView}/>
    {leaveFor&&leaveFor.scopeKey===encounterScope?.key&&<LeaveVisitForm destination={leaveFor.section} onStay={()=>setLeaveFor(null)} onLeave={()=>{
      setLeaveFor(null);navigate(leaveFor.section,true);
    }}/>}
    <main id="main" tabIndex={-1}>
-    <div className="heading"><div><p className="eyebrow">OPEN INTELLIGENCE · H1</p><h1 ref={heading} tabIndex={-1}>{section==='Overview'?'Start with the right patient.':section}</h1><p className="lede">{section==='Overview'?'A connected foundation for the patient’s story, evidence and care.':section==='Visits'?'Read visit notes, schedule a visit or check the records linked to it.':section==='Records'?'Inspect authorized fictional case mappings, original source history and unreviewed source statements.':section==='Journey'?'View source-linked chronology, uncertainty and disagreements without implying clinical assessment.':section==='Investigations'?'Prepare exact source context, save a question and inspect its current or reassessment status. No AI execution or clinical approval.':'Inspect saved questions, record a source verification return and preserve its history as sources change. Clinical approval remains unavailable.'}</p></div></div>
-    <div className="boundary" role="note"><strong>Development workspace, not a clinical service.</strong> Use operator-issued synthetic credentials and fictional identities only. These are not patient accounts, verified consent or professional sign-off.</div>
-    <PageContents key={section}/>
+    <div className="heading"><div><h1 ref={heading} tabIndex={-1}>{section==='Overview'?(state.patient?'Patient overview':'Open a patient'):section}</h1><p className="lede">{section==='Overview'?(state.patient?'Revisit your records, questions and follow-up work.':'Connect your session, then open a fictional patient using their ID.'):section==='Visits'?'Read visit notes, schedule a visit or check the records linked to it.':section==='Records'?'Find original records, check their versions and see what each source reported.':section==='Journey'?'Follow events over time and see where records are incomplete or disagree.':section==='Investigations'?'Save a question with its source and see when a record change calls for another look.':'Check the sources behind saved questions and record what needs independent verification.'}</p></div></div>
+    <div className="boundary" role="note"><strong>Synthetic workspace.</strong> Use fictional records and operator-issued credentials only. Clinical sign-off is unavailable.</div>
+    {state.patient&&<PageContents key={section}/>}
     {section==='Visits'?(encounterScope?<EncounterChart key={encounterScope.key} scope={encounterScope} dirtyRef={visitDirty}
-      onRecords={id=>{navigate('Records');setRecordsVisit({id,patient:state.patient});}}/>:<section className="panel" data-testid="visits-no-patient"><h2>Open a patient to view visits</h2><p>Select an authorized, active fictional patient in Overview.</p>
-      <button onClick={()=>navigate('Overview')}>Go to patient overview</button></section>):section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onRecords={caseId=>{navigate('Records');void session.loadSources(caseId);}} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
+      onRecords={id=>{navigate('Records');setRecordsVisit({id,patient:state.patient});}}/>:<div data-testid="visits-no-patient">{state.patient?.status==='suspended'&&<p role="status">This identity is suspended. Open an active patient to see visits.</p>}{patientAccess}</div>):section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onRecords={caseId=>{navigate('Records');void session.loadSources(caseId);}} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')}/>:section==='Records'&&!state.patient?<section data-testid="records-workspace" aria-label="Records"><div data-testid="records-no-patient">{patientAccess}</div></section>:section==='Records'&&state.patient?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
      <span className="step">CANONICAL SOURCE OWNER / ORIGINALS</span>
      <h2 id="records-heading" data-workspace-anchor="Records">{view==='patient'?'Records available to you':'Original source records'}</h2>
      <p>Shows source-reported information from the existing scoped PostgreSQL API. Original-text inspection and deliberate import require separate server permissions. AI interpretation, clinical decisions, verified identity and consent are not supplied by this screen. Information is current only at its last successful check.</p>
-     {!state.patient?<div data-testid="records-no-patient"><p>Open an authorized fictional patient in Overview before loading records.</p><button onClick={()=>navigate('Overview')}>Go to patient overview</button></div>:
      <div>
       <p className="record-scope" data-testid="records-patient"><strong>Selected patient:</strong> <code>{state.patient.patient_id}</code></p>
       <button className="primary" data-testid="load-cases" disabled={state.recordsPhase.startsWith('loading')||busy} onClick={()=>void session.loadCases()}>Check authorized cases</button>
@@ -203,21 +218,16 @@ function App(){
         onOpenOriginal={(sourceId,trigger)=>{originalReturn.current={sourceId,trigger,pending:true};void session.loadOriginal(sourceId)}}/>
        <p className="muted">Amendments are preserved as separate versions. Connected questions and reports retain their source context and reassessment states. Clinical approval is not supplied by this screen.</p>
       </section>}
-     </div>}
+     </div>
     </section>:section!=='Overview'?<section className="panel"><h2>{section} is not connected</h2><p>The existing reference application retains this workflow. No placeholder patient data, generated conclusions or clinical actions are shown here.</p><p>The source, evidence and review owners must be integrated with the same scoped patient API before this becomes available.</p><button onClick={()=>navigate('Overview')}>Return to overview</button></section>:<>
     <PatientContinuity state={state} onNavigate={navigate} busy={busy} onRefreshFollowthrough={caseId=>void session.loadFollowthrough(caseId)}/>
     <SecondOpinionPreparation state={state} onNavigate={navigate} onResumeQuestion={questionId=>{navigate('Investigations');if(state.patient)passageResume.current={patientId:state.patient.patient_id,questionId};void session.loadQuestionEvidence(questionId);}} onCheckEvidence={questionId=>void session.loadQuestionEvidence(questionId)}/>
-    <div className="grid">
-     <section className="panel" aria-labelledby="access-heading"><span className="step">01 / ACCESS</span><h2 id="access-heading" data-workspace-anchor="Connect session">Connect your session</h2><p>Permission is checked by the API on every request. Your credential stays in this tab’s memory and is cleared on disconnect or reload.</p>
-      {!state.connected?<form onSubmit={e=>{e.preventDefault();session.connect(token);setToken('')}}><label htmlFor="credential">Synthetic access credential</label><input id="credential" name="credential" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} value={token} onChange={e=>setToken(e.target.value)} required minLength={32} maxLength={256}/><button type="submit" className="primary">Connect credential</button></form>:<div><p className="session-status">Credential present · grants checked by server</p><button onClick={disconnect}>Disconnect and clear</button></div>}
-     </section>
-     <section className="panel" aria-labelledby="patient-heading"><span className="step">02 / PATIENT</span><h2 id="patient-heading" data-workspace-anchor="Open patient">Open an authorized identity</h2><p>Enter the exact opaque patient ID. Creating an identity does not automatically grant permission to read it.</p><form onSubmit={e=>{e.preventDefault();void session.read(patientId)}}><label htmlFor="patient-id">Patient ID</label><input id="patient-id" value={patientId} onChange={e=>setPatientId(e.target.value)} autoComplete="off" spellCheck={false} disabled={!state.connected||state.phase==='creating'} required maxLength={128}/><button className="primary" disabled={!state.connected||busy}>Open patient</button></form></section>
-    </div>
-    <p className={'status '+(state.phase==='error'?'error':'')} role="status" aria-live="polite" data-testid="status">{state.message}</p>
+    {patientAccess}
     {state.patient&&<section className="panel patient" data-testid="patient-card"><span className="step">LATEST SUCCESSFUL REGISTRY RESPONSE</span><h2>Patient identity</h2><dl><div><dt>Patient ID</dt><dd>{state.patient.patient_id}</dd></div><div><dt>Organization</dt><dd>{state.patient.origin_org}</dd></div><div><dt>Registry status</dt><dd>{state.patient.status}</dd></div><div><dt>Revision</dt><dd>{state.patient.revision}</dd></div><div><dt>Created</dt><dd>{state.patient.created_at}</dd></div></dl><p className="muted">Identity metadata only, authorized at the last successful request. Recheck access for current permissions. {state.sourceIndex||state.worldModel?'Source information is loaded separately; it does not establish a reviewed clinical conclusion.':'No clinical record or conclusion has been loaded.'}</p><button disabled={busy} onClick={()=>void session.read(state.patient!.patient_id)}>Recheck current access</button></section>}
     <details className="panel create-panel"><summary>Create a fictional patient identity</summary><p>This uses the existing canonical registry. No names or clinical details are accepted. Your credential needs a separate create action.</p><form onSubmit={e=>{e.preventDefault();keyForReceipt.current=requestKey;void session.create(requestKey,confirmed)}}><label htmlFor="request-key">Creation request key</label><input id="request-key" value={requestKey} readOnly/><p className="muted small">Keep the same key when retrying an uncertain response. The server prevents duplicate identities.</p><label className="check"><input id="synthetic-confirm" type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} disabled={!state.connected||busy}/>This is an independently fictional identity, not a real person.</label><div className="actions"><button disabled={!state.connected||!confirmed||busy} className="primary">Create fictional identity</button><button type="button" disabled={busy||!state.created||keyForReceipt.current!==requestKey} onClick={()=>{setRequestKey(crypto.randomUUID());setConfirmed(false)}}>Start a different creation</button></div></form>{state.created&&<p data-testid="created-id">{state.created.duplicate?'Existing identity recovered: ':'Identity created: '}<code>{state.created.patient_id}</code><br/>The operator must separately grant access to this ID before it can be read.</p>}</details>
     </>}
-    <footer>FastAPI · PostgreSQL 16 · React · TypeScript <span>No live model or external biomedical data is used by this screen.</span></footer>
+
+    <footer><a href="#workspace-navigation">Back to workspace navigation</a></footer>
    </main>
   </div>
  </div>;

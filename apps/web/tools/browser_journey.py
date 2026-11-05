@@ -69,7 +69,43 @@ def main():
             cd.wait("document.querySelector('[data-testid=created-id]').textContent.includes('Existing identity recovered')",'same-key idempotent create')
             read();cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'creation confers no read grant')
             assert cd.evaluate("!document.querySelector('[data-testid=patient-card]')")
-            credentials[0]['patient_ids']=[pid];write_grants();read()
+            def select_section(name):
+                cd.evaluate("Array.from(document.querySelectorAll('#workspace-navigation button'))"
+                            ".find(b=>b.textContent===" + json.dumps(name) + ").click()")
+                cd.wait("document.querySelector('#workspace-navigation [aria-current=page]').textContent===" + json.dumps(name),
+                        name + ' is the selected section')
+
+            out=Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence'));out.mkdir(parents=True,exist_ok=True)
+            for name in ('Journey', 'Investigations', 'Review', 'Visits', 'Records'):
+                select_section(name)
+                cd.wait("document.querySelectorAll('#patient-id').length===1 && !document.querySelector('#patient-id').disabled",
+                        name + ' exposes one patient lookup without returning to Overview')
+            value('#patient-id', pid)
+            read()
+            cd.wait("document.querySelector('[data-testid=status]')?.textContent.includes('Patient unavailable')", 'inline lookup refuses a missing grant')
+            assert cd.evaluate("!document.querySelector('[data-testid=records-patient]')")
+
+            # Clear and reconnect from the selected section, then retry with a fresh grant.
+            cd.evaluate("Array.from(document.querySelectorAll('.patient-access button')).find(b=>b.textContent==='Disconnect and clear').click()")
+            cd.wait("document.activeElement===document.querySelector('#credential') && document.querySelector('#patient-id').value===''",
+                    'disconnect clears the input and focuses the credential on Records')
+            for width, height in ((390, 844), (1440, 960)):
+                cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':height,'deviceScaleFactor':1,'mobile':False})
+                assert cd.evaluate("document.documentElement.scrollWidth<=innerWidth"), 'patient entry reflows'
+                cd.evaluate("scrollTo(0,0)")
+                png=cd.command('Page.captureScreenshot',{'format':'png'})
+                (out/f'patient-entry-records-{width}.png').write_bytes(base64.b64decode(png['data']))
+            cd.command('Emulation.clearDeviceMetricsOverride')
+            connect()
+            cd.wait("document.activeElement===document.querySelector('#patient-id')", 'credential submission focuses patient lookup')
+            credentials[0]['patient_ids']=[pid];write_grants()
+            value('#patient-id',pid);read()
+            cd.wait("document.querySelector('[data-testid=records-patient]')?.textContent.includes(" + json.dumps(pid) + ")",
+                    'fresh grant opens the requested patient on Records')
+            cd.wait("document.activeElement===document.querySelector('h1') && document.querySelector('h1').textContent==='Records'",
+                    'successful inline lookup focuses the current workflow')
+            assert cd.evaluate("!document.querySelector('.patient-access') && !document.querySelector('[data-testid=source-index]')")
+            select_section('Overview')
             cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'separate grant permits canonical patient read')
             assert cd.evaluate("document.querySelector('[data-testid=patient-card]').textContent").count(pid)==1
             assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
@@ -100,7 +136,6 @@ def main():
                 'synthetic':True,'original_text':original})
             assert status==201 and receipt['result']=='imported'
             original_id=receipt['source_id']
-            out=Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence'));out.mkdir(parents=True,exist_ok=True)
             from encounter_chart_journey import exercise as exercise_encounter_chart
             exercise_encounter_chart(cd,pid,tokens[0],credentials,write_grants,case,original_id,original,out)
             cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
