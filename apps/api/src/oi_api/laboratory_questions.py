@@ -143,6 +143,49 @@ class PostgresLaboratoryQuestions:
                            ("patient_read", "source_read", "composer_context_read", "question_create"),
                            write, recheck_authority)
 
+    def project_locked(self, patient_id: str, case_id: str, *, organization: str, source_index: dict) -> list[dict]:
+        """Project validated typed questions under the canonical source owner's locks."""
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("Laboratory question projection requires caller transaction")
+        if (source_index.get("patient_id"), source_index.get("case_id")) != (patient_id, case_id):
+            raise PatientRegistryDenied("Laboratory question context unavailable")
+        index = source_index
+        observations = PostgresLaboratoryFHIR(self.registry).current_observations_locked(case_id)
+        world = project_source_world_model(index, observations)
+        current = {(o["source_id"], o["observation_reference"]): (o["document_version"], o["source_sha256"])
+                   for o in world["laboratory_observations"]}
+        # Include history even if a child is damaged; fail the whole read
+        # rather than silently omitting an immutable saved question.
+        rows = self.registry._fetchall(
+            "SELECT q.question_id,q.question,q.source_id,q.source_version,q.source_sha256,"
+            "q.source_snapshot_sha256,q.preflight_sha256,q.source_snapshot_contract,"
+            "q.actor,q.request_key,q.intent_sha256,a.source_id,a.observation_reference "
+            "FROM investigation.source_questions q LEFT JOIN investigation.laboratory_question_anchors a "
+            "ON a.question_id=q.question_id WHERE q.patient_id=%s AND q.case_id=%s "
+            "AND q.origin_org=%s AND q.purpose=%s AND q.source_line IS NULL "
+            "ORDER BY q.created_at,q.question_id LIMIT %s",
+            (patient_id, case_id, organization, "operations", MAX_LABORATORY_QUESTIONS + 1),
+        )
+        if len(rows) > MAX_LABORATORY_QUESTIONS:
+            raise PatientRegistryError("Laboratory question list exceeds bounded read limit")
+        originals = {s["source_id"]: (s["version"], s["sha256"]) for s in index["sources"]}
+        questions = []
+        for qid, question, sid, version, sha, snapshot, preflight, contract, author, key, saved, anchor_sid, ref in rows:
+            if (contract != SOURCE_SNAPSHOT_CONTRACT or not ref or anchor_sid != sid
+                    or originals.get(sid) != (version, sha)
+                    or not hmac.compare_digest(saved, _intent(patient_id, case_id, organization,
+                        author, "operations", key, sid, ref, question, snapshot, preflight))):
+                raise PatientRegistryError("Stored laboratory question provenance is inconsistent")
+            fresh = (current.get((sid, ref)) == (version, sha)
+                     and hmac.compare_digest(snapshot, world["snapshot_fingerprint"]))
+            questions.append({
+                "question_id": qid, "question": question, "source_id": sid, "source_version": version,
+                "source_sha256": sha, "observation_reference": ref, "source_snapshot_sha256": snapshot,
+                "preflight_sha256": preflight, "source_context_state": (
+                    "current_unreviewed_question" if fresh else "source_reassessment_required"),
+            })
+        return questions
+
     def list(self, patient_id: str, case_id: str, *, organization: str, actor: str, purpose: str,
              recheck_authority: Callable[[], None],
              prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
@@ -150,40 +193,7 @@ class PostgresLaboratoryQuestions:
         organization, actor = _key(organization, "organization"), _key(actor, "actor")
 
         def prepare(index):
-            observations = PostgresLaboratoryFHIR(self.registry).current_observations_locked(case_id)
-            world = project_source_world_model(index, observations)
-            current = {(o["source_id"], o["observation_reference"]): (o["document_version"], o["source_sha256"])
-                       for o in world["laboratory_observations"]}
-            # Include history even if a child is damaged; fail the whole read
-            # rather than silently omitting an immutable saved question.
-            rows = self.registry._fetchall(
-                "SELECT q.question_id,q.question,q.source_id,q.source_version,q.source_sha256,"
-                "q.source_snapshot_sha256,q.preflight_sha256,q.source_snapshot_contract,"
-                "q.actor,q.request_key,q.intent_sha256,a.source_id,a.observation_reference "
-                "FROM investigation.source_questions q LEFT JOIN investigation.laboratory_question_anchors a "
-                "ON a.question_id=q.question_id WHERE q.patient_id=%s AND q.case_id=%s "
-                "AND q.origin_org=%s AND q.purpose=%s AND q.source_line IS NULL "
-                "ORDER BY q.created_at,q.question_id LIMIT %s",
-                (patient_id, case_id, organization, purpose, MAX_LABORATORY_QUESTIONS + 1),
-            )
-            if len(rows) > MAX_LABORATORY_QUESTIONS:
-                raise PatientRegistryError("Laboratory question list exceeds bounded read limit")
-            originals = {s["source_id"]: (s["version"], s["sha256"]) for s in index["sources"]}
-            questions = []
-            for qid, question, sid, version, sha, snapshot, preflight, contract, author, key, saved, anchor_sid, ref in rows:
-                if (contract != SOURCE_SNAPSHOT_CONTRACT or not ref or anchor_sid != sid
-                        or originals.get(sid) != (version, sha)
-                        or not hmac.compare_digest(saved, _intent(patient_id, case_id, organization,
-                            author, purpose, key, sid, ref, question, snapshot, preflight))):
-                    raise PatientRegistryError("Stored laboratory question provenance is inconsistent")
-                fresh = (current.get((sid, ref)) == (version, sha)
-                         and hmac.compare_digest(snapshot, world["snapshot_fingerprint"]))
-                questions.append({
-                    "question_id": qid, "question": question, "source_id": sid, "source_version": version,
-                    "source_sha256": sha, "observation_reference": ref, "source_snapshot_sha256": snapshot,
-                    "preflight_sha256": preflight, "source_context_state": (
-                        "current_unreviewed_question" if fresh else "source_reassessment_required"),
-                })
+            questions = self.project_locked(patient_id, case_id, organization=organization, source_index=index)
             result = {"patient_id": patient_id, "case_id": case_id,
                       "access_receipt_id": index["access_receipt_id"], "questions": questions}
             return prepare_response(result) if prepare_response else result

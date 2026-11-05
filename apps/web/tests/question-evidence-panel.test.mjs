@@ -96,3 +96,15 @@ test('rendering treats titles as text and refuses unsafe anchor destinations',()
  assert.ok(!html.includes('<script>'));assert.ok(!html.includes('javascript:'));
  assert.ok(html.includes('&lt;script&gt;'));
 });
+
+test('an amended laboratory question offers history only and does not reuse search or metadata from a text panel',()=>{
+ const {source_line, ...lab}={...question,observation_reference:'Observation/Original',source_context_state:'source_reassessment_required'};
+ const restricted={link_id:'EVIDENCE-LINK-'+'E'.repeat(32),citation:record.citation,metadata_sha256:metadata,
+  created_at:'2026-11-03T10:00:00Z',actor_label:'ACTOR-FICTIONAL',status:'rights_restricted',record:null};
+ const html=render(state({evidenceFamily:'laboratory',evidenceSearch:null,evidenceSearchPhase:'idle',evidenceLinks:{
+  contract:'oi.pg-question-evidence-links/1',...scope,source_context_state:'source_reassessment_required',links:[restricted]}}),lab);
+ assert.ok(html.includes(record.citation));assert.match(html,/evidence-stale/);assert.match(html,/evidence-restricted/);
+ assert.ok(!html.includes('data-testid="evidence-query"'));assert.ok(!html.includes('data-testid="evidence-save"'));
+ assert.ok(!html.includes(record.title));assert.ok(!html.includes(record.link));
+ assert.ok(!render(state({evidenceFamily:'text'}),lab).includes(record.title));
+});

@@ -103,6 +103,10 @@ function ref(v:unknown,currentIds:Set<string>):WorldRef{
   if(!SOURCE.test(id)||!currentIds.has(id))return error();
   return Object.freeze({source_id:id,source_line:line});
 }
+export function isLaboratoryAbsentReason(value:unknown):boolean{
+  return value==='unknown'||value==='not-performed'||value==='error'||value==='masked';
+}
+
 function labObs(v:unknown,current:Map<string,SourceVersion>):WorldLaboratoryObservation{
   const x=shape(v,['source_id','document_id','document_version','source_sha256',
     'observation_reference','loinc_code','effective_at','issued_at','specimen_reference',
@@ -123,7 +127,7 @@ function labObs(v:unknown,current:Map<string,SourceVersion>):WorldLaboratoryObse
        typeof x.unit_code!=='string'||!x.unit_code||x.unit_code.length>32||
        x.absent_reason!==null)return error();
   }else if(x.value_text!==null||x.unit_code!==null||
-           !['unknown','not-performed','error','masked'].includes(String(x.absent_reason)))return error();
+           !isLaboratoryAbsentReason(x.absent_reason))return error();
   return Object.freeze({...x} as WorldLaboratoryObservation);
 }
 function obs(v:unknown,current:Map<string,SourceVersion>):WorldObservation{

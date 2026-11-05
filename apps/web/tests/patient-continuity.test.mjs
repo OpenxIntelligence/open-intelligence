@@ -138,3 +138,72 @@ test('laboratory-only cases offer inspection and withhold the source-line questi
  assert.ok(!view.preparation.some(item=>item.key==='prepare-a-question'));
  assert.equal(view.preparation.find(item=>item.key==='unresolved-statements')?.destination,'Journey');
 });
+
+// A typed laboratory question is a canonical saved question, but it cannot be
+// represented by a fake source_line or silently included in text-only totals.
+const laboratoryModel=()=>({
+ ...modelSummary(),
+ current_sources:[{source_id:'SRC-LAB',version:1,sha256:'a'.repeat(64),kind:'laboratory',state:'current'}],
+ history:[], laboratory_observations:[{source_id:'SRC-LAB',observation_reference:'Observation/ROW-1'}],
+});
+const laboratoryQuestion=(state='current_unreviewed_question')=>({
+ question_id:'QUESTION-'+'E'.repeat(32),question:'What does this fictional result mean?',
+ source_id:'SRC-LAB',source_version:1,source_sha256:'a'.repeat(64),
+ observation_reference:'Observation/ROW-1',source_snapshot_sha256:'v1',preflight_sha256:'b'.repeat(64),
+ source_context_state:state,
+});
+const laboratoryHistory=(rows=[laboratoryQuestion()])=>({
+ patient_id:'PAT-ONE',case_id:'CASE-ONE',checked_source_snapshot_sha256:'v1',
+ access_receipt_id:'ACCESS-'+'D'.repeat(32),questions:rows,
+});
+
+test('overview shows separately verified laboratory questions without misreporting them as zero saved questions',()=>{
+ const state={...base(),worldModel:laboratoryModel(),labQuestionListPhase:'ready',
+   labQuestionHistory:laboratoryHistory()};
+ const result=projection(state);
+ assert.deepEqual(result.questions,{current:0,reassessment:0});
+ assert.deepEqual(result.laboratoryQuestions,{current:1,reassessment:0});
+ assert.equal(result.laboratoryAvailable,true);
+ assert.ok(!result.preparation.some(p=>p.key==='questions-unchecked'&&/all saved questions/i.test(p.detail)));
+});
+
+test('laboratory amendment cues reassessment and never changes the text-only count',()=>{
+ const state={...base(),worldModel:laboratoryModel(),labQuestionListPhase:'ready',
+   labQuestionHistory:laboratoryHistory([laboratoryQuestion('source_reassessment_required')])};
+ const result=projection(state);
+ assert.deepEqual(result.laboratoryQuestions,{current:0,reassessment:1});
+ assert.deepEqual(result.questions,{current:0,reassessment:0});
+ assert.ok(result.preparation.some(p=>p.key==='laboratory-question-recheck'&&p.destination==='Journey'));
+});
+
+test('wrong-scope, revoked or unchecked laboratory history never becomes a verified count',()=>{
+ const state={...base(),worldModel:laboratoryModel(),labQuestionListPhase:'ready',
+  labQuestionHistory:laboratoryHistory()};
+ for(const patch of [
+  {labQuestionListPhase:'loading'}, {labQuestionListPhase:'error'},
+  {labQuestionHistory:{...laboratoryHistory(),patient_id:'PAT-OTHER'}},
+  {labQuestionHistory:{...laboratoryHistory(),case_id:'CASE-OTHER'}},
+  {labQuestionHistory:{...laboratoryHistory(),checked_source_snapshot_sha256:'old'}},
+  {labQuestionHistory:{...laboratoryHistory(),questions:[{...laboratoryQuestion(),source_id:'SRC-FOREIGN'}]}},
+  {labQuestionHistory:{...laboratoryHistory(),questions:[{...laboratoryQuestion(),source_sha256:'b'.repeat(64)}]}},
+ ]){
+  assert.equal(projection({...state,...patch})?.laboratoryQuestions,null);
+ }
+ assert.equal(projection({...state,cases:[]})?.laboratoryQuestions,null);
+ assert.equal(projection({...state,connected:false}),null);
+ assert.deepEqual(projection({...state,labQuestionHistory:laboratoryHistory([])})?.laboratoryQuestions,
+  {current:0,reassessment:0});
+});
+
+
+test('current and historic versions of the same laboratory source remain separately verifiable',()=>{
+ const current=laboratoryModel();
+ const previous={source_id:'SRC-LAB',version:1,sha256:'a'.repeat(64),kind:'laboratory',state:'superseded'};
+ current.current_sources=[{...previous,version:2,sha256:'b'.repeat(64),state:'current'}];
+ current.history=[previous];
+ const currentQuestion={...laboratoryQuestion(),source_version:2,source_sha256:'b'.repeat(64)};
+ const oldQuestion={...laboratoryQuestion('source_reassessment_required'),question_id:'QUESTION-'+'F'.repeat(32)};
+ const result=projection({...base(),worldModel:current,labQuestionListPhase:'ready',
+  labQuestionHistory:laboratoryHistory([currentQuestion,oldQuestion])});
+ assert.deepEqual(result?.laboratoryQuestions,{current:1,reassessment:1});
+});

@@ -4,8 +4,10 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. The current API requires `0018_laboratory_questions`,
-which adds a typed Observation reference to the existing question registry. See
+records the original integration. The API requires `0022_lab_citation_source_scope`. Run
+`python -m oi_api.migrate upgrade head` from either published 0019 revision.
+The join retains both the [encounter and note service](#connected-encounter-and-note-service)
+and the original Observation behind each governed laboratory citation. See
 [the laboratory question contract](../../docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md)
 for save, retry and history behavior.
 The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)
@@ -709,7 +711,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0012_image_report_convergence; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0022_lab_citation_source_scope; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |
@@ -867,3 +869,25 @@ The source owner's final shell-only [run #41530234376](https://github.com/OpenxI
 at 62d2ad0dd2c2d581f9d13d7659f888265838a4f0 passed 26 API tests, 245 prototype
 tests, both Chromium journeys and the health-only Compose/API-restart probe.
 That proves the base shell, not this new patient/backup/restore extension.
+
+## Connected encounter and note service
+
+The synthetic H1 EHR shares the patient registry, access file and immutable event journal. Its four PostgreSQL tables in the `ehr` schema hold visits, note headers, immutable note versions and idempotent command receipts. Alembic installs them after the existing `0018_laboratory_questions` revision. Migration does not create visits or notes for historical patients.
+
+The normal HTTP entry point is `/v1/patients/{patient_id}/encounters`. A synthetic operations credential must name the patient, belong to their organization, and have both `patient_read` and the specific action below. All writes require `synthetic: true` and an opaque `request_key`. Repeating the exact command returns its original receipt. Reusing the key with a different intent returns 409.
+
+| Method and path relative to the entry point | Required action | Result |
+|---|---|---|
+| POST (root) | `encounter.schedule` | Schedule a visit with `external_key`, `kind`, and `service_date`. |
+| GET (root) | `encounter.read` | List encounters in ID order. Continue using `next_after_id`. |
+| POST `/{id}/transitions` | `encounter.transition` | Supply `expected_revision` and target `in_progress`, `completed`, or `cancelled`. |
+| POST `/{id}/notes/{key}/versions` | `note.write` | Save an attributed fictional draft using `expected_version` (zero for a new note), `body`, and optional `note_kind`, `facility_id`, `department_id`. |
+| GET `/events` | `encounter.events.read`, `encounter.read` and `note.read` | Read committed encounter and draft-note change references in patient-local order. Resume with `after_id=resume_after_id`, even after an empty page. |
+| GET `/{id}/notes` | `note.read` | Discover the note keys and latest versions for this visit. |
+| GET `/{id}/notes/{key}/versions` | `note.read` | Reopen dated, hashed note versions and their author labels. Continue using `next_after_version`. |
+
+Each list takes `limit` (1–25) and its corresponding cursor (`after_id` or `after_version`). A successful read returns an audited access receipt. Only operations on an in-progress or completed visit can save notes. Authored drafts stay distinct from imported reports and any clinical attestation.
+
+The scheduling, transition, versioning, content-integrity and retry rules reuse the [first-party encounter implementation](https://github.com/OpenxIntelligence/open-intelligence/pull/301). The H1 adapter binds them to current request authority and the existing patient transaction. The independent PostgreSQL HTTP and restart/restore exercises use fictional records. Production identity, clinical signatures, treatment orders, note-to-source provenance and a clinician-facing editor remain separate work.
+
+Consumers persist their own cursor per patient and deduplicate using the immutable journal ID. The feed contains encounter IDs/revisions and note keys/versions, with no note bodies. Audit reads produce no new feed item. This is a pull interface for these three event types; push delivery, consumer acknowledgments and a general-purpose worker are separate capabilities.
