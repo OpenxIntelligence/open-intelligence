@@ -195,8 +195,19 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     value('[data-testid=passage-evidence-query]','continuity')
     click('Search evidence catalog')
     cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('FICT-RECORD-CONTINUITY@1')",'question-scoped catalog search')
+    cd.evaluate("""(()=>{const original=window.fetch;window.__citationWrites=[];window.fetch=async(input,init)=>{
+      const response=await original(input,init);
+      if(String(input).endsWith('/evidence-links')&&init?.method==='POST')
+        window.__citationWrites.push({status:response.status,body:await response.clone().json(),command:JSON.parse(init.body)});
+      return response;};window.__restoreCitationFetch=()=>{window.fetch=original};})()""")
     click('Save citation FICT-RECORD-CONTINUITY@1')
-    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('Citation saved.')",'passage citation saved')
+    try:
+        cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('Citation saved.')",'passage citation saved')
+    except Exception:
+        print('CITATION FAILURE',cd.evaluate("({writes:window.__citationWrites,visible:document.querySelector('[data-testid=saved-passage-questions]')?.textContent})"))
+        raise
+    finally:
+        cd.evaluate('window.__restoreCitationFetch()')
     click('Open saved passage citations')
     cd.wait("document.querySelector('[data-testid=passage-citations]')?.textContent.includes('FICT-RECORD-CONTINUITY@1 · available')",'saved citation reopened')
     original_question,=operator(prefix+'/'+first+'/questions')['questions']
