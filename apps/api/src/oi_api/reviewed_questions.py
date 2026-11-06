@@ -24,6 +24,35 @@ class PassageQuestionWrite(FictionalDocument):
         return value
 
 
+QUESTION_FROM = (" FROM investigation.source_questions LEFT JOIN investigation.reviewed_question_anchors USING(question_id) WHERE patient_id=%s AND case_id=%s"
+         " AND origin_org=%s AND purpose=%s AND source_id=%s AND source_snapshot_contract='oi.reviewed-document-selection/1'")
+QUESTION_SELECT = ("SELECT question_id,question,manual_revision,manual_key,source_snapshot_sha256,"
+                  "source_version,source_sha256,actor,request_key,intent_sha256,preflight_sha256" + QUESTION_FROM)
+
+
+def checked_question(row, doc, scope):
+    patient, case = scope[:2]
+    qid,text,rev,key,digest,version,sha,author,req,stored_intent,preflight = row
+    selection = selection_reference(doc, patient, case, rev, key)
+    if (digest,version,sha)!=(selection["anchor_sha256"],doc["version"],doc["sha256"]):
+        raise PatientRegistryError("Inconsistent reviewed question provenance")
+    reconstructed = PassageQuestionWrite(synthetic=True,request_key=req,revision_id=rev,
+        selection_key=key,anchor_sha256=digest,question=text)
+    if stored_intent != fingerprint([CONTRACT,*scope,author,reconstructed.model_dump()]) or preflight != fingerprint([digest,text]):
+        raise PatientRegistryError("Stored question intent differs")
+    return dict(question_id=qid,question=text,selection=selection)
+
+
+def resolve_question_locked(owner, scope, question_id):
+    patient, case, organization, purpose, source = scope
+    binding = owner._binding(patient, case, organization, purpose)
+    row = owner.registry._fetchone(QUESTION_SELECT + " AND question_id=%s", (*scope, question_id))
+    if row is None:
+        raise PatientRegistryDenied("Question evidence unavailable")
+    doc = owner._load(case, source)
+    return checked_question(row, doc, scope), binding
+
+
 def passage_questions(owner, patient, case, source, payload, *, organization, actor, purpose, recheck_authority):
     if purpose != "operations":
         raise PatientRegistryDenied("Reviewed questions unavailable")
@@ -32,26 +61,12 @@ def passage_questions(owner, patient, case, source, payload, *, organization, ac
         binding = owner._binding(patient, case, organization, purpose)
         doc = owner._load(case, source)
         scope = (patient, case, organization, purpose, source)
-        where = (" FROM investigation.source_questions LEFT JOIN investigation.reviewed_question_anchors USING(question_id) WHERE patient_id=%s AND case_id=%s"
-                 " AND origin_org=%s AND purpose=%s AND source_id=%s AND source_snapshot_contract='oi.reviewed-document-selection/1'")
-        rows = reg._fetchall("SELECT question_id,question,manual_revision,manual_key,source_snapshot_sha256,"
-                            "source_version,source_sha256,actor,request_key,intent_sha256,preflight_sha256" + where + " ORDER BY created_at,question_id LIMIT 251", scope)
+        rows = reg._fetchall(QUESTION_SELECT + " ORDER BY created_at,question_id LIMIT 251", scope)
         if len(rows)>250:
             raise PatientRegistryError("Question history exceeds its bound")
         recheck_authority()
-        def checked(row):
-            qid,text,rev,key,digest,version,sha,author,req,stored_intent,preflight = row
-            selection = selection_reference(doc, patient, case, rev, key)
-            if (digest,version,sha)!=(selection["anchor_sha256"],doc["version"],doc["sha256"]):
-                raise PatientRegistryError("Inconsistent reviewed question provenance")
-            reconstructed = PassageQuestionWrite(synthetic=True,request_key=req,revision_id=rev,
-                selection_key=key,anchor_sha256=digest,question=text)
-            if stored_intent != fingerprint([CONTRACT,*scope,author,reconstructed.model_dump()]) or preflight != fingerprint([digest,text]):
-                raise PatientRegistryError("Stored question intent differs")
-            return dict(question_id=qid,question=text,selection=selection)
-
         if payload is None:
-            questions = [checked(row) for row in rows]
+            questions = [checked_question(row, doc, scope) for row in rows]
             result = dict(patient_id=patient,case_id=case,source_id=source,questions=questions)
             status = 200
         else:
@@ -63,7 +78,7 @@ def passage_questions(owner, patient, case, source, payload, *, organization, ac
                     raise PatientRegistryConflict("Request key belongs to a different question")
                 qid=prior[0]
                 matching = next((row for row in rows if row[0] == qid), None)
-                if matching is None or checked(matching)["selection"]["anchor_sha256"] != payload.anchor_sha256:
+                if matching is None or checked_question(matching, doc, scope)["selection"]["anchor_sha256"] != payload.anchor_sha256:
                     raise PatientRegistryError("Invalid reviewed question retry provenance")
             else:
                 if len(rows)>=250 or selection["selection_state"]!="current_unreviewed_selection" or selection["anchor_sha256"]!=payload.anchor_sha256:

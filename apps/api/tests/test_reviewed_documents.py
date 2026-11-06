@@ -198,6 +198,22 @@ class ReviewedDocumentTests(SourceVersionFixture):
             self.assertEqual(request(base,endpoint,token=TOKEN_A)[0],404)
             self.creds[0]['actions'].append('question_read');self.write()
             self.assertEqual(request(base,endpoint,token=TOKEN_B)[0],404)
+            search = endpoint + '/' + receipt['question_id'] + '/evidence-search'
+            query = dict(synthetic=True, query='continuity')
+            self.assertEqual(request(base, search, token=TOKEN_A, body=query)[0], 404)
+            self.creds[0]['actions'].append('evidence_read'); self.write()
+            from oi_api.database import Database
+            from oi_api.evidence_catalog import seed_fictional_records, fictional_records
+            from open_intelligence.postgres_registry import PostgresPatientRegistry
+            with Database(self.settings).registry_connection() as connection:
+                seed_fictional_records(PostgresPatientRegistry(connection, lambda *args: False),
+                                      fictional_records(), recorded_by='FIXTURE-AUTHOR')
+            code, results, _ = request(base, search, token=TOKEN_A, body=query)
+            self.assertEqual(code, 200, results)
+            self.assertEqual(results['question_id'], receipt['question_id'])
+            self.assertIn('FICT-RECORD-CONTINUITY@1', [row['citation'] for row in results['records']])
+            self.assertEqual(results['source_context_state'], 'current_unreviewed_question')
+            self.assertEqual(request(base, search, token=TOKEN_B, body=query)[0], 404)
             with self.assertRaises(CommandError):
                 migrate(self.admin,'downgrade','0018_laboratory_questions')
             with self.assertRaisesRegex(DBAPIError,'OI-LAB-QUESTION-ANCHOR-CONTRACT'), self.engine.begin() as conn:
@@ -219,6 +235,9 @@ class ReviewedDocumentTests(SourceVersionFixture):
             question,=packet['questions']
             self.assertEqual(question['selection']['anchor'],selected['anchor'])
             self.assertEqual(question['selection']['selection_state'],'selection_reassessment_required')
+            self.assertEqual(request(base, search, token=TOKEN_A, body=query)[1]['source_context_state'],
+                             'source_reassessment_required')
             self.creds[0]['actions'].remove('source_original_read');self.write()
             self.assertEqual(request(base,endpoint,token=TOKEN_A)[0],404)
             self.assertEqual(request(base,endpoint,token=TOKEN_A,body=command)[0],404)
+            self.assertEqual(request(base, search, token=TOKEN_A, body=query)[0], 404)
