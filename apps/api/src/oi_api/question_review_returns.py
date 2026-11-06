@@ -316,22 +316,23 @@ class PostgresQuestionReviewReturns:
         binding_revision = None
 
         def authority():
+            nonlocal source_signature, binding_revision
             recheck_authority()
             self.registry._allow(actor, patient_id, action, purpose)
-            # Case locks serialize other connections. Also detect a trusted callback
-            # changing the binding or source versions within this same transaction.
-            if source_signature is not None:
-                if (source_owner._binding(patient_id, case_id, organization, purpose) != binding_revision
-                        or _digest(source_owner._sources(case_id)) != source_signature):
-                    raise PatientRegistryDenied("Laboratory review context changed")
+            # The report owner calls this first inside its transaction, before
+            # rendering or appending an inspection audit event. Keep that original
+            # baseline through every later callback and the final commit check.
+            revision = source_owner._binding(patient_id, case_id, organization, purpose)
+            signature = _digest(source_owner._sources(case_id))
+            if source_signature is None:
+                binding_revision, source_signature = revision, signature
+            elif revision != binding_revision or signature != source_signature:
+                raise PatientRegistryDenied("Laboratory review context changed")
 
         def render(value):
             return prepare_response(value) if prepare_response is not None else value
 
         def project(reopened):
-            nonlocal source_signature, binding_revision
-            source_signature = _digest(source_owner._sources(case_id))
-            binding_revision = source_owner._binding(patient_id, case_id, organization, purpose)
             snapshot, report = reopened["snapshot"], reopened["inspection"]
             citations = report["citations"]
             anchor = citations["question_anchor"]
