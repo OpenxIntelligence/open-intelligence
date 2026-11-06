@@ -59,6 +59,19 @@ class PostgresSourceVersions:
         return bool(self._document_filter() and self.registry._fetchone(
             "SELECT source_id FROM clinical_source.document_intakes WHERE source_id=%s", (source_id,)))
 
+    def _is_fhir_laboratory(self, source_id: str) -> bool:
+        """Do not let text-report intake replace a FHIR-owned original.
+
+        Earlier migration fixtures have no FHIR child table. In that case
+        ordinary text-source imports continue without a new table dependency.
+        The importer holds the canonical case-binding lock throughout.
+        """
+        exists = self.registry._fetchone(
+            "SELECT to_regclass('clinical_source.fhir_laboratory_sources')")[0]
+        return exists is not None and self.registry._fetchone(
+            "SELECT source_id FROM clinical_source.fhir_laboratory_sources "
+            "WHERE source_id=%s", (source_id,)) is not None
+
     def _binding(self, patient_id: str, case_id: str, organization: str, purpose: str) -> int:
         PostgresRecordRequests(self.registry)._active_patient(patient_id, organization)
         # Row lock serializes same-case imports and revocation, including
@@ -396,7 +409,7 @@ class PostgresSourceVersions:
                 "WHERE case_id=%s AND document_id=%s "
                 "ORDER BY version DESC LIMIT 1", (case_id, parsed.document_id),
             )
-            if old and self._is_reviewed(old[0]):
+            if old and (self._is_reviewed(old[0]) or self._is_fhir_laboratory(old[0])):
                 raise PatientRegistryConflict("Document format cannot change across intake owners")
             previously_seen = self.registry._fetchone(
                 "SELECT source_id,version FROM clinical_source.source_versions "
