@@ -54,6 +54,17 @@ QUESTION_ANCHORS = (
     "source_snapshot_sha256", "preflight_sha256",
 )
 ACCESS_EVENTS = "'image.read_authorized','image.original_read_authorized','image.preview_read_authorized'"
+# Operational reads may append access receipts, but must never append business
+# writes during a restored-database verification. Keep one closed allowlist
+# for both recovery checks so a new authorized read is not misclassified.
+RECOVERY_READ_EVENTS = frozenset({
+    "source.read_authorized",
+    "image.read_authorized",
+    "image.original_read_authorized",
+    "image.preview_read_authorized",
+    "evidence.metadata.searched",
+    "evidence.links.read_authorized",
+})
 IMAGE_FIELDS = {
     "image_id", "source_id", "case_id", "sha256", "byte_count",
     "study_uid", "series_uid", "sop_uid", "modality", "study_date",
@@ -1622,10 +1633,9 @@ finally:
             assert restored_after_reads["events"][:len(before["events"])] == before["events"]
             fresh_events = restored_after_reads["events"][len(before["events"]):]
             assert fresh_events and all(row["patient_id"] == patient for row in fresh_events)
-            assert {row["event_type"] for row in fresh_events} <= {
-                "source.read_authorized", "image.read_authorized", "image.original_read_authorized",
-                "evidence.metadata.searched", "evidence.links.read_authorized",
-            }, "Restored reads/retries appended a business event"
+            assert {row["event_type"] for row in fresh_events} <= RECOVERY_READ_EVENTS, (
+                "Restored reads/retries appended a business event"
+            )
             assert snapshot(source_database) == before, "Restored HTTP mutated the pre-restore database"
             print("Active restored API reopened exact v1/v2 questions/returns/tasks/citations, frozen authored reports, archive originals and same-key retries; revoked title/URL stayed redacted")
 
@@ -1733,10 +1743,7 @@ finally:
             assert added and all(row["patient_id"] == patient for row in added), "Archive read audit changed patient authority"
             # Authored report reads and exact command retries use the existing
             # source-read receipt. They must never append report/business writes.
-            unexpected = {row["event_type"] for row in added} - {
-                "source.read_authorized", "image.read_authorized", "image.original_read_authorized",
-                "evidence.links.read_authorized", "evidence.metadata.searched",
-            }
+            unexpected = {row["event_type"] for row in added} - RECOVERY_READ_EVENTS
             assert not unexpected, "Archive recovery added non-read business history: " + repr(sorted(unexpected))
             source_reads = [row for row in added if row["event_type"] == "source.read_authorized"]
             source_receipts = {row["metadata_json"]["receipt_id"] for row in source_reads}
