@@ -90,6 +90,7 @@
           <a href="#appointments">Appointments</a>
           <a href="#notifications">Notifications</a>
           <a href="#referrals">Referrals</a>
+          <a href="#care-team">Care team</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -376,6 +377,57 @@
           <label for="ref-outcome-reason">Why this outcome is recorded (required, kept in history)</label>
           <textarea id="ref-outcome-reason" rows="2" minlength="10" maxlength="600" required></textarea>
           <button class="button" type="submit">Record outcome</button>
+        </form>
+      </section>
+      <section class="panel" id="care-team" aria-labelledby="care-team-heading">
+        <div class="panel-head"><div><div class="eyebrow">02h / CARE TEAM</div><h2 id="care-team-heading">Care team</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Shared updates and handoffs the patient and team read in the product, not outside it. A shared update is a note the whole team sees; a handoff records a transfer of responsibility for a case question. Recording either sends no message, books nothing, and contacts no one. The patient sees the same shared record as the clinician; the role boundary is write access, not visibility. Nothing here recommends treatment, selects therapy, doses, or diagnoses.</p>
+        <button id="care-team-apply" type="button" class="button secondary minor">Load care team</button>
+        <p id="care-team-status" class="muted tiny"></p>
+        <p id="care-team-disclaimer" class="muted tiny"></p>
+        <div id="care-team-list" class="activity" aria-live="polite"></div>
+        <div class="subhead">Post a shared update</div>
+        <form id="care-team-update-form">
+          <label for="team-update-text">Update (plain description, 10–1000 characters)</label>
+          <textarea id="team-update-text" rows="2" minlength="10" maxlength="1000" required placeholder="What the team should know, in plain words."></textarea>
+          <label for="team-update-author">Your label (who posts this)</label>
+          <input id="team-update-author" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <button class="button" type="submit">Post update</button>
+        </form>
+        <div class="subhead">Record a handoff</div>
+        <form id="care-team-handoff-form">
+          <label for="ho-question-choice">Case question this handoff is about</label><select id="ho-question-choice" required></select>
+          <label for="ho-from">Handing over from (label)</label>
+          <input id="ho-from" type="text" maxlength="80" required placeholder="Fictional actor (unverified)">
+          <label for="ho-to">Handing over to (label)</label>
+          <input id="ho-to" type="text" maxlength="80" required placeholder="Fictional actor (unverified)">
+          <label for="ho-reason">Why this handoff is recorded (plain description)</label>
+          <textarea id="ho-reason" rows="2" minlength="10" maxlength="500" required placeholder="What responsibility is being handed over, in plain words."></textarea>
+          <fieldset class="choice-group">
+            <legend>Materials handed over by reference</legend>
+            <div id="ho-source-choice" class="source-choice"></div>
+          </fieldset>
+          <label for="ho-actor">Your label (who records this)</label>
+          <input id="ho-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <button class="button" type="submit">Record handoff</button>
+        </form>
+        <div class="subhead">Record receipt of a handoff</div>
+        <form id="care-team-handoff-acknowledge-form">
+          <label for="ho-ack-choice">Handoff</label><select id="ho-ack-choice" required></select>
+          <label for="ho-ack-actor">Your label (who records receipt)</label>
+          <input id="ho-ack-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <label for="ho-ack-reason">Why this receipt is recorded (required, kept in history)</label>
+          <textarea id="ho-ack-reason" rows="2" minlength="10" maxlength="600" required></textarea>
+          <button class="button" type="submit">Record acknowledgment</button>
+        </form>
+        <div class="subhead">Close a handoff</div>
+        <form id="care-team-handoff-close-form">
+          <label for="ho-close-choice">Handoff</label><select id="ho-close-choice" required></select>
+          <label for="ho-close-actor">Your label (who records the close)</label>
+          <input id="ho-close-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <label for="ho-close-reason">Closing note (required, kept in history)</label>
+          <textarea id="ho-close-reason" rows="2" minlength="10" maxlength="600" required></textarea>
+          <button class="button" type="submit">Close handoff</button>
         </form>
       </section>
       <section class="panel" id="patient-view">

@@ -1323,6 +1323,133 @@ fixture (`or` in the test helper), and the outcome-anchor
 assertion read an `id` the anchor projection does not carry
 (document/version/state only).
 
+## Care coordination dimension: care-team collaboration (Slice D9) — 6 November 2026
+
+Branch `program/d9-care-team`, from main `c3020afc`
+(post-D8). Implements program-plan D9: the care-coordination
+dimension's fourth and last slice — patient and team share updates
+in the product, not outside it. Appointments record a plan,
+notifications derive due items, and referrals track a request to
+another team, but nothing let the patient and team share notes and
+hand responsibility over in the product itself; care-team
+collaboration closes that gap as records, not as messages.
+
+Design-first, as the plan requires for this slice: the design is
+drafted in the module docstring of
+`src/open_intelligence/team_collaboration.py` before the build, and
+this section records it. Two record kinds, one module: shared
+updates and handoffs.
+
+* Shared updates: a short dated note posted by the operator or
+  clinician and visible to the whole team — including the patient
+  on their own bound case. Fields are the update text (10–1000
+  characters, descriptive-only), the author label, and the author
+  role (`operator` or `clinician`, taken from the session account
+  at the route, never free text). An update pins no evidence and
+  links no question: it is a note about the shared record, not a
+  conclusion about it, so no amendment can reopen it — its review
+  state is a demo acknowledgment only (`pending` →
+  `reviewed_in_demo`, reviewer label and scope 10–300 characters;
+  review is refused once reviewed). The patient sees exactly the
+  same shared record as the clinician; the role boundary is write
+  access, not a hidden subset — that is the acceptance, "a
+  clinician and a patient account see the same case with
+  role-appropriate views", proved by an HTTP test comparing the
+  clinician and patient GET payloads field for field.
+* Handoffs: a transfer of responsibility for a case question from
+  one actor to another — the question, a `from_actor` and a
+  `to_actor` (labels, 2–80 characters each), a reason in plain
+  words (10–500 characters), and 1–50 pinned current source
+  versions as the handed-over materials (exactly like a
+  referral's materials). Lifecycle `open` → `acknowledged` →
+  `closed`: acknowledgment records receipt by the receiving actor
+  (actor label and reason, only from `open`); closing records the
+  handoff as taken up (actor label and closing note, only from
+  `acknowledged`). `closed` is terminal — further work is a new
+  handoff, never a reopen (mirroring the follow-through rule
+  that completed work stays in history). Every transition appends
+  one event row — who, when, why, previous and new status — and
+  history rows are never updated or deleted.
+* Review/audit treatment (the second-opinion pattern, followed
+  exactly): a handoff carries `review_state` (`pending` /
+  `reviewed_in_demo` / `needs_review`) alongside its status.
+  Review is a demo acknowledgment (reviewer label, scope 10–300
+  characters) moving `pending` → `reviewed_in_demo` with one
+  review event; review is refused while `needs_review` ("preserve
+  it and create a new handoff") or already `reviewed_in_demo`.
+  Receipt of an amendment moves `review_state` to `needs_review`
+  when a pinned material is superseded (`_invalidate_care_records`,
+  extended by this slice to return the invalidated handoffs
+  alongside second opinions, survivorship items, and referrals;
+  the import result gains `invalidated_handoffs`). The handoff,
+  its materials, and its history stay visible with their own
+  states; nothing is silently rebound.
+* Role visibility: case-scoped and role-gated from the start
+  through the existing generic case gate — no new gate code. A
+  patient reads only their own bound case (GET); writes (post
+  update, review update, create/acknowledge/close/review handoff)
+  are operator/clinician only, so a patient POST is denied by
+  role even on their own case; an auditor holds no case grants
+  and is denied everywhere. The UI renders what the server
+  returns and shows the denial text on a 403.
+* Text guard: care-team text is author-controlled, so the same
+  narrow guard as follow-through tasks applies — reused, not
+  forked: the validators import the follow-through checks, so the
+  update text, author labels, handoff actors, reasons, closing
+  note, and reviewer labels must not state a clinical
+  recommendation, order, eligibility claim, diagnosis, or dose.
+  Human review remains the gate; the disclaimer on every view
+  states the boundary.
+
+The slice adds six tables (`team_updates`,
+`team_update_review_events`, `handoffs`, `handoff_materials`,
+`handoff_events`, `handoff_review_events`) plus
+`create_team_update`, `review_team_update`, `list_team_updates`,
+`create_handoff`, `acknowledge_handoff`, `close_handoff`,
+`review_handoff`, and `list_handoffs` in `store.py`; seven routes
+in `__main__.py` (`GET /api/cases/{id}/care-team`,
+`POST /api/cases/{id}/care-team/updates`,
+`POST /api/cases/{id}/care-team/updates/{n}/review`,
+`POST /api/cases/{id}/care-team/handoffs`,
+`POST /api/cases/{id}/care-team/handoffs/{n}/acknowledge`,
+`POST /api/cases/{id}/care-team/handoffs/{n}/close`,
+`POST /api/cases/{id}/care-team/handoffs/{n}/review`); and a Care
+team panel in the web app (02h — shared updates and handoffs with
+full status history; post-update, record-handoff, acknowledge,
+and close forms; per-item demo-review buttons; the list container
+clears on case switch and on denial, and the form fields sit in
+the picker guard array before the eight test-asserted fields and
+at the end of the clear loop, so the fixed lookbacks of the guard
+tests are untouched; the handoff-materials checkboxes clear on a
+case switch so the previous case's sources are never left
+checked). `open_intelligence.team_collaboration` is registered in
+`DIMENSION_MODULES`; the import-graph tripwire stays green. No
+vertical predicates were moved or added; the K-checks, route,
+Skeptic, and evaluation harness are untouched; no live model call
+exists anywhere in the slice.
+
+Local suite on the slice branch: 1249 tests (1226 on the main
+baseline plus 23 new — 22 care-team tests and 1 guard test),
+FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: no message, email, or handoff leaves the product; no
+link to a follow-through task or an appointment (no speculative
+coupling); no per-record link to a snapshot (a handoff is about a
+question, not a conclusion — the materials pin source versions,
+like a referral); updates carry no question link and no materials
+(a note about the shared record, not evidence about it); no live
+model call was attempted and no substitute model was used (Meta
+billing fix still pending). The evaluation harness (C5) has no D9
+probes yet — a follow-up could add collaboration-lifecycle probes
+to it. One test-side defect was caught and fixed during the build,
+in the test: the HTTP round-trip test asserted absolute counts on
+a server shared with the patient-visibility test, which had
+already posted records; the test now asserts relative to the list
+seen at its start.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)
