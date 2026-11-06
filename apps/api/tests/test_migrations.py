@@ -81,8 +81,49 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.remove_owned_fixtures()
 
+    def test_migration_statement_can_outlive_the_runtime_socket_budget(self):
+        from dataclasses import replace
+        from alembic.command import upgrade
+
+        settings = replace(self.settings, connect_timeout_seconds=0.2)
+
+        def delayed_upgrade(config, revision):
+            connection = config.attributes["connection"]
+            self.assertEqual(connection.exec_driver_sql("SHOW statement_timeout").scalar_one(), "30s")
+            self.assertEqual(connection.exec_driver_sql("SHOW lock_timeout").scalar_one(), "5s")
+            connection.exec_driver_sql("SELECT pg_sleep(0.6)")
+            return upgrade(config, revision)
+
+        with patch("oi_api.migrate.command.upgrade", side_effect=delayed_upgrade):
+            migrate(settings, "upgrade", "head")
+        with self.engine.connect() as connection:
+            self.assertEqual(connection.exec_driver_sql("SELECT version_num FROM public.alembic_version").scalar_one(),
+                             SCHEMA_REVISION)
+
     def remove_owned_fixtures(self):
         with self.engine.begin() as conn:
+            # Release only the declared 0019 execution children and functions.
+            # Unknown dependencies still stop cleanup through RESTRICT.
+            # Explicitly release only the declared 0020 source delivery objects.
+            conn.execute(text("DO $$ BEGIN IF to_regclass('identity.identity_domain_events') IS NOT NULL THEN EXECUTE 'DROP TRIGGER IF EXISTS oi_capture_source_event ON identity.identity_domain_events'; END IF; END $$"))
+            conn.execute(text('DROP TABLE IF EXISTS investigation.composer_source_event_receipts'))
+            conn.execute(text('DROP TABLE IF EXISTS coordination.source_event_delivery_events'))
+            conn.execute(text('DROP TABLE IF EXISTS coordination.source_event_deliveries'))
+            conn.execute(text('DROP TABLE IF EXISTS coordination.source_event_outbox'))
+            conn.execute(text('DROP FUNCTION IF EXISTS coordination.capture_source_event()'))
+            conn.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_outbox()'))
+            conn.execute(text('DROP FUNCTION IF EXISTS coordination.source_event_binding(bigint)'))
+            conn.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_delivery()'))
+            conn.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_delivery_event()'))
+            conn.execute(text('DROP FUNCTION IF EXISTS coordination.require_source_delivery_consistency()'))
+            conn.execute(text('DROP FUNCTION IF EXISTS investigation.guard_composer_source_receipt()'))
+            conn.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_run_results"))
+            conn.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_run_events"))
+            conn.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_runs"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.require_composer_run_consistency()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run_result()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run_event()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run()"))
             # Drop the declared 0016 FK child before its canonical task owner;
             # RESTRICT remains in effect for every unknown dependency.
             conn.execute(text("ALTER TABLE IF EXISTS ehr.clinical_note_headers DROP CONSTRAINT IF EXISTS latest_note_version_exists"))
@@ -96,6 +137,9 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_tasks"))
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_event_insert()"))
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_task_insert()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_lab_followthrough_task_insert()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_lab_followthrough_completion()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.lab_question_sources_current(text,text,text,text)"))
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_manual_dependency()"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.laboratory_citation_anchors"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_links"))

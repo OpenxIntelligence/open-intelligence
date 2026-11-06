@@ -39,6 +39,16 @@ package ownership. Historical PR receipts describe their exact revisions only.
 
 ## Current increment
 
+The connected laboratory path in draft #557 extends Records → saved Observation
+question → citation inspection → recorded follow-up. Tasks retain the exact
+source version, SHA-256, Observation and question fingerprints through assignment
+and acknowledgment. An amendment leaves the earlier history readable and blocks
+new work or completion against the stale laboratory question. Follow-up and its
+task-event log remain the existing coordination owner. Independent clinical
+review, evidence appraisal, and a reconciled decision on an amended result
+remain separate work. See the [patient walkthrough](../H1_DEMO.md#record-follow-up-work-for-the-same-laboratory-question)
+and [the integration checks](https://github.com/OpenxIntelligence/open-intelligence/pull/557/checks).
+
 Accepted main advanced during verification from f188aec to
 `aad241e5cce9a1bcff3e431d63cecd16e948d731` (#538). The latest candidate preserves
 that complete main history and its deterministic reference claim checks as a

@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {LaboratoryCitationReportPanel} from './laboratory-citation-report-panel.js';
+import {FollowthroughCreate} from './followthrough-panel';
 import {QuestionEvidencePanel} from './question-evidence-panel';
 import type {RegistrySession,ViewState} from './registry-client';
 import type {SourceWorldModel} from './source-world-model';
@@ -56,7 +57,7 @@ export function LaboratoryQuestionPanel({session,model,busy,sourceSavePending,st
   </form>;
 }
 
-export function SavedLaboratoryQuestions({session,model,state,busy,sourceSavePending}:{session:RegistrySession;model:SourceWorldModel;state:ViewState;busy:boolean;sourceSavePending:boolean}){
+export function SavedLaboratoryQuestions({session,model,state,busy,sourceSavePending,onFollowthrough}:{onFollowthrough?:()=>void;session:RegistrySession;model:SourceWorldModel;state:ViewState;busy:boolean;sourceSavePending:boolean}){
   const locked=['saving','unknown'].includes(state.labQuestionWritePhase);
   return <section aria-label="Saved laboratory questions" data-testid="lab-saved-questions">
     <h4>Saved laboratory questions</h4>
@@ -70,8 +71,14 @@ export function SavedLaboratoryQuestions({session,model,state,busy,sourceSavePen
       <p>{row.observation_reference} · source version {row.source_version}</p>
       <details><summary>Inspect saved source reference</summary><p>Original source <code>{row.source_id}</code> · SHA-256 <code>{row.source_sha256}</code></p>
         <p>Question <code>{row.question_id}</code></p><p>Context fingerprint <code>{row.source_snapshot_sha256}</code></p></details>
+      <FollowthroughCreate question={row} state={state} session={session} busy={busy||locked||sourceSavePending}/>
       <QuestionEvidencePanel question={row} state={state} session={session} busy={busy||locked||sourceSavePending}/>
       <LaboratoryCitationReportPanel question={row} state={state} session={session} busy={busy||locked||sourceSavePending}/>
     </li>)}</ul>}</>}
+    {onFollowthrough&&state.labQuestionHistory&&state.labQuestionHistory.questions.length>0&&<div>
+      {state.followthroughWritePhase!=='idle'&&<p role="status" data-testid="lab-followthrough-status">{state.followthroughWriteMessage}</p>}
+      <button type="button" data-testid="lab-followthrough-work" onClick={onFollowthrough}>
+        Open follow-up work in Investigations</button>
+    </div>}
   </section>;
 }

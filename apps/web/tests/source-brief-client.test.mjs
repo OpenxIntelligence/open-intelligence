@@ -52,7 +52,7 @@ function sessionFor(transport,{questionRows=()=>[question()],model=()=>world()}=
   if(url.endsWith('/case-bindings'))return response(cases());
   if(url.endsWith('/world-model'))return response({...model(),case_id:url.includes('/CASE-BETA/')?'CASE-BETA':caseId});
   if(url===questionsPath)return response(history(questionRows()));
-  if(url.endsWith('/brief'))return transport(url,init);
+  if(url.endsWith('/brief') || url.includes('/runs'))return transport(url,init);
   return response(patient(url.endsWith('PAT-EXAMPLE-002')?'PAT-EXAMPLE-002':patientId));
  });
 }
@@ -261,4 +261,157 @@ test('an export deadline during digest clears loading and creates no Blob',async
    assert.equal(s.snapshot().sourceBrief,null);assert.equal(blobs.length,0);assert.equal(clicks.length,0);
   });
  }finally{release.resolve();crypto.subtle.digest=originalDigest;globalThis.setTimeout=originalTimeout;}
+});
+
+const runId = 'RUN-' + 'C'.repeat(32);
+const runPath = questionsPath + '/' + questionId + '/runs';
+const now = '2026-11-02T12:02:00Z';
+function status(state = 'queued', extra = {}) {
+  const completed = state === 'completed';
+  return {contract:'oi.synthetic-composer-run/1', synthetic:true, run_id:runId, patient_id:patientId,
+    case_id:caseId, question_id:questionId, kind:'source-question-brief/1', state,
+    revision:completed ? 3 : state === 'queued' ? 1 : 2,
+    attempt_count:completed || state === 'running' ? 1 : 0, max_attempts:3,
+    source_snapshot_contract:'oi.pg-source-world-model/1', source_snapshot_sha256:fingerprint,
+    preflight_sha256:preflightHash, created_at:now, updated_at:now, available_at:now,
+    lease_expires_at:state === 'running' ? now : null, result_sha256:completed ? resultHash : null,
+    clinical_approval:false, model_executed:false, ...extra};
+}
+// Equivalent to Python's compact sorted-key JSON for this exact JSON DTO.
+const sortedKeys = [...new Set(Object.keys(brief()).concat(Object.keys(question()), Object.keys(selectedSource())))].sort();
+const resultHash = digest(JSON.stringify(brief(), sortedKeys));
+const completedResult = () => ({contract:'oi.synthetic-composer-run-result/1', run:status('completed'),
+  access_receipt_id:'ACCESS-'+'E'.repeat(32), result_sha256:resultHash, brief:brief()});
+const receipt = (run, duplicate=false) => response({run, duplicate}, duplicate ? 200 : 201);
+const act = (s, action) => s.backgroundBriefAction(questionId, action);
+
+test('background run enqueues, checks status and opens the stored brief with a distinct current access receipt', async () => {
+  const calls = [];
+  const replies = [receipt(status()), response(status('running')), response(status('completed')), response(completedResult())];
+  const s = sessionFor((path, init) => {calls.push([path, init]); return replies.shift();});
+  await ready(s);
+  for (const action of ['enqueue','refresh','refresh','result']) await act(s, action);
+  const view = s.snapshot().backgroundBrief;
+  assert.equal(view.status.run_id, runId);
+  assert.equal(view.result.brief.body, brief().body);
+  assert.equal(view.result.brief.access_receipt_id, brief().access_receipt_id);
+  assert.equal(view.result.accessReceipt, completedResult().access_receipt_id);
+  assert.deepEqual(calls.map(([path, init]) => [path, init.method]), [
+    [runPath,'POST'],[runPath+'/'+runId,'GET'],[runPath+'/'+runId,'GET'],[runPath+'/'+runId+'/result','GET']]);
+  for (const [,init] of calls) {
+    assert.equal(init.cache, 'no-store');
+    assert.equal(init.headers.Authorization, 'Bearer '+token);
+  }
+  assert.equal(JSON.parse(calls[0][1].body).expected_preflight_sha256, preflightHash);
+});
+
+test('lost enqueue, concurrent clicks and a fresh browser session recover the identical actor-scoped intent', async () => {
+  const calls = [], waiting = deferred();
+  const first = sessionFor((path, init) => {calls.push(init.body); return waiting.promise;});
+  await ready(first);
+  const pending = act(first, 'enqueue');
+  await act(first, 'enqueue');
+  assert.equal(calls.length, 1);
+  waiting.resolve(response({}, 503));
+  await pending;
+  assert.match(first.snapshot().backgroundBrief.message, /outcome unknown/i);
+  const second = sessionFor((path, init) => {calls.push(init.body); return receipt(status('running'),true);});
+  await ready(second);
+  await act(second, 'enqueue');
+  assert.deepEqual(calls, [calls[0],calls[0]]);
+  assert.equal(second.snapshot().backgroundBrief.status.run_id, runId);
+});
+
+test('cancel and a lost replacement response recover the replacement identity, not a second new run', async () => {
+  const replacement = 'RUN-'+'D'.repeat(32);
+  const calls = [];
+  const replies = [receipt(status()), response(status('cancelled')), response({},503),
+    receipt(status('queued',{run_id:replacement}),true)];
+  const s = sessionFor((path,init) => {calls.push([path,init.body]); return replies.shift();});
+  await ready(s);
+  for (const action of ['enqueue','cancel','retry','retry']) await act(s, action);
+  assert.deepEqual(calls[1], [runPath+'/'+runId+'/cancel', JSON.stringify({synthetic:true})]);
+  assert.equal(calls[2][1], calls[3][1]);
+  assert.notEqual(calls[0][1], calls[2][1]);
+  assert.equal(s.snapshot().backgroundBrief.status.run_id, replacement);
+});
+
+test('a result cannot change patient, run, question, anchor, stored digest, fresh receipt or literal bytes', async () => {
+  const base = completedResult();
+  for (const [key, value] of Object.entries({
+    patient:{...base,run:status('completed',{patient_id:'PAT-OTHER'})},
+    run:{...base,run:status('completed',{run_id:'RUN-'+'F'.repeat(32)})},
+    question:{...base,brief:{...base.brief,question:{...question(),question_id:'QUESTION-'+'F'.repeat(32)}}},
+    source:{...base,brief:{...base.brief,selected_source:{...selectedSource(),line:10}}},
+    digest:{...base,result_sha256:'a'.repeat(64)},
+    envelope:{...base,brief:{...base.brief,prepared_at:'2026-11-03T11:11:11Z'}},
+    receipt:{...base,access_receipt_id:'old'},
+    bytes:{...base,brief:{...base.brief,body:'Different bytes'}},
+    model:{...base,run:status('completed',{model_executed:true})},
+  })) {
+    const replies = [receipt(status('completed'),true),response(base),response(value)];
+    const s = sessionFor(() => replies.shift());
+    await ready(s); await act(s,'enqueue'); await act(s,'result');
+    assert.ok(s.snapshot().backgroundBrief.result, key);
+    await act(s,'result');
+    assert.equal(s.snapshot().backgroundBrief.result, null, key);
+    assert.match(s.snapshot().backgroundBrief.message,/could not be verified/,key);
+  }
+});
+
+test('revocation and source conflict clear a previously disclosed background result', async () => {
+  for (const code of [401,403,404,409]) {
+    const replies=[receipt(status('completed'),true),response(completedResult()),response({detail:'PRIVATE'},code)];
+    const s=sessionFor(()=>replies.shift());
+    await ready(s); await act(s,'enqueue'); await act(s,'result');
+    assert.ok(s.snapshot().backgroundBrief.result);
+    await act(s,'result');
+    assert.equal(s.snapshot().backgroundBrief,null);
+    assert.equal(s.snapshot().worldModel,null);
+    if (code===401) assert.equal(s.snapshot().connected,false);
+  }
+});
+
+test('status cannot move backward or change terminal results and a new source cannot be silently substituted', async () => {
+  for (const [before,after] of [
+    [status('running'),status()], [status('completed'),status('failed',{revision:4,attempt_count:1})],
+    [status('completed'),status('completed',{result_sha256:'f'.repeat(64)})],
+    [status(),status('running',{preflight_sha256:'f'.repeat(64)})],
+    [status(),status('running',{lease_expires_at:null})],
+  ]) {
+    const replies=[receipt(before,true),response(after)];
+    const s=sessionFor(()=>replies.shift());
+    await ready(s); await act(s,'enqueue'); await act(s,'refresh');
+    assert.match(s.snapshot().backgroundBrief.message,/could not be verified/);
+    assert.equal(s.snapshot().backgroundBrief.status.state,before.state);
+  }
+});
+
+test('expired or superseded session reads cannot restore a background result', async () => {
+  for (const reset of [s=>s.disconnect(), s=>s.dismissSourceBrief(),
+    s=>s.loadSavedQuestions(caseId), s=>s.loadWorldModel(caseId), s=>s.read('PAT-EXAMPLE-002')]) {
+    const waiting = deferred();
+    const s = sessionFor(path=>path.endsWith('/result') ? waiting.promise : receipt(status('completed'),true));
+    await ready(s); await act(s,'enqueue');
+    const pending=act(s,'result');
+    await reset(s);
+    waiting.resolve(response(completedResult())); await pending;
+    assert.equal(s.snapshot().backgroundBrief,null);
+  }
+});
+
+test('stale sources cannot start new background work', async () => {
+  let calls=0;
+  const s=sessionFor(()=>{calls++; return receipt(status());},
+    {questionRows:()=>[{...question(),source_context_state:'source_reassessment_required'}]});
+  await ready(s); await act(s,'enqueue');
+  assert.equal(calls,0);
+});
+
+test('an active status after a cancel response cannot confirm cancellation', async () => {
+  const replies = [receipt(status()), response(status('running'))];
+  const s = sessionFor(() => replies.shift());
+  await ready(s); await act(s, 'enqueue'); await act(s, 'cancel');
+  assert.match(s.snapshot().backgroundBrief.message, /could not be verified/);
+  assert.equal(s.snapshot().backgroundBrief.status.state, 'queued');
 });

@@ -15,7 +15,6 @@ from oi_api.case_bindings import CanonicalCaseBindings
 from oi_api.composer_preflight import PostgresSourceComposerPreflight
 from oi_api.contracts import SCHEMA_REVISION
 from oi_api.database import Database
-from oi_api.contracts import SCHEMA_REVISION
 from oi_api.evidence_catalog import fictional_records, seed_fictional_records
 from oi_api.migrate import migrate
 from oi_api.question_evidence import PostgresQuestionEvidence as MetadataEvidence
@@ -33,7 +32,9 @@ COMMON = {"organization": "ORG-ALPHA", "actor": "ACTOR-ALPHA", "purpose": "opera
 OPTIONS = {**COMMON, "recheck_authority": lambda: None, "prepare_response": None}
 
 
-class EvidenceConvergenceMigrationTests(SourceVersionFixture):
+class PublishedEvidenceFixture:
+    """Seed a named published schema through its domain owners while current HTTP stays closed."""
+
     @contextmanager
     def services(self):
         # Direct fixture setup can use a legitimately older schema. It does not
@@ -47,7 +48,7 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
             connection.rollback()
             pooled.close()
 
-    def start_at(self, revision):
+    def start_with_source(self, revision):
         migrate(self.admin, "downgrade", "base")
         migrate(self.admin, "upgrade", revision)
         with self.engine.connect() as connection:
@@ -68,6 +69,15 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
                 patient, "CASE-ALPHA", ORIGINAL.encode("utf-8"), **OPTIONS)["source_id"]
             index = PostgresSourceVersions(registry).list(patient, "CASE-ALPHA", **OPTIONS)
             snapshot = project_source_world_model(index)["snapshot_fingerprint"]
+        self.creds[0]["patient_ids"].append(patient)
+        self.write()
+        return patient, source, snapshot
+
+    def start_at(self, revision):
+        # Several migration suites borrow start_at and services without
+        # inheriting this fixture's unittest methods.
+        patient, source, snapshot = PublishedEvidenceFixture.start_with_source(self, revision)
+        with self.services() as registry:
             question_text = "Which fictional continuity details require independent review?"
             prepared = PostgresSourceComposerPreflight(registry).preview(
                 patient, "CASE-ALPHA", **OPTIONS, expected_source_snapshot_sha256=snapshot,
@@ -76,14 +86,46 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
                 patient, "CASE-ALPHA", **OPTIONS, request_key="UPGRADE-QUESTION", source_id=source,
                 source_line=8, question=question_text, expected_source_snapshot_sha256=snapshot,
                 expected_preflight_sha256=prepared["preflight_sha256"])["question_id"]
-        self.creds[0]["patient_ids"].append(patient)
-        self.creds[0]["actions"].extend((
+        self.creds[0]["actions"] = sorted(set(self.creds[0]["actions"]) | {
             "composer_context_read", "question_create", "question_read", "evidence_read", "evidence_link",
             "followthrough_read", "followthrough_create", *AUTHORED_ACTIONS,
-        ))
+        })
         self.write()
         return patient, question, prepared
 
+    def seed_authored_report(self, patient, question, prepared):
+        rights = {item: {use: "unknown" for use in ("store", "display", "redistribute", "ml_use")}
+                  for item in ("metadata", "abstract", "full_text", "figures", "terminology", "api_output")}
+        for item in ("metadata", "api_output"):
+            rights[item].update(store="allowed", display="allowed", redistribute="allowed")
+        with self.services() as registry:
+            owner = AuthoredEvidence(registry)
+            original = owner.import_evidence(patient, "CASE-ALPHA", question, **OPTIONS,
+                payload={"synthetic": True, "request_key": "UPGRADE-ORIGINAL", "original_text": ORIGINAL_EVIDENCE,
+                         "content_item": "api_output", "permissions": rights})
+            packet = owner.packet(patient, "CASE-ALPHA", question, **OPTIONS)
+            evidence, = packet["evidence"]
+            assessment_intent = {
+                "synthetic": True, "request_key": "UPGRADE-ASSESSMENT", "evidence_id": original["evidence_id"],
+                "evidence_sha256": evidence["sha256"], "rights_sha256": evidence["rights_sha256"],
+                "expected_source_snapshot_sha256": prepared["source_snapshot_sha256"],
+                "expected_preflight_sha256": prepared["preflight_sha256"],
+                "quote": QUOTE, "relation": "context", "applicability": "limited",
+                "rationale": "This fictional preparation requires independent human review.",
+            }
+            assessment = owner.assess(patient, "CASE-ALPHA", question, **OPTIONS, payload=assessment_intent)
+            packet = owner.packet(patient, "CASE-ALPHA", question, **OPTIONS)
+            report_intent = {"synthetic": True, "request_key": "UPGRADE-REPORT",
+                             "expected_packet_sha256": packet["packet_sha256"],
+                             "assessment_ids": [assessment["assessment_id"]]}
+            report = owner.create_report(patient, "CASE-ALPHA", question, **OPTIONS, payload=report_intent)
+            frozen = owner.report(patient, "CASE-ALPHA", question, report["report_id"], **OPTIONS)
+        return {"assessment_body": assessment_intent, "assessment": assessment, "report_body": report_intent,
+                "report_id": report["report_id"], "report_receipt": report, "prepared": frozen,
+                "patient": patient, "question": question}
+
+
+class EvidenceConvergenceMigrationTests(PublishedEvidenceFixture, SourceVersionFixture):
     def snapshot(self, names=None):
         with self.engine.connect() as connection:
             if names is None:
@@ -92,9 +134,15 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
                     "WHERE table_schema IN ('identity','coordination','clinical_source','investigation') "
                     "AND table_type='BASE TABLE' ORDER BY table_schema,table_name")).all()
                 names = [f"{schema}.{name}" for schema, name in rows]
-            tables = {name: connection.execute(text(
-                f"SELECT row_to_json(t)::text FROM {name} t ORDER BY row_to_json(t)::text"
-            )).scalars().all() for name in names}
+            tables = {}
+            for name in names:
+                # Text tasks predate the nullable 0023 observation column. Give
+                # their snapshots that exact default while preserving every value.
+                row = ("(jsonb_build_object('observation_reference', NULL) || to_jsonb(t))::text"
+                       if name == "coordination.question_followthrough_tasks" else "row_to_json(t)::text")
+                tables[name] = connection.execute(text(
+                    f"SELECT {row} FROM {name} t ORDER BY 1"
+                )).scalars().all()
             sequences = {}
             for schema, name in connection.execute(text(
                 "SELECT schemaname,sequencename FROM pg_sequences "
@@ -154,32 +202,10 @@ class EvidenceConvergenceMigrationTests(SourceVersionFixture):
 
     def test_populated_authored_head_upgrades_without_changing_report_bytes_or_retry_identity(self):
         patient, question, prepared = self.start_at("0010_authored_evidence_origin")
-        rights = {item: {use: "unknown" for use in ("store", "display", "redistribute", "ml_use")}
-                  for item in ("metadata", "abstract", "full_text", "figures", "terminology", "api_output")}
-        for item in ("metadata", "api_output"):
-            rights[item].update(store="allowed", display="allowed", redistribute="allowed")
-        with self.services() as registry:
-            owner = AuthoredEvidence(registry)
-            original = owner.import_evidence(patient, "CASE-ALPHA", question, **OPTIONS,
-                payload={"synthetic": True, "request_key": "UPGRADE-ORIGINAL", "original_text": ORIGINAL_EVIDENCE,
-                         "content_item": "api_output", "permissions": rights})
-            packet = owner.packet(patient, "CASE-ALPHA", question, **OPTIONS)
-            evidence, = packet["evidence"]
-            assessment_intent = {
-                "synthetic": True, "request_key": "UPGRADE-ASSESSMENT", "evidence_id": original["evidence_id"],
-                "evidence_sha256": evidence["sha256"], "rights_sha256": evidence["rights_sha256"],
-                "expected_source_snapshot_sha256": prepared["source_snapshot_sha256"],
-                "expected_preflight_sha256": prepared["preflight_sha256"],
-                "quote": QUOTE, "relation": "context", "applicability": "limited",
-                "rationale": "This fictional preparation requires independent human review.",
-            }
-            assessment = owner.assess(patient, "CASE-ALPHA", question, **OPTIONS, payload=assessment_intent)
-            packet = owner.packet(patient, "CASE-ALPHA", question, **OPTIONS)
-            report_intent = {"synthetic": True, "request_key": "UPGRADE-REPORT",
-                             "expected_packet_sha256": packet["packet_sha256"],
-                             "assessment_ids": [assessment["assessment_id"]]}
-            report = owner.create_report(patient, "CASE-ALPHA", question, **OPTIONS, payload=report_intent)
-            frozen = owner.report(patient, "CASE-ALPHA", question, report["report_id"], **OPTIONS)
+        state = self.seed_authored_report(patient, question, prepared)
+        report, frozen = state["report_receipt"], state["prepared"]
+        assessment_intent, assessment = state["assessment_body"], state["assessment"]
+        report_intent = state["report_body"]
         self.upgrade_preserving(self.snapshot())
         prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA/questions/{question}"
         with running_server(create_app(self.settings)) as base:

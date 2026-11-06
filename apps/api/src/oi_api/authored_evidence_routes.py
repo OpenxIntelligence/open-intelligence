@@ -2,12 +2,13 @@
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from open_intelligence.patient_registry import PatientRegistryDenied, PatientRegistryError
+from open_intelligence.patient_registry import PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError
 from .access import Principal
+from .composer_runs import return_verified_run
 from .authored_evidence_contracts import (
     AssessEvidence, EvidenceAssessmentReceipt, EvidenceImportReceipt, EvidenceOriginal,
     EvidencePacket, EvidenceReport, EvidenceReportReceipt, EvidenceWithdrawReceipt,
-    ImportEvidence, PrepareEvidenceReport, WithdrawEvidence,
+    ImportEvidence, PrepareEvidenceReport, WithdrawEvidence, EvidenceRunReturnReceipt, ReturnEvidenceRun,
 )
 from .evidence_report import MAX_RESPONSE_BYTES
 from .authored_evidence import PostgresQuestionEvidence
@@ -98,3 +99,58 @@ def register_evidence_routes(router, *, principal, registry, records_authorized,
                     context: Principal = Depends(principal)):
         return perform(request, context, patient_id, case_id, question_id, "evidence_report_export", "report",
                        EvidenceReport, reference=report_id)
+
+    @router.post(path + "/evidence-reports/{report_id}/runs/{run_id}/return-for-verification",
+                 response_model=EvidenceRunReturnReceipt, status_code=201,
+                 responses={200: {"model": EvidenceRunReturnReceipt}, **errors},
+                 operation_id="return_evidence_run_for_verification_v1")
+    def return_evidence_run(request: Request, patient_id: str, case_id: str, question_id: str,
+                            report_id: str, run_id: str, payload: ReturnEvidenceRun,
+                            context: Principal = Depends(principal)):
+        actions = (*BASE_ACTIONS, "patient_read", "source_brief_export", "evidence_report_export",
+                   "review_queue_read", "review_return")
+        if context.purpose != "operations":
+            raise HTTPException(404, "Verification handoff unavailable")
+        try:
+            with registry(context) as patients:
+                for action in actions:
+                    records_authorized(patients, context, patient_id, action)
+                def recheck():
+                    final_question_authority(request, context, patients, patient_id, actions)
+
+                scope = dict(organization=context.organization, actor=context.actor, purpose=context.purpose,
+                             recheck_authority=recheck)
+
+                evidence = PostgresQuestionEvidence(patients)
+
+                def return_from_current_report(value):
+                    report = EvidenceReport.model_validate(value)
+                    if report.state == "content_withheld":
+                        raise PatientRegistryDenied("Evidence report unavailable")
+                    if (report.state != "current_unreviewed" or report.snapshot is None or
+                            report.snapshot_sha256 != payload.expected_report_snapshot_sha256):
+                        raise PatientRegistryConflict("Evidence report needs reassessment")
+                    snapshot = report.snapshot
+                    def record_return(receipt):
+                        # Older receipts keep their original history on an exact retry.
+                        if not receipt["duplicate"]:
+                            evidence.record_passage_verification(report, receipt)
+                        return prepare_json(EvidenceRunReturnReceipt, receipt, write=True)
+
+                    return return_verified_run(
+                        patients, patient_id, case_id, question_id, run_id, **scope,
+                        expected_result_sha256=payload.expected_result_sha256,
+                        current_source=snapshot.selected_source.model_dump(mode="json"),
+                        source_snapshot_sha256=snapshot.question.source_snapshot_sha256,
+                        preflight_sha256=snapshot.question.preflight_sha256,
+                        report_id=report_id, report_snapshot_sha256=report.snapshot_sha256,
+                        report_body_sha256=report.body_sha256, request_key=payload.request_key,
+                        reason=payload.reason, expected_queue_fingerprint=payload.expected_queue_fingerprint,
+                        prepare_response=record_return)
+
+                return evidence.report(
+                    patient_id, case_id, question_id, report_id, **scope, prepare_response=return_from_current_report,
+                    recheck_original_authority=lambda: final_question_authority(
+                        request, context, patients, patient_id, (*actions, "source_original_read")))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Verification handoff unavailable") from None

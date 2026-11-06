@@ -1,0 +1,1003 @@
+{
+  "schema_version": "oi.engine-boundaries/1",
+  "baseline_commit": "f188aecc70f3415741dac0e7dd5bf3f2d9fd02a9",
+  "scope": {
+    "package": "oi_api",
+    "path": "apps/api/src/oi_api"
+  },
+  "owners": [
+    {
+      "id": "platform",
+      "responsibility": "Existing H1 configuration, shared wire-contract base, authentication port, database connection infrastructure, migration entrypoint and request limits; no additional policy authority. Owns bounded source-event transport with domain commands supplied through explicit callbacks; grants and consumer state remain with existing owners.",
+      "modules": [
+        "oi_api",
+        "oi_api.access",
+        "oi_api.config",
+        "oi_api.contracts",
+        "oi_api.database",
+        "oi_api.migrate",
+        "oi_api.request_limits",
+        "oi_api.registry_context",
+        "oi_api.encounter_event_contract",
+        "oi_api.source_event_delivery"
+      ],
+      "exports": {
+        "oi_api": [
+          "__version__"
+        ],
+        "oi_api.access": [
+          "Authentication",
+          "DenyAuthentication",
+          "Principal",
+          "SyntheticFileAuthentication",
+          "authenticate_request",
+          "authenticate_token"
+        ],
+        "oi_api.config": [
+          "ConfigurationError",
+          "Settings"
+        ],
+        "oi_api.contracts": [
+          "Contract",
+          "DatabaseStatus",
+          "Liveness",
+          "POSTGRES_MAJOR",
+          "Readiness",
+          "SCHEMA_REVISION",
+          "VersionManifest"
+        ],
+        "oi_api.database": [
+          "Database",
+          "make_engine"
+        ],
+        "oi_api.request_limits": [
+          "PatientRequestLimit"
+        ],
+        "oi_api.registry_context": [
+          "registry_for_principal"
+        ],
+        "oi_api.encounter_event_contract": [
+          "EncounterEvents",
+          "VisitEvent",
+          "VisitEvents",
+          "VisitState"
+        ],
+        "oi_api.source_event_delivery": [
+          "EventLeaseLost",
+          "PostgresSourceEventDelivery"
+        ]
+      },
+      "depends_on": []
+    },
+    {
+      "id": "composition",
+      "responsibility": "Existing application factory, HTTP route composition and local startup; patient routes still contain response types and transaction-scoped owner callbacks.",
+      "modules": [
+        "oi_api.__main__",
+        "oi_api.app",
+        "oi_api.patients",
+        "oi_api.encounter_routes"
+      ],
+      "exports": {},
+      "depends_on": [
+        "platform",
+        "patient-records",
+        "source-custody",
+        "patient-context",
+        "questions-review",
+        "evidence",
+        "care-followthrough",
+        "imaging",
+        "laboratory-interop"
+      ]
+    },
+    {
+      "id": "patient-records",
+      "responsibility": "Existing patient-to-case bindings and operational record-request state, retaining the canonical PatientRegistry and its authorization and transaction semantics.",
+      "modules": [
+        "oi_api.case_bindings",
+        "oi_api.record_requests"
+      ],
+      "exports": {},
+      "depends_on": []
+    },
+    {
+      "id": "source-custody",
+      "responsibility": "Existing original source versions, integrity checks, reviewed-document custody, annotation contracts and document routes.",
+      "modules": [
+        "oi_api.sources",
+        "oi_api.source_integrity",
+        "oi_api.reviewed_documents",
+        "oi_api.document_contracts",
+        "oi_api.document_routes",
+        "oi_api.source_contracts"
+      ],
+      "exports": {
+        "oi_api.document_contracts": [
+          "FictionalDocument"
+        ],
+        "oi_api.document_routes": [
+          "register_document_routes"
+        ],
+        "oi_api.source_contracts": [
+          "ReportedOncologyContext",
+          "SourceOncologyFields"
+        ],
+        "oi_api.source_integrity": [
+          "SourceIntegrityError"
+        ]
+      },
+      "depends_on": [
+        "platform"
+      ]
+    },
+    {
+      "id": "patient-context",
+      "responsibility": "Existing source world-model projection and bounded source-composer preflight; the projection does not create a second canonical patient record.",
+      "modules": [
+        "oi_api.source_world_model",
+        "oi_api.composer_preflight",
+        "oi_api.source_anchor",
+        "oi_api.question_anchors"
+      ],
+      "exports": {
+        "oi_api.source_world_model": [
+          "project_source_world_model",
+          "source_comparison_key"
+        ],
+        "oi_api.source_anchor": [
+          "selected_observation_anchor",
+          "oncology_lines"
+        ],
+        "oi_api.question_anchors": [
+          "legacy_text_question_anchor"
+        ]
+      },
+      "depends_on": [
+        "platform"
+      ]
+    },
+    {
+      "id": "questions-review",
+      "responsibility": "Existing durable source questions, source briefs, review-return packets, exact document passages and manual context. The bounded Composer execution adapter owns synthetic brief runs, leases, results and worker entry; it does not execute a model or change clinical review. Owns source-context reconciliation, immutable consumer receipts and the independently authorized event worker.",
+      "modules": [
+        "oi_api.source_questions",
+        "oi_api.source_brief",
+        "oi_api.question_review_returns",
+        "oi_api.question_source_review_packet",
+        "oi_api.question_passages",
+        "oi_api.question_passage_contracts",
+        "oi_api.question_passage_routes",
+        "oi_api.source_question_contracts",
+        "oi_api.composer_run_contracts",
+        "oi_api.composer_runs",
+        "oi_api.composer_run_routes",
+        "oi_api.worker",
+        "oi_api.event_worker"
+      ],
+      "exports": {
+        "oi_api.question_passage_contracts": [
+          "ManualContext"
+        ],
+        "oi_api.question_passage_routes": [
+          "register_question_passage_routes"
+        ],
+        "oi_api.source_question_contracts": [
+          "QuestionSourceState",
+          "SelectedComposerSource",
+          "SourceQuestionBrief"
+        ],
+        "oi_api.composer_run_routes": [
+          "register_composer_run_routes"
+        ],
+        "oi_api.composer_runs": [
+          "return_verified_run"
+        ]
+      },
+      "depends_on": [
+        "platform",
+        "source-custody",
+        "patient-context"
+      ]
+    },
+    {
+      "id": "evidence",
+      "responsibility": "Existing metadata evidence catalog, question links, authored synthetic evidence, scoped assessments, rights-aware report contracts and routes.",
+      "modules": [
+        "oi_api.authored_evidence",
+        "oi_api.authored_evidence_contracts",
+        "oi_api.authored_evidence_routes",
+        "oi_api.evidence_catalog",
+        "oi_api.evidence_contracts",
+        "oi_api.evidence_report",
+        "oi_api.evidence_routes",
+        "oi_api.question_evidence",
+        "oi_api.laboratory_citation_report",
+        "oi_api.laboratory_citation_report_routes"
+      ],
+      "exports": {
+        "oi_api.authored_evidence_routes": [
+          "register_evidence_routes"
+        ],
+        "oi_api.evidence_routes": [
+          "register_evidence_routes"
+        ],
+        "oi_api.laboratory_citation_report_routes": [
+          "register_laboratory_citation_report"
+        ]
+      },
+      "depends_on": [
+        "platform",
+        "patient-context",
+        "questions-review",
+        "laboratory-interop",
+        "source-custody"
+      ]
+    },
+    {
+      "id": "care-followthrough",
+      "responsibility": "Existing human-owned operational follow-through tasks and manual dependencies; no prescribing, administration or treatment-approval authority.",
+      "modules": [
+        "oi_api.followthrough_contracts",
+        "oi_api.followthrough_routes",
+        "oi_api.question_followthrough",
+        "oi_api.encounter_relay",
+        "oi_api.encounter_workload"
+      ],
+      "exports": {
+        "oi_api.followthrough_routes": [
+          "register_followthrough_routes"
+        ]
+      },
+      "depends_on": [
+        "platform",
+        "laboratory-interop",
+        "patient-context",
+        "source-custody"
+      ]
+    },
+    {
+      "id": "imaging",
+      "responsibility": "Existing synthetic DICOM integrity validation, source-image custody and bounded archive socket adapter; no qualified imaging interpretation.",
+      "modules": [
+        "oi_api.archive_socket",
+        "oi_api.dicom_integrity",
+        "oi_api.images"
+      ],
+      "exports": {
+        "oi_api.dicom_integrity": [
+          "DicomIntegrityError",
+          "parse_dicom"
+        ]
+      },
+      "depends_on": []
+    },
+    {
+      "id": "laboratory-interop",
+      "responsibility": "Existing bounded FHIR R4 laboratory parser, source-backed import, source-context preflight and durable laboratory questions; no clinical interpretation or independent laboratory system.",
+      "modules": [
+        "oi_api.laboratory_fhir_r4",
+        "oi_api.laboratory_fhir_store",
+        "oi_api.laboratory_fhir_routes",
+        "oi_api.laboratory_questions"
+      ],
+      "exports": {
+        "oi_api.laboratory_fhir_r4": [
+          "LaboratoryBundleRejected",
+          "PreparedLaboratoryBundle",
+          "prepare_laboratory_bundle"
+        ],
+        "oi_api.laboratory_fhir_routes": [
+          "register_laboratory_fhir_routes",
+          "PreparedLaboratorySource"
+        ]
+      },
+      "depends_on": [
+        "platform",
+        "patient-context"
+      ]
+    }
+  ],
+  "reference_bridges": [
+    {
+      "module": "open_intelligence.citation_verifier",
+      "path": "src/open_intelligence/citation_verifier.py",
+      "symbols": [
+        "parse_citation",
+        "verify_record"
+      ],
+      "reason": "Reuse existing citation parsing and record verification for evidence metadata; this bridge does not retrieve full text."
+    },
+    {
+      "module": "open_intelligence.document_intake",
+      "path": "src/open_intelligence/document_intake.py",
+      "symbols": [
+        "preview_document",
+        "preview_saved_document",
+        "review_document",
+        "review_saved_document",
+        "safe_filename",
+        "validate_revision_reason"
+      ],
+      "reason": "Reuse the existing document review and filename/revision validation semantics for source-backed manual annotations."
+    },
+    {
+      "module": "open_intelligence.evidence_catalog",
+      "path": "src/open_intelligence/evidence_catalog.py",
+      "symbols": [
+        "EvidenceRecord",
+        "metadata_hit",
+        "record_fingerprint"
+      ],
+      "reason": "Reuse the existing metadata evidence record and fingerprint contract; metadata discovery does not establish content access or claim support."
+    },
+    {
+      "module": "open_intelligence.followthrough",
+      "path": "src/open_intelligence/followthrough.py",
+      "symbols": [
+        "DUE_SOON_DAYS",
+        "FollowthroughInputError",
+        "OPEN_STATUSES",
+        "STATUSES",
+        "TRANSITIONS",
+        "check_due_date",
+        "check_task_text"
+      ],
+      "reason": "Reuse existing operational task validation and state transitions without adding clinical treatment authority."
+    },
+    {
+      "module": "open_intelligence.patient_registry",
+      "path": "src/open_intelligence/patient_registry.py",
+      "symbols": [
+        "PatientRegistryConflict",
+        "PatientRegistryDenied",
+        "PatientRegistryError",
+        "_digest",
+        "_key",
+        "_now"
+      ],
+      "reason": "Retain canonical patient identity, access/conflict errors, opaque identifiers, idempotency digests and event timing; private helper imports are existing bridge debt, not new exported authority."
+    },
+    {
+      "module": "open_intelligence.postgres_registry",
+      "path": "src/open_intelligence/postgres_registry.py",
+      "symbols": [
+        "PostgresPatientRegistry"
+      ],
+      "reason": "Retain the existing PostgreSQL implementation of the canonical PatientRegistry port, including caller-owned transactions and authorization."
+    },
+    {
+      "module": "open_intelligence.rights",
+      "path": "src/open_intelligence/rights.py",
+      "symbols": [
+        "normalize_permissions",
+        "permitted",
+        "validate_content_item"
+      ],
+      "reason": "Reuse the existing per-item, per-use rights normalization and checks; engine metadata grants no content rights."
+    },
+    {
+      "module": "open_intelligence.store",
+      "path": "src/open_intelligence/store.py",
+      "symbols": [
+        "InvalidInput",
+        "MAX_SOURCE_BYTES",
+        "STATES",
+        "parse_report",
+        "parse_synthetic_evidence"
+      ],
+      "reason": "Reuse existing synthetic source/evidence parsing, observation-state vocabulary and validation limits; do not create another source ledger."
+    },
+    {
+      "module": "open_intelligence.clinical_encounters",
+      "path": "src/open_intelligence/clinical_encounters.py",
+      "symbols": [
+        "ClinicalAuthorizationError",
+        "ClinicalConflict",
+        "EncounterNotFound",
+        "TRANSITIONS"
+      ],
+      "reason": "The H1 routes translate canonical encounter errors. The operations projection reuses the same transition rules."
+    },
+    {
+      "module": "open_intelligence.postgres_encounters",
+      "path": "src/open_intelligence/postgres_encounters.py",
+      "symbols": [
+        "PostgresClinicalEncounters"
+      ],
+      "reason": "The H1 encounter routes call the PostgreSQL encounter and note owner for scope checks, commands and reads."
+    }
+  ],
+  "legacy_imports": [
+    {
+      "consumer": "oi_api.authored_evidence",
+      "provider": "oi_api.case_bindings",
+      "symbols": [
+        "_case_id"
+      ],
+      "reason": "Existing consumer uses canonical case-binding storage or private case identifier validation. Preserve the shared patient/case authority and isolate a bounded binding contract before widening the interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.authored_evidence",
+      "provider": "oi_api.composer_preflight",
+      "symbols": [
+        "PostgresSourceComposerPreflight"
+      ],
+      "reason": "Existing consumer imports the stateful preflight implementation or its embedded snapshot and digest contracts. Extract stable contracts and an explicit preflight port while preserving final authority and freshness checks.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.authored_evidence",
+      "provider": "oi_api.question_passages",
+      "symbols": [
+        "QuestionPassages",
+        "reference_audit"
+      ],
+      "reason": "Existing consumer directly uses manual-passage storage and reference audit helpers. Extract a typed source-backed context interface without weakening source freshness or review checks.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.authored_evidence",
+      "provider": "oi_api.question_review_returns",
+      "symbols": [
+        "_question_id"
+      ],
+      "reason": "Existing composition or evidence code uses the source-question review implementation or its private identifier validator. Keep the exact import until the review interface is separated from storage.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.authored_evidence",
+      "provider": "oi_api.source_questions",
+      "symbols": [
+        "PostgresSourceQuestions"
+      ],
+      "reason": "Existing consumer directly uses durable question storage or embedded snapshot, request-key and response contracts. Preserve question ownership and idempotency while extracting an explicit question interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.authored_evidence",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.composer_preflight",
+      "provider": "oi_api.case_bindings",
+      "symbols": [
+        "_case_id"
+      ],
+      "reason": "Existing consumer uses canonical case-binding storage or private case identifier validation. Preserve the shared patient/case authority and isolate a bounded binding contract before widening the interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.composer_preflight",
+      "provider": "oi_api.laboratory_fhir_r4",
+      "symbols": [
+        "LaboratoryBundleRejected",
+        "_reference"
+      ],
+      "reason": "Existing general source preflight directly reads laboratory storage and parser internals. Isolate specialty context preparation behind a typed interface before removing this reverse dependency.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.composer_preflight",
+      "provider": "oi_api.laboratory_fhir_store",
+      "symbols": [
+        "PostgresLaboratoryFHIR"
+      ],
+      "reason": "Existing general source preflight directly reads laboratory storage and parser internals. Isolate specialty context preparation behind a typed interface before removing this reverse dependency.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.composer_preflight",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions",
+        "_source_id"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.images",
+      "provider": "oi_api.case_bindings",
+      "symbols": [
+        "_case_id"
+      ],
+      "reason": "Existing consumer uses canonical case-binding storage or private case identifier validation. Preserve the shared patient/case authority and isolate a bounded binding contract before widening the interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.images",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions",
+        "PreparedResponse",
+        "_source_id"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.laboratory_fhir_routes",
+      "provider": "oi_api.composer_preflight",
+      "symbols": [
+        "PostgresSourceComposerPreflight"
+      ],
+      "reason": "Existing consumer imports the stateful preflight implementation or its embedded snapshot and digest contracts. Extract stable contracts and an explicit preflight port while preserving final authority and freshness checks.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.laboratory_fhir_routes",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.laboratory_fhir_store",
+      "provider": "oi_api.case_bindings",
+      "symbols": [
+        "_case_id"
+      ],
+      "reason": "Existing consumer uses canonical case-binding storage or private case identifier validation. Preserve the shared patient/case authority and isolate a bounded binding contract before widening the interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.laboratory_fhir_store",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions",
+        "_source_id"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.laboratory_questions",
+      "provider": "oi_api.case_bindings",
+      "symbols": [
+        "_case_id"
+      ],
+      "reason": "Existing consumer uses canonical case-binding storage or private case identifier validation. Preserve the shared patient/case authority and isolate a bounded binding contract before widening the interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.laboratory_questions",
+      "provider": "oi_api.composer_preflight",
+      "symbols": [
+        "SHA256",
+        "SOURCE_SNAPSHOT_CONTRACT",
+        "prepare_laboratory_question"
+      ],
+      "reason": "Existing consumer imports the stateful preflight implementation or its embedded snapshot and digest contracts. Extract stable contracts and an explicit preflight port while preserving final authority and freshness checks.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.laboratory_questions",
+      "provider": "oi_api.source_questions",
+      "symbols": [
+        "PreparedResponse",
+        "_request_key"
+      ],
+      "reason": "Existing consumer directly uses durable question storage or embedded snapshot, request-key and response contracts. Preserve question ownership and idempotency while extracting an explicit question interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.laboratory_questions",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions",
+        "_source_id"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.patients",
+      "provider": "oi_api.case_bindings",
+      "symbols": [
+        "CanonicalCaseBindings"
+      ],
+      "reason": "Existing consumer uses canonical case-binding storage or private case identifier validation. Preserve the shared patient/case authority and isolate a bounded binding contract before widening the interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.patients",
+      "provider": "oi_api.composer_preflight",
+      "symbols": [
+        "PostgresSourceComposerPreflight",
+        "SHA256"
+      ],
+      "reason": "Existing consumer imports the stateful preflight implementation or its embedded snapshot and digest contracts. Extract stable contracts and an explicit preflight port while preserving final authority and freshness checks.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.patients",
+      "provider": "oi_api.images",
+      "symbols": [
+        "PostgresSourceImages"
+      ],
+      "reason": "Existing HTTP composition directly constructs source-image storage. Preserve image-original custody and prepared-response authority checks before extracting an imaging port.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.patients",
+      "provider": "oi_api.laboratory_fhir_store",
+      "symbols": [
+        "PostgresLaboratoryFHIR"
+      ],
+      "reason": "Existing HTTP composition directly reads laboratory source storage. Preserve patient/case binding and exact source-version custody before extracting a laboratory read contract.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.patients",
+      "provider": "oi_api.question_review_returns",
+      "symbols": [
+        "PostgresQuestionReviewReturns"
+      ],
+      "reason": "Existing composition or evidence code uses the source-question review implementation or its private identifier validator. Keep the exact import until the review interface is separated from storage.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.patients",
+      "provider": "oi_api.question_source_review_packet",
+      "symbols": [
+        "PostgresQuestionSourcePacket"
+      ],
+      "reason": "Existing composition or evidence code uses the source-question review implementation or its private identifier validator. Keep the exact import until the review interface is separated from storage.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.patients",
+      "provider": "oi_api.record_requests",
+      "symbols": [
+        "PostgresRecordRequests"
+      ],
+      "reason": "Existing consumer directly coordinates record-request state with source custody. Preserve receipt and transaction ownership while extracting a bounded reconciliation interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.patients",
+      "provider": "oi_api.source_brief",
+      "symbols": [
+        "MAX_ENVELOPE_BYTES"
+      ],
+      "reason": "Existing HTTP composition enforces saved-brief limits through the concrete brief module. Preserve response sizing and serialization order while isolating shared transport contracts.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.patients",
+      "provider": "oi_api.source_questions",
+      "symbols": [
+        "PostgresSourceQuestions"
+      ],
+      "reason": "Existing consumer directly uses durable question storage or embedded snapshot, request-key and response contracts. Preserve question ownership and idempotency while extracting an explicit question interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.patients",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_evidence",
+      "provider": "oi_api.case_bindings",
+      "symbols": [
+        "_case_id"
+      ],
+      "reason": "Existing consumer uses canonical case-binding storage or private case identifier validation. Preserve the shared patient/case authority and isolate a bounded binding contract before widening the interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_evidence",
+      "provider": "oi_api.composer_preflight",
+      "symbols": [
+        "SHA256",
+        "SOURCE_SNAPSHOT_CONTRACT"
+      ],
+      "reason": "Existing consumer imports the stateful preflight implementation or its embedded snapshot and digest contracts. Extract stable contracts and an explicit preflight port while preserving final authority and freshness checks.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_evidence",
+      "provider": "oi_api.source_questions",
+      "symbols": [
+        "PostgresSourceQuestions"
+      ],
+      "reason": "Existing consumer directly uses durable question storage or embedded snapshot, request-key and response contracts. Preserve question ownership and idempotency while extracting an explicit question interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_evidence",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_followthrough",
+      "provider": "oi_api.case_bindings",
+      "symbols": [
+        "_case_id"
+      ],
+      "reason": "Existing consumer uses canonical case-binding storage or private case identifier validation. Preserve the shared patient/case authority and isolate a bounded binding contract before widening the interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_followthrough",
+      "provider": "oi_api.composer_preflight",
+      "symbols": [
+        "PostgresSourceComposerPreflight",
+        "SHA256",
+        "SOURCE_SNAPSHOT_CONTRACT",
+        "prepare_laboratory_question"
+      ],
+      "reason": "Existing consumer imports the stateful preflight implementation or its embedded snapshot and digest contracts. Extract stable contracts and an explicit preflight port while preserving final authority and freshness checks.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_followthrough",
+      "provider": "oi_api.question_passages",
+      "symbols": [
+        "QuestionPassages"
+      ],
+      "reason": "Existing consumer directly uses manual-passage storage and reference audit helpers. Extract a typed source-backed context interface without weakening source freshness or review checks.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_followthrough",
+      "provider": "oi_api.source_questions",
+      "symbols": [
+        "PostgresSourceQuestions"
+      ],
+      "reason": "Existing consumer directly uses durable question storage or embedded snapshot, request-key and response contracts. Preserve question ownership and idempotency while extracting an explicit question interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_followthrough",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_passage_contracts",
+      "provider": "oi_api.reviewed_documents",
+      "symbols": [
+        "fingerprint"
+      ],
+      "reason": "Existing manual-context code calls document custody or its canonicalization helpers directly. Isolate source-backed passage resolution and fingerprint contracts without changing reviewed originals or annotation revisions.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_passages",
+      "provider": "oi_api.reviewed_documents",
+      "symbols": [
+        "ReviewedDocuments",
+        "canonical",
+        "fingerprint"
+      ],
+      "reason": "Existing manual-context code calls document custody or its canonicalization helpers directly. Isolate source-backed passage resolution and fingerprint contracts without changing reviewed originals or annotation revisions.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_passages",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_review_returns",
+      "provider": "oi_api.case_bindings",
+      "symbols": [
+        "_case_id"
+      ],
+      "reason": "Existing consumer uses canonical case-binding storage or private case identifier validation. Preserve the shared patient/case authority and isolate a bounded binding contract before widening the interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_review_returns",
+      "provider": "oi_api.composer_preflight",
+      "symbols": [
+        "SHA256",
+        "SOURCE_SNAPSHOT_CONTRACT"
+      ],
+      "reason": "Existing consumer imports the stateful preflight implementation or its embedded snapshot and digest contracts. Extract stable contracts and an explicit preflight port while preserving final authority and freshness checks.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_review_returns",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_source_review_packet",
+      "provider": "oi_api.case_bindings",
+      "symbols": [
+        "_case_id"
+      ],
+      "reason": "Existing consumer uses canonical case-binding storage or private case identifier validation. Preserve the shared patient/case authority and isolate a bounded binding contract before widening the interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_source_review_packet",
+      "provider": "oi_api.composer_preflight",
+      "symbols": [
+        "SOURCE_SNAPSHOT_CONTRACT"
+      ],
+      "reason": "Existing consumer imports the stateful preflight implementation or its embedded snapshot and digest contracts. Extract stable contracts and an explicit preflight port while preserving final authority and freshness checks.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_source_review_packet",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.record_requests",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions",
+        "_source_id"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.source_brief",
+      "provider": "oi_api.composer_preflight",
+      "symbols": [
+        "SOURCE_SNAPSHOT_CONTRACT"
+      ],
+      "reason": "Existing consumer imports the stateful preflight implementation or its embedded snapshot and digest contracts. Extract stable contracts and an explicit preflight port while preserving final authority and freshness checks.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.source_integrity",
+      "provider": "oi_api.laboratory_fhir_r4",
+      "symbols": [
+        "prepare_laboratory_bundle"
+      ],
+      "reason": "Existing general source-integrity verification calls the laboratory parser. Retain this exact reverse specialty dependency until original-validation contracts can be separated without changing accepted source bytes.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.source_questions",
+      "provider": "oi_api.case_bindings",
+      "symbols": [
+        "_case_id"
+      ],
+      "reason": "Existing consumer uses canonical case-binding storage or private case identifier validation. Preserve the shared patient/case authority and isolate a bounded binding contract before widening the interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.source_questions",
+      "provider": "oi_api.composer_preflight",
+      "symbols": [
+        "PostgresSourceComposerPreflight",
+        "SHA256",
+        "SOURCE_SNAPSHOT_CONTRACT"
+      ],
+      "reason": "Existing consumer imports the stateful preflight implementation or its embedded snapshot and digest contracts. Extract stable contracts and an explicit preflight port while preserving final authority and freshness checks.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.source_questions",
+      "provider": "oi_api.sources",
+      "symbols": [
+        "PostgresSourceVersions",
+        "_source_id"
+      ],
+      "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.sources",
+      "provider": "oi_api.case_bindings",
+      "symbols": [
+        "_case_id"
+      ],
+      "reason": "Existing consumer uses canonical case-binding storage or private case identifier validation. Preserve the shared patient/case authority and isolate a bounded binding contract before widening the interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.sources",
+      "provider": "oi_api.record_requests",
+      "symbols": [
+        "PostgresRecordRequests"
+      ],
+      "reason": "Existing consumer directly coordinates record-request state with source custody. Preserve receipt and transaction ownership while extracting a bounded reconciliation interface.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.laboratory_citation_report",
+      "provider": "oi_api.composer_preflight",
+      "symbols": [
+        "laboratory_preflight_payload"
+      ],
+      "reason": "The clinical branch calls the existing stateful Composer preflight helper to verify the current source context. Extract a shared preflight contract without moving its authority.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_anchors",
+      "provider": "oi_api.case_bindings",
+      "symbols": [
+        "_case_id"
+      ],
+      "reason": "The typed anchor uses canonical case identifier validation. Retain the exact dependency until that validator has a public contract.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_anchors",
+      "provider": "oi_api.laboratory_fhir_r4",
+      "symbols": [
+        "_reference",
+        "LaboratoryBundleRejected"
+      ],
+      "reason": "The typed anchor and coordination paths use the laboratory owner’s reference validation. Keep validation consistent until a qualified public reference contract is available.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_evidence",
+      "provider": "oi_api.laboratory_questions",
+      "symbols": [
+        "PostgresLaboratoryQuestions"
+      ],
+      "reason": "The clinical branch resolves the existing stored laboratory question, including stale state and its exact Observation. Extract a question-read port without changing its owner.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_followthrough",
+      "provider": "oi_api.laboratory_fhir_store",
+      "symbols": [
+        "PostgresLaboratoryFHIR"
+      ],
+      "reason": "The coordination owner calls the existing laboratory store to validate the linked original. Separate a scoped inspection port without weakening the authority check.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_followthrough",
+      "provider": "oi_api.laboratory_fhir_r4",
+      "symbols": [
+        "_reference"
+      ],
+      "reason": "The typed anchor and coordination paths use the laboratory owner’s reference validation. Keep validation consistent until a qualified public reference contract is available.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.question_followthrough",
+      "provider": "oi_api.laboratory_questions",
+      "symbols": [
+        "PostgresLaboratoryQuestions"
+      ],
+      "reason": "The clinical branch resolves the existing stored laboratory question, including stale state and its exact Observation. Extract a question-read port without changing its owner.",
+      "backlog": "OI-005"
+    }
+  ]
+}

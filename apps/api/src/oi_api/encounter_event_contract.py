@@ -21,3 +21,15 @@ class EncounterEvents(Contract):
     resume_after_id: int
     has_more: bool
     access_receipt_id: str
+
+
+VisitState = Literal["scheduled", "in_progress", "completed", "cancelled"]
+
+
+class VisitEvent(EncounterEvent):
+    from_status: VisitState | None
+    to_status: VisitState | None
+
+
+class VisitEvents(EncounterEvents):
+    events: list[VisitEvent]

@@ -12,7 +12,7 @@ CASE = 'CASE-WEB-LAB'
 SUBJECT = 'FICT-WEB-LAB'
 
 
-def fictional_bundle(*, amended=False):
+def fictional_bundle(*, amended=False, patient_resource_id=SUBJECT):
     """Independently authored numeric-zero, negative-number and absent fixtures."""
     # Source originals may mix exact fullUrl references with local resource IDs.
     subject = {'reference': 'urn:uuid:10000000-0000-4000-8000-000000000001'}
@@ -34,7 +34,7 @@ def fictional_bundle(*, amended=False):
                                     'system': 'http://unitsofmeasure.org', 'code': '10*9/L'}
         observations.append(row)
     resources = [
-        {'resourceType': 'Patient', 'id': SUBJECT},
+        {'resourceType': 'Patient', 'id': patient_resource_id},
         {'resourceType': 'Specimen', 'id': 'FICT-WEB-SPEC', 'subject': subject,
          'type': {'text': 'Fictional sample <script>literal</script>'},
          'collection': {'collectedDateTime': effective}},
@@ -52,16 +52,17 @@ def fictional_bundle(*, amended=False):
 
 
 def exercise(cd, patient_id, directory, token, credentials, write_grants, artifacts):
-    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'question_create', 'composer_context_read', 'evidence_read', 'evidence_link', 'review_packet_read'}
+    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'question_create', 'composer_context_read', 'evidence_read', 'evidence_link', 'review_packet_read',
+              'followthrough_create', 'followthrough_read', 'followthrough_update'}
     credentials[0]['actions'] = sorted(set(credentials[0]['actions']) | grants)
     write_grants()
     root = '/v1/patients/' + patient_id
     source_path = '/cases/' + CASE + '/sources'
 
-    def operator(path, payload=None):
+    def operator(path, payload=None, *, accept='application/json'):
         request = Request('http://127.0.0.1:8000' + root + path,
                           data=None if payload is None else json.dumps(payload).encode(),
-                          headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
+                          headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Accept': accept})
         with urlopen(request, timeout=10) as response:
             return json.load(response)
 
@@ -115,10 +116,17 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
       window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];window.__oiLabQuestionPosts=[];window.__oiLabHistoryCodes=[];window.__oiLabCatalog=[];
       window.fetch=async(input,init)=>{
         window.__oiLabRequests++;
+        if(window.__oiLabPreviewOffline && String(input).endsWith('/laboratory/fhir-r4/preview')){
+          window.__oiLabPreviewOffline=false;
+          return new Response('{}',{status:503,headers:{'Content-Type':'application/json'}});
+        }
         const laboratory=String(input).endsWith('/laboratory/fhir-r4/sources')&&init?.method==='POST';
         if(laboratory)window.__oiLabWrites.push(JSON.parse(init.body));
         const response=await window.__oiLabFetch(input,init);
         const path=String(input);
+        if(init.method==='POST' && path.endsWith('/followthrough') && response.status===201){
+          window.__oiLabTaskReceipt=await response.clone().json();
+        }
         if(path.includes('/composer/laboratory-questions/')&&(path.endsWith('/evidence-links')||path.endsWith('/evidence-search'))){
           const item={path,method:init.method,body:init.body??null,status:response.status,result:await response.clone().json()};
           window.__oiLabCatalog.push(item);
@@ -222,6 +230,36 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.evaluate('document.querySelector("[data-testid=laboratory-local-original]").style.removeProperty("font-size")')
     cd.command('Emulation.setDeviceMetricsOverride', {**viewport,'deviceScaleFactor':1,'mobile':False})
     print('PASS LABORATORY PREVIEW KEYBOARD: native Tab/PageDown/Tab; named visible reader at 390px and 320x256; exact local JSON; unchecked confirmation; zero requests and no source writes.')
+    preview_button = 'document.querySelector("[data-testid=laboratory-preview]")'
+    preview_results = 'document.querySelector("[data-testid=laboratory-preview-results]")'
+    cd.evaluate('window.__oiLabPreviewOffline=true')
+    cd.evaluate(preview_button + '.click()')
+    cd.wait('document.querySelector("[data-testid=laboratory-intake]").textContent.includes("Preview unavailable.")',
+            'a temporary preview outage is visible')
+    cd.evaluate('document.querySelector("[data-testid=laboratory-confirm]").click()')
+    assert cd.evaluate('!document.querySelector("[data-testid=laboratory-import]").disabled'), 'direct import remains available'
+    assert cd.evaluate('window.__oiLabWrites.length') == 0
+    cd.evaluate(preview_button + '.click()')
+    cd.wait('Boolean(' + preview_results + ')', 'server preview shows the selected specimen and results')
+    rendered = cd.evaluate(preview_results + '.textContent')
+    assert all(item in rendered for item in (
+        'Specimen/FICT-WEB-SPEC', 'DiagnosticReport/FICT-WEB-REPORT',
+        '0 10*9/L (UCUM)', '-4.25 10*9/L (UCUM)', 'Result absent · source reason: not-performed',
+    )), rendered
+    assert cd.evaluate(preview_results + '.querySelectorAll("script").length') == 0
+    assert cd.evaluate('document.querySelector("[data-testid=laboratory-import]").disabled')
+    assert operator(source_path)['sources'] == []
+    wrong_subject = fictional_bundle(patient_resource_id='FICT-OTHER')
+    select(wrong_subject, 'fictional-unmatched-lab.json')
+    assert cd.evaluate(preview_results + '===null')
+    cd.evaluate(preview_button + '.click()')
+    cd.wait('document.querySelector("[data-testid=laboratory-intake]").textContent.includes("does not match the supported laboratory format or the case mapping")',
+            'unmatched subject rejected on preview')
+    assert cd.evaluate(preview_results + '===null')
+    assert cd.evaluate('document.querySelector("[data-testid=laboratory-confirm]").disabled')
+    assert operator(source_path)['sources'] == [] and cd.evaluate('window.__oiLabWrites.length') == 0
+    select(raw, 'fictional-lab.json')
+    print('PASS STRUCTURED LAB PREVIEW: authorized values and specimen, unmatched case refused, zero original writes before confirmation.')
     cd.evaluate('document.querySelector("[data-testid=laboratory-confirm]").click();document.querySelector("[data-testid=laboratory-import]").click()')
     cd.wait('Boolean(document.querySelector("[data-testid=laboratory-retry]"))', 'unknown outcome exposes exact manual retry')
     first, = operator(source_path)['sources']
@@ -417,6 +455,51 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     draft_question(first['source_id'], 'ABSENT', 'Why was the selected result not performed?')
     assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))"), 'Editing clears previous receipt'
     assert operator(questions_path)['questions'] == []
+    # A saved question about an Observation can own actual coordination work.
+    # Keep the source lines empty for laboratory tasks; the Observation is the locator.
+    task_title = 'Request the original laboratory report for the next visit'
+    click(cd, control('followthrough-open-create'))
+    fill(cd, control('followthrough-title'), task_title)
+    fill(cd, control('followthrough-trigger'), 'When the laboratory issues a correction')
+    fill(cd, control('followthrough-reason'), 'Prepare the saved specimen question for discussion.')
+    click(cd, control('followthrough-create'))
+    cd.wait('Boolean(window.__oiLabTaskReceipt)', 'laboratory task committed through the patient workspace')
+    task_receipt = cd.evaluate('window.__oiLabTaskReceipt')
+    assert task_receipt['question_id'] == question_id and task_receipt['revision'] == 1
+    task_id = task_receipt['task_id']
+    task_card = '[data-testid=followthrough-task][data-task-id="' + task_id + '"]'
+    task_dom = 'document.querySelector(' + json.dumps(task_card) + ')'
+    task_list_path = '/cases/' + CASE + '/followthrough'
+    task_media = 'application/vnd.open-intelligence.followthrough.v2+json'
+
+    def open_recorded_task():
+        navigate('Investigations')
+        click(cd, '[data-testid=followthrough-refresh]')
+        cd.wait(task_dom + '?.textContent.includes(' + json.dumps(task_title) + ')',
+                'exact laboratory work item reopened from the case list')
+
+    def task_at_revision(revision):
+        cd.wait(task_dom + '?.dataset.revision===' + json.dumps(str(revision)),
+                'rendered laboratory follow-up revision ' + str(revision))
+        packet = operator(task_list_path, accept=task_media)
+        assert packet['contract'] == 'oi.pg-question-followthrough/2'
+        task, = packet['tasks']
+        assert task['task_id'] == task_id and task['question_id'] == question_id
+        assert task['source_line'] is None and task['revision'] == revision
+        assert all(task[key] == value for key, value in expected_anchor.items())
+        return task
+
+    open_recorded_task()
+    before = task_at_revision(1)
+    assert before['status'] == 'created' and not before['needs_recheck']
+    assert committed['observation_reference'] in cd.evaluate(task_dom + '.textContent')
+    assert operator(task_list_path)['tasks'] == [], 'legacy text-only list preserves its contract'
+    for action, revision in [('assign', 2), ('acknowledge', 3)]:
+        if action == 'assign':
+            fill(cd, task_card + ' [data-testid=followthrough-transition-owner]', 'Fictional coordinator')
+        fill(cd, task_card + ' [data-testid=followthrough-transition-reason]', 'Record this coordination step.')
+        click(cd, task_card + ' [data-testid=followthrough-' + action + ']')
+        task_at_revision(revision)
     records()
     amended = fictional_bundle(amended=True)
     select(amended, 'fictional-lab-amended.json')
@@ -473,6 +556,51 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         if fixture_rights.rights_revoked:
             fixture_rights.set_fixture_rights(False)
     print('PASS LABORATORY CITATIONS: exact Observation search, one durable link, lost response recovery, original anchor after amendment, withdrawn metadata withheld from history and report.')
+    assert cd.evaluate('document.querySelector(' + json.dumps(control('followthrough-open-create')) + ').disabled')
+    open_recorded_task()
+    after = task_at_revision(3)
+    assert after['needs_recheck'] and after['source_context_state'] == 'source_reassessment_required'
+    assert [event['status'] for event in after['history']] == ['created', 'assigned', 'acknowledged']
+    cd.wait('Boolean(' + task_dom + '?.querySelector("[data-testid=followthrough-recheck]"))',
+            'amendment requires the original task to be rechecked')
+    fill(cd, task_card + ' [data-testid=followthrough-transition-reason]', 'This original now needs review.')
+    complete = task_dom + '.querySelector("[data-testid=followthrough-complete]")'
+    assert cd.evaluate('!(' + complete + ') || ' + complete + '.matches(":disabled")')
+    # A task can lead back to its own superseded original, even when the
+    # current version uses the same local Observation identifier.
+    click(cd, task_card + ' [data-testid=followthrough-open-laboratory-original]')
+    cd.wait('document.querySelector("[data-testid=server-original]")?.textContent===' + json.dumps(raw.decode()),
+            'task opens exact earlier laboratory original after amendment')
+    original_text = cd.evaluate('document.querySelector("[data-testid=server-original]").textContent')
+    assert hashlib.sha256(original_text.encode()).hexdigest() == committed['source_sha256']
+    assert original_text != amended.decode()
+    # Reading a task never grants permission to disclose its original bytes.
+    journey('1')
+    open_recorded_task()
+    credentials[0]['actions'].remove('source_original_read')
+    write_grants()
+    try:
+        click(cd, task_card + ' [data-testid=followthrough-open-laboratory-original]')
+        cd.wait('Boolean(document.querySelector("[data-testid=records-status]")) && '
+                'document.querySelector("[data-testid=records-status]").textContent.toLowerCase().includes("denied")',
+                'task original requires an independent current original-read grant')
+        assert not cd.evaluate('Boolean(document.querySelector("[data-testid=server-original]"))')
+    finally:
+        credentials[0]['actions'].append('source_original_read')
+        write_grants()
+    (artifacts / 'laboratory-task-reassessment.json').write_text(json.dumps({
+        'synthetic': True, 'task_id': task_id, 'question_id': question_id, 'origin': expected_anchor,
+        'initial_status': before['status'], 'current_source_id': current['source_id'],
+        'inspected_task_original_sha256': hashlib.sha256(original_text.encode()).hexdigest(),
+        'task_source_state_after_amendment': after['source_context_state'],
+        'task_status_after_amendment': after['status'], 'history': [e['status'] for e in after['history']],
+        'clinical_approval': after['clinical_approval'],
+    }, indent=2) + '\n')
+    print('PASS LABORATORY FOLLOW-UP: created from saved Observation, assigned and acknowledged, '
+          'then reopened against its original report after amendment with stale completion blocked.')
+    journey('1')
+    click(cd, '[data-testid=lab-questions-reopen]')
+    cd.wait(exists('followthrough-open-create'), 'saved laboratory history reloaded before revocation')
     credentials[0]['actions'].remove('question_read');write_grants()
     cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
     cd.wait("window.__oiLabHistoryCodes.at(-1)===404 && Boolean(document.querySelector('[data-testid=world-no-patient]')) && !document.querySelector('[data-testid=lab-saved-question]')", 'denied question read removes prior history')

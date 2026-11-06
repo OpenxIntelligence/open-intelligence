@@ -29,6 +29,7 @@ from oi_api.app import create_app
 from oi_api.contracts import SCHEMA_REVISION
 from oi_api.reviewed_documents import fingerprint
 from test_reviewed_documents import RAW
+from test_evidence_convergence_migrations import PublishedEvidenceFixture
 from oi_api.followthrough_contracts import ManualTaskDependency
 from oi_api.composer_preflight import SOURCE_SNAPSHOT_CONTRACT
 from oi_api.migrate import migrate
@@ -608,12 +609,21 @@ class FollowthroughPostgresTests(SourceVersionFixture):
             migrate(self.admin, "downgrade", "0008_review_convergence")
         self.assertEqual(self.rows(), before)
 
+
+class FollowthroughOwnerCollisionTests(PublishedEvidenceFixture, SourceVersionFixture):
     def test_migration_refuses_competing_table_owner_and_preserves_existing_questions(self):
-        before_question_rows = self.rows()[2]
-        migrate(self.admin, "downgrade", "0008_review_convergence")
+        _, question, _ = self.start_at("0008_review_convergence")
+
+        def question_rows():
+            with self.engine.connect() as connection:
+                return connection.execute(text("SELECT row_to_json(q)::text FROM investigation.source_questions q "
+                                               "WHERE question_id=:question"), {"question": question}).scalars().all()
+
+        before_question_rows = question_rows()
+        self.assertEqual(len(before_question_rows), 1)
         with self.engine.begin() as connection:
             connection.execute(text("CREATE TABLE coordination.question_followthrough_tasks (foreign_owner text)"))
-        with self.assertRaises(CommandError):
+        with self.assertRaisesRegex(CommandError, "Existing follow-through owner"):
             migrate(self.admin, "upgrade", "head")
         with self.engine.begin() as connection:
             self.assertIsNone(connection.execute(text(
@@ -621,7 +631,7 @@ class FollowthroughPostgresTests(SourceVersionFixture):
             )).scalar_one())
             connection.execute(text("DROP TABLE coordination.question_followthrough_tasks"))
         migrate(self.admin, "upgrade", "head")
-        self.assertEqual(self.rows()[2], before_question_rows)
+        self.assertEqual(question_rows(), before_question_rows)
 
 
 if __name__ == "__main__":
