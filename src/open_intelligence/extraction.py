@@ -19,6 +19,7 @@ arrive with D2).
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field as dc_field
 
 from .store import InvalidInput, KEY, STATES
@@ -50,17 +51,19 @@ def _drop(field, reason):
     return {"field": field, "reason": reason, "check": "A1"}
 
 
-def validate_extraction_proposal(store, case_id, source_version_id, fields):
+def validate_extraction_proposal(store, case_id, source_version_id, fields, *,
+                                 verified_source_anchors=None):
     """Validate an extraction proposal against the case ledger.
 
     The source version is proposal-level: it must be a positive integer
     id, exist, belong to ``case_id``, and be ``current``. A bad source
     drops every field with the same typed reason. Each field is then
-    checked on its own: the finding key must match the ledger's key
-    pattern, the certainty must be a known finding state, the quote must
-    be present (1-1200 characters), the source line must be a positive
-    integer, the key must not repeat inside the proposal, and the key
-    must not already be asserted for this source version.
+    checked against the immutable original's SHA-256 and its literal
+    text line before it may become an assertion. A FHIR source's narrative
+    is not on its resource ID line: the caller must supply bindings from
+    a freshly verified parser of those original bytes. Without such
+    bindings, a FHIR proposal fails closed instead of guessing anchors.
+    The key must not repeat or already exist on the source version.
     """
     if not isinstance(case_id, str) or not case_id:
         raise InvalidInput("case_id must be a non-empty string")
@@ -71,7 +74,7 @@ def validate_extraction_proposal(store, case_id, source_version_id, fields):
             case_id, source_version_id, [],
             [_drop(item, "invalid_source_version_id") for item in fields])
     row = store.db.execute(
-        "SELECT case_id, state FROM source_versions WHERE id=?",
+        "SELECT case_id, state, kind, raw, sha256 FROM source_versions WHERE id=?",
         (source_version_id,)).fetchone()
     if row is None:
         reason = "unknown_source_version"
@@ -85,6 +88,24 @@ def validate_extraction_proposal(store, case_id, source_version_id, fields):
         return ExtractionValidation(
             case_id, source_version_id, [],
             [_drop(item, reason) for item in fields])
+    original = row["raw"]
+    if (not isinstance(original, bytes) or
+            hashlib.sha256(original).hexdigest() != row["sha256"]):
+        return ExtractionValidation(
+            case_id, source_version_id, [],
+            [_drop(item, "source_integrity_mismatch") for item in fields])
+    source_lines = None
+    if row["kind"] != "fhir-bundle":
+        try:
+            source_lines = original.decode("utf-8", errors="strict").splitlines()
+        except UnicodeDecodeError:
+            return ExtractionValidation(
+                case_id, source_version_id, [],
+                [_drop(item, "source_text_unavailable") for item in fields])
+    # FHIR bindings are produced by the existing source parser, not by
+    # caller-provided field text. Unknown or unverified anchors fail closed.
+    fhir_bindings = (set(verified_source_anchors)
+                     if verified_source_anchors is not None else None)
     validation = ExtractionValidation(case_id, source_version_id)
     seen_keys = set()
     for item in fields:
@@ -119,6 +140,20 @@ def validate_extraction_proposal(store, case_id, source_version_id, fields):
         if already is not None:
             validation.dropped.append(
                 _drop(item, "finding_already_asserted"))
+            continue
+        normalized_quote = quote.strip()
+        if row["kind"] == "fhir-bundle":
+            if fhir_bindings is None:
+                validation.dropped.append(_drop(item, "source_anchor_not_verified"))
+                continue
+            if (key, normalized_quote, line) not in fhir_bindings:
+                validation.dropped.append(_drop(item, "source_anchor_mismatch"))
+                continue
+        elif line > len(source_lines):
+            validation.dropped.append(_drop(item, "source_line_out_of_range"))
+            continue
+        elif normalized_quote not in source_lines[line - 1]:
+            validation.dropped.append(_drop(item, "source_quote_mismatch"))
             continue
         seen_keys.add(key)
         validation.kept.append({

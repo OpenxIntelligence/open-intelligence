@@ -230,6 +230,20 @@ class FhirTranslationTests(unittest.TestCase):
         self.assertIsInstance(finding.line, int)
         self.assertGreater(finding.line, 1)
 
+    def test_shared_id_across_resource_types_uses_distinct_lines(self):
+        observation = _observation("SHARED-1", quote="Fictional hemoglobin 14.2 g/dL.")
+        condition = _condition("SHARED-1", quote="Fictional unconfirmed pathology.")
+        original = _canonical(_bundle(observation, condition))
+        report, _ = fhir_bundle_to_report(original,
+                                          validate_coding=validate_coding)
+        self.assertEqual(len(report.findings), 2)
+        self.assertNotEqual(report.findings[0].line, report.findings[1].line)
+        original_lines = original.decode("utf-8").splitlines()
+        for finding in report.findings:
+            self.assertIn('"id": "SHARED-1"', original_lines[finding.line - 1])
+        self.assertEqual({f.key for f in report.findings}, {
+            "fhir-observation-shared-1", "fhir-condition-shared-1"})
+
     def test_status_map_without_certainty_extension(self):
         observation = _observation("OBS-1", status="preliminary")
         del observation["extension"]
@@ -356,6 +370,42 @@ class FhirStoreTests(unittest.TestCase):
         self.assertEqual(keys["fhir-condition-cond-1"]["certainty"], "indeterminate")
         self.assertEqual(self.store.import_fhir_bundle("CASE-ALPHA", raw)["result"],
                          "duplicate")
+
+    def test_fhir_assertions_keep_independent_same_id_anchors(self):
+        bundle = _bundle(
+            _observation("SHARED-1", quote="Fictional hemoglobin 14.2 g/dL."),
+            _condition("SHARED-1", quote="Fictional unconfirmed pathology."))
+        raw = _canonical(bundle)
+        outcome = self.store.import_fhir_bundle("CASE-ALPHA", raw)
+        source_id = outcome["source_id"]
+        rows = self.store.db.execute(
+            "SELECT finding_key, quote, source_line FROM assertions "
+            "WHERE source_version_id=? ORDER BY source_line",
+            (source_id,)).fetchall()
+        self.assertEqual(len(rows), 2)
+        self.assertNotEqual(rows[0]["source_line"], rows[1]["source_line"])
+        lines = raw.decode("utf-8").splitlines()
+        for row in rows:
+            self.assertIn('"id": "SHARED-1"', lines[row["source_line"] - 1])
+        self.assertEqual({r["finding_key"] for r in rows}, {
+            "fhir-observation-shared-1", "fhir-condition-shared-1"})
+
+    def test_unverified_direct_fhir_proposal_fails_closed(self):
+        from open_intelligence.extraction import record_extraction_proposal
+        result = self.store.import_fhir_bundle(
+            "CASE-ALPHA", _canonical(_bundle(_observation("OBS-1"))))
+        source_id = result["source_id"]
+        row = self.store.db.execute(
+            "SELECT source_line FROM assertions WHERE source_version_id=?",
+            (source_id,)).fetchone()
+        proposed = record_extraction_proposal(
+            self.store, "CASE-ALPHA", source_id,
+            [{"finding_key": "unverified-fhir", "certainty": "reported",
+              "quote": "Fabricated narrative.",
+              "source_line": row["source_line"]}])
+        self.assertEqual(proposed.kept, [])
+        self.assertEqual(proposed.dropped[0]["reason"],
+                         "source_anchor_not_verified")
 
     def test_wrong_case_bundle_is_quarantined(self):
         bundle = _bundle(_observation("OBS-1", patient_id="CASE-BETA"),
