@@ -461,6 +461,34 @@ reminder scheduling; no C5 evaluation-harness probes for
 notifications yet; no live model call exists in the slice (Meta
 billing fix still pending).
 
+**Care coordination dimension (Slice D8, 6 November 2026):**
+referrals — a fictional, case-scoped record of a request to send a
+case question to another team for input (question + specialty
+label + reason + 1–50 pinned materials), with lifecycle
+`requested` → `acknowledged` → `outcome_recorded` (terminal;
+further work is a new referral), exactly one outcome per referral
+(pinned kinds accepted/declined/completed, anchored to one current
+source version), full status history, and the second-opinion
+review/audit treatment (`pending` / `reviewed_in_demo` /
+`needs_review`, reopened on amendment of a pinned material or the
+outcome anchor). Recording a referral records the request — it
+sends nothing, contacts no one, books nothing, and performs no
+handoff outside the product; the specialty is a plain label, never
+a real destination. Role-gated through the generic case gate
+(patient reads own case only, writes are operator/clinician only);
+the follow-through text guard is reused for all referral text.
+Five routes, a Referrals panel (02g), and 19 new tests in
+`tests/test_referrals.py` (+1 guard test). The module is registered
+in `DIMENSION_MODULES` (an AST test pins that the module imports
+neither the model-call path nor any other dimension module). Local
+suite at the slice branch: 1226 tests, with the same 17
+pre-existing `test_pdf_intake` failures as the branch baseline
+(1206 tests) and zero new failures. Unproven: no message or
+handoff leaves the product; no link to a follow-through task or an
+appointment; no per-referral snapshot link; no C5
+evaluation-harness probes for referrals yet; no live model call
+exists in the slice (Meta billing fix still pending).
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.

@@ -430,6 +430,127 @@ async function loadNotifications() {
     el('notifications-status').textContent = items.length ? active : '';
   } catch (err) { el('notifications-status').textContent = err.message; }
 }
+async function loadReferrals() {
+  if (!caseId) { el('referrals-status').textContent = 'No case selected.'; return; }
+  const requested = caseId;
+  clear('referrals-list');
+  el('referrals-disclaimer').textContent = '';
+  el('referrals-status').textContent = 'Loading referrals…';
+  try {
+    const data = await api('/api/cases/' + requested + '/referrals');
+    if (requested !== caseId) return;
+    clear('referrals-list');
+    el('referrals-disclaimer').textContent = data.disclaimer || '';
+    const items = data.referrals || [];
+    const counts = data.counts || {};
+    if (!items.length) {
+      el('referrals-list').append(node('p', 'No referrals recorded for this fictional case yet.', 'muted'));
+    }
+    for (const item of items) {
+      const current = item.current || {};
+      const box = node('div', null, 'snapshot');
+      const top = node('div', null, 'topline');
+      top.append(node('strong', 'Referral #' + item.referral_id + ' · ' + (current.specialty_label || '')));
+      top.append(node('span', (current.status || '') + ' · ' + (current.review_state || ''), 'muted'));
+      box.append(top);
+      if (current.reason_text) box.append(node('p', current.reason_text));
+      if (item.question) box.append(node('p', 'About: ' + item.question, 'muted'));
+      if ((item.materials || []).length) {
+        box.append(node('p', 'Materials shared: ' + item.materials.map(m =>
+          m.document_id + '@' + m.version + ' (' + m.state + ')').join(', '), 'muted'));
+      }
+      if (item.outcome) {
+        const outcome = item.outcome;
+        box.append(node('p', 'Outcome (' + (outcome.outcome_kind || '') + '): ' + (outcome.outcome_text || '')));
+        if (outcome.anchor) box.append(node('p', 'Anchored to ' + outcome.anchor.document_id + '@' + outcome.anchor.version +
+          ' (' + outcome.anchor.state + ') · ' + (outcome.created_at || ''), 'snapshot-meta'));
+      } else {
+        box.append(node('p', 'No outcome recorded yet.', 'muted'));
+      }
+      const history = item.history || [];
+      if (history.length) {
+        box.append(node('p', 'Status history:', 'muted'));
+        for (const event of history) {
+          let line = event.change_kind + ' — ' + (event.actor_label || '') + ' · ' + (event.noted_at || '');
+          if (event.reason) line += ' · ' + event.reason;
+          box.append(node('p', line, 'muted'));
+        }
+      }
+      if ((item.review_events || []).length) {
+        box.append(node('p', 'Review history: ' + item.review_events.map(e =>
+          e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
+      }
+      if (current.review_state === 'pending') {
+        const actions = node('div', null, 'actions');
+        const button = node('button', 'Demo review acknowledgment', 'button minor'); button.type = 'button';
+        button.addEventListener('click', async () => {
+          try {
+            const requestedCase = readyCase();
+            await api('/api/cases/' + requestedCase + '/referrals/' + item.referral_id + '/review',
+              { reviewer_label: 'Synthetic reviewer (unverified)', scope: 'Demo-only acknowledgment of this fictional referral.' });
+            if (requestedCase !== caseId) return;
+            notice('Acknowledged in demonstration only. This is not credentialed clinical review.'); await loadReferrals();
+          } catch (err) { notice(err.message, true); }
+        });
+        actions.append(button);
+        box.append(actions);
+      } else if (current.review_state === 'needs_review') {
+        box.append(node('p', 'Shared materials changed since this referral. This record stays historical; record a new referral against current versions.', 'muted'));
+      }
+      el('referrals-list').append(box);
+    }
+    // Fill the action-form choices from the loaded list.
+    const fillChoice = (id, labelFn) => {
+      const select = el(id);
+      const prior = select.value;
+      clear(id);
+      for (const item of items) {
+        const opt = node('option', labelFn(item));
+        opt.value = item.referral_id; select.append(opt);
+      }
+      if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+    };
+    fillChoice('ref-ack-choice', item => 'Referral #' + item.referral_id + ' · ' + ((item.current || {}).specialty_label || '') + ' (' + ((item.current || {}).status || '') + ')');
+    fillChoice('ref-outcome-choice', item => 'Referral #' + item.referral_id + ' · ' + ((item.current || {}).specialty_label || '') + ' (' + ((item.current || {}).status || '') + ')');
+    // The question, materials, and outcome-anchor choices come from the
+    // loaded case state, like the second-opinion pickers.
+    const questions = (active && active.questions) || [];
+    const currentSources = (active && active.sources ? active.sources.filter(s => s.state === 'current') : []);
+    const fill = (id, list, labelFn) => {
+      const select = el(id);
+      const prior = select.value;
+      clear(id);
+      for (const entry of list) {
+        const opt = node('option', labelFn(entry));
+        opt.value = entry.id; select.append(opt);
+      }
+      if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+    };
+    fill('ref-question-choice', questions, q => 'Q' + q.id + ', ' + q.question.slice(0, 62));
+    fill('ref-outcome-anchor-choice', currentSources, s => s.document_id + '@' + s.version);
+    // Materials: preserve checked current sources across same-case
+    // reloads. A source that is no longer current is dropped, never
+    // rebound. A case switch never inherits the previous selection.
+    const sameCase = requested === caseId;
+    const priorChecked = sameCase
+      ? new Set([...el('ref-source-choice').querySelectorAll('input:checked')].map(x => Number(x.value)))
+      : new Set();
+    const hadChoices = sameCase && el('ref-source-choice').querySelectorAll('input').length > 0;
+    clear('ref-source-choice');
+    if (!currentSources.length) empty(el('ref-source-choice'), 'No current sources to share.');
+    for (const source of currentSources) {
+      const label = node('label');
+      const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = source.id;
+      checkbox.checked = hadChoices ? priorChecked.has(source.id) : true;
+      label.append(checkbox, node('span', source.document_id + '@' + source.version + ', ' + source.event_date));
+      el('ref-source-choice').append(label);
+    }
+    el('referrals-status').textContent = items.length
+      ? (counts.requested || 0) + ' requested · ' + (counts.acknowledged || 0) + ' acknowledged · '
+        + (counts.outcome_recorded || 0) + ' outcome recorded'
+      : '';
+  } catch (err) { el('referrals-status').textContent = err.message; }
+}
 function clearCaseViews(denied) {
   for (const id of ['assertion-list', 'question-list', 'snapshot-list', 'source-list',
       'source-change-list', 'asset-list', 'event-list', 'option-list',
@@ -464,7 +585,13 @@ function clearCaseViews(denied) {
       // under denial like every other view. Display-only with one
       // Clear button per item and no text inputs, so no picker-guard
       // entry is needed for it.
-      'notifications-list']) {
+      'notifications-list',
+      // D8: the referrals list renders case data; it must clear under
+      // denial like every other view. The create/acknowledge/outcome
+      // forms hold text inputs, so their fields have picker-guard
+      // entries and clear-loop entries of their own (see the picker
+      // handler).
+      'referrals-list']) {
     clear(id);
     empty(el(id), denied);
   }
@@ -517,6 +644,7 @@ async function initialize() {
     el('hypothesis-report-apply').addEventListener('click', loadHypothesisReport);
     el('appointments-apply').addEventListener('click', loadAppointments);
     el('notifications-apply').addEventListener('click', loadNotifications);
+    el('referrals-apply').addEventListener('click', loadReferrals);
     const picker = el('case-picker');
     picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {
@@ -551,6 +679,13 @@ async function initialize() {
             'appt-title', 'appt-purpose', 'appt-date', 'appt-time', 'appt-location',
             'appt-actor', 'appt-reason',
             'appt-new-date', 'appt-new-time', 'appt-change-actor', 'appt-change-reason',
+            // D8: referral form inputs are case-scoped narrative text,
+            // so an unfinished referral must block a case switch like
+            // every other draft. They sit before the eight
+            // test-asserted fields, which stay at the end of this array.
+            'ref-specialty', 'ref-reason', 'ref-actor',
+            'ref-ack-actor', 'ref-ack-reason',
+            'ref-outcome-text', 'ref-outcome-actor', 'ref-outcome-reason',
             'counterevidence-reason', 'safety-detail',
             'flag-reason', 'dimension-note',
             'synthesis-note-text', 'synthesis-note-author',
@@ -591,7 +726,17 @@ async function initialize() {
         // eight test-asserted fields stay early in it.
         'appt-title', 'appt-purpose', 'appt-date', 'appt-time', 'appt-location',
         'appt-actor', 'appt-reason', 'appt-new-date', 'appt-new-time',
-        'appt-change-actor', 'appt-change-reason']) el(id).value = '';
+        'appt-change-actor', 'appt-change-reason',
+        // D8: referral form inputs clear on an allowed switch, like
+        // every other draft. They sit at the end of this list, after
+        // the appointment fields, so the eight test-asserted fields
+        // stay early in it.
+        'ref-specialty', 'ref-reason', 'ref-actor',
+        'ref-ack-actor', 'ref-ack-reason',
+        'ref-outcome-text', 'ref-outcome-actor', 'ref-outcome-reason']) el(id).value = '';
+      // D8: the shared-materials checkboxes are case-scoped too — a
+      // switch must not leave the previous case's sources checked.
+      clear('ref-source-choice');
       clearFieldError('draft-observations');
       closeSourceViewsWithoutFocusReturn();
       refresh();
@@ -2197,6 +2342,54 @@ el('appointments-change-form').addEventListener('submit', async event => {
     if (requestedCase !== caseId) return;
     for (const id of ['appt-new-date', 'appt-new-time', 'appt-change-actor', 'appt-change-reason']) el(id).value = '';
     notice('Appointment #' + outcome.appointment_id + ' is now ' + outcome.result + '. History preserved.'); await loadAppointments();
+  } catch (err) { notice(err.message, true); }
+});
+
+el('referrals-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/referrals', {
+      question_id: Number(el('ref-question-choice').value),
+      specialty_label: el('ref-specialty').value,
+      reason_text: el('ref-reason').value,
+      source_version_ids: [...el('ref-source-choice').querySelectorAll('input:checked')].map(x => Number(x.value)),
+      actor_label: el('ref-actor').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ref-specialty', 'ref-reason', 'ref-actor']) el(id).value = '';
+    notice('Fictional referral #' + created.referral_id + ' recorded with pinned source versions. Nothing was sent.'); await loadReferrals();
+  } catch (err) { notice(err.message, true); }
+});
+el('referrals-acknowledge-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/referrals/' +
+      Number(el('ref-ack-choice').value) + '/acknowledge', {
+      actor_label: el('ref-ack-actor').value,
+      reason: el('ref-ack-reason').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ref-ack-actor', 'ref-ack-reason']) el(id).value = '';
+    notice('Referral #' + outcome.referral_id + ' is now ' + outcome.result + '. History preserved.'); await loadReferrals();
+  } catch (err) { notice(err.message, true); }
+});
+el('referrals-outcome-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/referrals/' +
+      Number(el('ref-outcome-choice').value) + '/outcome', {
+      outcome_kind: el('ref-outcome-kind').value,
+      outcome_text: el('ref-outcome-text').value,
+      anchor_source_version_id: Number(el('ref-outcome-anchor-choice').value),
+      actor_label: el('ref-outcome-actor').value,
+      reason: el('ref-outcome-reason').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ref-outcome-text', 'ref-outcome-actor', 'ref-outcome-reason']) el(id).value = '';
+    notice('Referral outcome #' + created.outcome_id + ' recorded as a separate record. The request is unchanged.'); await loadReferrals();
   } catch (err) { notice(err.message, true); }
 });
 
