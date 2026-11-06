@@ -4,8 +4,10 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-is the current integration and exact-revision acceptance record. Its runtime
-requires `0017_lab_manual_convergence`, preserving both published 0016 histories.
+records the original integration. The current API requires `0018_laboratory_questions`,
+which adds a typed Observation reference to the existing question registry. See
+[the laboratory question contract](../../docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md)
+for save, retry and history behavior.
 The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)
 maps the retained source, document, image, laboratory, question, report and task owners.
 

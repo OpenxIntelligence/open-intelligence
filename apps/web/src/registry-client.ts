@@ -8,6 +8,8 @@ import {prepareSource,parseImportReceipt,verifyOriginal} from './source-intake.j
 import type {ImportReceipt,OriginalSource} from './source-intake.js';
 import {emptyLaboratory,prepareLaboratoryFile,parseLaboratoryReceipt} from './laboratory-fhir.js';
 import type {LaboratoryImportState,LaboratoryIntent} from './laboratory-fhir.js';
+import {readLabPreparation,validLabQuestion,emptyLabQuestions,readLabQuestionList} from './laboratory-question.js';
+import type {LabPreparation,LabQuestionView} from './laboratory-question.js';
 import {parseSourceWorldModel} from './source-world-model.js';
 import type {SourceWorldModel} from './source-world-model.js';
 import {decodeComposerPreflight,DEFAULT_SOURCE_QUESTION} from './composer-preflight-view.js';
@@ -41,7 +43,12 @@ export type ReviewReturnIntent=Readonly<{
 }>;
 export type QuestionDraft = Readonly<{case_id:string;source_id:string;source_line:number;
   snapshot_fingerprint:string;question:string}>;
-export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryImportState & {
+function questionCommand(prepared:ComposerPreflight){
+  return {question:prepared.question,source_id:prepared.selected_source.source_id,
+    source_line:prepared.selected_source.line,expected_source_snapshot_sha256:prepared.source_snapshot_sha256,
+    expected_preflight_sha256:prepared.preflight_sha256};
+}
+export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryImportState & LabQuestionView & {
   manualPassageDraftQuestionIds:readonly string[];
   connected: boolean; phase: 'disconnected' | 'idle' | 'reading' | 'creating' | 'ready' | 'error';
   patient: Patient | null; created: CreatedPatient | null; message: string;
@@ -118,7 +125,10 @@ const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerP
   questionListMessage:'Open an authorized case to inspect saved source questions.',
   ...emptyEvidenceState(),...emptyBrief(),sourceQuotePacket:null,sourceQuotePhase:'idle' as const,
   sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
-const fresh = (): ViewState => Object.freeze({manualPassageDraftQuestionIds:Object.freeze([]),connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
+const unconfirmedLabQuestion = {labQuestionWritePhase:'unknown',labQuestionWriteMessage:
+  'The earlier save is unconfirmed. Retry its unchanged request after reopening this case.'} as const;
+
+const fresh = (): ViewState => Object.freeze({...emptyLabQuestions(),manualPassageDraftQuestionIds:Object.freeze([]),connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
 const emptyRecords=()=>({...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptySourceImages(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
@@ -214,11 +224,7 @@ export class RegistrySession {
       // Status is authoritative even when a proxy returns a non-JSON body.
       if([401,403,404].includes(response.status)){
         if(response.status===401)this.#httpError(401);
-        else{
-          this.#records++;
-          this.#publish({...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error',
-            recordMessage:'Document access unavailable or mapping changed. Reload case permissions.'});
-        }
+        else this.#publish(this.#resetDeniedCaseSources('Document access unavailable or mapping changed. Reload case permissions.'));
         void response.body?.cancel().catch(()=>{});
         return{status:response.status,body:null,headers:response.headers};
       }
@@ -241,11 +247,17 @@ export class RegistrySession {
   #token=''; #scope=0; #read=0; #records=0; #state:ViewState=fresh();
   #worldRead=0; #composerRead=0; #questionRead=0; #questionWrite=0; #briefRead=0;
   #questionKey=''; #questionFingerprint=''; #savingQuestion=false;
+  // An interrupted write may already have committed. Only a freshly authorized,
+  // byte-identical command in this credential/patient/case may recover its key.
+  #questionRetryKeys=new Map<string,string>();
   #reviewRead=0; #reviewWrite=0; #reviewKey=''; #reviewIntent=''; #savingReview=false;
   #followRead=0; #followWrite=0; #savingFollowthrough=false;
   #evidenceRead=0; #evidenceWrite=0; #savingEvidence=false;
   #quoteRead=0;
   #imageRead=0; #imageDownload=0; #imagePreview=0;
+  #labDrafts=new WeakMap<LabPreparation,{model:SourceWorldModel;question:string;source:string;reference:string;key:string}>();
+  #labPending:{patient:string;caseId:string;body:string}|null=null;
+  #labSave=0;#labList=0;
   #laboratoryWrite=0; #laboratoryWriting=false;
   #inspectionQuestionId:string|null=null;
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false; #uploading=false;
@@ -298,6 +310,7 @@ export class RegistrySession {
       next.cases?.some(c=>c.patient_id===patient&&c.case_id===caseId&&c.status==='active');
     const ids=scoped?(next.questions??[]).filter(q=>q.patient_id===patient&&q.case_id===caseId&&
       this.#manualPassageDrafts.has(JSON.stringify([patient,caseId,q.question_id]))).map(q=>q.question_id):[];
+    if(this.#labPending&&next.cases!==null&&!next.cases.some(c=>c.patient_id===this.#labPending?.patient&&c.case_id===this.#labPending?.caseId&&c.status==='active'))next={...next,...this.#resetLabQuestions()};
     this.#state=Object.freeze({...next,manualPassageDraftQuestionIds:Object.freeze(ids)});
     for(const listener of this.#listeners)listener();
   }
@@ -338,16 +351,71 @@ export class RegistrySession {
     this.#reviewKey='';this.#reviewIntent='';
     return emptyReview();
   }
-  #resetInvestigation(preserveReviewCase?:string,preserveFollowthroughCase=preserveReviewCase,preserveEvidenceCase=preserveReviewCase,preserveAuthoredEvidenceCase=preserveReviewCase,preserveManualCase=preserveReviewCase){
+  #resetLabQuestions(preserveCase?:string):LabQuestionView{
+    this.#labSave++;this.#labList++;this.#labDrafts=new WeakMap();
+    if(this.#labPending&&preserveCase===this.#labPending.caseId&&this.#state.patient?.patient_id===this.#labPending.patient){
+      return {...emptyLabQuestions(),...unconfirmedLabQuestion};
+    }
+    this.#labPending=null;return emptyLabQuestions();
+  }
+  #resetInvestigation(preserveReviewCase?:string,preserveFollowthroughCase=preserveReviewCase,preserveEvidenceCase=preserveReviewCase,preserveAuthoredEvidenceCase=preserveReviewCase,preserveManualCase=preserveReviewCase,preserveLabCase=preserveReviewCase){
     this.#clearManualDrafts(preserveManualCase);
     this.#inspectionQuestionId=null;
     this.#worldRead++;this.#composerRead++;this.#questionRead++;this.#questionWrite++;this.#briefRead++;this.#quoteRead++;
     this.#questionKey='';this.#questionFingerprint='';this.#savingQuestion=false;
-    return {...emptyInvestigation(),...this.#resetSourceImages(),...this.#resetReview(preserveReviewCase),...this.#resetFollowthrough(preserveFollowthroughCase),
+    return {...emptyInvestigation(),...this.#resetLabQuestions(preserveLabCase),...this.#resetSourceImages(),...this.#resetReview(preserveReviewCase),...this.#resetFollowthrough(preserveFollowthroughCase),
       ...this.#resetEvidence(preserveEvidenceCase),...this.#evidenceSession.reset(preserveAuthoredEvidenceCase)};
   }
   #resetWorld(preserveReviewCase?:string){
     this.#publish({...emptyWorld(),...this.#resetInvestigation(preserveReviewCase)});
+  }
+  #resetDeniedCaseSources(recordMessage='Source access must be rechecked. Reload case permissions to reopen records.'){
+    this.#records++;
+    return {...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error' as const,recordMessage};
+  }
+  // A question endpoint combines source_read with an action-specific grant. Hide
+  // both views immediately, then restore independent actions only from fresh reads.
+  async #recheckQuestionDenial(caseId:string,control:AbortController,restore:'case'|'world'|'questions',failure:Partial<ViewState>){
+    const patientId=this.#state.patient?.patient_id;
+    const hadWorld=this.#state.worldModel?.case_id===caseId;
+    const hadIndex=this.#state.sourceIndex?.case_id===caseId&&this.#state.sourceIndex.patient_id===patientId;
+    const reset=this.#resetDeniedCaseSources();
+    const scope=this.#scope,records=this.#records,questions=this.#questionRead,quotes=this.#quoteRead,brief=this.#briefRead;
+    const current=()=>scope===this.#scope&&records===this.#records&&questions===this.#questionRead&&
+      quotes===this.#quoteRead&&brief===this.#briefRead&&this.#state.patient?.patient_id===patientId;
+    this.#publish(reset);
+    if(!patientId||!current())return;
+    const read=async(url:string,limit:number)=>{
+      if(!current()||control.signal.aborted)throw Error('scope changed');
+      const response=await this.transport(url,this.#init(control));
+      if(!current()||control.signal.aborted||response.status!==200){
+        void response.body?.cancel().catch(()=>{});
+        if(current()&&response.status===401)this.#httpError(401);
+        throw Error('access unavailable');
+      }
+      const result=await json(response,limit);
+      if(!current()||control.signal.aborted)throw Error('scope changed');
+      return result;
+    };
+    const patientPath='/v1/patients/'+encodeURIComponent(patientId);
+    const casePath=patientPath+'/cases/'+encodeURIComponent(caseId);
+    try{
+      const model=parseSourceWorldModel(await read(casePath+'/world-model',1048576),patientId,caseId);
+      const cases=parseCaseBindingList(await read(patientPath+'/case-bindings',65536),patientId);
+      if(!cases.some(item=>item.case_id===caseId&&item.status==='active'))throw Error('case unavailable');
+      const sourceIndex=hadIndex?parseSourceIndex(await read(casePath+'/sources',65536),patientId,caseId):null;
+      const patch:Partial<ViewState>={cases,sourceIndex,recordsPhase:'ready',recordMessage:sourceIndex?
+        'Original source metadata rechecked. Open an original to inspect its bytes.':'Case access rechecked. Select the case to reopen Records.'};
+      const world=hadWorld&&restore!=='case'?{worldModel:model,worldPhase:'ready' as const,
+        worldMessage:'Source-derived snapshot verified at last read.'}:{};
+      if(restore==='questions'){
+        const history=decodeSourceQuestions(await read(casePath+'/questions',1048576),patientId,caseId);
+        if(current())this.#publish({...patch,...world,questions:history.questions,questionsAccessReceiptId:history.access_receipt_id,
+          questionsCaseId:caseId,questionListPhase:'ready',questionListMessage:'Saved question access rechecked.',...failure});
+      }else if(current())this.#publish({...patch,...world,...failure});
+    }catch{
+      if(current())this.#publish(failure);
+    }
   }
   /** Independently authorized readers share one UI selection, not a
    * new domain record. A switch invalidates both readers before either awaits.
@@ -371,13 +439,19 @@ export class RegistrySession {
     this.#publish({sourceQuotePacket:null,sourceQuotePhase:'idle',
       sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
   };
-  disconnect=()=>{
+  #clearPatientSessionData(){
+    this.#questionRetryKeys.clear();
     this.#manualPassageIntents.clear();
     this.#laboratoryWrite++;this.#laboratoryWriting=false;
-    this.#scope++;this.#read++;this.#records++;this.#token='';this.#creating=false;this.#uploading=false;
+    this.#scope++;this.#read++;this.#records++;this.#creating=false;this.#uploading=false;
     this.#resetInvestigation();
     for(const c of this.#controllers)c.abort();this.#controllers.clear();
-    this.#state=fresh();for(const listener of this.#listeners)listener();
+    this.#state=fresh();
+  }
+  disconnect=()=>{
+    this.#token='';
+    this.#clearPatientSessionData();
+    for(const listener of this.#listeners)listener();
   };
   connect=(token:string)=>{
     this.disconnect();
@@ -393,13 +467,20 @@ export class RegistrySession {
     else this.#publish({phase:'error',patient:null,message:messages[status] || 'Unexpected API response. No patient information is displayed.'});
   }
   async read(id:string):Promise<void>{
+    if(this.#state.patient?.patient_id!==id)this.#questionRetryKeys.clear();
     const scope=this.#scope, request=++this.#read;
     const lab=this.#state.laboratoryIntent;
     const preserveLaboratory=lab?.patient_id===id&&['sending','unknown'].includes(this.#state.laboratoryPhase)?lab:null;
     const pendingEvidence=this.#state.evidenceWriteIntent;
     const preserveEvidence=pendingEvidence?.patient_id===id&&
       ['saving','unknown'].includes(this.#state.evidenceWritePhase)?pendingEvidence:null;
-    this.#records++;this.#publish({patient:null,...emptyRecords(),...this.#resetInvestigation(),
+    // Invalidate the earlier response and every displayed source. Retain only the
+    // exact command for this patient until its case can be authorized again.
+    const pendingLabQuestion=this.#labPending?.patient===id?this.#labPending:null;
+    const clearedInvestigation=this.#resetInvestigation();
+    this.#labPending=pendingLabQuestion;
+    this.#records++;this.#publish({patient:null,...emptyRecords(),...clearedInvestigation,
+      ...(pendingLabQuestion?unconfirmedLabQuestion:{}),
       ...(preserveLaboratory?{laboratoryIntent:preserveLaboratory,laboratoryPhase:'unknown' as const,
         laboratoryMessage:'The earlier laboratory import remains uncertain. Recheck this case, then retry its exact saved request.'}:{}),
       ...(preserveEvidence?{evidenceWriteIntent:preserveEvidence,evidenceWritePhase:'unknown' as const,
@@ -461,7 +542,7 @@ export class RegistrySession {
       request===this.#records && this.#state.patient?.patient_id===patientId;
     const control=new AbortController();this.#controllers.add(control);
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(retainedCase,retainedFollowthroughCase,retainedEvidenceCase,retainedAuthoredEvidenceCase,retainedManualCase),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
+    this.#publish({...emptyIntake(),...emptyWorld(),...this.#resetInvestigation(retainedCase,retainedFollowthroughCase,retainedEvidenceCase,retainedAuthoredEvidenceCase,retainedManualCase,this.#labPending?.caseId),cases:null,sourceIndex:null,recordsPhase:'loading-cases',recordMessage:'Checking current case mapping permissions…'});
     try{
       const res=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/case-bindings',this.#init(control));
       if(!current())return;
@@ -469,7 +550,7 @@ export class RegistrySession {
       if(res.status!==200){
         if([403,404].includes(res.status))this.#clearManualDrafts();
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
-          ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
+          ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetLabQuestions(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           recordMessage:'Case mappings unavailable or permission changed. No records are shown.'});
         return;
       }
@@ -513,7 +594,7 @@ export class RegistrySession {
       if(res.status!==200){
         if([403,404].includes(res.status))this.#clearManualDrafts();
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
-          ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
+          ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetLabQuestions(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           recordMessage:'Sources unavailable, denied or mapping revoked. Reload case permissions.'});
         return;
       }
@@ -667,7 +748,8 @@ export class RegistrySession {
     }
     const index=this.#state.sourceIndex,patientId=this.#state.patient?.patient_id;
     const source=index?.sources.find(s=>s.source_id===sourceId&&s.state==='current');
-    const finding=index?.source_reported_assertions.find(f=>f.source_id===sourceId&&f.source_line===sourceLine);
+    const findings=index?.source_reported_assertions.filter(f=>f.source_id===sourceId&&f.source_line===sourceLine);
+    const finding=findings?.length===1?findings[0]:undefined;
     if(!index||index.case_id!==caseId||!patientId||this.#state.phase!=='ready'||
        this.#state.recordsPhase!=='ready'||this.#state.worldPhase==='loading'||
        !source||!finding||!this.#state.cases?.some(c=>c.case_id===caseId&&c.status==='active')){
@@ -690,7 +772,9 @@ export class RegistrySession {
        quotation[0].source_sha256!==source.sha256||
        quotation[0].source_statement!==finding.source_statement||
        quotation[0].finding_key!==finding.finding_key||
-       quotation[0].reported_state!==finding.reported_state){
+       quotation[0].reported_state!==finding.reported_state||
+       quotation[0].oncology?.role!==finding.oncology?.role||
+       quotation[0].oncology?.episode_id!==finding.oncology?.episode_id){
       this.#resetWorld(caseId);
       this.#publish({worldPhase:'error',worldMessage:'The source quotation or version changed during the handoff. No question draft was created. Recheck Records.'});
       return false;
@@ -730,9 +814,11 @@ export class RegistrySession {
       if(!current())return;
       if(response.status===401){this.#httpError(401);return;}
       if(response.status!==200){
-        if([403,404].includes(response.status))this.#clearManualDrafts();
-        this.#publish({...emptyWorld(),...([403,404].includes(response.status)?{...emptyLaboratory(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),worldPhase:'error',
-          worldMessage:'World Model source scope unavailable or revoked. Previous snapshot cleared.'});
+        if(response.status===403||response.status===404){
+          const message='World Model source scope unavailable or revoked. Reload case permissions before reopening sources.';
+          this.#publish({...this.#resetDeniedCaseSources(message),worldPhase:'error',worldMessage:message});
+        }else this.#publish({...emptyWorld(),worldPhase:'error',
+          worldMessage:'World Model is unavailable. Retry to check the current snapshot.'});
         return;
       }
       const model=parseSourceWorldModel(await json(response,1048576),patientId,caseId);
@@ -808,6 +894,119 @@ export class RegistrySession {
       questionSaveMessage:'Select another source statement to prepare a new question.'});
   }
 
+  /** Preparation is a scoped source read. This path never calls question save. */
+  async prepareLabQuestion(model:SourceWorldModel, source:string, reference:string,
+                           question:string, signal:AbortSignal):Promise<LabPreparation|null>{
+    if(questionSaveBlocksSourceChange(this.#state)||this.#labPending)return null;
+    const scope=this.#scope, patientRead=this.#read, worldRead=this.#worldRead, questionWrite=this.#questionWrite, labEpoch=this.#labSave;
+    // An older laboratory read must never clear a later question save or its retry key.
+    const current=()=>scope===this.#scope && patientRead===this.#read && worldRead===this.#worldRead &&
+      questionWrite===this.#questionWrite && labEpoch===this.#labSave &&
+      !signal.aborted && this.#state.worldModel===model && this.#state.worldPhase==='ready' &&
+      this.#state.phase==='ready' && this.#state.patient?.status==='active' &&
+      this.#state.patient.patient_id===model.patient_id &&
+      this.#state.cases?.some(c=>c.case_id===model.case_id && c.patient_id===model.patient_id && c.status==='active');
+    const item=model.laboratory_observations.find(o=>o.source_id===source && o.observation_reference===reference);
+    if(!this.#token || !current() || !item || !validLabQuestion(question))return null;
+    const controller=new AbortController(), abort=()=>controller.abort();
+    signal.addEventListener('abort',abort,{once:true});this.#controllers.add(controller);
+    const timer=setTimeout(abort,10000);
+    const withhold=(message:string,preserveCase?:string)=>{
+      this.#resetWorld(preserveCase);
+      this.#publish({worldPhase:'error',worldMessage:message});
+    };
+    try{
+      const url='/v1/patients/'+encodeURIComponent(model.patient_id)+'/cases/'+encodeURIComponent(model.case_id)+'/composer/laboratory-preflight';
+      const res=await this.transport(url,this.#init(controller,JSON.stringify({synthetic:true,source_id:source,
+        observation_reference:reference,question,expected_source_snapshot_sha256:model.snapshot_fingerprint})));
+      if(!current())return null;
+      if(res.status===401){this.#httpError(401);return null;}
+      if(res.status===403||res.status===404){this.#denyLaboratoryQuestionAccess('prepare');return null;}
+      if(res.status!==200){
+        withhold(res.status===409?'The laboratory report changed. Reopen the case to select a current result.':
+          'Laboratory question preparation is unavailable. Recheck access to this case.',
+          model.case_id);return null;
+      }
+      const receipt=readLabPreparation(await json(res),model,item,question);
+      if(!current()||controller.signal.aborted)return null;
+      this.#labDrafts.set(receipt,{model,source,reference,question,key:crypto.randomUUID()});
+      return receipt;
+    }catch{
+      if(current())withhold('The laboratory question response could not be verified. Reopen the case before trying again.',model.case_id);
+      return null;
+    }finally{clearTimeout(timer);signal.removeEventListener('abort',abort);this.#controllers.delete(controller);}
+  }
+
+  #canReadLabModel(model:SourceWorldModel):boolean{
+    return !!this.#token&&this.#state.connected&&this.#state.phase==='ready'&&this.#state.patient?.status==='active'&&
+      this.#state.patient.patient_id===model.patient_id&&this.#state.worldModel===model&&this.#state.worldPhase==='ready'&&
+      !!this.#state.cases?.some(c=>c.patient_id===model.patient_id&&c.case_id===model.case_id&&c.status==='active');
+  }
+  async saveLabQuestion(model:SourceWorldModel,receipt:LabPreparation):Promise<void>{
+    const draft=this.#labDrafts.get(receipt);
+    if(!draft||draft.model!==model||!this.#canReadLabModel(model)||this.#labPending||questionSaveBlocksSourceChange(this.#state))return;
+    this.#labDrafts.delete(receipt);
+    this.#labPending={patient:model.patient_id,caseId:model.case_id,body:JSON.stringify({synthetic:true,
+      request_key:draft.key,source_id:draft.source,observation_reference:draft.reference,question:draft.question,
+      expected_source_snapshot_sha256:model.snapshot_fingerprint,expected_preflight_sha256:receipt.fingerprint})};
+    await this.#sendLabQuestion(model);
+  }
+  async retryLabQuestion(model:SourceWorldModel):Promise<void>{
+    if(this.#state.labQuestionWritePhase==='unknown'&&this.#canReadLabModel(model)&&!questionSaveBlocksSourceChange(this.#state))await this.#sendLabQuestion(model);
+  }
+  #denyLaboratoryQuestionAccess(operation:'prepare'|'save'|'history'){
+    // A 403/404 can represent lost patient or case authority. Invalidate all
+    // patient data and outstanding responses before permitting another read.
+    this.#clearPatientSessionData();
+    const message='Laboratory question access is unavailable. Reopen the patient in Overview to check current access.';
+    this.#publish({connected:true,phase:'error',message,worldPhase:'error',worldMessage:message,
+      recordsPhase:'error',recordMessage:message,
+      ...(operation==='save'?{labQuestionWritePhase:'error' as const,labQuestionWriteMessage:message}:{}),
+      ...(operation==='history'?{labQuestionListPhase:'error' as const,labQuestionListMessage:message}:{})});
+  }
+  async #sendLabQuestion(model:SourceWorldModel):Promise<void>{
+    const intent=this.#labPending;
+    if(!intent||intent.caseId!==model.case_id||intent.patient!==model.patient_id||this.#state.labQuestionWritePhase==='saving')return;
+    const epoch=++this.#labSave,current=()=>epoch===this.#labSave&&this.#labPending===intent&&this.#canReadLabModel(model);
+    this.#labList++;
+    this.#publish({...emptyLabQuestions(),labQuestionWritePhase:'saving',labQuestionWriteMessage:'Saving the prepared question…'});
+    const control=new AbortController();this.#controllers.add(control);const timer=setTimeout(()=>control.abort(),10000);
+    try{
+      const path='/v1/patients/'+encodeURIComponent(intent.patient)+'/cases/'+encodeURIComponent(intent.caseId)+'/composer/laboratory-questions';
+      const response=await this.transport(path,this.#init(control,intent.body));
+      if(!current())return;
+      if(response.status===401){this.#httpError(401);return;}
+      if(response.status===403||response.status===404){this.#denyLaboratoryQuestionAccess('save');return;}
+      if([409,413,422].includes(response.status)){
+        this.#labPending=null;this.#labDrafts=new WeakMap();this.#publish({...emptyLabQuestions(),labQuestionWritePhase:'error',
+          labQuestionWriteMessage:response.status===409?'A changed report, conflicting request or full history can prevent a save. Reopen the saved questions and check the current report.':'Question save unavailable. Recheck access and prepare the question again.'});return;
+      }
+      if(![200,201].includes(response.status))throw Error('unknown');
+      const saved=decodeSavedQuestion(await json(response));
+      if(saved.duplicate!==(response.status===200))throw Error('unknown');
+      if(!current())return;
+      this.#labPending=null;this.#publish({labQuestionWritePhase:'saved',labQuestionSavedId:saved.question_id,
+        labQuestionWriteMessage:saved.duplicate?'Original save receipt recovered.':'Laboratory question saved.'});
+    }catch{if(current())this.#publish({labQuestionWritePhase:'unknown',labQuestionWriteMessage:'Save outcome unknown. Retry the exact request to recover its receipt.'});}
+    finally{clearTimeout(timer);this.#controllers.delete(control);}
+  }
+  async loadLabQuestions(model:SourceWorldModel):Promise<void>{
+    if(!this.#canReadLabModel(model)||questionSaveBlocksSourceChange(this.#state)||this.#labPending)return;
+    const epoch=++this.#labList,current=()=>epoch===this.#labList&&this.#canReadLabModel(model);
+    this.#publish({labQuestionHistory:null,labQuestionListPhase:'loading',labQuestionListMessage:'Checking access to saved laboratory questions…'});
+    const control=new AbortController();this.#controllers.add(control);const timer=setTimeout(()=>control.abort(),10000);
+    try{
+      const path='/v1/patients/'+encodeURIComponent(model.patient_id)+'/cases/'+encodeURIComponent(model.case_id)+'/composer/laboratory-questions';
+      const response=await this.transport(path,this.#init(control));if(!current())return;
+      if(response.status===401){this.#httpError(401);return;}
+      if(response.status===403||response.status===404){this.#denyLaboratoryQuestionAccess('history');return;}
+      if(response.status!==200)throw Error('unavailable');
+      const history=readLabQuestionList(await json(response,1048576),model);if(!current())return;
+      this.#publish({labQuestionHistory:history,labQuestionListPhase:'ready',labQuestionListMessage:'Saved questions checked against current access.'});
+    }catch{if(current())this.#publish({...this.#resetLabQuestions(),labQuestionListPhase:'error',labQuestionListMessage:'Saved questions are unavailable or the source changed. Refresh Journey and check access again.'});}
+    finally{clearTimeout(timer);this.#controllers.delete(control);}
+  }
+
   async prepareDraftQuestion():Promise<void>{
     const draft=this.#state.questionDraft,model=this.#state.worldModel;
     if(!draft||!model||draft.case_id!==model.case_id||
@@ -859,19 +1058,20 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(res.status);return;}
       if(res.status!==200){
-        // A failed preflight must not leave stale patient observations visible
-        // as though they remained currently permitted. Only the exact earlier
-        // return survives a non-authoritative failure; retry checks its own grant.
-        this.#resetWorld([403,404].includes(res.status)?undefined:model.case_id);
-        this.#publish({composerPhase:'error',composerMessage:res.status===409?
+        const failure={composerPhase:'error' as const,composerMessage:res.status===409?
           'The original source changed. Refresh Investigations before preparing a new context.':
-          'Composer context unavailable under current authority. Source observations were cleared.'});
+          'Composer context unavailable under current authority. Source observations were cleared.'};
+        if(res.status===403||res.status===404)await this.#recheckQuestionDenial(model.case_id,control,'case',failure);
+        else{this.#resetWorld(model.case_id);this.#publish(failure);}
         return;
       }
       const prepared=decodeComposerPreflight(await json(res),model,observation,question);
+      const commandBytes=new TextEncoder().encode(JSON.stringify([patientId,model.case_id,questionCommand(prepared)]));
+      const digest=await crypto.subtle.digest('SHA-256',commandBytes);
+      const fingerprint=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
       if(!current())return;
-      if(this.#questionFingerprint!==prepared.preflight_sha256){
-        this.#questionFingerprint=prepared.preflight_sha256;
+      if(this.#questionFingerprint!==fingerprint){
+        this.#questionFingerprint=fingerprint;
         this.#questionKey=crypto.randomUUID();
         this.#questionWrite++;
         this.#publish({savedQuestion:null,questionSavePhase:'idle',
@@ -900,7 +1100,12 @@ export class RegistrySession {
         'Prepare the current, authorized source context before saving a question.'});
       return;
     }
-    const key=this.#questionKey,query=++this.#questionWrite;
+    const command=questionCommand(prepared);
+    const intent=this.#questionFingerprint;
+    const earlierKey=this.#questionRetryKeys.get(intent);
+    const key=earlierKey??this.#questionKey,query=++this.#questionWrite;
+    this.#questionKey=key;
+    this.#questionRetryKeys.set(intent,key);
     this.#briefRead++;
     const scope=this.#scope,patientRead=this.#read,worldRead=this.#worldRead,
       composerRead=this.#composerRead;
@@ -917,30 +1122,31 @@ export class RegistrySession {
     try{
       const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+
         encodeURIComponent(prepared.case_id)+'/questions';
-      const body=JSON.stringify({
-        synthetic:true,request_key:key,question:prepared.question,
-        source_id:prepared.selected_source.source_id,
-        source_line:prepared.selected_source.line,
-        expected_source_snapshot_sha256:prepared.source_snapshot_sha256,
-        expected_preflight_sha256:prepared.preflight_sha256,
-      });
+      const body=JSON.stringify({synthetic:true,request_key:key,...command});
       const res=await this.transport(url,this.#init(control,body));
       if(!current())return;
       if(res.status===401){this.#httpError(res.status);return;}
       if(![200,201].includes(res.status)){
         if(![403,404,409,413,422].includes(res.status))throw Error('unconfirmed');
+        // A refusal on a retry cannot establish the first attempt's outcome.
+        if(!earlierKey)this.#questionRetryKeys.delete(intent);
         if(res.status===409){
-          this.#resetWorld();
+          // Refresh stale source context while keeping this case's outstanding
+          // commands recoverable with their original idempotency keys.
+          this.#resetWorld(prepared.case_id);
           this.#publish({questionSavePhase:'error',questionSaveMessage:
             'Source/version or request intent changed. Refresh current originals and saved questions.'});
         }else{
-          this.#publish({questionSavePhase:'error',questionSaveMessage:
-            'Question save refused by current authorization. No successful save is assumed.'});
+          const failure={questionSavePhase:'error' as const,questionSaveMessage:
+            'Question save refused by current authorization. No successful save is assumed.'};
+          if(res.status===403||res.status===404)await this.#recheckQuestionDenial(prepared.case_id,control,'case',failure);
+          else this.#publish(failure);
         }
         return;
       }
       const value=decodeSavedQuestion(await json(res));
       if(!current())return;
+      this.#questionRetryKeys.delete(intent);
       this.#publish({savedQuestion:value,questionSavePhase:'saved',
         questionSaveMessage:value.duplicate?
         'Original question receipt recovered. The same request was not saved twice.':
@@ -984,14 +1190,16 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(res.status);return;}
       if(res.status!==200){
-        this.#publish({sourceQuotePacket:null,sourceQuotePhase:'error',
-          sourceQuoteMessage:'Source quote packet unavailable or not authorized. Previous quote cleared.'});
+        const denied=res.status===403||res.status===404;
+        const failure={sourceQuotePacket:null,sourceQuotePhase:'error' as const,
+          sourceQuoteMessage:'Source quote packet unavailable or not authorized. Previous quote cleared.'};
+        if(denied)await this.#recheckQuestionDenial(caseId,controller,'questions',failure);
+        else this.#publish(failure);
         return;
       }
-      const fingerprint=this.#state.worldModel?.case_id===caseId
-        ?this.#state.worldModel.snapshot_fingerprint:undefined;
+      const currentWorld=this.#state.worldModel?.case_id===caseId?this.#state.worldModel:undefined;
       const packet=await decodeQuestionSourcePacket(
-        await json(res,1048576),question,caseId,pid,fingerprint);
+        await json(res,1048576),question,caseId,pid,currentWorld);
       if(!current())return;
       this.#publish({sourceQuotePacket:packet,sourceQuotePhase:'ready',
         sourceQuoteMessage:packet.selected_statement?
@@ -1032,11 +1240,10 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(res.status);return;}
       if(res.status!==200){
-        if([403,404].includes(res.status))this.#clearManualDrafts();
-        this.#publish({...([403,404].includes(res.status)?{...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset(),reviewPhase:'error' as const,
-          reviewMessage:'Question or source access is unavailable. Previous review content is cleared.'}:{}),
-          questions:null,questionListPhase:'error',
-          questionListMessage:'Saved questions unavailable under current authority.'});
+        const failure={questions:null,questionListPhase:'error' as const,questionListMessage:'Saved questions unavailable under current authority.'};
+        if(res.status===403||res.status===404)await this.#recheckQuestionDenial(caseId,controller,'world',
+          {...failure,reviewPhase:'error',reviewMessage:'Question or source access is unavailable. Previous review content is cleared.'});
+        else this.#publish(failure);
         return;
       }
       const history=decodeSourceQuestions(await json(res,1048576),patientId,caseId);
@@ -1454,10 +1661,11 @@ export class RegistrySession {
       if(control.signal.aborted)throw Error('brief timeout');
       if(res.status===401){this.#httpError(401);return null;}
       if(res.status!==200){
-        this.#resetWorld([403,404].includes(res.status)?undefined:model.case_id);
-        this.#publish({briefPhase:'error',briefMessage:res.status===409?
+        const failure={briefPhase:'error' as const,briefMessage:res.status===409?
           'The source changed. Refresh Investigations and use a current saved question before preparing a new brief.':
-          'Source brief unavailable under current authority. No earlier preview can be downloaded.'});
+          'Source brief unavailable under current authority. No earlier preview can be downloaded.'};
+        if(res.status===403||res.status===404)await this.#recheckQuestionDenial(model.case_id,control,'case',failure);
+        else{this.#resetWorld(model.case_id);this.#publish(failure);}
         return null;
       }
       const prepared=await decodeSourceBrief(await json(res),model,question);
@@ -1717,7 +1925,7 @@ export class RegistrySession {
       if([403,404,409,413,422].includes(res.status)){
         if([403,404].includes(res.status))this.#clearManualDrafts();
         this.#publish({cases:null,sourceIndex:null,original:null,recordsPhase:'error',importOutcome:'rejected',
-          ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
+          ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetLabQuestions(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           importMessage:'The server rejected this import. Reload current case permissions; no success is claimed.'});return;
       }
       if(![200,201].includes(res.status))throw Error('unconfirmed');

@@ -17,7 +17,8 @@ export function prepareSource(bytes:Uint8Array,name:string):PreparedSource{
   if(!(bytes instanceof Uint8Array)||bytes.byteLength<1||bytes.byteLength>65536)throw Error('The original must contain 1–65,536 bytes.');
   let text:string;
   try{text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);}catch(_){throw Error('Invalid UTF-8. No content was normalized or uploaded.');}
-  if(!text.startsWith('OI-SYNTHETIC-REPORT/1\n')||text.includes('\r')||text.includes('\0'))throw Error('Use the authored synthetic report format with LF line endings, no BOM or NUL. Nothing was rewritten.');
+  if(!/^OI-SYNTHETIC-REPORT\/[12]\n/.test(text)||text.includes('\r')||text.includes('\0'))throw Error('Use the authored synthetic report format with LF line endings, no BOM or NUL. Nothing was rewritten.');
+  if(text.startsWith('OI-SYNTHETIC-REPORT/2\n')&&/[\u000b\u000c\u001c-\u001e\u0085\u2028\u2029]/.test(text))throw Error('Version 2 reports require LF line separators.');
   const encoded=new TextEncoder().encode(text);
   if(encoded.length!==bytes.length||encoded.some((v,i)=>v!==bytes[i]))throw Error('Source bytes did not round-trip unchanged.');
   const headers=text.split('\n').filter(line=>line.startsWith('Patient:'));
@@ -91,7 +92,7 @@ export async function verifyOriginal(v:unknown,caseId:string,source:SourceVersio
      v.synthetic!==true||v.clinical_review_state!=='not_established'||typeof v.original_text!=='string')throw Error('contract');
   const bytes=new TextEncoder().encode(v.original_text);
   if(bytes.length<1||bytes.length>65536)throw Error('contract');
-  if(v.original_text.startsWith('OI-SYNTHETIC-REPORT/1')){
+  if(/^OI-SYNTHETIC-REPORT\/[12]\n/.test(v.original_text)){
     const prepared=prepareSource(bytes,'original.txt');
     if(prepared.declaredCase!==caseId||prepared.text!==v.original_text)throw Error('contract');
   }else{

@@ -1,7 +1,14 @@
 import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
+import {PassageQuestionDraft} from './passage-question-draft';
 import {DocumentClient,documentByteHash} from './reviewed-documents';
 import type {DocumentUpload,Finding,Preview} from './reviewed-documents';
 import type {RegistrySession} from './registry-client';
+
+function documentUpload(filename:string,bytes:Uint8Array){
+ let binary='';
+ for(const byte of bytes)binary+=String.fromCharCode(byte);
+ return {synthetic:true as const,filename,original_base64:btoa(binary)};
+}
 
 function passageLocation(preview:Preview,line:number){
  const anchor=preview.lines[line-1];
@@ -14,6 +21,7 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
  const client=useMemo(()=>new DocumentClient((path,body)=>session.documentRequest(caseId,path,body)),[session,caseId,patientId]);
  const state=useSyncExternalStore(client.subscribe,client.snapshot);
  const [upload,setUpload]=useState<DocumentUpload|null>(null);
+ const [pasted,setPasted]=useState('');
  const [findings,setFindings]=useState<Finding[]>([]),[line,setLine]=useState(1),[quote,setQuote]=useState(''),[key,setKey]=useState('finding-one'),[classification,setClassification]=useState('not-assessed');
  const [documentId,setDocumentId]=useState(''),[kind,setKind]=useState('other'),[eventDate,setEventDate]=useState(''),[issuedDate,setIssuedDate]=useState(''),[amends,setAmends]=useState('');
  const [confirmed,setConfirmed]=useState(false),[reason,setReason]=useState(''),[localMessage,setLocalMessage]=useState(''),[downloading,setDownloading]=useState(false);
@@ -24,14 +32,31 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
  useEffect(()=>{setFindings(state.document?.revisions.at(-1)?.findings??[]);setConfirmed(false);setReason('');setQuote('');setLine(1);},[state.preview,state.document]);
  const preview:Preview|null=state.preview??state.document?.preview??null;
  const locked=['loading','saving','uncertain'].includes(state.phase)||downloading;
+ function resetOriginal(){
+  client.discard();setUpload(null);setFindings([]);setConfirmed(false);setLocalMessage('');
+  setDocumentId('');setKind('other');setEventDate('');setIssuedDate('');setAmends('');
+  setLine(1);setQuote('');setKey('finding-one');setClassification('not-assessed');setReason('');
+ }
  async function choose(file?:File){
-  if(locked)return;const generation=++fileGeneration.current;client.discard();setUpload(null);setLocalMessage('');setFindings([]);
+  if(locked)return;setPasted('');const generation=++fileGeneration.current;resetOriginal();
   if(!file)return;
   try{if(file.size<1||file.size>65536||!/\.(txt|pdf)$/i.test(file.name))throw Error('Choose a nonempty .txt or .pdf file up to 64 KiB.');
    const bytes=new Uint8Array(await file.arrayBuffer());if(generation!==fileGeneration.current)return;
-   let binary='';for(const b of bytes)binary+=String.fromCharCode(b);
-   setUpload({synthetic:true,filename:file.name,original_base64:btoa(binary)});setLocalMessage('File selected locally. Request a preview to send it for bounded extraction; nothing is saved yet.');
+   setUpload(documentUpload(file.name,bytes));setLocalMessage('File selected locally. Request a preview to send it for bounded extraction; nothing is saved yet.');
   }catch(e){if(generation===fileGeneration.current)setLocalMessage(e instanceof Error?e.message:'File unavailable');}
+ }
+ function editPaste(text:string){
+  fileGeneration.current++;
+  resetOriginal();setPasted(text);
+  if(fileInput.current)fileInput.current.value='';
+ }
+ async function previewPaste(){
+  if(locked||!pasted)return;
+  const bytes=new TextEncoder().encode(pasted);
+  if(bytes.length>65536){setLocalMessage('Pasted text exceeds 64 KiB. Shorten it before previewing.');return;}
+  const original=documentUpload('pasted-text.txt',bytes);
+  setUpload(original);setLocalMessage('');
+  await client.preview(original);
  }
  function add(){const row=preview?.lines[line-1];if(!row||!quote.trim()||!row.text.includes(quote)||quote.length>1200||!/^[a-z][a-z0-9_-]{0,59}$/.test(key)||findings.length>=30||findings.some(f=>f.key===key)){setLocalMessage('Use a unique finding key and an exact substring of the selected line (up to 1,200 characters).');return;}
   setFindings([...findings,{key,state:classification,quote,line}]);setQuote('');setKey('finding-'+(findings.length+2));setConfirmed(false);setLocalMessage('Passage selected locally; classification is user-selected and unreviewed.');
@@ -59,10 +84,12 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
   <p>Preview a fictional record, confirm its case and select exact passages. Originals and correction history stay preserved. PDF extraction supports small text-based files; no OCR or clinical interpretation.</p>
   <p className="small">Case <code>{caseId}</code> · Patient <code>{patientId}</code></p>
   <div className="actions"><button disabled={locked} onClick={()=>void client.load()}>Refresh reviewed documents</button>
-   <button disabled={state.phase==='saving'} onClick={()=>{fileGeneration.current++;client.discard();setUpload(null);setFindings([]);setLocalMessage('');if(fileInput.current)fileInput.current.value='';}}>Discard local selection or uncertain intent</button></div>
+   <button disabled={state.phase==='saving'} onClick={()=>{fileGeneration.current++;resetOriginal();setPasted('');if(fileInput.current)fileInput.current.value='';}}>Discard local selection or uncertain intent</button></div>
   {state.documents.length>0&&<ul>{state.documents.map(doc=><li key={doc.source_id}><button disabled={locked} onClick={()=>void client.open(doc.source_id)}>{doc.document_id} · v{doc.version} · {doc.state}</button> <span>{doc.filename}</span></li>)}</ul>}
   <label>Fictional text or PDF file<input ref={fileInput} data-testid="reviewed-file" type="file" accept=".txt,.pdf,text/plain,application/pdf" disabled={locked} onChange={e=>void choose(e.target.files?.[0])}/></label>
-  <button data-testid="preview-reviewed" disabled={!upload||locked} onClick={()=>{if(upload)void client.preview(upload);}}>Preview selected file without saving</button>
+  <button data-testid="preview-reviewed" disabled={!upload||!!pasted||locked} onClick={()=>{if(upload)void client.preview(upload);}}>Preview selected file without saving</button>
+  <label>Or paste fictional record text<textarea data-testid="reviewed-paste" value={pasted} disabled={locked} onChange={e=>editPaste(e.target.value)}/></label>
+  <button data-testid="preview-pasted" disabled={!pasted||locked} onClick={()=>void previewPaste()}>Preview pasted text without saving</button>
   <p role="status" data-testid="reviewed-status">{state.message}</p>{localMessage&&<p role="status">{localMessage}</p>}
   {state.pending&&<button data-testid="retry-reviewed" disabled={state.phase==='saving'} onClick={()=>void client.retry()}>Retry exact save to recover receipt</button>}
   {state.receipt&&<div data-testid="reviewed-receipt"><p>Saved original <code>{state.receipt.source_id}</code> · v{state.receipt.version}. Selection receipt <code>{state.receipt.annotation_revision_id}</code>.</p><button onClick={()=>void client.open(state.receipt!.source_id)}>Inspect saved original and selection history</button></div>}
@@ -72,6 +99,8 @@ export function ReviewedDocumentWorkspace({session,patientId,caseId}:{session:Re
     <p>Check the original PDF page before confirming a passage. Extracted table text can separate a specimen label from its value or unit.</p></>}
    {state.document&&<><p>{state.document.document_id} · v{state.document.version} · {state.document.state}</p><button data-testid="download-reviewed" disabled={locked} onClick={()=>void download()}>Download exact original</button>
     <details><summary>Preserved selection history ({state.document.revisions.length})</summary>{state.document.revisions.map(r=><section key={r.revision_id}><h4>Revision {r.revision}</h4><p>{r.reason} · user-selected · clinical review not performed</p><ul>{r.findings.map(f=><li key={f.key}>{passageLocation(preview,f.line)} · “{f.quote}” · {f.state}</li>)}</ul></section>)}</details></>}
+   {state.document?.state==='current'&&!locked&&<PassageQuestionDraft key={state.document.source_id+state.document.revisions.at(-1)?.revision_id}
+     doc={state.document} session={session} patientId={patientId} caseId={caseId}/>}
    <ol className="document-lines">{preview.lines.map(row=><li key={row.line}><button type="button" disabled={locked} onClick={()=>{setLine(row.line);setQuote(row.text);setConfirmed(false);}}>Select line {row.line}{row.page?` · page ${row.page}`:''}</button><pre>{row.text||'(blank line)'}</pre></li>)}</ol>
    {state.document?.state!=='superseded'&&<form onSubmit={e=>{e.preventDefault();void save();}}>
     {!state.document&&<div className="document-metadata" onChange={()=>setConfirmed(false)}><label>Document ID<input data-testid="document-id" value={documentId} onChange={e=>setDocumentId(e.target.value)} required pattern="[A-Z][A-Z0-9-]{1,39}"/></label>

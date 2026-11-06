@@ -1,3 +1,4 @@
+import {SourceOncologyLabel} from './source-oncology-label';
 import {useEffect,useRef,useState} from 'react';
 import type {SourceIndex} from './source-contracts';
 import type {SourceImagesState} from './source-images';
@@ -84,6 +85,7 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
           {findings.length > 0 && <div className="source-quotes"><p className="quote-label">{view === 'patient' ? 'What the report says' : 'Source-reported statements'}</p>
             <ul className="finding-list">{findings.map((finding, i) => <li key={finding.source_id + ':' + finding.source_line + ':' + i} data-testid="source-finding">
               <p><strong>{finding.finding_key}</strong> · reported state: {finding.reported_state} · line {finding.source_line}</p>
+              <SourceOncologyLabel context={finding.oncology} state={finding.reported_state}/>
               <blockquote data-testid="source-statement">{finding.source_statement}</blockquote>
               <small>Clinical review: not established · <code>{finding.source_id}</code></small>
               {item.state === 'current' && <div className="actions"><button type="button"

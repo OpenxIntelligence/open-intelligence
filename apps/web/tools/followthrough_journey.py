@@ -560,9 +560,19 @@ class FollowthroughChecks:
     def assert_overview_work(self, current_question_id, screenshots):
         """Two real questions share one case summary without changing task ownership."""
         assert current_question_id != self.question_id
-        # Earlier independent question/review denial checks deliberately clear
-        # question history. Restore it with an actual authorized read before
-        # opening the second question's task form; task reads do not grant it.
+        # The earlier denial discarded the source index. Overview can classify
+        # preparation only after separate authorized reads of records and questions.
+        navigate(self.cd, 'Records')
+        row = ("[...document.querySelectorAll('[data-testid=case-row]')].find(e=>"
+               "e.querySelector('code')?.textContent===" + json.dumps(self.case_id) + ")")
+        button = row + "?.querySelector('[data-testid=load-sources]')"
+        self.cd.wait("Boolean(" + button + ") && !" + button + ".matches(':disabled')",
+                     'authorized case available for source read')
+        self.cd.evaluate(button + ".click()")
+        self.cd.wait("document.querySelector('[data-testid=source-index] h3 code')?.textContent==="
+                     + json.dumps(self.case_id), 'fresh source index for the preparation overview')
+        navigate(self.cd, 'Investigations')
+        select_case(self.cd, self.case_id)
         click(self.cd, '[data-testid=load-source-questions]')
         self.cd.wait("document.querySelector('[data-testid=source-question-history]')?.textContent.includes("
                      + json.dumps(current_question_id) + ")", 'fresh second-question history after prior denial')

@@ -24,12 +24,17 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
+from open_intelligence.agent_writes import (  # noqa: E402
+    build_investigation_contract,
+    build_route_id,
+    build_write_contract,
+)
 from open_intelligence.investigation import (  # noqa: E402
     ValidatedInvestigation,
     validate_output,
 )
 from open_intelligence.store import CaseStore  # noqa: E402
-from open_intelligence.store import InvalidInput  # noqa: E402
+from open_intelligence.store import InvalidInput, now_utc  # noqa: E402
 
 REPORT_V1 = (
     "OI-SYNTHETIC-REPORT/1\n"
@@ -80,9 +85,16 @@ class TestSaveInvestigationRejectsForeignQuestion(unittest.TestCase):
                 abstentions=[{"topic": "Fictional QA topic",
                               "reason": "insufficient_evidence"}],
                 dropped=[], model="qa-replay", mode="replay")
+            # A contract bound to the foreign route, so the failure below
+            # is the question-case check, not the contract check.
+            contract = build_write_contract(
+                agent_role="A1", model_id="qa-replay",
+                route_id=build_route_id("CASE-QA3A", "evidence-summary", qid_b),
+                snapshot_at={"as_of": now_utc(), "event_id": None},
+                inputs=[], prompt_version="evidence-summary:1")
             with self.assertRaises(InvalidInput):
                 store.save_investigation("CASE-QA3A", qid_b, "evidence-summary",
-                                         validated, "replay")
+                                         validated, "replay", write_contract=contract)
         finally:
             store.close()
 
@@ -116,18 +128,24 @@ class TestSaveInvestigationValidatesEnvelope(unittest.TestCase):
     def test_invalid_mode_raises_invalid_input(self):
         store, qid = self._seeded()
         try:
+            contract = build_investigation_contract(
+                store, "CASE-QA3", qid, "evidence-summary", "qa-replay")
             with self.assertRaises(InvalidInput):
                 store.save_investigation("CASE-QA3", qid, "evidence-summary",
-                                         self._validated(), "bogus-mode")
+                                         self._validated(), "bogus-mode",
+                                         write_contract=contract)
         finally:
             store.close()
 
     def test_unknown_template_raises_invalid_input(self):
         store, qid = self._seeded()
         try:
+            contract = build_investigation_contract(
+                store, "CASE-QA3", qid, "evidence-summary", "qa-replay")
             with self.assertRaises(InvalidInput):
                 store.save_investigation("CASE-QA3", qid, "no-such-template",
-                                         self._validated(), "replay")
+                                         self._validated(), "replay",
+                                         write_contract=contract)
         finally:
             store.close()
 

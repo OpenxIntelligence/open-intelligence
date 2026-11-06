@@ -210,13 +210,10 @@
     status.textContent = "Loading…";
     status.className = "pill pill-neutral";
     try {
-      // Same fictional actor as the workspace (app.js publishes it on the
-      // body dataset); the mission route is case-scoped and grant-gated.
-      const actor = (document.body.dataset.fictionalActor || "").trim() ||
-        "FICTIONAL-NAVIGATOR-A";
+      // The browser session cookie identifies the signed-in account; the
+      // mission route is case-scoped and grant-gated.
       const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}/mission`, {
         cache: "no-store",
-        headers: { "X-Fictional-Actor": actor },
       });
       const payload = await response.json();
       if (sequence !== requestSequence || picker.value !== caseId) return;

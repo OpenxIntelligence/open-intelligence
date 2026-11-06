@@ -81,6 +81,17 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     assert cd.evaluate("!document.querySelector('[data-testid=reviewed-document-disclosure]').open && !document.querySelector('[data-testid=reviewed-file]').checkVisibility()"), 'Reviewed intake starts closed'
     toggle(True)
     assert cd.evaluate("document.querySelector('[data-testid=reviewed-file]').checkVisibility()"), 'Reviewed file input is actually visible'
+    pasted = 'Fictional pasted record — α\nSecond line  '
+    cd.evaluate("""(()=>{window.__pasteFetch=window.fetch;window.__pasteRequests=0;window.fetch=(...args)=>{window.__pasteRequests++;return window.__pasteFetch(...args)};
+      const field=document.querySelector('[data-testid=reviewed-paste]');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(field,"""+json.dumps(pasted)+""");
+      field.dispatchEvent(new Event('input',{bubbles:true}));})()""")
+    assert cd.evaluate('window.__pasteRequests')==0
+    cd.evaluate("document.querySelector('[data-testid=preview-pasted]').click()")
+    cd.wait("document.querySelector('[data-testid=reviewed-preview]')?.textContent.includes("+json.dumps(hashlib.sha256(pasted.encode()).hexdigest())+")", 'exact pasted UTF-8 original preview')
+    assert cd.evaluate('window.__pasteRequests')==1
+    assert cd.evaluate("!document.querySelector('[data-testid=document-confirm]').checked")
+    cd.evaluate('window.fetch=window.__pasteFetch;delete window.__pasteFetch;delete window.__pasteRequests')
     def click(label):
         cd.evaluate("(()=>{const button=[...document.querySelectorAll('[data-testid=reviewed-documents] button')].find(e=>e.textContent==="+json.dumps(label)+");if(!button?.checkVisibility())throw new Error('Reviewed action is hidden');button.click()})()")
     def value(selector,text):
@@ -115,6 +126,16 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
         cd.wait("Boolean(document.querySelector('[data-testid=reviewed-preview]'))",'server frozen preview')
         assert operator(prefix)['documents']==before,'Preview persisted a source'
         value('[data-testid=document-id]','WEB-PDF');value('[data-testid=document-event]','2026-01-01');value('[data-testid=document-issued]','2026-01-02')
+    assert operator(prefix)['documents']==[], 'Preview leaves the case document list empty'
+    value('[data-testid=document-id]','WEB-PASTE');value('[data-testid=document-event]','2026-01-01');value('[data-testid=document-issued]','2026-01-02')
+    click('Select line 1');click('Add exact passage')
+    cd.evaluate("document.querySelector('[data-testid=document-confirm]').click()" )
+    cd.evaluate("document.querySelector('[data-testid=save-reviewed]').click()")
+    cd.wait("Boolean(document.querySelector('[data-testid=reviewed-receipt]'))",'confirmed paste saved')
+    pasted_doc,=operator(prefix)['documents']
+    with urlopen(Request('http://127.0.0.1:8000'+root+prefix+'/'+pasted_doc['source_id']+'/original',
+                         headers={'Authorization':'Bearer '+token}),timeout=10) as original_response:
+        assert original_response.read()==pasted.encode()
     raw=text_pdf([['Independently fictional page one'],['Marker pending.','Second selected passage.']])
     upload(raw)
     click('Select line 2 · page 2');click('Add exact passage')
@@ -141,12 +162,18 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
         cd.evaluate("window.fetch=window.__reviewedFetch;delete window.__reviewedFetch;delete window.__reviewedRequests;delete window.__reviewedFile;delete window.__reviewedPreview")
     cd.evaluate("document.querySelector('[data-testid=save-reviewed]').click()")
     cd.wait("Boolean(document.querySelector('[data-testid=reviewed-receipt]'))",'durable original receipt')
-    listing=operator(prefix)['documents'];assert len(listing)==1;first=listing[0]['source_id']
+    listing=operator(prefix)['documents'];assert len(listing)==2;first=next(row['source_id'] for row in listing if row['document_id']=='WEB-PDF')
     click('Inspect saved original and selection history')
     cd.wait("document.querySelector('[data-testid=reviewed-preview]')?.textContent.includes('Preserved selection history (1)')",'initial review')
     initial_document=operator(prefix+'/'+first)
     initial_revision=initial_document['revisions'][0]
     initial_key=initial_revision['findings'][0]['key']
+    cd.evaluate("""document.querySelector('section[aria-label="Draft a passage question"] button').click()""")
+    cd.wait("Boolean(document.querySelector('[data-testid=passage-question-draft]'))",'fresh saved PDF passage opens question draft')
+    value('[data-testid=passage-question-draft]','What would resolve this pending fictional result?')
+    assert cd.evaluate("""document.querySelector('section[aria-label="Draft a passage question"] blockquote').textContent""")==initial_revision['findings'][0]['quote']
+    click('Discard question draft')
+    assert not cd.evaluate("Boolean(document.querySelector('[data-testid=passage-question-draft]'))")
     selection_path=prefix+'/'+first+'/selections/'+initial_revision['revision_id']+'/'+initial_key
     initial_selection=operator(selection_path)
     assert initial_selection['anchor']['quote']=='Marker pending.'

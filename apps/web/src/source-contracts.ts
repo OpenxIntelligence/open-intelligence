@@ -14,7 +14,11 @@ export type SourceVersion = Readonly<{
   specimen_id:string|null; state:'current'|'superseded';
   supersedes_id:string|null;
 }>;
+export type ReportedOncologyContext = Readonly<{
+  role:'primary'|'metastasis'; episode_id:string|null;
+}>;
 export type SourceFinding = Readonly<{
+  oncology?:ReportedOncologyContext;
   source_id:string; finding_key:string; reported_state:string;
   source_statement:string; source_line:number; clinical_review_state:'not_established';
 }>;
@@ -33,6 +37,14 @@ const RECEIPT=/^ACCESS-[0-9A-F]{32}$/;
 function exact(v:unknown,keys:readonly string[]):v is Record<string,unknown>{
   return v!==null && typeof v==='object' && !Array.isArray(v) &&
     Object.keys(v).length===keys.length && keys.every(k=>Object.hasOwn(v,k));
+}
+export function parseOncologyContext(value:unknown):ReportedOncologyContext {
+  if(!exact(value,['role','episode_id']) || (value.role!=='primary' && value.role!=='metastasis') ||
+     !(value.episode_id===null || (typeof value.episode_id==='string' &&
+       /^EP-[A-Z0-9][A-Z0-9-]{0,35}$/.test(value.episode_id) && value.episode_id.trim()===value.episode_id))) {
+    throw Error('Invalid source oncology attribution');
+  }
+  return Object.freeze({role:value.role,episode_id:value.episode_id});
 }
 function str(v:unknown,max=256):v is string{
   return typeof v==='string' && v.length>0 && v.length<=max &&
@@ -104,13 +116,14 @@ export function parseSourceIndex(v:unknown,expectedPatient:string,expectedCase:s
   }
   const findings:SourceFinding[]=[];
   for(const raw of v.source_reported_assertions){
+    const typed=raw!==null && typeof raw==='object' && Object.hasOwn(raw,'oncology');
     if(!exact(raw,['source_id','finding_key','reported_state','source_statement',
-      'source_line','clinical_review_state']) ||
+      'source_line','clinical_review_state',...(typed?['oncology']:[])]) ||
       typeof raw.source_id!=='string' || !current.has(raw.source_id) ||
       !str(raw.finding_key,128) || !str(raw.reported_state,128) ||
       !str(raw.source_statement,8192) || !positive(raw.source_line) ||
       raw.clinical_review_state!=='not_established') throw Error('contract');
-    findings.push(Object.freeze(raw as SourceFinding));
+    findings.push(Object.freeze({...raw,...(typed?{oncology:parseOncologyContext(raw.oncology)}:{})} as SourceFinding));
   }
   return Object.freeze({
     contract:'oi.synthetic-original-sources/1',patient_id:expectedPatient,case_id:expectedCase,

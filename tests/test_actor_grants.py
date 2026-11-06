@@ -3,7 +3,8 @@
 Fictional actors/cases only (FICTIONAL-NAVIGATOR-*, CASE-FIG-01/02). Every
 test imports freshly authored fictional bytes (never fixtures presented as
 imports), provisions grants through the store API, and exercises the HTTP
-gate. UNVERIFIED: the builder cannot execute code; the reviewer runs these.
+gate. Slice 1: case routes authenticate by session; the transitional
+header still identifies the seeded demo account only.
 """
 
 import json
@@ -17,7 +18,6 @@ from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore, InvalidInput
 from open_intelligence.__main__ import (
-    FICTIONAL_ACTOR_HEADER,
     FICTIONAL_ACTOR_PURPOSE,
     GRANT_DENIAL_MESSAGE,
     Handler,
@@ -31,6 +31,7 @@ ACTOR_C = "FICTIONAL-NAVIGATOR-C"
 UNKNOWN_ACTOR = "FICTIONAL-NOBODY"
 CASE_A = "CASE-FIG-01"
 CASE_B = "CASE-FIG-02"
+PASSWORD = "fictional-demo-1"
 LABEL_A = "Fictional case Fig01"
 LABEL_B = "Fictional case Fig02"
 PURPOSE = FICTIONAL_ACTOR_PURPOSE
@@ -86,11 +87,24 @@ class ActorGrantHttpTests(unittest.TestCase):
             [self.srcB])
         self.grantA = self.store.create_grant(
             ACTOR, CASE_A, PURPOSE, "2020-01-01", "2999-12-31")
+        for actor in (ACTOR, ACTOR_B, ACTOR_C):
+            self.store.create_account(
+                actor, f"Fictional actor {actor}", "clinician", PASSWORD)
         bound = type("BoundHandlerForGrantTests", (Handler,), {"db_path": self.db_path})
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), bound)
         self.port = self.server.server_address[1]
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
+        self._cookies = {}
+
+    def _signin(self, actor):
+        """Session cookie for a seeded clinician account, signed in lazily."""
+        if actor not in self._cookies:
+            status, cookie, body = self.raw(
+                "/api/auth/sign-in", {"account_id": actor, "password": PASSWORD})
+            self.assertEqual(status, 200, body)
+            self._cookies[actor] = cookie.split(";", 1)[0]
+        return self._cookies[actor]
 
     def tearDown(self):
         self.server.shutdown()
@@ -99,24 +113,33 @@ class ActorGrantHttpTests(unittest.TestCase):
         self.store.close()
         self.tmp.cleanup()
 
-    def request(self, path, data=None, actor=ACTOR):
-        headers = {}
-        if actor is not None:
-            headers[FICTIONAL_ACTOR_HEADER] = actor
+    def raw(self, path, data=None, headers=None):
+        values = dict(headers or {})
         if data is not None:
-            headers["Content-Type"] = "application/json"
-            headers["Origin"] = f"http://127.0.0.1:{self.port}"
+            values["Content-Type"] = "application/json"
+            values["Origin"] = f"http://127.0.0.1:{self.port}"
         req = Request(f"http://127.0.0.1:{self.port}{path}",
                       data=None if data is None else json.dumps(data).encode(),
-                      headers=headers)
+                      headers=values)
         try:
             with urlopen(req, timeout=5) as response:
                 raw = response.read()
                 if "json" in (response.headers.get("Content-Type") or ""):
-                    return response.status, json.loads(raw)
-                return response.status, raw.decode("utf-8")
+                    return response.status, response.headers.get("Set-Cookie"), json.loads(raw)
+                return response.status, response.headers.get("Set-Cookie"), raw.decode("utf-8")
         except HTTPError as err:
-            return err.code, json.loads(err.read())
+            return err.code, err.headers.get("Set-Cookie"), json.loads(err.read())
+
+    def request(self, path, data=None, actor=ACTOR):
+        headers = {}
+        # Slice 1: case routes authenticate by session. An actor with a
+        # seeded account signs in and sends its cookie; an actor without an
+        # account (unknown, malformed, or missing) sends no auth and is
+        # denied by the gate — it can no longer self-assert an identity.
+        if actor is not None and actor in (ACTOR, ACTOR_B, ACTOR_C):
+            headers["Cookie"] = self._signin(actor)
+        status, _, body = self.raw(path, data, headers)
+        return status, body
 
     def assertDenial(self, status, body):  # noqa: N802
         self.assertEqual(status, 403)
@@ -251,9 +274,12 @@ class ActorGrantHttpTests(unittest.TestCase):
         self.assertEqual(set(cases[0]), {"case_id", "label", "synthetic"})
         self.assertEqual(cases[0]["label"], LABEL_A)
         # Authenticated-but-grantless: 200 with an empty list, never 403.
-        status, cases = self.request("/api/cases", actor=UNKNOWN_ACTOR)
+        status, cases = self.request("/api/cases", actor=ACTOR_B)
         self.assertEqual(status, 200)
         self.assertEqual(cases, [])
+        # An actor with no account has no identity: denied, same fixed shape.
+        status, body = self.request("/api/cases", actor=UNKNOWN_ACTOR)
+        self.assertDenial(status, body)
         # Missing actor: denied, same fixed shape.
         status, body = self.request("/api/cases", actor=None)
         self.assertDenial(status, body)
@@ -290,7 +316,9 @@ class ActorGrantHttpTests(unittest.TestCase):
         self.assertIn("denied", results_a)
         actors_a = {r["actor"] for r in rows_a}
         self.assertIn(ACTOR, actors_a)
-        self.assertIn(UNKNOWN_ACTOR, actors_a)
+        # Unknown actors can no longer self-assert an id: their requests
+        # log as "missing", never under the presented value.
+        self.assertNotIn(UNKNOWN_ACTOR, actors_a)
         self.assertIn("missing", actors_a)
         dumped = json.dumps(rows_a + rows_b)
         for marker in FIG01_MARKERS + FIG02_MARKERS:

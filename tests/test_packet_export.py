@@ -19,6 +19,7 @@ from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore
 from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
+from open_intelligence.agent_writes import build_investigation_contract
 from open_intelligence.changes import changes_since_review
 from open_intelligence.investigation import validate_output
 from open_intelligence.mission import build_patient_mission
@@ -89,7 +90,11 @@ class PacketStoreTests(unittest.TestCase):
         )
         validated.model = "recorded-replay"
         validated.mode = "replay"
-        inv_id = self.store.save_investigation("CASE-ALPHA", qid, "evidence-summary", validated, "replay")
+        inv_id = self.store.save_investigation(
+            "CASE-ALPHA", qid, "evidence-summary", validated, "replay",
+            write_contract=build_investigation_contract(
+                self.store, "CASE-ALPHA", qid, "evidence-summary",
+                validated.model, facts=facts))
 
         state = self.store.state("CASE-ALPHA")
         mission = build_patient_mission(state)
@@ -307,7 +312,11 @@ class PacketStoreTests(unittest.TestCase):
         )
         validated.model = "recorded-replay"
         validated.mode = "replay"
-        inv_id = self.store.save_investigation("CASE-ALPHA", qid, "evidence-summary", validated, "replay")
+        inv_id = self.store.save_investigation(
+            "CASE-ALPHA", qid, "evidence-summary", validated, "replay",
+            write_contract=build_investigation_contract(
+                self.store, "CASE-ALPHA", qid, "evidence-summary",
+                validated.model, facts=facts))
         amendment = self.store.import_report("CASE-ALPHA", report("alpha-pathology-amended.txt"))
         self.assertEqual(amendment["invalidated_snapshots"], [sid])
 
