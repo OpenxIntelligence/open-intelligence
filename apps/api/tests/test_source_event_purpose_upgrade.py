@@ -12,6 +12,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from oi_api.case_bindings import CanonicalCaseBindings
+from oi_api.contracts import SCHEMA_REVISION
+from oi_api.database import Database
 from oi_api.migrate import migrate
 from oi_api.sources import PostgresSourceVersions
 from open_intelligence.postgres_registry import PostgresPatientRegistry
@@ -115,6 +117,56 @@ class SourceEventPurposeUpgradeTests(SourceVersionFixture):
                 "SELECT raw FROM clinical_source.source_versions WHERE source_id=:s"),
                 {"s": source}).scalar_one(), ORIGINAL.replace(CASE, RESEARCH_CASE).encode())
         return dict(event)
+
+    def test_pending_running_and_delivered_history_survives_exact_readiness_upgrade(self):
+        patient, _, _, delivered = self.old_core()
+        database = Database(self.settings)
+        try:
+            self.assertEqual(database.check().status, "schema_mismatch")
+            with self.assertRaisesRegex(RuntimeError, "Unsupported migration state"):
+                with database.registry_connection():
+                    self.fail("Current application accepted the older source-purpose schema")
+            with self.engine.connect() as connection:
+                self.assertEqual(connection.execute(text(
+                    "SELECT version_num FROM public.alembic_version")).scalars().all(), [OLD_CORE])
+                self.assertIsNone(connection.execute(text(
+                    "SELECT to_regprocedure('coordination.source_event_binding(bigint)')")).scalar_one())
+
+            additional = []
+            for document in ("DOC-TWO", "DOC-THREE"):
+                with self.owner() as (registry, common):
+                    imported = PostgresSourceVersions(registry).import_original(patient, CASE,
+                        ORIGINAL.replace("DOC-ONE", document).encode(), **common,
+                        recheck_authority=lambda: None)
+                with self.engine.connect() as connection:
+                    envelope = dict(connection.execute(text(
+                        f"SELECT * FROM {OUTBOX} WHERE source_id=:source"),
+                        {"source": imported["source_id"]}).mappings().one())
+                additional.append(self.queued(envelope))
+            queued, running = additional
+            self.claim(running)
+            with self.engine.connect() as connection:
+                states = dict(connection.execute(text(
+                    f"SELECT delivery_id,state FROM {DELIVERIES}")).all())
+            self.assertEqual(states, {queued: "queued", running: "running", delivered: "delivered"})
+            before = self.snapshot()
+            self.assertEqual(len(before[0][HISTORY]), 6)
+            self.assertEqual(len(before[0][RECEIPTS]), 1)
+
+            self.upgrade_preserving()
+            self.assertEqual(database.check().status, "ready")
+            with database.registry_connection() as connection:
+                cursor = connection.cursor()
+                try:
+                    cursor.execute("SELECT version_num FROM public.alembic_version")
+                    self.assertEqual([row[0] for row in cursor.fetchall()], [SCHEMA_REVISION])
+                finally:
+                    cursor.close()
+            # Includes original recorded_at, lease tokens/deadlines, every
+            # lifecycle/receipt row, and all five schemas' sequence states.
+            self.assertEqual(self.snapshot(), before)
+        finally:
+            database.close()
 
     def test_populated_old_core_preserves_delivery_history_and_research_custody(self):
         patient, original, envelope, delivery = self.old_core()

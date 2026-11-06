@@ -113,9 +113,11 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     raw = fictional_bundle()
     records()
     cd.evaluate('''(() => {
-      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];window.__oiLabQuestionPosts=[];window.__oiLabHistoryCodes=[];window.__oiLabCatalog=[];
+      window.__oiPrepTaskReads=[];window.__oiLabReports=[];window.__oiLabMutations=0;window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];window.__oiLabQuestionPosts=[];window.__oiLabHistoryCodes=[];window.__oiLabCatalog=[];
       window.fetch=async(input,init)=>{
         window.__oiLabRequests++;
+        const method=init?.method??input?.method??'GET';
+        if(['POST','PUT','PATCH','DELETE'].includes(method))window.__oiLabMutations++;
         if(window.__oiLabPreviewOffline && String(input).endsWith('/laboratory/fhir-r4/preview')){
           window.__oiLabPreviewOffline=false;
           return new Response('{}',{status:503,headers:{'Content-Type':'application/json'}});
@@ -124,6 +126,10 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         if(laboratory)window.__oiLabWrites.push(JSON.parse(init.body));
         const response=await window.__oiLabFetch(input,init);
         const path=String(input);
+        if(method==='GET' && path.endsWith('/followthrough')){
+          window.__oiPrepTaskReads.push({path,status:response.status,accept:new Headers(init.headers).get('Accept')});
+        }
+        if(path.endsWith('/source-citation-report'))window.__oiLabReports.push({path,method,status:response.status});
         if(init.method==='POST' && path.endsWith('/followthrough') && response.status===201){
           window.__oiLabTaskReceipt=await response.clone().json();
         }
@@ -460,6 +466,8 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     task_title = 'Request the original laboratory report for the next visit'
     click(cd, control('followthrough-open-create'))
     fill(cd, control('followthrough-title'), task_title)
+    fill(cd, control('followthrough-detail'), 'Bring the original laboratory report to the second opinion.')
+    fill(cd, control('followthrough-due-date'), '2026-11-12')
     fill(cd, control('followthrough-trigger'), 'When the laboratory issues a correction')
     fill(cd, control('followthrough-reason'), 'Prepare the saved specimen question for discussion.')
     click(cd, control('followthrough-create'))
@@ -490,6 +498,37 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         return task
 
     open_recorded_task()
+    picker = '[data-testid=preparation-lab-select]'
+    preparation_row_selector = '[data-testid=preparation-lab-question]'
+    work_panel = '[data-testid=preparation-lab-followup]'
+    task_summary = '[data-testid=preparation-lab-task]'
+    recheck = '[data-testid=preparation-lab-task-recheck]'
+
+    def choose_preparation_question(target):
+        cd.wait('[...document.querySelectorAll('+json.dumps(picker+' option')+')].some(e=>e.value==='+json.dumps(target)+')',
+                'saved question available under current laboratory history')
+        requests = cd.evaluate('window.__oiLabRequests')
+        cd.evaluate("(()=>{const e=document.querySelector("+json.dumps(picker)+");e.value="+json.dumps(target)+
+                    ";e.dispatchEvent(new Event('change',{bubbles:true}));})()")
+        cd.wait('document.querySelector('+json.dumps(preparation_row_selector)+')?.dataset.questionId==='+json.dumps(target),
+                'selected laboratory question identified by its saved ID')
+        assert cd.evaluate('window.__oiLabRequests') == requests
+
+    def check_preparation_tasks(status):
+        start = cd.evaluate('window.__oiPrepTaskReads.length')
+        click(cd, '[data-testid=preparation-lab-followup-refresh]')
+        cd.wait('window.__oiPrepTaskReads.length>'+str(start),'independent follow-up access check')
+        call, = cd.evaluate('window.__oiPrepTaskReads.slice('+str(start)+')')
+        assert call['path'] == root+task_list_path and call['status'] == status and task_media in call['accept']
+
+    def inspect_recorded_task(expected_recheck):
+        cd.wait('document.querySelector('+json.dumps(task_summary)+')?.dataset.taskId==='+json.dumps(task_id),
+                'next action belongs to the selected laboratory question')
+        contents = cd.evaluate('document.querySelector('+json.dumps(task_summary)+').textContent')
+        assert all(text in contents for text in (task_title,'Fictional coordinator','acknowledged',
+                   '2026-11-12','When the laboratory issues a correction','Bring the original laboratory report'))
+        assert cd.evaluate('Boolean(document.querySelector('+json.dumps(recheck)+'))') == expected_recheck
+
     before = task_at_revision(1)
     assert before['status'] == 'created' and not before['needs_recheck']
     assert committed['observation_reference'] in cd.evaluate(task_dom + '.textContent')
@@ -500,6 +539,13 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         fill(cd, task_card + ' [data-testid=followthrough-transition-reason]', 'Record this coordination step.')
         click(cd, task_card + ' [data-testid=followthrough-' + action + ']')
         task_at_revision(revision)
+    navigate('Overview')
+    current_writes = cd.evaluate('window.__oiLabMutations')
+    click(cd, '[data-testid=preparation-lab-refresh]')
+    choose_preparation_question(question_id)
+    check_preparation_tasks(200)
+    inspect_recorded_task(False)
+    assert cd.evaluate('window.__oiLabMutations') == current_writes
     records()
     amended = fictional_bundle(amended=True)
     select(amended, 'fictional-lab-amended.json')
@@ -552,6 +598,111 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
             'amended_question_state':historical_links['source_context_state'],'withdrawn_metadata_state':redacted['status'],
             'report_original_observation_preserved':True,'report_withdrawn_metadata_withheld':True,
         },indent=2)+'\n')
+        # Use the same wording on a different Observation in the amended report.
+        # Selecting a question in preparation must use its identity, not its text.
+        case_path = '/cases/' + CASE
+        context = operator(case_path + '/world-model')
+        second = dict(synthetic=True, source_id=current['source_id'],
+                      observation_reference='Observation/FICT-WEB-ABSENT', question=question,
+                      expected_source_snapshot_sha256=context['snapshot_fingerprint'])
+        checked = operator(case_path + '/composer/laboratory-preflight', second)
+        second_receipt = operator(laboratory_history, {**second, 'request_key':'PREPARATION-ABSENT',
+                                  'expected_preflight_sha256':checked['preflight_sha256']})
+        second_id = second_receipt['question_id']
+        assert second_id != question_id
+        journey('1')
+        navigate('Overview')
+        cd.wait("Boolean(document.querySelector('[data-testid=preparation-lab-refresh]'))",
+                'preparation can request laboratory history for the current case')
+        assert not cd.evaluate("Boolean(document.querySelector('[data-testid=preparation-lab-select]'))")
+        prior_history_reads = cd.evaluate('window.__oiLabHistoryCodes.length')
+        inspection_writes_before = cd.evaluate('window.__oiLabMutations')
+        click(cd, '[data-testid=preparation-lab-refresh]')
+        cd.wait('window.__oiLabHistoryCodes.length>'+str(prior_history_reads),
+                'fresh laboratory history request from preparation')
+        assert cd.evaluate('window.__oiLabHistoryCodes.slice('+str(prior_history_reads)+')') == [200]
+        action = preparation_row_selector + ' [data-testid=lab-citation-report-open]'
+        report = preparation_row_selector + ' [data-testid=lab-citation-report]'
+        cd.wait("document.querySelectorAll('[data-testid=preparation-lab-select] option').length===3",
+                'both authorized questions offered for preparation')
+        assert not cd.evaluate('Boolean(document.querySelector('+json.dumps(report)+'))')
+        for target,source,reference,value in (
+                (second_id,current,second['observation_reference'],'No value reported.'),
+                (question_id,first,committed['observation_reference'],'0 10*9/L')):
+            read_count = cd.evaluate('window.__oiLabReports.length')
+            choose_preparation_question(target)
+            assert not cd.evaluate('Boolean(document.querySelector('+json.dumps(report)+'))')
+            check_preparation_tasks(200)
+            if target == question_id:
+                inspect_recorded_task(True)
+            else:
+                cd.wait("Boolean(document.querySelector('[data-testid=preparation-lab-no-open-work]'))",
+                        'authorized task check returned empty for the other question')
+                assert task_title not in cd.evaluate('document.querySelector('+json.dumps(work_panel)+').textContent')
+            click(cd,action)
+            cd.wait('Boolean(document.querySelector('+json.dumps(report)+'))','fresh protected preparation report')
+            calls = cd.evaluate('window.__oiLabReports.slice('+str(read_count)+')')
+            assert calls == [dict(path=root+laboratory_history+'/'+target+'/source-citation-report',method='GET',status=200)]
+            contents = cd.evaluate('document.querySelector('+json.dumps(report)+').textContent')
+            assert all(token in contents for token in (question,target,reference,source['sha256'],value))
+            if target == question_id:
+                assert 'Needs reassessment' in contents and CITATION in contents
+                assert catalog_record['title'] not in contents and 'not-performed' not in contents
+            else:
+                assert 'not-performed' in contents and CITATION not in contents and first['sha256'] not in contents
+        cd.command('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
+        cd.evaluate('document.querySelector('+json.dumps(report)+').scrollIntoView({block:"center"})')
+        assert cd.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+        (artifacts/'second-opinion-laboratory-result.png').write_bytes(base64.b64decode(
+            cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+        cd.evaluate('document.querySelector('+json.dumps(work_panel)+').scrollIntoView({block:"center"})')
+        (artifacts/'laboratory-result-followup-mobile.png').write_bytes(base64.b64decode(
+            cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+        credentials[0]['actions'].remove('followthrough_read');write_grants()
+        try:
+            check_preparation_tasks(404)
+            cd.wait("Boolean(document.querySelector('[data-testid=preparation-lab-followup-unavailable]'))",
+                    'task access withdrawal clears the recorded assignment')
+            assert not cd.evaluate('Boolean(document.querySelector('+json.dumps(task_summary)+'))')
+            assert not cd.evaluate("Boolean(document.querySelector('[data-testid=preparation-lab-no-open-work]'))")
+            assert task_title not in cd.evaluate('document.querySelector('+json.dumps(work_panel)+').textContent')
+            assert first['sha256'] in cd.evaluate('document.querySelector('+json.dumps(report)+').textContent')
+        finally:
+            credentials[0]['actions'].append('followthrough_read');write_grants()
+        check_preparation_tasks(200)
+        inspect_recorded_task(True)
+        confirmed = operator(task_list_path,accept=task_media)['tasks']
+        assert len(confirmed) == 1 and confirmed[0]['task_id'] == task_id and confirmed[0]['revision'] == 3
+        inspection_writes = cd.evaluate('window.__oiLabMutations') - inspection_writes_before
+        assert inspection_writes == 0
+        (artifacts/'preparation-laboratory-followup.json').write_text(json.dumps({
+            'synthetic':True,'selected_question':question_id,'other_question':second_id,'task':task_id,
+            'owner':confirmed[0]['owner_label'],'status':confirmed[0]['status'],'revision':confirmed[0]['revision'],
+            'due_date':confirmed[0]['due_date'],'review_trigger':confirmed[0]['review_trigger'],
+            'recheck_after_amendment':confirmed[0]['needs_recheck'],'other_result_empty':True,
+            'task_denial_withheld_owner':True,'permitted_report_survived_task_denial':True,
+            'inspection_mutation_requests':inspection_writes,'task_access_http':[200,404,200],
+        },indent=2)+'\n')
+        credentials[0]['actions'].remove('review_packet_read');write_grants()
+        try:
+            click(cd,action)
+            cd.wait("window.__oiLabReports.at(-1)?.status===404 && !document.querySelector('[data-testid=preparation-lab-select]')",
+                    'withdrawing report access removes the report and saved laboratory questions')
+            assert question not in cd.evaluate('document.body.innerText')
+            assert cd.evaluate('window.__oiLabMutations') == inspection_writes_before
+        finally:
+            credentials[0]['actions'].append('review_packet_read');write_grants()
+        (artifacts/'second-opinion-laboratory-results.json').write_text(json.dumps({
+            'synthetic': True, 'historical_question': question_id, 'current_question': second_id,
+            'same_question_wording': True, 'history_read_from_preparation': True,
+            'historical_zero_and_current_absence_distinct': True,
+            'restricted_title_withheld': True, 'report_refresh_denial': 404, 'inspection_writes': 0,
+        }, indent=2)+'\n')
+        reopen_patient()
+        journey('1')
+        click(cd, '[data-testid=lab-questions-reopen]')
+        cd.wait("document.querySelectorAll('[data-testid=lab-saved-question]').length===2",
+                'questions reopened after explicit reauthorization')
     finally:
         if fixture_rights.rights_revoked:
             fixture_rights.set_fixture_rights(False)

@@ -251,6 +251,27 @@ export function projectFollowthroughAttention(state:AttentionState):Followthroug
  return Object.freeze({list,counts:Object.freeze(counts)});
 }
 
+/** Join two independently authorized reads on the original saved result. A v1
+ * task list contains text tasks only and cannot establish an empty lab list. */
+export function laboratoryQuestionFollowthrough(state:ViewState,question:SavedLabQuestion){
+ const list=projectFollowthroughAttention(state)?.list;
+ const history=state.labQuestionHistory;
+ if(!list||list.contract!=='oi.pg-question-followthrough/2'||!history||
+    state.worldPhase!=='ready'||state.labQuestionListPhase!=='ready'||
+    history.patient_id!==list.patient_id||history.case_id!==list.case_id||
+    history.checked_source_snapshot_sha256!==state.worldModel?.snapshot_fingerprint||
+    !history.questions.includes(question))return null;
+
+ const tasks=list.tasks.filter(task=>task.question_id===question.question_id);
+ const sameOrigin=tasks.every(task=>task.source_line===null&&
+  task.source_snapshot_contract===canonical&&task.source_id===question.source_id&&
+  task.source_version===question.source_version&&task.source_sha256===question.source_sha256&&
+  task.observation_reference===question.observation_reference&&
+  task.source_snapshot_sha256===question.source_snapshot_sha256&&
+  task.preflight_sha256===question.preflight_sha256&&task.source_context_state===question.source_context_state);
+ return sameOrigin?{evaluatedOn:list.evaluated_on,tasks}:null;
+}
+
 /** Derive the reset during render; an effect would briefly show a new read under an old filter. */
 export function followthroughFilterForRead(selection:FollowthroughFilterSelection|null,
  attention:FollowthroughAttention|null):FollowthroughFilter{

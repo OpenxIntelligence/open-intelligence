@@ -30,6 +30,7 @@ from oi_api.contracts import SCHEMA_REVISION
 from oi_api.reviewed_documents import fingerprint
 from test_reviewed_documents import RAW
 from test_evidence_convergence_migrations import PublishedEvidenceFixture
+import test_evidence_convergence_migrations as existing_upgrades
 from oi_api.followthrough_contracts import ManualTaskDependency
 from oi_api.composer_preflight import SOURCE_SNAPSHOT_CONTRACT
 from oi_api.migrate import migrate
@@ -611,27 +612,40 @@ class FollowthroughPostgresTests(SourceVersionFixture):
 
 
 class FollowthroughOwnerCollisionTests(PublishedEvidenceFixture, SourceVersionFixture):
+    snapshot = existing_upgrades.EvidenceConvergenceMigrationTests.snapshot
+    upgrade_preserving = existing_upgrades.EvidenceConvergenceMigrationTests.upgrade_preserving
+
     def test_migration_refuses_competing_table_owner_and_preserves_existing_questions(self):
-        _, question, _ = self.start_at("0008_review_convergence")
-
-        def question_rows():
-            with self.engine.connect() as connection:
-                return connection.execute(text("SELECT row_to_json(q)::text FROM investigation.source_questions q "
-                                               "WHERE question_id=:question"), {"question": question}).scalars().all()
-
-        before_question_rows = question_rows()
+        # Seed the genuine predecessor through existing owners. A current-head
+        # import creates protected outbox history and cannot test this guard.
+        self.start_at("0008_review_convergence")
+        before = self.snapshot()
+        with self.engine.connect() as connection:
+            before_question_rows = connection.execute(text(
+                "SELECT * FROM investigation.source_questions ORDER BY 1"
+            )).all()
         self.assertEqual(len(before_question_rows), 1)
         with self.engine.begin() as connection:
             connection.execute(text("CREATE TABLE coordination.question_followthrough_tasks (foreign_owner text)"))
-        with self.assertRaisesRegex(CommandError, "Existing follow-through owner"):
+        conflicting_owner = self.snapshot()
+        with self.assertRaisesRegex(
+            CommandError, "Existing follow-through owner requires explicit reconciliation"
+        ):
             migrate(self.admin, "upgrade", "head")
+        self.assertEqual(self.snapshot(), conflicting_owner)
         with self.engine.begin() as connection:
+            self.assertEqual(connection.execute(text(
+                "SELECT version_num FROM public.alembic_version"
+            )).scalars().all(), ["0008_review_convergence"])
             self.assertIsNone(connection.execute(text(
                 "SELECT to_regclass('coordination.question_followthrough_events')"
             )).scalar_one())
             connection.execute(text("DROP TABLE coordination.question_followthrough_tasks"))
-        migrate(self.admin, "upgrade", "head")
-        self.assertEqual(question_rows(), before_question_rows)
+        self.upgrade_preserving(before)
+        with self.engine.connect() as connection:
+            self.assertEqual(connection.execute(text(
+                "SELECT * FROM investigation.source_questions ORDER BY 1"
+            )).all(), before_question_rows)
 
 
 if __name__ == "__main__":

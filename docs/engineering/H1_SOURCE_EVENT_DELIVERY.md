@@ -1,9 +1,14 @@
 # H1 Source Event Delivery
 
-**Implemented synthetic candidate; acceptance pending at this source-publication
-checkpoint.** [PR #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565)
-maintains the living exact-source test, hosted acceptance and landing ledger.
-Earlier verified worker results do not qualify this addition automatically.
+**Dependent synthetic integration candidate; combined acceptance pending at
+this source-publication checkpoint.**
+[PR #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565) remains
+the upstream foundation owner. This dependent draft's PR maintains its own exact
+combined-source test, hosted acceptance and landing ledger.
+The event/execution donor at `79960c49f356e7a4259484f5d1523f9bda365887` is separately
+verified in [PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529).
+That receipt does not qualify the clinical/laboratory/workspace composition or
+its installed-schema upgrade automatically.
 
 ## Purpose and existing owners
 
@@ -37,26 +42,46 @@ Apply the explicit additive migration through the normal migration command:
 PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade head
 ```
 
-The application requires `0027_source_event_purpose` after the preserved
-`0026_integrated_core` join, which connects clinical execution and
-`0020_source_event_delivery`. The successor validates canonical source-event
-lineage before restricting outbox delivery to operations purpose. Valid research
-originals and journal events remain with their existing canonical owner.
-All published migrations remain unchanged. Fresh and published 0026 databases
-can adopt this repair; pre-0020 research history remains held with atomic rollback
-at the original backfill pending a separately reviewed legacy adoption path.
+The application requires `0027_source_event_purpose`, the single successor of
+`0026_integrated_core`. The existing 0026 no-DDL join retains
+`0025_clinical_source_events`, `0023_composer_clinical_join` and
+`0023_ehr_lab_ownership_join` as its three published parents.
 
-The historical 0020 revision captures new source-import events and
-strictly backfills selected historical source-import events against their
-canonical source/patient/case bindings. Malformed selected history fails the
-upgrade rather than being silently omitted or repaired. Existing originals and
-run history are retained; populated delivery history cannot be discarded by
-downgrade.
+All 42 migration files from upstream #565 source
+`462e6c25f805089fadcb290567045447e6d627b7` remain unchanged, including 0020 and
+0027. The published 0020 creates the delivery tables and its original
+operations-only capture/backfill. This candidate does not replay #529's edited
+version of that historical migration or add a 0028 successor.
 
-The historical construction baseline is
-`cd10a828e499bf65dbbe8eb4ca77207710a5f2b7`, joining verified worker source
+The published 0027 installs the source-event binding resolver and replaces the
+capture and outbox guard functions. On new writes, both `operations` and
+`research` source events undergo canonical metadata/lineage validation before
+only operations creates a Composer delivery obligation. Valid research custody
+remains with its source owner. The migration performs no historical rescan,
+backfill or row rewrite; existing originals, journals, outbox entries, deliveries,
+lifecycle events and consumer receipts remain intact.
+
+The supported upgrade scope covers fresh databases and published 0026
+installations. Pre-0020 research journal history remains held by the original
+backfill with atomic rollback and preserved rows/sequence state; a separate
+legacy-adoption path is still required. The
+[published construction contract](../implementation/SOURCE_EVENT_PURPOSE_REPAIR.md)
+records that boundary.
+
+Downgrading 0027 to 0026 restores the earlier capture/guard functions and removes
+the binding helper. Research history is retained, but later research imports can
+be refused until the explicit upgrade is applied again. The application requires
+0027 for readiness. The original populated-history downgrade guards remain.
+
+The original construction baseline remains
+`cd10a828e499bf65dbbe8eb4ca77207710a5f2b7`, joining worker source
 `2312755dc52260c3632c5801b1b7b68041671833` and accepted main
-`aad241e5cce9a1bcff3e431d63cecd16e948d731`. The combined laboratory, encounter and execution migrations and verification results are tracked in [draft #564](https://github.com/OpenxIntelligence/open-intelligence/pull/564).
+`aad241e5cce9a1bcff3e431d63cecd16e948d731`. Earlier combined clinical work remains
+recorded in [#564](https://github.com/OpenxIntelligence/open-intelligence/pull/564).
+This dependent draft composes the frozen upstream
+[#565](https://github.com/OpenxIntelligence/open-intelligence/pull/565) with the
+workspace donors; [implementation status](../IMPLEMENTATION_STATUS.md#current-integrated-h1-checkpoint)
+pins its source, workspace, laboratory and accepted-main inputs.
 
 ## Run one bounded attempt
 
@@ -100,6 +125,9 @@ outcome has those receipts.
 | `blocked` | Current scope or authority could not authorize a claim. | 2 |
 | `dead_letter` | This actor's delivery became terminal because authority/event validation failed or the consecutive-failure budget was exhausted. | 2 |
 | `unavailable` | Configuration/database/transport failed or the caller could not establish the commit outcome; no success or rollback is inferred. | 2 |
+
+A `fenced` response does not imply rollback of an earlier committed attempt;
+its retained consumer receipt can still exist.
 
 Delivery is per actor, organization, purpose and event. Another actor's receipt
 does not acknowledge this actor's work. A lower journal event ID committed later
@@ -162,10 +190,14 @@ process-kill/restart and populated version-16 dump/restore acceptance must be
 recorded for the final combined source. Local database skips are not passes.
 The existing full API/reference/web/browser/recovery gates remain required.
 
-At this source checkpoint those final receipts are pending. Record later exact
-source/tree, counts, failures/skips, workflow links, independent review and
-artifact checks in PR #565; do not rewrite earlier failed or source-specific
-receipts as successful combined evidence.
+At this combined-source checkpoint those final receipts are pending. The
+separately verified #529 donor retains its exact-source results, including
+[155 focused tests](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42112478630)
+and [878 API tests plus seven recovery gates](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42112478756).
+Record the combined source/tree, counts, failures/skips, workflow links,
+independent review and artifact checks in this dependent draft's PR. Preserve earlier failed and
+source-specific receipts, including #565's earlier research-import error, with
+their original scope.
 
 No scheduler, daemon, remote broker/consumer, general event catalog, new API,
 Temporal, DBOS, service-delegated authentication, production database roles,

@@ -21,10 +21,11 @@ from sqlalchemy.exc import DBAPIError
 
 from http_support import running_server
 from oi_api.app import create_app
+from oi_api.authored_evidence import PostgresQuestionEvidence as AuthoredEvidence
 from oi_api.contracts import SCHEMA_REVISION
 from oi_api.migrate import migrate
 from test_patients import TOKEN_A, request
-from test_evidence_convergence_migrations import PublishedEvidenceFixture, AuthoredEvidence, OPTIONS
+from test_evidence_convergence_migrations import PublishedEvidenceFixture, OPTIONS
 from test_authored_evidence_postgres import (
     EvidenceFixture, PACKET_CONTRACT, REPORT_CONTRACT, PRIVATE_FAILURE,
     WITHDRAW_REASON, digest, evidence_text, permissions,
@@ -451,10 +452,22 @@ class QuestionEvidenceAuthorityTests(PublishedEvidenceFixture, EvidenceFixture):
                 payload={"synthetic": True, "request_key": "LEGACY-IMPORT",
                          "original_text": evidence_text(), "content_item": "full_text",
                          "permissions": permissions()})
+        self.assertFalse(imported["duplicate"])
+        before = self.persisted_state()
         with self.assertRaisesRegex(CommandError, "Evidence history requires explicit reconciliation"):
             migrate(self.admin, "downgrade", "0008_review_convergence")
+        self.assertEqual(self.persisted_state(), before)
         with self.engine.connect() as connection:
             self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version"))
                              .scalars().all(), [revision])
             self.assertEqual(connection.execute(text("SELECT evidence_id FROM investigation.case_evidence_versions"))
                              .scalars().all(), [imported["evidence_id"]])
+        # The owner's actual historical guard preserves every existing row;
+        # current HTTP becomes available only after the converging upgrade.
+        migrate(self.admin, "upgrade", "head")
+        self.assertEqual(self.persisted_state(), before)
+        with self.engine.connect() as connection:
+            self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version"))
+                             .scalars().all(), [SCHEMA_REVISION])
+        with running_server(create_app(self.settings)) as base:
+            self.assertEqual(len(self.packet(base, patient, question)["evidence"]), 1)
