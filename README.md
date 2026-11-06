@@ -281,6 +281,48 @@ is constructed per request, so its in-memory bindings do not persist
 across requests — the durable guarantees are the ledger's duplicate
 detection, patient-match quarantine, and the recorded adapter events.
 
+**Analysis dimension (Slice D3, 6 November 2026):** A2 Longitudinal,
+A3 Molecular, T1 imaging comparison, T2 lab/marker series, and T4
+line of therapy — five deterministic toolsets, each its own module
+with its own fixture suite, no model calls anywhere (an AST test pins
+that none of them imports the model-call path). A2
+(`src/open_intelligence/longitudinal.py`) builds one ordered track
+per finding key over current sources, with certainty changes,
+same-date conflicts reported as unknown (never resolved by picking a
+winner), and interior coverage gaps. T2
+(`src/open_intelligence/lab_series.py`) turns laboratory assertions
+into numeric series: strict single-number quote parsing
+(unparseable/ambiguous points are typed, never guessed), unit-matched
+deltas only, LOINC codings attached through an injected callable
+(unbound keys are listed, never fabricated), and no trend words. T1
+(`src/open_intelligence/imaging.py`) compares consecutive
+same-modality imaging studies as finding-key set diffs
+(persisting/changed-state/added/removed); it is report-only by
+construction and never touches pixels. A3
+(`src/open_intelligence/molecular.py`) links variant identities
+(finding keys on current molecular sources) to pinned CIViC/ClinVar
+ledger evidence — current versions only, with a case assessment, token-exact
+gene matching — plus genomic delta tables; unassessed and
+unrecognized-prefix records are listed, never linked, and no variant
+interpretation is ever stated. T4 (`src/open_intelligence/therapy.py`)
+counts therapy lines under a versioned ruleset (`lot-rules-1` /
+`lot-rules-2`, synthetic fixture rules from the vertical's ruleset
+label, not guideline content); computed lines are recorded in the new
+`therapy_lines` table with their ruleset version, and a ruleset
+change marks earlier rows stale. T4 is not a RECIST calculator: it
+counts regimen lines only. T1 and T2 consult the D1 specimen-chain
+validator through an injected callable before comparing across
+specimens (the D1 note's first live caller); chain breaks are typed
+records on the comparison, never silent blocks. Dimension modules
+never import each other; the import-graph tripwire now lists the
+five D3 modules and stays green. Local suite at the slice branch:
+1076 tests, with the same 17 pre-existing `test_pdf_intake` failures
+as the branch baseline (1043 tests) and zero new failures. Unproven:
+no live caller wires the toolsets yet — they are the deterministic
+machinery the A2/A3 role agents call when parallel roster wiring
+lands; no live model call exists in the slice (Meta billing fix
+still pending).
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.

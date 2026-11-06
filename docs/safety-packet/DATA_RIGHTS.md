@@ -1,7 +1,23 @@
 # Data-rights note — Open Intelligence demo
 
-For the current tree on branch `oi/safety-packet` (current `main`
-merged in; refreshed 2026-11-02).
+For the current tree on `main` (HEAD `4b13bc2`; refreshed 2026-11-05).
+This refold supersedes the 2026-11-02 revision, which described the
+pre-submission tree on the `oi/safety-packet` branch.
+
+## Refold note — 5 November 2026
+
+What changed since the 2026-11-02 revision: PR #137 (reconcile
+synthetic-only research, retire personal-case data paths) has MERGED
+— the retirement described below as a draft is now on `main`, and
+`tools/research/` gained the restricted-entrypoint and
+named-person-disabled regression tests. The H1 migration chain on
+`main` ends at `SCHEMA_REVISION = "0018_laboratory_questions"`, with
+the 0016 fork converged by `0017_lab_manual_convergence`. The demo
+core is still standard-library only, with one optional exception: a
+hash-pinned `pypdf==6.21.4` runtime for bounded PDF text extraction
+(see `SBOM.md`). Product scope: Open Intelligence is a general,
+patient-centered intelligence platform; cancer bioinformatics is its
+starting domain, not its definition.
 
 ## H1 metadata and citation boundary — 3 November 2026
 
@@ -9,7 +25,7 @@ This dated addition scopes the current [#298 H1 metadata/citation increment](htt
 
 The immediate H1 adapter accepts independently authored fictional research-source metadata only. It reuses [#224](https://github.com/OpenxIntelligence/open-intelligence/pull/224)'s project-owned record/citation semantics through the current PostgreSQL patient/case/question owners. Metadata storage and display require separate explicit fixture permissions; a declaration is an auditable engineering input, not independent evidence of legal permission. Unknown/revoked/superseded rights must fail closed. Citation identity and an immutable link receipt do not establish scientific support, applicability, clinical review or permission to reproduce an article.
 
-No live publisher connector, patient-data acquisition, abstract/full-text ingestion, embedding, model inference or training is activated by this increment. The existing reference Crossref adapter remains separately scoped below. Current product code is under review and final combined acceptance is pending; the [implementation contract](../engineering/H1_QUESTION_EVIDENCE.md) records the intended enforcement and verification boundary.
+No live publisher connector, patient-data acquisition, abstract/full-text ingestion, embedding, model inference or training is activated by this increment. The existing reference Crossref adapter remains separately scoped below. Current product code is under review and final combined acceptance is pending; the [implementation contract](../engineering/H1_QUESTION_EVIDENCE.md) records the intended enforcement and verification boundary. (Refold note 2026-11-05: the H1 migration chain on `main` now ends at `SCHEMA_REVISION = "0018_laboratory_questions"`, with the 0016 fork converged by `0017_lab_manual_convergence`.)
 
 ### Operation-specific source research — checked 3 November 2026
 
@@ -168,8 +184,12 @@ Metadata display, content storage, retrieval/indexing, model input, training and
   implementations remain in version history, without permission to execute.
   The research workflows run only fictional/offline regression tests.
   Main `24519839` already disabled named-person CI steps and blocked catalog
-  and single-cell acquisition. Draft PR #137 reconciles the remaining
-  runtime and workflow cleanup from #123/#133 onto that main; it is unmerged.
+  and single-cell acquisition. PR #137 reconciled the remaining
+  runtime and workflow cleanup from #123/#133 onto that main; **#137 has
+  since MERGED (head `533afd3`)**, so the retirement is on `main`.
+  `tools/research/` now carries the regression tests that enforce it
+  (`test_restricted_research_entrypoints.py`,
+  `test_sid_case_data_disabled.py`).
 - Historical runs may have retrieved personal-case or public-cohort
   material, even if they published aggregate receipts instead of raw
   rows. We have not proved previous artifacts/caches absent, erased or
@@ -227,8 +247,11 @@ Metadata display, content storage, retrieval/indexing, model input, training and
   does not install this research environment. These are not
   selected application dependencies. Their licenses remain UNVERIFIED
   in this packet.
-- The demo itself remains Python standard library only, as recorded
-  in `SBOM.md`; no new dependency is shipped with the demo.
+- The demo core remains Python standard library only, as recorded
+  in `SBOM.md`, with one optional exception: the hash-pinned
+  `pypdf==6.21.4` runtime for bounded PDF text extraction, which
+  runs in a separate fresh process and is not installed with the
+  demo by default. No new dependency is shipped with the demo core.
 
 ## UNVERIFIED / open items
 
