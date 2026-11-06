@@ -14,7 +14,7 @@ class PatientRequestLimit:
         route = scope.get("path", "")
         image_upload = re.fullmatch(r"/v1/patients/[^/]+/cases/[^/]+/sources/[^/]+/images", route) is not None
         laboratory_preview = re.fullmatch(r"/v1/patients/[^/]+/cases/[^/]+/laboratory/fhir-r4/(?:preview|sources)", route) is not None
-        bounded = route == "/v1/patients" or (
+        bounded = route.startswith("/v1/veterinary/animals") or route == "/v1/patients" or (
             route.startswith("/v1/patients/") and (
                 route.endswith("/record-requests") or route.endswith("/case-bindings") or route.endswith("/sources") or
                 route.endswith("/questions") or route.endswith(("/composer/source-preflight",
