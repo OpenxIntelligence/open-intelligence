@@ -74,3 +74,61 @@ The backend inventory at the audited H1 commit covers 24 exact CPython 3.12/Linu
 | 5 | Qualify new specialist/content/model integrations, OI-011–018 | Demonstrated need, exact artifact rights, authorization, deterministic failure cases and intended-use evaluation | Held until each bounded gate is satisfied |
 
 No treatment, diagnostic sign-off, medication/radiation change, clinical order, result release, patient merge, trial enrollment, benefit award or access grant is an AI-only action. AI can prepare inspectable proposals; deterministic authority and appropriately qualified humans control consequential transitions. No clinical release, merge, deployment, provider contract or real patient-data acquisition is established by this contribution.
+
+
+## Public process observations — 5 November 2026 follow-up
+
+The 3 November baseline and verification receipts above remain historical.
+The following public pages were read on 5 November only for structural workflow
+requirements. The product mappings are **inferences to evaluate**, not evidence
+that Open Intelligence delivers these complete services or improves outcomes.
+
+### 1. Records and research outputs across institutions and timepoints
+
+| Required field | Process mapping |
+| --- | --- |
+| **Activity** | Organize records and research outputs across institutions, timepoints, assay modalities and specimen references, as structurally illustrated by the [osteosarc.com homepage](https://osteosarc.com/). |
+| **Information** | Source institution, original report/version, relevant dates, specimen/assay references, literal reported values and units, missingness, and amendment relationships. These are required inputs to evaluate, not facts copied from an individual case. |
+| **Entities** | Existing patient/case, immutable source version, reported observation, evidence citation, durable question and review; specimen/assay references remain attached to their supporting source. Owners: OI-006–009, OI-013, OI-016. |
+| **Functionality** | Preserve originals and exact anchors; link observations to their source context; expose conflicts; mark affected questions and derived work stale after amendment; withhold comparisons lacking sufficient context. |
+| **UX** | Show a source timeline and inspectable comparison with institution, date, specimen/assay and version visible; make missing context and amendment-related review needs explicit. |
+| **AI/tool** | Use deterministic identity, source hashing, versioning and eligibility checks. A future qualified extraction tool may propose anchored fields; a human reviews them before acceptance. No inferred patient attachment or clinical interpretation is established here. |
+| **Permissions** | Enforce existing patient/case/purpose authority for reading, processing and export; inspect source-content and tool/artifact rights separately. Current engineering uses independently authored synthetic inputs only. |
+| **Verification** | Proposed acceptance: two fictional institutions supply independently authored reports with differing assays and a later amendment. Preserve both versions, deny wrong-patient access, expose missing context and withhold unsupported comparisons; invalidate only affected derived work. |
+| **Implementation status** | **Partial synthetic implementation in #531:** source-linked questions, citations and amendment handling. **Unimplemented in this integration:** complete EHR/LIS, specimen lifecycle and assay-comparison workflows. Their full clinical/operational qualification remains separate. |
+
+### 2. Patient experience, samples and collaborative research
+
+| Required field | Process mapping |
+| --- | --- |
+| **Activity** | Connect patient experience, sample collection, research collaboration and returning research results, as described by [NCI MyPART](https://www.cancer.gov/pediatric-adult-rare-tumor/about/what-is-mypart). |
+| **Information** | Patient-reported experience, sample/source provenance and status, research question, requested operation and purpose, permitted recipients, returned source/version, applicability unknowns and review state. |
+| **Entities** | Reuse patient/case, source version, question, evidence citation, review, authority and follow-up contracts; represent sample and collaboration references within those owners rather than a second registry. Owners: OI-006–009, OI-013, OI-016–017. |
+| **Functionality** | Keep reported experience, specimen status, research request, permission, returned research output and accepted interpretation distinct; retain request/result history and surface unresolved applicability. |
+| **UX** | Present the question, referenced sample/source, pending or missing input, proposed recipient/operation and reviewable returned output together; show who must resolve each open step. |
+| **AI/tool** | Deterministic tools check source identity, allowed operations, status and version. Future qualified AI may propose evidence summaries or missing-information questions with citations; it cannot grant research permission, determine eligibility or accept a clinical result. |
+| **Permissions** | Separate source access from specimen access, research sharing, external communication and result review. A request is not consent or authorization; current engineering is synthetic-only and performs no external sharing or sample operation. |
+| **Verification** | Proposed acceptance: an independently authored fictional sample remains pending and applicability remains unknown; denied sharing stays denied, a request creates no permission or eligibility, and an amended returned source reopens affected review without erasing history. |
+| **Implementation status** | **Partial synthetic implementation in #531:** the question/citation/amendment foundation. **Unimplemented in this integration:** sample collection/transfer, collaborative research execution, trial eligibility/enrollment and clinical result-return services; no research or clinical qualification follows from the foundation. |
+
+### 3. Treatment history and survivorship follow-up
+
+| Required field | Process mapping |
+| --- | --- |
+| **Activity** | Connect treatment history to future follow-up tests and responsible doctors, as described by [CDC survivorship care plans](https://www.cdc.gov/cancer-survivors/life-after-cancer/survivorship-care-plans.html). |
+| **Information** | Source-backed treatment history, authored follow-up instructions, date or explicit date uncertainty, responsible role, source version, review state and completion evidence. Do not derive a clinical schedule from this research. |
+| **Entities** | Reuse patient/case, source version, question, citation, review and dated follow-up/task ownership; retain provenance between an instruction and its source. Owners: OI-006–009, OI-013. |
+| **Functionality** | Link recorded history and follow-up work to exact sources, distinguish planned/requested/completed states, preserve uncertainty, and reopen affected review when a source correction changes the basis for a task. |
+| **UX** | Present inspectable history beside follow-up items with responsible roles, known or unknown dates, supporting sources and review status; make unresolved ownership and scheduling visible. |
+| **AI/tool** | Deterministic tools manage provenance, dates, task states and freshness. Future qualified AI may draft a source-cited explanation for review; clinicians author or approve clinical follow-up instructions, and the tool does not invent schedules or execute orders. |
+| **Permissions** | Apply patient/case/purpose authority and separate read/export, task-edit and clinical-order authority. Current synthetic acknowledgments do not establish professional sign-off, external booking or patient consent. |
+| **Verification** | Proposed acceptance: an independently authored fictional task has a responsible role and uncertain due date; a later source correction reopens review, preserves the prior task basis and does not invent a due date, completion receipt or clinical order. |
+| **Implementation status** | **Partial synthetic implementation in #531:** source questions, citations and amendment-driven review. **Unimplemented in this integration:** complete survivorship care planning, clinical scheduling/orders and provider handoff services; no survivorship or clinical qualification is claimed. |
+
+No linked patient medical-data files, archives or datasets were opened or
+downloaded, and no patient-derived fixtures were created. Current development
+continues to require independently authored synthetic data. The intended
+[#531 integration](https://github.com/OpenxIntelligence/open-intelligence/pull/531)
+scope is the synthetic question/citation/amendment workflow; its exact-revision
+acceptance belongs to its own receipt. This research does not qualify complete
+specimen management, EHR/research operations or survivorship care.

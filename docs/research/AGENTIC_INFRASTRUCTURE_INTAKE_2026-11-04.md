@@ -29,7 +29,7 @@ The main branch's planning documents retain earlier undecided-stack language. La
 The 18 layer tables contain **149 rows and 144 distinct project labels**. These are input counts, not audited dependencies; aliases such as “OPA” and “Open Policy Agent (OPA)” remain visible. The attached source's recommendation table and organization summaries are contextual prose, not additional table rows in that count.
 
 - [Complete input-row inventory](agentic_infrastructure_intake_2026-11-04.csv): every layer-table row, its original license claim, observed correction where screened, and its proposed layer disposition.
-- [License-file evidence](agentic_infrastructure_license_evidence_2026-11-04.json): 16 upstream snapshots with repository, path, returned Git blob SHA, immutable blob API URL, and explicit unestablished release/dependency/asset clearance.
+- [License-file evidence](agentic_infrastructure_license_evidence_2026-11-04.json): 16 upstream snapshots with repository, path, returned Git blob SHA, immutable blob API URL, and explicit unestablished release/dependency/asset clearance. The dated 5 November follow-up preserves those snapshots, extends Docling and adds five page-observation entries using the same record fields; unresolved pins remain null. See the [six-candidate follow-up](../project-state/TECHNOLOGY_STRATEGY.md#six-candidate-evidence-follow-up--5-november-2026) for the research/HOLD boundaries.
 - Unscreened rows are marked **NOT_VERIFIED_IN_THIS_REVIEW**. Names in the attachment are discovery leads, including generic labels such as “MCP Gateway.” No capabilities, licenses, maturity scores or production suitability are inferred for those rows.
 
 ## Corrections before using the shortlist
