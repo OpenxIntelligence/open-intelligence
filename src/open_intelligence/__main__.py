@@ -44,6 +44,7 @@ from .mission import build_patient_mission
 from .patient_access import PatientAccessAdapter, adapter_envelope_from_dict
 from .patient_analytics import patient_analytics
 from .appointments import appointments_view
+from .notifications import notifications_view
 from .hypothesis import assemble_hypothesis_report, claim_id
 from .literature import list_records
 from .trials import list_listings, render_listing
@@ -273,15 +274,29 @@ class Handler(BaseHTTPRequestHandler):
                 f"Max-Age={SESSION_TTL_SECONDS}")
 
     @staticmethod
-    def _role_may_use_case(account: dict, case_id: str, method: str) -> bool:
+    def _role_may_use_case(account: dict, case_id: str, method: str,
+                           path: str | None = None) -> bool:
         """Role permission on a case, in addition to the grant. Operator and
         clinician work within grants; a patient reads only their own bound
-        case; an auditor works no case route."""
+        case; an auditor works no case route.
+
+        D7 carve-out (single exception, pinned by tests): a patient may
+        POST only to the notifications-clear route on their own bound
+        case. Clearing writes only an acknowledgment row for the
+        patient's own attention state — it cannot change, hide, or
+        delete any case content — and the clear handler additionally
+        rejects any key whose kind is not patient-visible.
+        """
         role = account["role"]
         if role in ("operator", "clinician"):
             return True
         if role == "patient":
-            return method == "GET" and account.get("own_case_id") == case_id
+            if account.get("own_case_id") != case_id:
+                return False
+            if method == "GET":
+                return True
+            return (method == "POST" and path is not None
+                    and path == f"/api/cases/{case_id}/notifications/clear")
         return False
 
     def _require_role(self, store: CaseStore, *roles: str) -> dict | None:
@@ -340,7 +355,7 @@ class Handler(BaseHTTPRequestHandler):
             store.record_access(label, case_id, route, "denied")
             self._grant_denial()
             return False
-        if not self._role_may_use_case(account, case_id, method):
+        if not self._role_may_use_case(account, case_id, method, path):
             store.record_access(actor, case_id, route, "denied")
             self._json(403, {"error": ROLE_DENIAL_MESSAGE})
             return False
@@ -565,6 +580,15 @@ class Handler(BaseHTTPRequestHandler):
                 # change history, case-scoped behind the existing grant
                 # gate. Read-only; no booking, no message, no reminder.
                 return self._json(200, appointments_view(store, appointments[1]))
+            notifications = re.fullmatch(rf"/api/cases/{ID_PART}/notifications", path)
+            if notifications:
+                # D7: care-coordination notifications — derived in-app
+                # list for the caller's role. Read-only; nothing is
+                # sent anywhere, and clearing is a separate POST.
+                account, _actor = self._current_actor(store)
+                role = account["role"] if account is not None else "auditor"
+                return self._json(200, notifications_view(
+                    store, notifications[1], role))
             review_queue = re.fullmatch(rf"/api/cases/{ID_PART}/review-queue", path)
             if review_queue:
                 return self._json(200, store.review_queue(review_queue[1]))
@@ -866,6 +890,20 @@ class Handler(BaseHTTPRequestHandler):
                         appointment_change[1], int(appointment_change[2]),
                         data.get("action"), actor_label=data.get("actor_label"),
                         reason=data.get("reason"), **kwargs))
+                notification_clear = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/notifications/clear", path)
+                if notification_clear:
+                    # D7: record an explicit, per-role clear of one
+                    # notification. The generic case gate already
+                    # enforced the grant; patients reach this route only
+                    # via the D7 carve-out (own bound case, clear route
+                    # only), and the store method additionally rejects
+                    # keys this role may not clear.
+                    account, _actor = self._current_actor(store)
+                    role = account["role"] if account is not None else "auditor"
+                    return self._json(200, store.clear_notification(
+                        notification_clear[1], data.get("notification_key"),
+                        role, self._actor_label(store)))
                 question_owner = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/owner", path)
                 if question_owner:
                     history_id = store.assign_question_owner(

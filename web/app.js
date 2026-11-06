@@ -382,6 +382,54 @@ async function loadAppointments() {
       : '';
   } catch (err) { el('appointments-status').textContent = err.message; }
 }
+async function loadNotifications() {
+  if (!caseId) { el('notifications-status').textContent = 'No case selected.'; return; }
+  const requested = caseId;
+  clear('notifications-list');
+  el('notifications-disclaimer').textContent = '';
+  el('notifications-status').textContent = 'Loading notifications…';
+  try {
+    const data = await api('/api/cases/' + requested + '/notifications');
+    if (requested !== caseId) return;
+    clear('notifications-list');
+    el('notifications-disclaimer').textContent = data.disclaimer || '';
+    const items = data.notifications || [];
+    const counts = data.counts || {};
+    if (!items.length) {
+      el('notifications-list').append(node('p', 'No notifications for this fictional case and role right now.', 'muted'));
+    }
+    for (const item of items) {
+      const box = node('div', null, 'snapshot');
+      const top = node('div', null, 'topline');
+      top.append(node('strong', item.title || ''));
+      top.append(node('span', (item.kind || '') + (item.recorded_date ? ' · ' + item.recorded_date : ''), 'muted'));
+      box.append(top);
+      if (item.detail) box.append(node('p', item.detail));
+      if (item.source_anchor) box.append(node('p', item.source_anchor, 'muted'));
+      // Clearing is explicit: one button per notification, which records
+      // the clear for this role and reloads the list. The underlying
+      // task, draft, or review item is untouched by a clear.
+      const clearButton = document.createElement('button');
+      clearButton.type = 'button';
+      clearButton.textContent = 'Clear this notification';
+      clearButton.className = 'button secondary minor';
+      clearButton.addEventListener('click', async () => {
+        clearButton.disabled = true;
+        try {
+          await api('/api/cases/' + requested + '/notifications/clear', { notification_key: item.key });
+          await loadNotifications();
+        } catch (err) {
+          el('notifications-status').textContent = err.message;
+          clearButton.disabled = false;
+        }
+      });
+      box.append(clearButton);
+      el('notifications-list').append(box);
+    }
+    const active = Object.entries(counts).filter(([, n]) => n).map(([kind, n]) => n + ' ' + kind).join(' · ');
+    el('notifications-status').textContent = items.length ? active : '';
+  } catch (err) { el('notifications-status').textContent = err.message; }
+}
 function clearCaseViews(denied) {
   for (const id of ['assertion-list', 'question-list', 'snapshot-list', 'source-list',
       'source-change-list', 'asset-list', 'event-list', 'option-list',
@@ -411,7 +459,12 @@ function clearCaseViews(denied) {
       // under denial like every other view. The create/change forms
       // hold text inputs, so their fields have picker-guard entries
       // and clear-loop entries of their own (see the picker handler).
-      'appointments-list']) {
+      'appointments-list',
+      // D7: the notifications list renders case data; it must clear
+      // under denial like every other view. Display-only with one
+      // Clear button per item and no text inputs, so no picker-guard
+      // entry is needed for it.
+      'notifications-list']) {
     clear(id);
     empty(el(id), denied);
   }
@@ -463,6 +516,7 @@ async function initialize() {
     el('analytics-apply').addEventListener('click', loadAnalytics);
     el('hypothesis-report-apply').addEventListener('click', loadHypothesisReport);
     el('appointments-apply').addEventListener('click', loadAppointments);
+    el('notifications-apply').addEventListener('click', loadNotifications);
     const picker = el('case-picker');
     picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {

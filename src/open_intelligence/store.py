@@ -909,6 +909,21 @@ CREATE TABLE IF NOT EXISTS appointment_events (
 );
 CREATE INDEX IF NOT EXISTS idx_appointments_case ON appointments(case_id);
 CREATE INDEX IF NOT EXISTS idx_appointment_events_appointment ON appointment_events(appointment_id);
+-- Care-coordination notification clears (slice D7): explicit, per-role
+-- acknowledgment records for derived in-app notifications. A clear
+-- records who cleared which notification key, for which role, and
+-- when; rows are never updated or deleted. Clearing acknowledges
+-- the alert only — the underlying task, draft, or review item is
+-- untouched. One row per (case, key, role): clearing is idempotent
+-- and per-role, so one role's clear never hides the notification
+-- from another role.
+CREATE TABLE IF NOT EXISTS notification_clears (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  notification_key TEXT NOT NULL, role TEXT NOT NULL,
+  cleared_by TEXT NOT NULL, cleared_at TEXT NOT NULL,
+  UNIQUE(case_id, notification_key, role)
+);
+CREATE INDEX IF NOT EXISTS idx_notification_clears_case ON notification_clears(case_id);
 -- Clinician review queue sign-off receipts: append-only acknowledgment
 -- records. The queue itself is a derived projection over the existing
 -- ledger (snapshots, model investigations, amendments, held options,
@@ -5401,6 +5416,91 @@ class CaseStore:
                 "disclaimer": DISCLAIMER,
                 "synthetic": True,
             }
+
+    # ---- Care-coordination notifications (slice D7) ----
+    def list_notification_clears(self, case_id: str) -> list[dict]:
+        """Explicit clear records for one case, oldest first.
+
+        Read-only; writes nothing. Strictly case-scoped.
+        """
+        self._case(case_id)
+        with self.db:
+            self.db.execute("BEGIN")
+            return self._dicts(self.db.execute(
+                "SELECT id,case_id,notification_key,role,cleared_by,cleared_at "
+                "FROM notification_clears WHERE case_id=? ORDER BY id",
+                (case_id,)).fetchall())
+
+    def clear_notification(self, case_id: str, notification_key: object,
+                           role: str, cleared_by: str) -> dict:
+        """Record an explicit, per-role clear of one notification key.
+
+        Idempotent: clearing an already-cleared key for the same role
+        returns the existing record. The key must be well-formed and
+        currently derived for this case and role — a guessed or
+        invisible key cannot be cleared. Clearing never touches the
+        underlying task, draft, or review item.
+        """
+        from .notifications import (
+            NotificationInputError,
+            PATIENT_VISIBLE_KINDS,
+            check_notification_key,
+            notifications_view,
+        )
+        self._case(case_id)
+        if role not in ("operator", "clinician", "patient"):
+            raise InvalidInput("Unknown role for notification clearing")
+        if not isinstance(cleared_by, str) or not cleared_by.strip():
+            raise InvalidInput("Cleared-by label is required")
+        try:
+            key = check_notification_key(notification_key)
+        except NotificationInputError as error:
+            raise InvalidInput(str(error)) from error
+        kind = key.split(":", 1)[0]
+        if role == "patient" and kind not in PATIENT_VISIBLE_KINDS:
+            raise InvalidInput(
+                "Patients clear only their own due notifications")
+        # Idempotent: a second clear of an already-cleared key is the
+        # same as the first. This check comes before the active-set
+        # check — a cleared key no longer derives, so it is no longer
+        # "active". Each phase holds its own transaction: the view
+        # opens its own reads and cannot run inside the write lock.
+        with self.db:
+            self.db.execute("BEGIN")
+            existing = self.db.execute(
+                "SELECT id,cleared_at FROM notification_clears "
+                "WHERE case_id=? AND notification_key=? AND role=?",
+                (case_id, key, role)).fetchone()
+        if existing is not None:
+            return {"notification_key": key, "role": role,
+                    "cleared_by": cleared_by,
+                    "cleared_at": existing["cleared_at"],
+                    "already_cleared": True}
+        active = {entry["key"]
+                  for entry in notifications_view(self, case_id, role)["notifications"]}
+        if key not in active:
+            raise InvalidInput("No such active notification for this role")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute(
+                "SELECT id,cleared_at FROM notification_clears "
+                "WHERE case_id=? AND notification_key=? AND role=?",
+                (case_id, key, role)).fetchone()
+            if row is not None:
+                return {"notification_key": key, "role": role,
+                        "cleared_by": cleared_by,
+                        "cleared_at": row["cleared_at"],
+                        "already_cleared": True}
+            timestamp = now_utc()
+            self.db.execute(
+                "INSERT INTO notification_clears "
+                "(case_id,notification_key,role,cleared_by,cleared_at) "
+                "VALUES (?,?,?,?,?)",
+                (case_id, key, role, cleared_by.strip()[:128], timestamp))
+            self._event(case_id, "notification_cleared")
+            return {"notification_key": key, "role": role,
+                    "cleared_by": cleared_by.strip()[:128],
+                    "cleared_at": timestamp, "already_cleared": False}
 
     def create_snapshot(self, case_id: str, question_id: int, summary: str, source_ids: list[int],
                         evidence_assessment_ids: list[int] | None = None,

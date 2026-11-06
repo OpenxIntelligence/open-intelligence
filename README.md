@@ -428,6 +428,39 @@ no link to a follow-through task and no link to a source version;
 no live model call exists in the slice (Meta billing fix still
 pending).
 
+**Care coordination dimension (Slice D7, 6 November 2026):**
+Notifications — the patient and team learn of changes and due items —
+as deterministic code in `src/open_intelligence/notifications.py`,
+with a `notification_clears` table and `clear_notification` /
+`list_notification_clears` in the store, two routes
+(`GET /api/cases/{id}/notifications`,
+`POST /api/cases/{id}/notifications/clear`), and a Notifications
+panel in the web app. A notification is a derived, in-app-only
+record: one per trigger, computed from the ledger at read time, and
+nothing is ever sent anywhere. The pinned trigger kinds are overdue
+and due-soon follow-through tasks, past-due appointments, follow-through
+tasks needing a re-check (anchored source superseded), open re-review
+tasks, and stale snapshots whose question is still open. Each trigger
+produces exactly one notification per source record, keyed stably
+(the key carries the due date, scheduled date, or source version,
+so a changed date or reschedule is a new occurrence). The patient
+sees due kinds only on their own bound case; operator and clinician
+see all kinds; auditors hold no case grants. Clearing is explicit
+and per-role — a clear records who cleared which key, for which
+role, and when, is idempotent, and never touches the underlying
+task, draft, or review item. Patients may clear only via the
+notifications-clear route on their own bound case (a single narrow,
+tested carve-out in the role check: clearing writes only an
+acknowledgment row, never case content). No model call exists in the
+slice (an AST test pins that the module imports neither the
+model-call path nor any other dimension module). Local suite at the
+slice branch: 1206 tests, with the same 17 pre-existing
+`test_pdf_intake` failures as the branch baseline (1182 tests) and
+zero new failures. Unproven: no external delivery of any kind; no
+reminder scheduling; no C5 evaluation-harness probes for
+notifications yet; no live model call exists in the slice (Meta
+billing fix still pending).
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.
