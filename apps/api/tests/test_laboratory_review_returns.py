@@ -198,18 +198,45 @@ class LaboratoryReviewReturnTests(SourceVersionFixture):
                 self.expect(404, base, path, payload | {"request_key":"DENIED-AFTER-ENCODE"})
             self.assertEqual(self.counts(), before)
 
-    def test_origin_immutable_and_downgrade_guard(self):
+    def test_populated_snapshot_upgrade_origin_immutability_and_downgrade_guard(self):
+        with running_server(create_app(self.settings)) as base:
+            _, _, _, path, _ = self.start(base)
+
+        # All these populated tables were already owned by the predecessor.
+        # The additive review origin starts empty and may be removed safely.
+        tables = ("clinical_source.source_versions", "clinical_source.fhir_laboratory_sources",
+                  "clinical_source.fhir_laboratory_observations", "investigation.source_questions",
+                  "investigation.laboratory_question_anchors", "investigation.question_evidence_links",
+                  "investigation.laboratory_citation_anchors", "investigation.laboratory_inspection_snapshots",
+                  "investigation.evidence_catalog_records", "investigation.evidence_rights_decisions",
+                  "investigation.question_review_receipts", "identity.identity_domain_events")
+        def preserved_rows():
+            with self.engine.connect() as conn:
+                return {table: conn.execute(text(
+                    "SELECT to_jsonb(t) FROM " + table + " t ORDER BY to_jsonb(t)::text"
+                )).scalars().all() for table in tables}
+
+        captured = preserved_rows()
+        self.assertEqual(len(captured["investigation.laboratory_inspection_snapshots"]), 1)
+        self.assertEqual(len(captured["investigation.question_evidence_links"]), 1)
+        self.assertEqual(captured["investigation.question_review_receipts"], [])
         migrate(self.admin,"downgrade","0025_lab_inspection_snapshots")
+        self.assertEqual(preserved_rows(), captured)
         with self.engine.connect() as conn:
             prior = conn.execute(text("SELECT tgname FROM pg_trigger WHERE tgrelid='investigation.question_review_receipts'::regclass AND NOT tgisinternal")).scalars().all()
         self.assertIn("oi_anchor_text_question_required", prior)
         migrate(self.admin,"upgrade","head")
+        # Compare before an application read adds its expected access receipt.
+        self.assertEqual(preserved_rows(), captured)
         with self.engine.connect() as conn:
             after = conn.execute(text("SELECT tgname FROM pg_trigger WHERE tgrelid='investigation.question_review_receipts'::regclass AND NOT tgisinternal")).scalars().all()
         self.assertIn("oi_anchor_text_question_required", after)
         self.assertIn("oi_laboratory_review_insert", after)
         with running_server(create_app(self.settings)) as base:
-            _, _, _, path, queue = self.start(base)
+            queue = self.expect(200, base, path)
+            original = captured["investigation.laboratory_inspection_snapshots"][0]
+            self.assertEqual(queue["snapshot_id"], original["snapshot_id"])
+            self.assertEqual(queue["captured_report_sha256"], original["captured_report_sha256"])
             self.expect(201, base, path, self.payload(queue))
         for sql in ("UPDATE investigation.laboratory_review_origins SET report_sha256=report_sha256",
                     "DELETE FROM investigation.laboratory_review_origins",

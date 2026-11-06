@@ -100,7 +100,7 @@ class LaboratoryCitationMigrationTests(SourceVersionFixture):
             with self.engine.begin() as conn:
                 conn.execute(text("TRUNCATE investigation.laboratory_question_anchors"))
         for command in ("TRUNCATE investigation.laboratory_question_anchors, investigation.laboratory_citation_anchors, "
-                        "investigation.laboratory_inspection_snapshots",
+                        "investigation.laboratory_inspection_snapshots, investigation.laboratory_review_origins",
                         "UPDATE investigation.laboratory_citation_anchors SET rights_decision_id=rights_decision_id",
                         "DELETE FROM investigation.laboratory_citation_anchors",
                         "TRUNCATE investigation.laboratory_citation_anchors"):

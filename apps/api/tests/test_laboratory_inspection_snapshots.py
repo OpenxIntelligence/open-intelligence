@@ -165,7 +165,7 @@ class LaboratoryInspectionSnapshotTests(SourceVersionFixture):
             self.expect(201, base, report + "/snapshots", command)
         for sql in ("UPDATE investigation.laboratory_inspection_snapshots SET actor=actor",
                     "DELETE FROM investigation.laboratory_inspection_snapshots",
-                    "TRUNCATE investigation.laboratory_inspection_snapshots"):
+                    "TRUNCATE investigation.laboratory_inspection_snapshots, investigation.laboratory_review_origins"):
             with self.subTest(sql=sql), self.assertRaisesRegex(DBAPIError, "HISTORY-IMMUTABLE"):
                 with self.engine.begin() as conn:
                     conn.execute(text(sql))

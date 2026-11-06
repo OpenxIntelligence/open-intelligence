@@ -97,6 +97,7 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_event_insert()"))
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_task_insert()"))
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_manual_dependency()"))
+            conn.execute(text("DROP TABLE IF EXISTS investigation.laboratory_review_origins"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.laboratory_inspection_snapshots"))
             conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_laboratory_inspection_snapshot()"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.laboratory_citation_anchors"))
@@ -123,6 +124,8 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_evidence_assessment()"))
             conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_question_evidence_report()"))
             conn.execute(text("DROP TABLE IF EXISTS investigation.question_review_receipts"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_laboratory_review_return()"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.check_laboratory_review_origin()"))
             conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_review_return_insert()"))
             # Release the 0018 observation anchor before its question and source parents.
             conn.execute(text("DROP TABLE IF EXISTS investigation.laboratory_question_anchors"))
