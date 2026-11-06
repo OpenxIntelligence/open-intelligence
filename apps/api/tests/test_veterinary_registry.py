@@ -2,7 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from alembic.util.exc import CommandError
 from sqlalchemy import text
@@ -27,7 +27,7 @@ class VeterinaryAccessTests(unittest.TestCase):
         from oi_api.access import Principal
         grant = human.credential(human.TOKEN_A)
         grant.pop("token_sha256")
-        policy = unittest.mock.Mock()
+        policy = Mock()
         policy.authenticate.return_value = Principal.model_validate(grant)
         with patch.object(Database, "registry_connection") as db:
             with running_server(create_app(Settings.from_env({}), authentication=policy)) as base:
@@ -109,3 +109,21 @@ class VeterinaryRegistryTests(unittest.TestCase):
                     "UPDATE identity.veterinary_animals SET species='cat'"):
             with self.assertRaises(DBAPIError), self.engine.begin() as c:
                 c.execute(text(sql), {"other": ids[1]})
+
+    def test_withdrawal_during_response_encoding_rolls_back_registration(self):
+        from oi_api import veterinary
+        self.grant()
+        original = veterinary.receipt
+
+        def withdraw(model):
+            response = original(model)
+            self.grant(actions=[])
+            return response
+
+        with running_server(create_app(self.settings)) as base:
+            with patch.object(veterinary, "receipt", side_effect=withdraw):
+                self.assertEqual(human.request(base, ROOT, token=human.TOKEN_A, body=ANIMAL)[0], 403)
+            with self.engine.connect() as c:
+                self.assertEqual(c.execute(text("SELECT count(*) FROM identity.veterinary_animals")).scalar_one(), 0)
+            self.grant()
+            self.assertEqual(human.request(base, ROOT, token=human.TOKEN_A, body=ANIMAL)[0], 201)

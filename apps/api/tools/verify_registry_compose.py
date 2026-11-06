@@ -118,11 +118,30 @@ def main():
             save_access()
             assert request(path, tokens[0])[0] == 200
             assert request(path, tokens[1]) == (404, {"detail": "Patient unavailable"})
+            animals = "/v1/veterinary/animals"
+            animal_payload = {"synthetic": True, "species": "cat", "source_system": "FIXTURE-CLINIC",
+                              "source_subject_ref": "FIXTURE-CAT", "request_key": "REGISTRY-RECOVERY"}
+            assert request(animals, tokens[0], animal_payload)[0] == 403
+            credentials[0]["actions"] += ["animal_register", "animal_read", "veterinary_case_open", "veterinary_case_read"]
+            save_access()
+            status, animal_receipt = request(animals, tokens[0], animal_payload)
+            assert status == 201
+            animal = animal_receipt["animal_id"]
+            credentials[0]["animal_ids"] = [animal]
+            save_access()
+            cases = animals + "/" + animal + "/cases"
+            case_payload = {"synthetic": True, "request_key": "OPEN-RECOVERY"}
+            status, case_receipt = request(cases, tokens[0], case_payload)
+            assert status == 201
+            vet_path = cases + "/" + case_receipt["case_id"]
+            status, vet_record = request(vet_path, tokens[0])
+            assert status == 200 and vet_record["species"] == "cat" and vet_record["animal_id"] == animal
             for service in ("api", "db"):
                 command(["restart", service])
                 ready()
                 assert request("/v1/patients", tokens[0], payload) == (200, {"patient_id": patient, "duplicate": True})
                 assert request(path, tokens[0])[1]["patient_id"] == patient
+                assert request(vet_path, tokens[0]) == (200, vet_record)
                 print("Canonical identity and idempotency persisted after " + service + " restart")
 
             # A real server dump/restore checks identity history, not only an
@@ -140,9 +159,29 @@ def main():
             assert restored == "1|1|1|" + SCHEMA_REVISION, restored
             restored_id = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", "oi_api_test_restore", "-At", "-c", "SELECT patient_id FROM identity.identity_patients"], capture_output=True, text=True).stdout.strip()
             assert restored_id == patient
+            # Serve the restored copy. A second case created only there proves that the
+            # HTTP process actually switched databases and that the original stayed intact.
+            override = access / "restored.compose.json"
+            override.write_text(json.dumps({"services": {"api": {"environment": {
+                "OI_API_DATABASE_URL": "postgresql+pg8000://oi_api:oi_h1_synthetic_only@db:5432/oi_api_test_restore"
+            }}}}))
+            compose.extend(["--file", str(override)])
+            command(["up", "--no-deps", "--force-recreate", "--detach", "api"])
+            ready()
+            assert request(vet_path, tokens[0]) == (200, vet_record)
+            assert request(cases, tokens[0], case_payload) == (200, {**case_receipt, "duplicate": True})
+            assert request(animals, tokens[0], animal_payload) == (200, {**animal_receipt, "duplicate": True})
+            assert request(cases, tokens[0], {**case_payload, "request_key": "RESTORED-ONLY"})[0] == 201
+            for db_name, expected in (("oi_api_synthetic", "1"), ("oi_api_test_restore", "2")):
+                count = command(["exec", "-T", "db", "psql", "-U", "oi_api", "-d", db_name, "-At", "-c",
+                                 "SELECT count(*) FROM coordination.veterinary_cases"], capture_output=True, text=True)
+                assert count.stdout.strip() == expected
+            credentials[0]["animal_ids"] = []
             credentials[0]["patient_ids"] = []
             save_access()
             assert request(path, tokens[0])[0] == 404
+            assert request(vet_path, tokens[0]) == (404, {"detail": "Veterinary record unavailable"})
+            print("PASS: veterinary case and exact registration receipts through restart, dump/restore and revocation")
             credentials.clear()
             save_access()
             assert request("/v1/patients", tokens[0], payload)[0] == 401

@@ -238,3 +238,11 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 .continuity-preparation-list h4{font-size:15px;margin:0 0 8px}
 .continuity-preparation-list p{font-size:13px;margin:8px 0}
 @media(max-width:600px){.continuity-preparation-list{grid-template-columns:minmax(0,1fr)}.continuity-preparation-list button{width:100%}}
+
+.vet-workspace { max-width: 780px; margin-inline: auto; }
+.vet-workspace h1 { margin-top: 1rem; }
+.vet-workspace fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.vet-workspace legend { font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; }
+.vet-workspace select { font: inherit; padding: .55rem; margin-bottom: 1rem; }
+.vet-actions { margin: 1.5rem 0 1rem; }
+.vet-actions [aria-pressed="true"] { background: #174b48; color: white; }
