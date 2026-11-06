@@ -243,6 +243,44 @@ nothing in the slice needs a live model call (Meta billing fix
 still pending); the first live caller of the chain validator is
 D3's comparison toolsets.
 
+**Data-integration dimension (Slice D2, 5 November 2026):** live
+interoperability on synthetic fixtures — FHIR R4 exchange, terminology,
+and DICOM report-only. `src/open_intelligence/fhir_exchange.py`
+builds a FHIR R4 Bundle from a case's current assertions and sources
+(Patient, one Observation per assertion with the ledger certainty in a
+synthetic extension, one DiagnosticReport per source, one Condition per
+ICD-10-bound finding with verificationStatus unconfirmed) and validates
+and translates inbound bundles back into anchored findings through the
+one import path, so the A1 anchor checker, the amendment rules, and
+the snapshot-invalidation cascade apply exactly as they do to report
+imports; the original bundle bytes are the stored source. Terminology
+(`src/open_intelligence/terminology.py`) is organized as modality
+schema packs: LOINC and ICD-10 are available with pinned codes (three
+lab analytes; histology → ICD-10 C80.1 on the oncology vertical),
+RxNorm is registered with no pinned codes yet, and SNOMED CT is
+blocked (license unresolved) — no SNOMED code is ever emitted or
+accepted. DICOM (`src/open_intelligence/dicom.py`) is report-only by
+construction: the table has no pixel column and any payload carrying
+pixel fields is rejected. The patient-access adapter graduates from
+library-only to a live HTTP path: bundle delivery goes through its
+authorization, revocation, identity-binding, and loss-receipt
+machinery. mCODE conformance is not claimed in this slice (its
+profiles bind condition codes to SNOMED CT and no IG validation
+exists here); a bundle claiming an mCODE profile is rejected. Routes:
+`GET/POST /api/cases/{ID}/fhir/bundle`, `GET /api/cases/{ID}/fhir/terminology`,
+`GET/POST /api/cases/{ID}/fhir/dicom`, plus a display-only Exchange
+panel in the web app. Dimension modules never import each other (the
+FHIR translator takes its terminology validator as an injected
+callable); the import-graph tripwire now lists the three D2 modules
+and stays green. Local suite at the slice branch: 1043
+tests, with the same 17 pre-existing `test_pdf_intake` failures as
+the branch baseline (1006 tests) and zero new failures. Unproven: no live system
+is connected (all exchange is synthetic fixtures); no live model call
+exists in the slice (Meta billing fix still pending); the HTTP adapter
+is constructed per request, so its in-memory bindings do not persist
+across requests — the durable guarantees are the ledger's duplicate
+detection, patient-match quarantine, and the recorded adapter events.
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.
