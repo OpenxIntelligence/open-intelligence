@@ -59,6 +59,19 @@ LINK_TEMPLATES = {
     "fictional": "https://example.invalid/fictional/{id}/{version}",
 }
 
+# Terminology bindings (D2): finding key -> codings from the pinned
+# terminology table. "histology" is an unclassified malignant neoplasm
+# (the seed report says "malignant epithelial neoplasm; classification
+# pending external review"), so the honest ICD-10 code is C80.1
+# "Malignant (primary) neoplasm, unspecified" — not a more specific
+# site code the evidence does not support.
+TERMINOLOGY_BINDINGS = {
+    "histology": (
+        {"system": "http://hl7.org/fhir/sid/icd-10", "code": "C80.1",
+         "display": "Malignant (primary) neoplasm, unspecified"},
+    ),
+}
+
 ONCOLOGY = Vertical(
     name="oncology",
     synonyms=dict(SYNONYMS),
@@ -67,6 +80,10 @@ ONCOLOGY = Vertical(
     lot_ruleset=LOT_RULESET,
     evidence_kinds=frozenset(EVIDENCE_KINDS),
     link_templates=dict(LINK_TEMPLATES),
+    terminology_bindings={
+        key: tuple(dict(coding) for coding in codings)
+        for key, codings in TERMINOLOGY_BINDINGS.items()
+    },
 )
 
 register_vertical(ONCOLOGY)

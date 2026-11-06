@@ -62,7 +62,11 @@ class Vertical:
     ``toolsets`` names the domain toolsets the vertical provides (empty
     until a dimension slice needs one). ``substance_names`` is the
     vertical's named-substance vocabulary for K7 (empty until substance
-    data exists in the runtime).
+    data exists in the runtime). ``terminology_bindings`` maps finding
+    keys to the vertical's own terminology codings (each a dict with
+    ``system``, ``code``, ``display``) — D2; the shared modality packs
+    in ``terminology.py`` hold the domain-free bindings, and lookup
+    order is vertical first, then shared packs.
     """
 
     name: str
@@ -74,6 +78,7 @@ class Vertical:
     link_templates: dict[str, str] = field(default_factory=dict)
     toolsets: tuple[str, ...] = ()
     substance_names: tuple[str, ...] = ()
+    terminology_bindings: dict[str, tuple[dict, ...]] = field(default_factory=dict)
 
 
 _REGISTRY: dict[str, Vertical] = {}
