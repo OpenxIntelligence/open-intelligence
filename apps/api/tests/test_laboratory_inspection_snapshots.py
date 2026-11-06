@@ -120,7 +120,7 @@ class LaboratoryInspectionSnapshotTests(SourceVersionFixture):
             was_masked = self.expect(200, base, history + "/" + masked["snapshot_id"])["inspection"]
             self.assertEqual(was_masked["report_sha256"], masked["captured_report_sha256"])
             self.assertIsNone(was_masked["citations"]["links"][0]["record"])
-            self.import_lab(base, case, value=Decimal("5.10"), previous=source["source_id"])
+            self.import_lab(base, case, value=5, previous=source["source_id"])
             old = self.expect(200, base, history + "/" + empty["snapshot_id"])
             self.assertEqual(old["snapshot"]["captured_source_context_state"], "current_unreviewed_question")
             self.assertEqual(old["inspection"]["reported_result"]["value_text"], "4.20")
