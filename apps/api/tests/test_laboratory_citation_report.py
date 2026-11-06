@@ -1,5 +1,6 @@
 """Read the actual saved laboratory source at two time points with current citation rights."""
 from decimal import Decimal
+import hashlib
 import json
 from unittest.mock import patch
 
@@ -37,6 +38,25 @@ class LaboratoryCitationInspectionTests(SourceVersionFixture):
         with self.catalog_db.registry_connection() as connection:
             evidence_catalog.seed_fictional_records(PostgresPatientRegistry(connection),
                 evidence_catalog.fictional_records(), recorded_by="FIXTURE-AUTHOR")
+
+    def assert_content_fingerprint(self, report):
+        # Independent recomputation over the actual HTTP body, including ordered
+        # links and exact literal result fields, while ignoring the per-read receipt.
+        material = dict(report)
+        fingerprint = material.pop("report_sha256")
+        material["citations"] = dict(material["citations"])
+        receipt = material["citations"].pop("source_access_receipt_id")
+        canonical = json.dumps(material, sort_keys=True, ensure_ascii=False,
+                               separators=(",", ":"), allow_nan=False).encode("utf-8")
+        self.assertEqual(fingerprint, hashlib.sha256(canonical).hexdigest())
+        with self.engine.connect() as db:
+            event = db.execute(text("""
+                SELECT metadata_json FROM identity.identity_domain_events
+                WHERE event_type='investigation.laboratory_citation_report.read_authorized'
+                  AND metadata_json->>'source_access_receipt_id'=:receipt
+            """), {"receipt": receipt}).scalar_one()
+        self.assertEqual((event["question_id"], event["report_sha256"]),
+                         (report["citations"]["question_id"], fingerprint))
 
     def coded_source(self, base, case, coding, key, previous=None):
         bundle = json.loads(lab.two_observations(0))
@@ -77,8 +97,9 @@ class LaboratoryCitationInspectionTests(SourceVersionFixture):
             metadata = self.find(base, path, anchor)
             self.expect(201, base, path + "/evidence-links", self.command(metadata, anchor, "CITE-CODED"))
             def report(path):
-                return self.expect(200, base, path + "/source-citation-report")
+                return self.expect(200, base, path + "/source-citation-report/versioned")
             current = report(path)
+            self.assert_content_fingerprint(current)
             self.assertEqual(current["reported_result"], selected)
             self.assertEqual(current["citations"]["source_context_state"], "current_unreviewed_question")
             second = {"system": first["system"], "code": first["code"]}
@@ -139,8 +160,23 @@ class LaboratoryCitationInspectionTests(SourceVersionFixture):
             linked = self.expect(201, base, path + "/evidence-links",
                                  self.command(metadata, anchor, "CITE-ORIGINAL-QUESTION"))
             def report(p):
-                return self.expect(200, base, p + "/source-citation-report")
+                return self.expect(200, base, p + "/source-citation-report/versioned")
             first = report(path)
+            again = report(path)
+            self.assert_content_fingerprint(first)
+            self.assert_content_fingerprint(again)
+            legacy = self.expect(200, base, path + "/source-citation-report")
+            self.assertEqual(set(legacy), {"contract", "question", "reported_result", "citations",
+                                           "clinical_review", "claim_appraisal"})
+            self.assertEqual(legacy["contract"], "oi.laboratory-source-citation-inspection/1")
+            self.assertEqual(first["contract"], "oi.laboratory-source-citation-inspection/2")
+            expected_legacy = {k: v for k, v in first.items() if k != "report_sha256"}
+            expected_legacy["contract"] = legacy["contract"]
+            expected_legacy["citations"] = {**first["citations"],
+                                            "source_access_receipt_id": legacy["citations"]["source_access_receipt_id"]}
+            self.assertEqual(legacy, expected_legacy)
+            self.assertNotEqual(first["citations"]["source_access_receipt_id"], again["citations"]["source_access_receipt_id"])
+            self.assertEqual(first["report_sha256"], again["report_sha256"])
             self.assertEqual(first["question"], lab.QUESTION)
             self.assertEqual((first["clinical_review"], first["claim_appraisal"]), ("not_performed", "not_performed"))
             self.assertEqual(first["citations"]["question_anchor"], anchor)
@@ -171,6 +207,9 @@ class LaboratoryCitationInspectionTests(SourceVersionFixture):
             restricted = report(path)
             self.assertEqual(restricted["reported_result"], old)
             self.assertEqual(restricted["citations"]["links"], [{**entry, "status": "rights_restricted", "record": None}])
+            for inspected in (absent, historical, fresh, restricted):
+                self.assert_content_fingerprint(inspected)
+            self.assertEqual(len({r["report_sha256"] for r in (first, absent, historical, fresh, restricted)}), 5)
             self.assertNotIn(metadata["title"], json.dumps(restricted))
             self.assertNotIn(metadata["link"], json.dumps(restricted))
 

@@ -5,17 +5,39 @@ version in the case before this projection runs. The evidence owner rechecks cur
 rights after response encoding and receipt insertion. No extracted title, result,
 report version, clinician decision or diagnostic interpretation is persisted here.
 """
+import hashlib
 import hmac
 
 from open_intelligence.patient_registry import PatientRegistryDenied
 
 from .composer_preflight import laboratory_preflight_payload
+from .evidence_report import canonical_hash
 from .question_evidence import PostgresLaboratoryQuestionEvidence
 from .source_integrity import SourceIntegrityError
 
 
-REPORT_CONTRACT = "oi.laboratory-source-citation-inspection/1"
+REPORT_CONTRACT = "oi.laboratory-source-citation-inspection/2"
 REPORT_ACTIONS = ("source_read", "question_read", "evidence_read", "review_packet_read")
+
+
+def inspection_digest(report: dict) -> str:
+    """Identify the inspected content across repeated authorized reads.
+
+    Each disclosure receives its own source access receipt. All other report
+    fields, including citation order, redactions and source freshness, belong
+    to the content being identified.
+    """
+    content = {key: value for key, value in report.items() if key != "report_sha256"}
+    content["citations"] = {key: value for key, value in report["citations"].items()
+                            if key != "source_access_receipt_id"}
+    return canonical_hash(content)
+
+
+def membership_digest(citations):
+    # Link identifiers and status enums never contain a colon or newline.
+    # PostgreSQL verifies this ordered manifest against the report event.
+    lines = [link["link_id"] + ":" + link["status"] for link in citations["links"]]
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
 class LaboratoryCitationReport:
@@ -75,15 +97,19 @@ class LaboratoryCitationReport:
                                                     anchor["source_snapshot_sha256"], result)
             if not hmac.compare_digest(original["preflight_sha256"], anchor["preflight_sha256"]):
                 raise SourceIntegrityError("Saved laboratory preparation no longer matches its original")
+            report = {"contract": REPORT_CONTRACT, "question": question["question"],
+                      "reported_result": result, "citations": citations,
+                      "clinical_review": "not_performed", "claim_appraisal": "not_performed"}
+            report["report_sha256"] = inspection_digest(report)
             self.registry.append_event(
                 patient_id, "investigation.laboratory_citation_report.read_authorized",
+                report_sha256=report["report_sha256"],
+                source_context_state=citations["source_context_state"], membership_sha256=membership_digest(citations),
                 case_id=case_id, question_id=question_id, actor=actor,
                 source_access_receipt_id=citations["source_access_receipt_id"],
                 source_id=anchor["source_id"], observation_reference=anchor["observation_reference"],
             )
-            return {"contract": REPORT_CONTRACT, "question": question["question"],
-                    "reported_result": result, "citations": citations,
-                    "clinical_review": "not_performed", "claim_appraisal": "not_performed"}
+            return report
 
         return self.evidence.links(
             patient_id, case_id, question_id, organization=organization, actor=actor, purpose=purpose,

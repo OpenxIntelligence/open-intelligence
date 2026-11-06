@@ -60,7 +60,7 @@ def fictional_bundle(*, amended=False):
 
 
 def exercise(cd, patient_id, directory, token, credentials, write_grants, artifacts):
-    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'question_create', 'composer_context_read', 'evidence_read', 'evidence_link', 'review_packet_read'}
+    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'question_create', 'composer_context_read', 'evidence_read', 'evidence_link', 'review_packet_read', 'laboratory_snapshot_create'}
     credentials[0]['actions'] = sorted(set(credentials[0]['actions']) | grants)
     write_grants()
     root = '/v1/patients/' + patient_id
@@ -127,7 +127,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         if(laboratory)window.__oiLabWrites.push(JSON.parse(init.body));
         const response=await window.__oiLabFetch(input,init);
         const path=String(input);
-        if(path.includes('/composer/laboratory-questions/')&&(path.endsWith('/evidence-links')||path.endsWith('/evidence-search'))){
+        if(path.includes('/composer/laboratory-questions/')&&(path.endsWith('/evidence-links')||path.endsWith('/evidence-search')||path.includes('/source-citation-report'))){
           const item={path,method:init.method,body:init.body??null,status:response.status,result:await response.clone().json()};
           window.__oiLabCatalog.push(item);
           if(path.endsWith('/evidence-links')&&init.method==='POST'&&response.status===201){
@@ -454,6 +454,14 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     current_report = visible_text('lab-citation-report')
     assert all(part in current_report for part in ('NOT-DETECTED', 'Not detected', 'urn:oi:synthetic:lab-results', 'fixture-v1'))
     assert all(token in current_report for token in (committed['source_id'],committed['source_sha256'],committed['observation_reference'],catalog_record['title']))
+    opened_digest = cd.evaluate('window.__oiLabCatalog.at(-1).result.report_sha256')
+    click(cd, control('lab-snapshot-capture'))
+    cd.wait("window.__oiLabCatalog.some(r=>r.method==='POST'&&r.path.endsWith('/snapshots')&&r.status===201)", 'snapshot captured on the server')
+    captured = cd.evaluate("window.__oiLabCatalog.find(r=>r.method==='POST'&&r.path.endsWith('/snapshots')).result")
+    snapshot_id = captured['snapshot_id']
+    assert captured['captured_report_sha256'] == opened_digest
+    cd.wait('document.querySelector('+json.dumps(control('lab-snapshot-status'))+').textContent.includes('+json.dumps(snapshot_id)+')',
+            'capture receipt reopened by the browser')
     draft_question(first['source_id'], 'ABSENT', 'Why was the selected result not performed?')
     assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))"), 'Editing clears previous receipt'
     assert operator(questions_path)['questions'] == []
@@ -504,11 +512,25 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         assert all(part in historical_report for part in ('NOT-DETECTED', 'Not detected', 'urn:oi:synthetic:lab-results', 'fixture-v1'))
         assert 'Detected' not in historical_report
         assert all(v not in historical_report for v in (current['source_id'],catalog_record['title'],catalog_record['licence'],catalog_record['link']))
+        click(cd, control('lab-snapshot-list'))
+        cd.wait(exists('lab-snapshot-row'), 'saved inspection listed under current access')
+        saved_selector = control('lab-snapshot-row') + '[data-snapshot-id="' + snapshot_id + '"]'
+        click(cd, saved_selector+' [data-testid=lab-snapshot-reopen]')
+        cd.wait('Boolean(document.querySelector('+json.dumps(control('lab-citation-report') + '[data-snapshot-id="' + snapshot_id + '"]')+'))',
+                'original inspection reopened under current rights')
+        reopened_report = visible_text('lab-citation-report')
+        assert 'NOT-DETECTED' in reopened_report and catalog_record['title'] not in reopened_report
+        reopened_snapshot = cd.evaluate("window.__oiLabCatalog.filter(r=>r.method==='GET'&&r.path.endsWith('/"+snapshot_id+"')).at(-1).result")
+        assert reopened_snapshot['snapshot']['captured_report_sha256'] == opened_digest
+        assert reopened_snapshot['inspection']['report_sha256'] != opened_digest
+        assert reopened_snapshot['inspection']['citations']['links'][0]['record'] is None
         (artifacts / 'laboratory-question-citations.json').write_text(json.dumps({
             'synthetic':True,'question_id':question_id,'question_anchor':expected_anchor,'catalog_query':'continuity',
             'citation':CITATION,'link_id':saved_link['link_id'],'metadata_sha256':saved_link['metadata_sha256'],
             'create_and_retry_statuses':[x['status'] for x in writes],'retry_bytes_identical':True,
             'amended_question_state':historical_links['source_context_state'],'withdrawn_metadata_state':redacted['status'],
+            'captured_snapshot_id':snapshot_id,'captured_report_sha256':opened_digest,
+            'reopened_report_sha256':reopened_snapshot['inspection']['report_sha256'],
             'report_original_observation_preserved':True,'report_withdrawn_metadata_withheld':True,
         },indent=2)+'\n')
     finally:

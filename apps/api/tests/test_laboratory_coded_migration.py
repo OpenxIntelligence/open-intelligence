@@ -116,7 +116,8 @@ class CodedLaboratoryMigrationTests(SourceVersionFixture):
             self.ingest(patient, coded, "CODED-RESULT", two["source_id"])
         self.assertEqual(self.snapshot(), before)
         migrate(self.admin, "upgrade", SCHEMA_REVISION)
-        self.assertEqual(self.snapshot(), before)
+        # 0025 adds an empty owner. All pre-existing tables and sequences must match.
+        self.assertEqual(self.snapshot(), (before[0] | {"investigation.laboratory_inspection_snapshots": []}, before[1]))
         with self.engine.connect() as conn:
             self.assertEqual(conn.execute(text(f"SELECT count(*) FROM {TABLE} WHERE coded_result IS NULL"))
                              .scalar_one(), 2)

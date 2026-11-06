@@ -88,6 +88,14 @@ to inspect the original measured value or absence reason, specimen, dates and
 currently permitted citation metadata together. The catalog supplies independently
 authored fictional metadata for this workflow.
 
+To preserve what you inspected, open the result and citation report, then save
+the inspection. Open the saved inspections for the same question and select
+the saved version. Check its capture time and original fingerprint. Later
+citations belong to later inspections. An amendment can flag the original
+for reassessment, and current permissions can hide previously visible metadata.
+Saving records an inspection. Recording a qualified reviewer’s decision is a
+separate workflow.
+
 ## Verification boundary
 
 `apps/web/tools/demo_journey.py` exercises these exact fixtures through a real built browser and a separately owned Docker/PostgreSQL application, then checks repeated setup and persistence after stopping and resuming. It deletes only its own newly created disposable test project. The ordinary launcher never deletes volumes.

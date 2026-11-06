@@ -87,7 +87,8 @@ def main():
         token = secrets.token_urlsafe(32)
         actions = ["patient_create", "patient_read", "case_binding_create", "case_binding_read",
                    "case_binding_revoke", "source_import", "source_read", "source_original_read",
-                   "composer_context_read", "question_create", "question_read", "evidence_read", "evidence_link", "review_packet_read"]
+                   "composer_context_read", "question_create", "question_read", "evidence_read", "evidence_link",
+                   "review_packet_read", "laboratory_snapshot_create"]
         credential = {
             "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
             "actor": "ACTOR-FHIR-LAB-PROOF", "organization": "ORG-FHIR-LAB-PROOF",
@@ -170,6 +171,10 @@ def main():
                 FROM investigation.question_evidence_links x),
               'citation_anchors',(SELECT COALESCE(json_agg(x ORDER BY x.link_id),'[]'::json)
                 FROM investigation.laboratory_citation_anchors x),
+              'snapshots',(SELECT COALESCE(json_agg(x ORDER BY x.snapshot_id),'[]'::json)
+                FROM investigation.laboratory_inspection_snapshots x),
+              'snapshot_events',(SELECT COALESCE(json_agg(x ORDER BY x.id),'[]'::json)
+                FROM identity.identity_domain_events x WHERE event_type='investigation.laboratory_snapshot.captured'),
               'catalog',(SELECT COALESCE(json_agg(x ORDER BY x.record_id,x.version),'[]'::json)
                 FROM investigation.evidence_catalog_records x),
               'rights',(SELECT COALESCE(json_agg(x ORDER BY x.record_id,x.version,x.revision),'[]'::json)
@@ -283,6 +288,42 @@ def main():
             assert report["citations"]["links"] == result["links"]
             return result["source_access_receipt_id"]
 
+        def capture(question_path, key):
+            status, report = request(question_path + "/source-citation-report/versioned")
+            assert status == 200, (status, report)
+            payload = {"synthetic": True, "request_key": key, "expected_report_sha256": report["report_sha256"]}
+            path = question_path + "/source-citation-report/snapshots"
+            status, saved = request(path, payload)
+            assert status == 201 and saved["duplicate"] is False, (status, saved)
+            assert saved["captured_report_sha256"] == report["report_sha256"]
+            status, history = request(path)
+            assert status == 200
+            summary, = [item for item in history["snapshots"] if item["snapshot_id"] == saved["snapshot_id"]]
+            assert summary["captured_report_sha256"] == saved["captured_report_sha256"]
+            assert summary["citation_count"] == len(report["citations"]["links"])
+            assert summary["captured_source_context_state"] == report["citations"]["source_context_state"]
+            return {"path": path, "payload": payload, "saved": saved, "summary": summary, "report": report}
+
+        def reopen(captured, source_state, *, restricted=False):
+            path, saved, report = captured["path"], captured["saved"], captured["report"]
+            status, history = request(path)
+            assert status == 200 and captured["summary"] in history["snapshots"]
+            status, reopened = request(path + "/" + saved["snapshot_id"])
+            assert status == 200 and reopened["snapshot"] == captured["summary"], (status, reopened)
+            inspection = reopened["inspection"]
+            assert inspection["question"] == report["question"] and inspection["reported_result"] == report["reported_result"]
+            assert inspection["citations"]["question_anchor"] == report["citations"]["question_anchor"]
+            assert inspection["citations"]["source_context_state"] == source_state
+            expected = report["citations"]["links"]
+            if restricted:
+                assert expected, "The rights withdrawal must exercise a captured, previously displayed item"
+                wire = json.dumps(reopened)
+                for link in expected:
+                    assert link["record"]["title"] not in wire and link["record"]["link"] not in wire
+                expected = [{**link, "status": "rights_restricted", "record": None} for link in expected]
+            assert inspection["citations"]["links"] == expected
+            return inspection["citations"]["source_access_receipt_id"]
+
         def withdraw_fixture_rights():
             # Exercise the existing trusted operator port, only for the second fictional citation.
             command(["exec", "-T", "api", "python", "-c", """
@@ -357,7 +398,12 @@ finally:
                                          "What does the first fictional source report?")
             verify_questions(questions, [(first, cmd1, saved1, "current_unreviewed_question")], patient)
 
+            original_question_path = questions + "/" + saved1["question_id"]
+            before_link = capture(original_question_path, "SNAPSHOT-BEFORE-LINK")
             first_cite = cite(questions, saved1, first, cmd1, "continuity", "FICT-RECORD-CONTINUITY@1", "CITE-V1")
+            # This older inspection must stay empty even though the question now has a citation.
+            reopen(before_link, "current_unreviewed_question")
+            first_inspection = capture(original_question_path, "SNAPSHOT-ORIGINAL-CITED")
             assert request(endpoint,body(FHIR_V2,"FHIR-LAB-AMEND-WRONG"))[0] == 409
             status, second = request(endpoint,body(FHIR_V2,"FHIR-LAB-AMEND-1",first_id))
             assert status == 201 and second["version"] == 2
@@ -377,7 +423,17 @@ finally:
             verify_citation(first_cite, "source_reassessment_required")
             verify_citation(second_cite, "current_unreviewed_question")
 
+            second_inspection = capture(second_cite["path"], "SNAPSHOT-AMENDED-CITED")
+            preserved = (before_link, first_inspection, second_inspection)
             state=snapshot()
+            assert len(state["snapshots"]) == len(state["snapshot_events"]) == len(preserved)
+            assert {row["snapshot_id"] for row in state["snapshots"]} == {
+                item["saved"]["snapshot_id"] for item in preserved}
+            for row in state["snapshots"]:
+                stored_manifest = json.dumps(row["manifest"])
+                for linked in (first_cite, second_cite):
+                    assert linked["entry"]["record"]["title"] not in stored_manifest
+                    assert linked["entry"]["record"]["link"] not in stored_manifest
             assert state["revision"] == SCHEMA_REVISION
             assert len(state["sources"])==2 and len(state["fhir_sources"])==2
             assert len(state["observations"])==4 and len(state["commands"])==2
@@ -428,6 +484,9 @@ finally:
 
                 verify_citation(first_cite, "source_reassessment_required")
                 verify_citation(second_cite, "current_unreviewed_question")
+                reopen(before_link, "source_reassessment_required")
+                reopen(first_inspection, "source_reassessment_required")
+                reopen(second_inspection, "current_unreviewed_question")
 
             withdraw_fixture_rights()
             verify_citation(second_cite, "current_unreviewed_question", restricted=True)
@@ -446,6 +505,20 @@ finally:
             second_read = verify_citation(second_cite, "current_unreviewed_question", restricted=True)
             assert {first_read, second_read} <= set(query(receipts_sql, RESTORED))
             assert {first_read, second_read}.isdisjoint(query(receipts_sql))
+            # After a real pg_restore, the previously displayed coded result comes
+            # from its original version and each captured citation needs current display rights.
+            snapshot_receipts = [reopen(before_link, "source_reassessment_required"),
+                                 reopen(first_inspection, "source_reassessment_required"),
+                                 reopen(second_inspection, "current_unreviewed_question", restricted=True)]
+            assert len(set(snapshot_receipts)) == len(preserved)
+            assert set(snapshot_receipts) <= set(query(receipts_sql, RESTORED))
+            assert set(snapshot_receipts).isdisjoint(query(receipts_sql))
+            for item in preserved:
+                assert request(item["path"], item["payload"]) == (200, {**item["saved"], "duplicate": True})
+            # Same question, changed source or changed permissions: a fresh capture
+            # using the old digest must refuse without adding immutable records.
+            for previous in (first_inspection, second_inspection):
+                assert request(previous["path"], {**previous["payload"], "request_key": "RESTORED-STALE-SNAPSHOT"})[0] == 409
             old_links, current_links = first_cite["path"] + "/evidence-links", second_cite["path"] + "/evidence-links"
             assert request(old_links, first_cite["payload"]) == (200, {**first_cite["receipt"], "duplicate": True})
             assert request(old_links, {**first_cite["payload"], "request_key": "NEW-STALE-CITATION"})[0] == 409
@@ -469,7 +542,11 @@ finally:
                 "Which source supports this newly saved fictional laboratory question?")
             restored_cite = cite(questions, restored_question, second, restored_cmd,
                                  "continuity", "FICT-RECORD-CONTINUITY@1", "CITE-RESTORED-NEW")
+            restored_inspection = capture(restored_cite["path"], "RESTORED-NEW-SNAPSHOT")
+            reopen(restored_inspection, "current_unreviewed_question")
             inserted = snapshot(RESTORED)
+            assert len(inserted["snapshots"]) == len(inserted["snapshot_events"]) == len(preserved) + 1
+            assert restored_inspection["saved"]["snapshot_id"] not in {row["snapshot_id"] for row in before_restore["snapshots"]}
             assert len(inserted["citations"]) == len(inserted["citation_anchors"]) == 3
             assert inserted["source_import_events"] == before_restore["source_import_events"]
             new_question_event, = [event for event in inserted["question_events"]
@@ -501,6 +578,13 @@ finally:
             banned = restore(RESTORED, REVOKED_RESTORE)
             assert banned["bindings"][0]["status"] == "revoked"
             before_receipts = query(receipts_sql, REVOKED_RESTORE)
+            # The same credential that captured these inspections still has all
+            # grants. The restored revoked binding must deny read, list, and retry.
+            for prior in (*preserved, restored_inspection):
+                for path, payload in ((prior["path"], None), (prior["path"], prior["payload"]),
+                                      (prior["path"] + "/" + prior["saved"]["snapshot_id"], None)):
+                    status, refusal = request(path, payload)
+                    assert status == 404 and set(refusal) == {"detail"}, (status, refusal)
             for path,payload in (
                 (questions, None), (questions, cmd1), (questions, cmd2),
                 (first_cite["path"] + "/source-citation-report", None),
@@ -514,6 +598,24 @@ finally:
                 assert request(path,payload)[0] == 404
             assert snapshot(REVOKED_RESTORE) == banned
             assert sorted(query(receipts_sql, REVOKED_RESTORE)) == sorted(before_receipts)
+            if destination := os.environ.get("OI_LABORATORY_ACCEPTANCE_FILE"):
+                output = Path(destination)
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text(json.dumps({
+                    "schema_revision": SCHEMA_REVISION, "synthetic": True,
+                    "original_capture_ids": [item["saved"]["snapshot_id"] for item in preserved],
+                    "captured_report_hashes": [item["saved"]["captured_report_sha256"] for item in preserved],
+                    "captured_citation_counts": [item["summary"]["citation_count"] for item in preserved],
+                    "restored_new_capture_id": restored_inspection["saved"]["snapshot_id"],
+                    "restored_read_receipts": snapshot_receipts, "original_receipt_ids_disjoint": True,
+                    "restored_source_states": ["source_reassessment_required", "source_reassessment_required",
+                                               "current_unreviewed_question"],
+                    "restored_restricted_citation": second_cite["entry"]["citation"],
+                    "exact_retries": len(preserved), "revoked_snapshots_denied": len(preserved) + 1,
+                }, indent=2) + "\n", encoding="utf-8")
+            print("PASS LABORATORY SNAPSHOT RECOVERY: original coded results and frozen citation membership "
+                  "survived restart and restore; withdrawn metadata was withheld, exact retries recovered their IDs, "
+                  "and the restored revoked binding denied list, reopen and replay.")
             print("PASS LABORATORY CITATION RECOVERY: two immutable observation-bound citations, "
                   "permitted historical replay with the same link ID, restricted title withheld, "
                   "restored new citation insert and independent-import stale refusal, import receipts and sequences, "
