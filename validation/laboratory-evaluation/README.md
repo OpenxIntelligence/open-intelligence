@@ -112,3 +112,9 @@ the local runtime lacks `fastapi`/`sqlalchemy`/`alembic`; it is not reported as 
 The new focused CI workflow checks its exact checkout, runs these tests and saves
 a practice receipt. Full API/PostgreSQL/recovery acceptance remains separately
 tracked by the existing H1 workflow. No parent green result qualifies this change.
+
+The first focused hosted run at `21efe2f` passed the 25 registry/parser tests but
+could not import the 13 inherited question-preflight tests without Pydantic.
+The workflow now prepares and verifies the existing hash-locked H1 runtime,
+including its reviewed code-only pydicom build, before running the same complete
+38-check selection. No assertion, test or dependency-rights check was removed.

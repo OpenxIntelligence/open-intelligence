@@ -16,7 +16,7 @@ permissions:
 jobs:
   offline-registry:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       PYTHONPATH: apps/api/src:src
       PYTHONDONTWRITEBYTECODE: '1'
@@ -34,6 +34,12 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
           python tools/audit_ci_data_boundaries.py
+      - name: Prepare and verify the inherited hash-locked runtime
+        run: |
+          python apps/api/tools/prepare_dependencies.py --wheel-dir /tmp/oi-laboratory-wheels
+          python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-laboratory-wheels --sbom /tmp/oi-laboratory-sbom.json
+          python -m pip install --no-deps --require-hashes --no-index --find-links /tmp/oi-laboratory-wheels -r apps/api/requirements.lock
+          python -m pip check
       - name: Run offline regression and practice comparison
         run: |
           python - <<'PY'
