@@ -87,6 +87,7 @@
           <a href="#exchange">Exchange</a>
           <a href="#analytics">Analytics</a>
           <a href="#hypothesis-report">Hypothesis generation</a>
+          <a href="#appointments">Appointments</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -271,6 +272,51 @@
         <div id="hypothesis-literature" class="activity" aria-live="polite"></div>
         <div class="subhead">Trial listings (not eligibility)</div>
         <div id="hypothesis-trials" class="activity" aria-live="polite"></div>
+      </section>
+      <section class="panel" id="appointments" aria-labelledby="appointments-heading">
+        <div class="panel-head"><div><div class="eyebrow">02e / APPOINTMENTS</div><h2 id="appointments-heading">Appointments</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Planned meetings about this fictional case: what is due, when, and what changed. Recording an appointment records the plan — it does not book anything, send a message, or contact anyone. A scheduled date is a recorded plan, not a booking. Cancelled and completed appointments stay in history; record a new appointment for further work. Nothing here recommends treatment, selects therapy, doses, or diagnoses.</p>
+        <button id="appointments-apply" type="button" class="button secondary minor">Load appointments</button>
+        <p id="appointments-status" class="muted tiny"></p>
+        <p id="appointments-disclaimer" class="muted tiny"></p>
+        <div id="appointments-list" class="activity" aria-live="polite"></div>
+        <div class="subhead">Record a new appointment</div>
+        <form id="appointments-form">
+          <label for="appt-title">What is it for (short title)</label>
+          <input id="appt-title" type="text" maxlength="120" required placeholder="Fictional follow-up visit">
+          <label for="appt-purpose">Purpose (optional)</label>
+          <textarea id="appt-purpose" rows="2" maxlength="1000" placeholder="Plain context for the meeting. No treatment or dosing instructions."></textarea>
+          <label for="appt-date">Scheduled date</label>
+          <input id="appt-date" type="date" required>
+          <label for="appt-time">Scheduled time (optional)</label>
+          <input id="appt-time" type="time">
+          <label for="appt-location">Where (optional)</label>
+          <input id="appt-location" type="text" maxlength="200" placeholder="Fictional clinic room or video link label">
+          <label for="appt-actor">Your label (who records this)</label>
+          <input id="appt-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <label for="appt-reason">Note on why this was planned (optional)</label>
+          <textarea id="appt-reason" rows="2" maxlength="600"></textarea>
+          <button class="button" type="submit">Record appointment</button>
+        </form>
+        <div class="subhead">Change an appointment</div>
+        <form id="appointments-change-form">
+          <label for="appt-choice">Appointment</label><select id="appt-choice" required></select>
+          <label for="appt-action">Change</label>
+          <select id="appt-action" required>
+            <option value="reschedule">Reschedule (new date, time optional)</option>
+            <option value="cancel">Cancel</option>
+            <option value="complete">Complete</option>
+          </select>
+          <label for="appt-new-date">New scheduled date (for a reschedule)</label>
+          <input id="appt-new-date" type="date">
+          <label for="appt-new-time">New scheduled time (optional; blank keeps the current time)</label>
+          <input id="appt-new-time" type="time">
+          <label for="appt-change-actor">Your label (who records this change)</label>
+          <input id="appt-change-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <label for="appt-change-reason">Why this change (required, kept in history)</label>
+          <textarea id="appt-change-reason" rows="2" minlength="10" maxlength="600" required></textarea>
+          <button class="button" type="submit">Record change</button>
+        </form>
       </section>
       <section class="panel" id="patient-view">
         <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2>Your case, in plain words</h2></div><span class="pill">Same facts, plainer language</span></div>

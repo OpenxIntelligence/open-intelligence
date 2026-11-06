@@ -43,6 +43,7 @@ from .fhir_exchange import build_fhir_bundle
 from .mission import build_patient_mission
 from .patient_access import PatientAccessAdapter, adapter_envelope_from_dict
 from .patient_analytics import patient_analytics
+from .appointments import appointments_view
 from .hypothesis import assemble_hypothesis_report, claim_id
 from .literature import list_records
 from .trials import list_listings, render_listing
@@ -558,6 +559,12 @@ class Handler(BaseHTTPRequestHandler):
             followthrough = re.fullmatch(rf"/api/cases/{ID_PART}/followthrough", path)
             if followthrough:
                 return self._json(200, followthrough_view(store, followthrough[1]))
+            appointments = re.fullmatch(rf"/api/cases/{ID_PART}/appointments", path)
+            if appointments:
+                # D6: care-coordination appointments — list with full
+                # change history, case-scoped behind the existing grant
+                # gate. Read-only; no booking, no message, no reminder.
+                return self._json(200, appointments_view(store, appointments[1]))
             review_queue = re.fullmatch(rf"/api/cases/{ID_PART}/review-queue", path)
             if review_queue:
                 return self._json(200, store.review_queue(review_queue[1]))
@@ -834,6 +841,31 @@ class Handler(BaseHTTPRequestHandler):
                         data.get("status"), actor_label=data.get("actor_label"),
                         reason=data.get("reason"), owner_label=data.get("owner_label"),
                         **kwargs))
+                appointment_create = re.fullmatch(rf"/api/cases/{ID_PART}/appointments", path)
+                if appointment_create:
+                    # D6: record a fictional appointment. Writes are
+                    # operator/clinician only — the generic case gate
+                    # denies patient POSTs and auditor requests before
+                    # dispatch reaches this route.
+                    appointment_id = store.create_appointment(
+                        appointment_create[1], data.get("title"),
+                        scheduled_date=data.get("scheduled_date"),
+                        scheduled_time=data.get("scheduled_time"),
+                        purpose=data.get("purpose"), location=data.get("location"),
+                        actor_label=data.get("actor_label"), reason=data.get("reason"))
+                    return self._json(201, {"appointment_id": appointment_id})
+                appointment_change = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/appointments/([0-9]+)/change", path)
+                if appointment_change:
+                    kwargs: dict = {}
+                    if "scheduled_date" in data:
+                        kwargs["scheduled_date"] = data.get("scheduled_date")
+                    if "scheduled_time" in data:
+                        kwargs["scheduled_time"] = data.get("scheduled_time")
+                    return self._json(200, store.change_appointment(
+                        appointment_change[1], int(appointment_change[2]),
+                        data.get("action"), actor_label=data.get("actor_label"),
+                        reason=data.get("reason"), **kwargs))
                 question_owner = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/owner", path)
                 if question_owner:
                     history_id = store.assign_question_owner(

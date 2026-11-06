@@ -393,6 +393,41 @@ fixtures are not matched to the case; no live registry lookup
 exists; no live model call exists in the slice (Meta billing fix
 still pending).
 
+**Care coordination dimension (Slice D6, 6 November 2026):**
+Appointments — the patient can know appointment times and changes —
+as deterministic code in `src/open_intelligence/appointments.py`,
+with `appointments` + `appointment_events` tables and
+`create_appointment`, `change_appointment`, and `list_appointments`
+in the store, three routes (`GET /api/cases/{id}/appointments`,
+`POST /api/cases/{id}/appointments`,
+`POST /api/cases/{id}/appointments/{n}/change`), and an Appointments
+panel in the web app. An appointment is a fictional, case-scoped
+record of a planned meeting: title, optional purpose, scheduled
+date (required) and optional time (HH:MM), optional location, and a
+status — recording it records the plan, it books nothing and sends
+nothing. `scheduled` is the only open status: a reschedule changes
+the date and/or time and keeps the status (a reschedule that
+changes neither is rejected), while cancellation and completion are
+terminal — further work is a new appointment. Every change appends
+one event row (who, when, why, previous and new values) and history
+is never edited. Role gates come from the existing generic case gate
+(patient reads only their own bound case; writes are
+operator/clinician only; auditors hold no case grants). Appointment
+text carries the same narrow guard as follow-through tasks (reused,
+not forked): no recommendation, order, eligibility claim, diagnosis,
+or dose. The list view sorts by scheduled date, derives status
+counts, and flags past due dates when a caller supplies `today`
+(the route does not — the server date is not the patient's date).
+No model call exists in the slice (an AST test pins that the module
+imports neither the model-call path nor any other dimension module).
+Local suite at the slice branch: 1182 tests, with the same 17
+pre-existing `test_pdf_intake` failures as the branch baseline
+(1161 tests) and zero new failures. Unproven: no reminder or
+notification delivery exists yet (that is D7); appointments carry
+no link to a follow-through task and no link to a source version;
+no live model call exists in the slice (Meta billing fix still
+pending).
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.

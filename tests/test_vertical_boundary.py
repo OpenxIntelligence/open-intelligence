@@ -61,6 +61,7 @@ DIMENSION_MODULES: tuple[str, ...] = (
     "open_intelligence.literature",
     "open_intelligence.trials",
     "open_intelligence.hypothesis",
+    "open_intelligence.appointments",
 )
 
 

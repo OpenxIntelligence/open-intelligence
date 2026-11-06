@@ -887,6 +887,28 @@ CREATE TABLE IF NOT EXISTS followthrough_task_events (
 );
 CREATE INDEX IF NOT EXISTS idx_followthrough_tasks_case ON followthrough_tasks(case_id);
 CREATE INDEX IF NOT EXISTS idx_followthrough_events_task ON followthrough_task_events(task_id);
+-- Care-coordination appointments (slice D6): fictional planned meetings
+-- about a case. An appointment is a plan, not a booking and not
+-- evidence: it cites no source and carries no anchor. Every change
+-- appends one event row; history rows are never updated or deleted.
+CREATE TABLE IF NOT EXISTS appointments (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  title TEXT NOT NULL, purpose TEXT NOT NULL DEFAULT '',
+  scheduled_date TEXT NOT NULL, scheduled_time TEXT,
+  location TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK(status IN ('scheduled','cancelled','completed')),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS appointment_events (
+  id INTEGER PRIMARY KEY, appointment_id INTEGER NOT NULL REFERENCES appointments(id),
+  change_kind TEXT NOT NULL CHECK(change_kind IN ('created','rescheduled','cancelled','completed')),
+  previous_date TEXT, new_date TEXT, previous_time TEXT, new_time TEXT,
+  previous_status TEXT CHECK(previous_status IN ('scheduled','cancelled','completed')),
+  new_status TEXT NOT NULL CHECK(new_status IN ('scheduled','cancelled','completed')),
+  actor_label TEXT NOT NULL, reason TEXT NOT NULL, noted_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_appointments_case ON appointments(case_id);
+CREATE INDEX IF NOT EXISTS idx_appointment_events_appointment ON appointment_events(appointment_id);
 -- Clinician review queue sign-off receipts: append-only acknowledgment
 -- records. The queue itself is a derived projection over the existing
 -- ledger (snapshots, model investigations, amendments, held options,
@@ -5184,6 +5206,201 @@ class CaseStore:
                         task_id=task_id, previous_status=previous, new_status=new_status)
             return {"result": new_status, "task_id": task_id,
                     "previous_status": previous, "event_id": int(cur.lastrowid)}
+
+    # ---- Care-coordination appointments (slice D6) ----
+    # Fictional planned meetings about a case. Recording an appointment
+    # records the plan; it books nothing, sends nothing, and cites no
+    # source. Every change appends one event row; history rows are never
+    # updated or deleted. Cancelled and completed appointments stay in
+    # history; further work is a new appointment.
+
+    @staticmethod
+    def _project_appointment(row: dict) -> dict:
+        return {
+            "id": row["id"],
+            "case_id": row["case_id"],
+            "title": row["title"],
+            "purpose": row["purpose"],
+            "scheduled_date": row["scheduled_date"],
+            "scheduled_time": row["scheduled_time"],
+            "location": row["location"],
+            "status": row["status"],
+            "created_at": row["created_at"],
+        }
+
+    @staticmethod
+    def _project_appointment_event(row: dict) -> dict:
+        return {
+            "id": row["id"],
+            "appointment_id": row["appointment_id"],
+            "change_kind": row["change_kind"],
+            "previous_date": row["previous_date"],
+            "new_date": row["new_date"],
+            "previous_time": row["previous_time"],
+            "new_time": row["new_time"],
+            "previous_status": row["previous_status"],
+            "new_status": row["new_status"],
+            "actor_label": row["actor_label"],
+            "reason": row["reason"],
+            "noted_at": row["noted_at"],
+        }
+
+    def create_appointment(self, case_id: str, title: str, *,
+                           scheduled_date: str,
+                           scheduled_time: str | None = None,
+                           purpose: str | None = None,
+                           location: str | None = None,
+                           actor_label: str, reason: str | None = None) -> int:
+        from .appointments import (AppointmentInputError, check_actor_label,
+                                   check_location, check_purpose,
+                                   check_reason, check_scheduled_date,
+                                   check_time, check_title)
+        self._case(case_id)
+        try:
+            title_text = check_title(title)
+            date_text = check_scheduled_date(scheduled_date)
+            time_text = check_time(scheduled_time)
+            purpose_text = check_purpose(purpose)
+            location_text = check_location(location)
+            actor = check_actor_label(actor_label)
+            reason_text = check_reason(reason, required=False)
+        except AppointmentInputError as error:
+            raise InvalidInput(str(error)) from error
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            timestamp = now_utc()
+            cur = self.db.execute("""INSERT INTO appointments
+                (case_id,title,purpose,scheduled_date,scheduled_time,location,
+                 status,created_at)
+                VALUES (?,?,?,?,?,?,'scheduled',?)""",
+                (case_id, title_text, purpose_text, date_text, time_text,
+                 location_text, timestamp))
+            appointment_id = int(cur.lastrowid)
+            self.db.execute("""INSERT INTO appointment_events
+                (appointment_id,change_kind,previous_date,new_date,previous_time,
+                 new_time,previous_status,new_status,actor_label,reason,noted_at)
+                VALUES (?,'created',NULL,?,NULL,?,NULL,'scheduled',?,?,?)""",
+                (appointment_id, date_text, time_text, actor, reason_text,
+                 timestamp))
+            self._event(case_id, "appointment_created",
+                        appointment_id=appointment_id)
+            return appointment_id
+
+    def change_appointment(self, case_id: str, appointment_id: int, action: str, *,
+                           scheduled_date: object = _KEEP,
+                           scheduled_time: object = _KEEP,
+                           actor_label: str, reason: str) -> dict:
+        from .appointments import (ACTIONS, TERMINAL_STATUSES,
+                                   AppointmentInputError, check_actor_label,
+                                   check_reason, check_scheduled_date,
+                                   check_time)
+        self._case(case_id)
+        if type(appointment_id) is not int or appointment_id < 1:
+            raise InvalidInput("Invalid appointment ID")
+        if action not in ACTIONS:
+            raise InvalidInput("Invalid appointment action")
+        try:
+            actor = check_actor_label(actor_label)
+            reason_text = check_reason(reason, required=True)
+        except AppointmentInputError as error:
+            raise InvalidInput(str(error)) from error
+        date_provided = scheduled_date is not _KEEP
+        time_provided = scheduled_time is not _KEEP
+        try:
+            new_date = check_scheduled_date(scheduled_date) if date_provided else None
+            new_time = check_time(scheduled_time) if time_provided else None
+        except AppointmentInputError as error:
+            raise InvalidInput(str(error)) from error
+        if action in ("cancel", "complete") and (date_provided or time_provided):
+            raise InvalidInput("A cancellation or completion carries no new date or time")
+        if action == "reschedule" and not date_provided:
+            raise InvalidInput("A reschedule needs a new scheduled date")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute(
+                "SELECT status, scheduled_date, scheduled_time FROM appointments "
+                "WHERE id=? AND case_id=?",
+                (appointment_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Appointment not in this case")
+            previous_status = row["status"]
+            if previous_status in TERMINAL_STATUSES:
+                raise InvalidInput(
+                    "A cancelled or completed appointment stays in history; "
+                    "record a new appointment for further work")
+            if action == "reschedule":
+                effective_time = new_time if time_provided else row["scheduled_time"]
+                if new_date == row["scheduled_date"] and effective_time == row["scheduled_time"]:
+                    raise InvalidInput(
+                        "A reschedule must change the scheduled date or time")
+                new_status = "scheduled"
+                change_kind = "rescheduled"
+                self.db.execute(
+                    "UPDATE appointments SET scheduled_date=?, scheduled_time=? WHERE id=?",
+                    (new_date, effective_time, appointment_id))
+                new_time = effective_time
+            elif action == "cancel":
+                new_status = "cancelled"
+                change_kind = "cancelled"
+                new_date = None
+                new_time = None
+                self.db.execute("UPDATE appointments SET status='cancelled' WHERE id=?",
+                                (appointment_id,))
+            else:  # complete
+                new_status = "completed"
+                change_kind = "completed"
+                new_date = None
+                new_time = None
+                self.db.execute("UPDATE appointments SET status='completed' WHERE id=?",
+                                (appointment_id,))
+            timestamp = now_utc()
+            cur = self.db.execute("""INSERT INTO appointment_events
+                (appointment_id,change_kind,previous_date,new_date,previous_time,
+                 new_time,previous_status,new_status,actor_label,reason,noted_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (appointment_id, change_kind, row["scheduled_date"], new_date,
+                 row["scheduled_time"], new_time, previous_status, new_status,
+                 actor, reason_text, timestamp))
+            self._event(case_id, "appointment_changed",
+                        appointment_id=appointment_id, action=action,
+                        previous_status=previous_status, new_status=new_status)
+            return {"result": new_status, "appointment_id": appointment_id,
+                    "previous_status": previous_status,
+                    "change_kind": change_kind, "event_id": int(cur.lastrowid)}
+
+    def list_appointments(self, case_id: str) -> dict:
+        """List this case's appointments with full change history, oldest first.
+
+        Strictly case-scoped: only rows carrying this case_id are read.
+        History arrays are in noted order; the current appointment is also
+        projected separately for convenient rendering.
+        """
+        from .appointments import DISCLAIMER
+        self._case(case_id)
+        with self.db:
+            self.db.execute("BEGIN")
+            appointments = self._dicts(self.db.execute(
+                "SELECT id,case_id,created_at FROM appointments WHERE case_id=? ORDER BY id",
+                (case_id,)).fetchall())
+            out = []
+            for appointment in appointments:
+                current = self.db.execute(
+                    "SELECT * FROM appointments WHERE id=?",
+                    (appointment["id"],)).fetchone()
+                events = self._dicts(self.db.execute(
+                    "SELECT * FROM appointment_events WHERE appointment_id=? ORDER BY id",
+                    (appointment["id"],)).fetchall())
+                out.append({
+                    "appointment_id": appointment["id"],
+                    "created_at": appointment["created_at"],
+                    "current": self._project_appointment(dict(current)),
+                    "history": [self._project_appointment_event(row) for row in events],
+                })
+            return {
+                "appointments": out,
+                "disclaimer": DISCLAIMER,
+                "synthetic": True,
+            }
 
     def create_snapshot(self, case_id: str, question_id: int, summary: str, source_ids: list[int],
                         evidence_assessment_ids: list[int] | None = None,

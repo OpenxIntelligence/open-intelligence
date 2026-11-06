@@ -1013,6 +1013,97 @@ substitute model was used (Meta billing fix still pending). The
 evaluation harness (C5) has no D5 probes yet — a follow-up could add
 hypothesis-composition probes to it.
 
+## Care coordination dimension: appointments (Slice D6) — 6 November 2026
+
+Branch `program/d6-appointments`, from main `35c979e`
+(post-D5). Implements program-plan D6: the care-coordination
+dimension's first slice — the patient can know appointment times
+and changes. Follow-through tasks and receipts existed, but nothing
+told the patient something is due; appointments close that gap as
+records, not as bookings.
+
+Design-first, as the plan requires for this slice: the design is
+drafted in the module docstring of
+`src/open_intelligence/appointments.py` before the build, and this
+section records it. An appointment is a fictional, case-scoped
+record of a planned meeting about the case: a short title, an
+optional purpose, a scheduled date (YYYY-MM-DD, required) and an
+optional scheduled time (HH:MM, 24-hour), an optional location (a
+room, a clinic name, or a video-link label — never a real address
+or a real scheduling link), and a status. Recording an appointment
+records the plan; it does not book anything anywhere, and there is
+no real scheduling integration — no calendar, no invite, no
+message, no reminder is sent.
+
+* Statuses and transitions: `scheduled` is the only open status. A
+  reschedule changes the date and/or time and keeps the status
+  `scheduled` — the change is the event, not a new state; a
+  reschedule that changes neither is rejected, since history
+  records changes, not no-ops. A scheduled appointment may be
+  `cancelled` or `completed`; both are terminal — further work is a
+  new appointment, never a reopen (mirroring the follow-through
+  rule that completed work stays in history). Every change appends
+  one event row — who, when, why, and the previous and new date,
+  time, and status — and history rows are never updated or deleted.
+* Change history: each appointment carries its full event history
+  in order (created, then each reschedule, cancellation, and
+  completion with previous and new values). The list view projects
+  the current appointment plus its history, oldest first, mirroring
+  `list_visits`; the view sorts by scheduled date, then id, and
+  derives status counts. When a caller supplies `today`, each
+  scheduled appointment also carries `days_until` and a
+  `past_due_date` flag — a past due date never auto-cancels or
+  auto-completes anything, it is only flagged (D7 is where due
+  items become notifications). The route does not pass `today` (the
+  server date is not the patient's date).
+* Role visibility: case-scoped and role-gated from the start
+  through the existing generic case gate — no new gate code. A
+  patient reads only their own bound case (GET); writes
+  (create/change) are operator/clinician only, so a patient POST is
+  denied by role even on their own case; an auditor holds no case
+  grants and is denied everywhere. The UI renders what the server
+  returns and shows the denial text on a 403.
+* Text guard: appointment text is author-controlled, so the same
+  narrow guard as follow-through tasks applies — reused, not
+  forked: the validators import the follow-through checks, so the
+  title, purpose, location, actor label, and change reason must not
+  state a clinical recommendation, order, eligibility claim,
+  diagnosis, or dose. Human review remains the gate; the disclaimer
+  on every view states the boundary.
+
+The slice adds two tables (`appointments`,
+`appointment_events`) plus `create_appointment`,
+`change_appointment`, and `list_appointments` in `store.py`;
+three routes in `__main__.py` (`GET /api/cases/{id}/appointments`,
+`POST /api/cases/{id}/appointments`,
+`POST /api/cases/{id}/appointments/{n}/change`); and an
+Appointments panel in the web app (02e — list with change history,
+create form, change form; the list container clears on case switch
+and on denial, and the form fields sit in the picker guard array
+before the eight test-asserted fields and at the end of the clear
+loop, so the fixed lookbacks of the guard tests are untouched).
+`open_intelligence.appointments` is registered in
+`DIMENSION_MODULES`; the import-graph tripwire stays green. No
+vertical predicates were moved or added; the K-checks, route,
+Skeptic, and evaluation harness are untouched; no live model call
+exists anywhere in the slice.
+
+Local suite on the slice branch: 1182 tests (1161 on the main
+baseline plus 21 new — 20 appointment tests and 1 guard test),
+FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure-name sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: no reminder or notification delivery exists yet — that is
+D7, which builds on follow-through tasks, re-review tasks, and
+staleness events; appointments carry no link to a follow-through
+task (no speculative coupling) and no link to a source version (an
+appointment is a plan, not evidence); no live model call was
+attempted and no substitute model was used (Meta billing fix still
+pending). The evaluation harness (C5) has no D6 probes yet — a
+follow-up could add appointment-lifecycle probes to it.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)
