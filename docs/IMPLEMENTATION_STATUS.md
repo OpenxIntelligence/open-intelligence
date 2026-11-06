@@ -1450,6 +1450,137 @@ a server shared with the patient-visibility test, which had
 already posted records; the test now asserts relative to the list
 seen at its start.
 
+## Second vertical: full cardiology end-to-end, zero core changes (Slice V2) — 6 November 2026
+
+Branch `program/v2-cardiology`, from main `19d523b5`
+(post-D9). Implements program-plan V2, the capstone: prove a new
+vertical lands with zero core changes. V1 defined the vertical
+interface and proved the core holds no oncology knowledge; V2
+proves a second vertical — cardiology — runs the full pipeline
+(route → claims → K-checks → Skeptic → HYPOTHESIS) and the care
+loop (appointments, notifications, referrals, care-team
+collaboration) against synthetic cardiology fixtures, with the
+core untouched. If a vertical needs a core change, the slice
+stops and reports — that is the falsifier firing, not a reason
+to force it. It did not fire.
+
+Design-first, as the plan requires: the design is drafted here
+and in the cardiology vertical's module docstring before the
+build, and this section records it.
+
+* The core/dimension line. The core is plan §2.4's eight shared
+  coordination primitives plus the interface and ledger they
+  run on: `store.py`, `__main__.py`, `investigation.py`,
+  `kchecks.py`, `skeptic.py`, `synthesis.py`, `timeline.py`,
+  `orchestrator.py`, `agent_writes.py`, `evaluation.py`,
+  `vertical.py`, `evidence_catalog.py`, `packet.py`,
+  `patient_report.py`. Dimension modules (D1–D9) are not core:
+  they plug into the core and never import each other. The
+  cardiology end-to-end is function-level, like V1's: the
+  route, K-checks, Skeptic, and HYPOTHESIS composition take the
+  vertical explicitly, so the pipeline is vertical-parameterized
+  end to end. No case-vertical field was added — that would
+  touch `store.py`, the core ledger — so the live HTTP route
+  still resolves `default_vertical()` (oncology) at its single
+  K-check call site; per-case vertical selection remains the
+  follow-up V1 already recorded. No web/UI change in this slice.
+* What the vertical carries. `vertical_cardiology.py` gains the
+  domain rules the interface was built for: terminology
+  bindings and substance names. The bindings are pinned only
+  from the publishers' own listings, per the terminology
+  honesty rule — a code enters the table only as a long-stable
+  public code, never invented or "close enough": LOINC
+  `10230-1` "Left ventricular Ejection fraction" (Regenstrief
+  LOINC listing, also carried in the HL7 FHIR observation-codes
+  value set and DICOM CP-2147) for finding key
+  `ejection-fraction`, and ICD-10 `I50.9` "Heart failure,
+  unspecified" (WHO ICD-10, category I50) for finding key
+  `heart-failure`. SNOMED CT stays blocked (license
+  unresolved); no SNOMED code is ever emitted or accepted.
+  Substance names are a fixture vocabulary for the K7
+  substance arm only — `metoprolol`, `lisinopril`,
+  `atorvastatin`, `furosemide` — token matching, never a
+  recommendation or a dose.
+* The one domain toolset: the line-of-therapy equivalent.
+  Cardiology's `therapy-rules-1` is defined as a pinned entry
+  in `therapy.py`'s `LOT_RULESETS` table, the dimension
+  module's own fixture table — the module's docstring already
+  anticipated it ("cardiology's `therapy-rules-1` is unknown
+  until its ruleset is defined, and is reported as such"). The
+  rule: one line per distinct therapy CLASS in first-occurrence
+  order; a re-appearing regimen resumes its earlier line;
+  class is the regimen key minus its final hyphen-delimited
+  segment (the agent name), so `beta-blocker-metoprolol` and
+  `beta-blocker-atenolol` are one class, `ace-inhibitor-lisinopril`
+  another; a key with no hyphen is its own class. The line's
+  `regimen_key` value stores the class label, documented as
+  such. The rationale, as fixture logic: switching agents
+  within a drug class is a regimen adjustment, not a new line;
+  switching classes starts a new line. This is pinned
+  synthetic fixture logic, not guideline content — the same
+  pattern as `lot-rules-1` / `lot-rules-2`. The plan's §V2
+  test-scope sentence ("the PR diff must touch only vertical +
+  dimension-registration files") is stricter than its binding
+  acceptance ("zero changes to core modules"); the acceptance
+  governs, and the accounting is reported transparently:
+  `therapy.py` is a D3 dimension module, not core, and it is
+  the single dimension-module touch in the slice. Leaving T4
+  fail-closed for cardiology would have left the capstone's
+  sharpest test — "a different line-of-therapy equivalent" —
+  unproven.
+* What the end-to-end exercises, on one synthetic cardiology
+  case (CASE-CARDIO, independently authored fictional data,
+  explicit provenance): D1 extraction validation and the T3
+  specimen chain; D2 terminology (vertical bindings resolve
+  through `codings_for` / `validate_coding`) and a FHIR R4
+  bundle built with the cardiology vertical; D3 A2
+  longitudinal, T1 imaging comparison, T2 lab series, and T4
+  therapy lines under `therapy-rules-1`; D4 patient analytics
+  over the T2 series; D5 HYPOTHESIS composition (kept claims
+  only, cardiology substance names through the K7 arm) and T5
+  report assembly; the care loop D6–D9 — an appointment, a
+  derived notification, a referral, a shared update and a
+  handoff — all against CASE-CARDIO with no core change. The
+  Skeptic in the end-to-end is the deterministic stub, as in
+  V1: the live model proof is still blocked by the Meta
+  billing fix, and no substitute model was used. The planted
+  "31 cm" misstatement against "31%" evidence is held by the
+  stub, proving wiring, not the model.
+* What was deliberately NOT done. The evidence catalog
+  (`evidence_catalog.py`) was not touched: its `SOURCE_KINDS`
+  is a hardcoded frozenset and a cardiology record with kind
+  `ecg` fails catalog validation — per-vertical catalog
+  resolution was recorded as V2 work in the V1 doc, but plan
+  §V2 does not require it, the catalog is not in the
+  investigation pipeline path, and changing it would have
+  touched a core module; it remains a follow-up, recorded
+  honestly here. `Vertical.toolsets` stays empty (nothing
+  consumes the field; the cardiology domain rule is the
+  `therapy-rules-1` counting rule in the T4 table, not a
+  separately-named toolset). No new dimension module was added,
+  so `DIMENSION_MODULES` does not change. The two existing
+  tests that pinned the pre-V2 state were updated, not deleted:
+  `test_terminology_bindings_live_on_the_vertical` now asserts
+  the cardiology bindings instead of `{}`, and
+  `test_unknown_ruleset_fails_closed` now asserts the cardiology
+  vertical computes under `therapy-rules-1` while an unknown
+  label (e.g. `lot-rules-99`) still fails closed.
+
+Local suite on the slice branch: 1251 tests (1249 on the main
+baseline plus 2 new — the cardiology end-to-end test and the
+therapy-rules-1 edge test), FAILED with 9 failures and 8 errors —
+the same 17 `test_pdf_intake` failures as the baseline run on the
+same machine, verified by diffing the two failure-name sets; zero
+new failures. The C5 evaluation harness still passes all 8
+measured metrics with `model_calls: 0`. This is fictional-only
+engineering, draft and undeployed.
+
+Unproven: the live-model half of the end-to-end (Skeptic over
+muse-spark-1.3) — blocked by the Meta billing fix, stub
+verdicts prove wiring only; per-case vertical selection via a
+case-vertical field; per-vertical evidence-catalog resolution;
+the C5 evaluation harness has no cardiology probes yet.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)

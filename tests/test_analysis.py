@@ -614,10 +614,19 @@ class TherapyLinesTests(AnalysisTestBase):
     def test_unknown_ruleset_fails_closed(self):
         self._therapy("CLIN-A", "2026-05-03", [
             ("regimen-a", "reported", "Fictional regimen A was given.")])
-        with self.assertRaises(InvalidInput):
-            compute_therapy_lines(
-                self.store, "CASE-ALPHA", self.REGIMENS,
-                vertical=get_vertical("cardiology"))
+        # V2: the cardiology vertical now computes under its own
+        # therapy-rules-1 (one line per therapy class; the line's
+        # regimen_key stores the class label — "regimen-a" is class
+        # "regimen" under the rule).
+        result = compute_therapy_lines(
+            self.store, "CASE-ALPHA", self.REGIMENS,
+            vertical=get_vertical("cardiology"))
+        self.assertEqual(result.ruleset_version, "therapy-rules-1")
+        self.assertEqual(
+            [(line["line_number"], line["regimen_key"])
+             for line in result.lines],
+            [(1, "regimen")])
+        # An unknown label still fails closed.
         with self.assertRaises(InvalidInput):
             compute_therapy_lines(
                 self.store, "CASE-ALPHA", self.REGIMENS,
