@@ -1,0 +1,55 @@
+name: Offline laboratory evaluation registry
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/oi_api/laboratory_evaluation.py'
+      - 'apps/api/src/oi_api/laboratory_fhir_r4.py'
+      - 'apps/api/tests/test_laboratory_evaluation_registry.py'
+      - 'apps/api/tests/test_laboratory_fhir_r4.py'
+      - 'apps/api/tests/test_laboratory_question_preflight.py'
+      - 'apps/api/tools/verify_laboratory_evaluation.py'
+      - 'validation/laboratory-evaluation/**'
+      - '.github/workflows/laboratory-evaluation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-registry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PYTHONPATH: apps/api/src:src
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.16'
+      - name: Verify exact revision and synthetic source boundary
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python tools/audit_ci_data_boundaries.py
+      - name: Run offline regression and practice comparison
+        run: |
+          python - <<'PY'
+          import unittest
+          suite = unittest.TestSuite()
+          for name in ('test_laboratory_evaluation_registry.py', 'test_laboratory_fhir_r4.py', 'test_laboratory_question_preflight.py'):
+              suite.addTests(unittest.defaultTestLoader.discover('apps/api/tests', pattern=name))
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(not result.wasSuccessful() or bool(result.skipped) or not result.testsRun)
+          PY
+          mkdir -p verification-laboratory
+          python apps/api/tools/verify_laboratory_evaluation.py --registry /tmp/oi-laboratory-evaluation.sqlite > verification-laboratory/practice.json
+          git rev-parse HEAD > verification-laboratory/commit.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: laboratory-evaluation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: verification-laboratory/
+          if-no-files-found: error
+          retention-days: 7
