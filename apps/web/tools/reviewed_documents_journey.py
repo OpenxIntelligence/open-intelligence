@@ -14,7 +14,7 @@ CASE='CASE-WEB-REVIEWED'
 def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,restart_api):
     credentials[0]['actions']=sorted(set(credentials[0]['actions'])|{
         'source_import','source_read','source_original_read','case_binding_create','case_binding_read',
-        'composer_context_read','question_create','question_read','review_queue_read','evidence_read'})
+        'composer_context_read','question_create','question_read','review_queue_read','evidence_read','evidence_link'})
     write_grants()
     root='/v1/patients/'+patient_id
     def operator(path,body=None):
@@ -192,9 +192,13 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     cd.evaluate('window.__restoreQuestionFetch()')
     click('Open saved passage questions')
     cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('What would resolve this pending fictional result?')",'saved question reopened')
-    value('[data-testid=passage-evidence-query]','unmatched-fictional-demo-search')
+    value('[data-testid=passage-evidence-query]','continuity')
     click('Search evidence catalog')
-    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('0 matching fictional catalog records.')",'question-scoped catalog search')
+    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('FICT-RECORD-CONTINUITY@1')",'question-scoped catalog search')
+    click('Save citation FICT-RECORD-CONTINUITY@1')
+    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('Citation saved.')",'passage citation saved')
+    click('Open saved passage citations')
+    cd.wait("document.querySelector('[data-testid=passage-citations]')?.textContent.includes('FICT-RECORD-CONTINUITY@1 · available')",'saved citation reopened')
     original_question,=operator(prefix+'/'+first+'/questions')['questions']
     assert original_question['selection']['anchor']['annotation_revision_id']==initial_revision['revision_id']
 

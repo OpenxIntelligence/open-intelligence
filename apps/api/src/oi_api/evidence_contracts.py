@@ -50,6 +50,9 @@ class EvidenceLinkCreate(EvidenceCommand):
     expected_preflight_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
 
 
+class PassageEvidenceLinkCreate(EvidenceLinkCreate):
+    source_snapshot_contract: Literal["oi.reviewed-document-selection/1"]
+
 class EvidenceMetadata(Contract):
     citation: str = Field(strict=True, pattern=CITATION_PATTERN, max_length=193)
     id: str = Field(strict=True, pattern=r"^FICT-[A-Z0-9-]+$", max_length=128)
