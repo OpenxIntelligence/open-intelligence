@@ -1,4 +1,5 @@
 import {LaboratoryResultBrowser,LaboratoryResultRow} from './laboratory-result-browser';
+import {LaboratorySameTestPanel} from './laboratory-same-test-panel';
 import {SourceOncologyLabel} from './source-oncology-label';
 import type {WorldObservation} from './source-world-model';
 import {LaboratoryQuestionPanel,SavedLaboratoryQuestions} from './laboratory-question-panel';
@@ -99,6 +100,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
                 onClick={()=>onRecords(model.case_id)}>Open report versions in Records</button>}
             </LaboratoryResultRow>;
           })}</LaboratoryResultBrowser>
+          <LaboratorySameTestPanel model={model} busy={loading||busy} onRecords={onRecords?()=>onRecords(model.case_id):undefined}/>
           {state.worldPhase==='ready'&&<LaboratoryQuestionPanel key={model.access_receipt_id} session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
         </section>}
         {state.worldPhase==='ready'&&<SavedLaboratoryQuestions session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
