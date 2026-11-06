@@ -88,6 +88,7 @@
           <a href="#analytics">Analytics</a>
           <a href="#hypothesis-report">Hypothesis generation</a>
           <a href="#appointments">Appointments</a>
+          <a href="#notifications">Notifications</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -317,6 +318,14 @@
           <textarea id="appt-change-reason" rows="2" minlength="10" maxlength="600" required></textarea>
           <button class="button" type="submit">Record change</button>
         </form>
+      </section>
+      <section class="panel" id="notifications" aria-labelledby="notifications-heading">
+        <div class="panel-head"><div><div class="eyebrow">02f / NOTIFICATIONS</div><h2 id="notifications-heading">Notifications</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Due items and changes recorded for this fictional case: overdue and due-soon follow-through tasks, past-due appointments, tasks needing a re-check, open re-review tasks, and stale drafts whose question is still open. Nothing is sent anywhere — this list is the only delivery. Clearing a notification acknowledges the alert only; the underlying task, draft, or review item stays exactly as it was until a human changes it. Nothing here recommends treatment, selects therapy, doses, or diagnoses.</p>
+        <button id="notifications-apply" type="button" class="button secondary minor">Load notifications</button>
+        <p id="notifications-status" class="muted tiny"></p>
+        <p id="notifications-disclaimer" class="muted tiny"></p>
+        <div id="notifications-list" class="activity" aria-live="polite"></div>
       </section>
       <section class="panel" id="patient-view">
         <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2>Your case, in plain words</h2></div><span class="pill">Same facts, plainer language</span></div>

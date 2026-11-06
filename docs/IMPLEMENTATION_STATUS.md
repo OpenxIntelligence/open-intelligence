@@ -1104,6 +1104,111 @@ attempted and no substitute model was used (Meta billing fix still
 pending). The evaluation harness (C5) has no D6 probes yet — a
 follow-up could add appointment-lifecycle probes to it.
 
+## Care coordination dimension: notifications (Slice D7) — 6 November 2026
+
+Branch `program/d7-notifications`, from main `317e4eb`
+(post-D6). Implements program-plan D7: the care-coordination
+dimension's second slice — the patient and team learn of changes
+and due items. Follow-through tasks, appointments, re-review tasks,
+and stale drafts existed, but nothing told anyone something was due
+or had changed; notifications close that gap as a derived in-app
+list, not as a delivery channel.
+
+Design-first, as the plan requires for this slice: the design is
+drafted in the module docstring of
+`src/open_intelligence/notifications.py` before the build, and this
+section records it. A notification is a derived, in-app-only record:
+one per trigger, computed from the ledger at read time. Nothing is
+ever sent anywhere — no message, email, push, or reminder leaves
+the product, and no reminder is scheduled. The trigger kinds are a
+pinned allowlist in the module; adding a kind is a code change,
+never runtime expansion, and there is no silent self-training or
+unreviewed expansion (OI-018).
+
+* Triggers — each produces exactly one visible notification per
+  source record, keyed stably so a trigger cannot duplicate itself:
+  an open follow-through task overdue (`followthrough-overdue`) or
+  due soon within the 7-day window (`followthrough-due-soon`) — a
+  task is due-soon or overdue, never both at once; an open
+  follow-through task anchored to a superseded source version
+  (`followthrough-recheck`); an open re-review task, one per newly
+  stale snapshot (`rereview-open`); a stale snapshot whose question
+  is still open (`snapshot-stale`); a scheduled appointment whose
+  date has passed (`appointment-due`, the D6 deferral: a past due
+  date never auto-cancels, it is only flagged — here the flag
+  becomes a notification). Keys carry the distinguishing value (due
+  date, scheduled date, source version id), so a changed due date
+  or a rescheduled appointment is a new occurrence, never the
+  resurrection of a cleared one. No separate notification is derived
+  for options with `review_state='needs_review'`: that is the same
+  event the re-review task already owns, and a second notification
+  would double-notify one event. Both `rereview-open` and
+  `snapshot-stale` derive from one amendment because they are
+  different work items with different lifecycles — the stale draft
+  needs a new answer (it lapses when its question closes), while
+  the re-review task is the owned follow-up with an assignee and a
+  due date (it lapses only when the task closes).
+* Role visibility. The patient sees due kinds only (overdue,
+  due-soon, appointment-due) on their own bound case; operator and
+  clinician see all kinds; an auditor sees none (auditors hold no
+  case grants). The team sees everything the patient sees plus the
+  review work.
+* Clearing is explicit and per-role. `POST
+  /api/cases/{id}/notifications/clear` records (case, key, role,
+  who, when) in the new `notification_clears` table; cleared rows
+  are never deleted, and clearing is idempotent. A cleared key
+  never derives again for that role; other roles keep seeing it
+  until they clear it too. Clearing acknowledges the alert only —
+  it never changes the underlying task, draft, or review item, which
+  stays exactly as it was until a human changes it in its own
+  panel. A clear of a well-formed but inactive key, or of a key
+  this role may not see, is rejected (422).
+* Patient clearing carve-out (deliberate, narrow, tested). The
+  generic case gate makes patients read-only (GET only), which
+  would leave the primary audience of due notifications unable to
+  dismiss them. `_role_may_use_case` therefore allows a patient to
+  POST only to the notifications-clear route, only on their own
+  bound case — and `clear_notification` additionally rejects any key
+  whose kind is not patient-visible, so a guessed team-only key
+  cannot be cleared by a patient. A clear writes only an
+  acknowledgment row; it cannot change, hide, or delete any case
+  content. This is the single exception to patient read-only in the
+  product, and it is pinned by tests (patient clears own due key:
+  200; patient clears team-only key: 422; patient POSTs to any
+  other route: 403; patient clears on another case: 403).
+
+The slice adds one table (`notification_clears`) plus
+`clear_notification` and `list_notification_clears` in `store.py`;
+two routes in `__main__.py` (`GET /api/cases/{id}/notifications`,
+`POST /api/cases/{id}/notifications/clear`); and a Notifications
+panel in the web app (02f — list with one explicit Clear button per
+notification, no text inputs, so no picker-guard entry is needed;
+the list container clears on case switch and on denial like every
+other view). `open_intelligence.notifications` is registered in
+`DIMENSION_MODULES`; the import-graph tripwire stays green. No
+vertical predicates were moved or added; the K-checks, route,
+Skeptic, and evaluation harness are untouched; no live model call
+exists anywhere in the slice. Ordering uses recorded dates only
+(oldest first), then kind order, then record id — mirroring the
+patient-attention projection; no urgency or priority is inferred.
+
+Local suite on the slice branch: 1206 tests (1182 on the main
+baseline plus 24 new), FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: no external delivery of any kind; no reminder scheduling
+(no "send at" — the list is computed at read time); no snooze; no
+C5 evaluation-harness probes for notifications yet — a follow-up
+could add them; no live model call was attempted and no substitute
+model was used (Meta billing fix still pending). Two test-side
+defects were caught and fixed during the build, both in the slice
+code: clearing twice was rejected because the cleared key no longer
+derived (the idempotence check now precedes the active-set check,
+with separate read/write transactions), and the key regex accepted
+record id 0 (ids are now `[1-9][0-9]*`).
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)
