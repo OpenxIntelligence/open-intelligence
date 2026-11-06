@@ -158,6 +158,7 @@ def exercise(cd, token, credentials, write_grants, api, restart_api, artifacts):
         nav('Records')
         assert cd.evaluate("!document.querySelector('[data-testid=source-index], [data-testid=server-original]')")
         nav('Overview')
+        assert cd.evaluate("document.querySelector('[data-testid=patient-suspension-panel]').open"), 'Recovery must remain visible after navigation'
 
         # A real API restart proves retry uses PostgreSQL receipt history.
         restart_api()

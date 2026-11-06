@@ -8,7 +8,7 @@ export function PatientSuspension({session,state,busy}:{session:RegistrySession;
   if(!state.connected||(!patient&&!state.suspensionTarget&&phase==='idle'))return null;
   const target=patient??state.suspensionTarget;
   const pending=phase==='sending'||phase==='unknown';
-  return <details className="panel" data-testid="patient-suspension-panel">
+  return <details className="panel" data-testid="patient-suspension-panel" open={phase!=='idle'?true:undefined}>
     <summary>Suspend access to this fictional patient</summary>
     <p>Operator action. The server requires a separate suspension grant. This blocks new source access and background work for this patient while preserving historical records and receipts.</p>
     {target&&<p>Patient <code>{target.patient_id}</code> · {patient?'Registry revision':'Requested from revision'} {target.revision}</p>}
