@@ -232,6 +232,377 @@ failures as the main baseline run on the same machine, verified by
 diffing the two failure sets; zero new failures. This is
 fictional-only engineering, draft and undeployed.
 
+## Skeptic (A6) + one repair round + T6 reconciliation (Slice 4) — 5 November 2026
+
+Branch `program/c4-skeptic`, from main `d1730c1d`. Implements
+program-plan C4 (Notion OI-09 §4.6): the verification dimension's
+agent half — a kept claim that cites a real source but misstates its
+content gets a machine second opinion, a failing claim gets exactly
+one chance to be repaired, and conflicts become typed, visible,
+blocking records instead of silently merged.
+
+New `src/open_intelligence/skeptic.py` is the Skeptic (role A6,
+"Skeptic"): an independent model pass over the kept claims, same
+model (`muse-spark-1.3`), separate prompt and prompt version
+(`skeptic:1`), and no shared context beyond the claims under review
+and their cited evidence — the prompt never sees the template, the
+question, the other claims, or the author's reasoning, so it cannot
+inherit the author's mistake. Verdicts are `supported` (kept),
+`challenged` (held: moved to `dropped` with reason
+`skeptic_challenged` — the claim text and the challenge are preserved
+in the record, nothing is erased — and the run gets `AB-CONFLICT`
+with origin `skeptic_challenge`), and `uncertain` (kept with
+uncertainty raised to high and the reason appended to limits). The
+model calls are injectable, so the test suite runs offline
+deterministically; the live path is one bounded Meta Model API call
+with one retry.
+
+One repair round, live mode only, exactly once per run (one model
+call for all repairable drops): only content failures a restatement
+can fix are repairable (`k1_citation_format`, `k2_no_cited_facet`,
+`k2_slot_mismatch`, `k7_unsupported_token`, `k7_tier_limits`). Not
+repairable, by design: structural drops, `k4_contradiction`
+(restating one side to match the other would be merging by rewrite),
+`k6_scope` (rephrasing advice changes what the claim means), and
+`k7plus_injection`. A repaired claim is re-validated end to end
+(structural validation + K-checks); still failing, it is dropped with
+the new check and reason. The repair record (original text, failure
+reason, repaired text, re-check result) is stored visibly, never
+silently.
+
+T6 deterministic contradiction and gap grouping lives in
+`src/open_intelligence/synthesis.py` (`group_run_contradictions`,
+`group_source_contradictions`, `group_timeline_gaps`,
+`group_timeline_conflicts`): the run's K4 drops, source-vs-source
+disagreements over the case's assertion slots (same subject and
+field, different normalised values, both versions current, neither
+superseding the other, same specimen), timeline coverage gaps, and
+timeline specimen/document date conflicts. A group lists both sides
+and the evidence that would resolve it; it never merges dissent,
+never re-labels a value, and never picks a winner. A superseded
+version never joins a group (its disagreement is resolved by
+supersession); different specimens never join a group.
+
+Abstention codes, computed by `compute_abstention_codes` with one
+firing rule each: `AB-CONFLICT` with origin `agent_divergence` (an
+unresolved K4 contradiction between the run's own claims),
+`source_disagreement` (a T6 source group intersecting the run's cited
+sources), or `skeptic_challenge`; `AB-STALE` (a K5 finding or a
+`k5_stale` drop — a stale run leaves the question open:
+`save_investigation` does not mark it addressed); `AB-BUDGET` (the
+verification call budget — one Skeptic call, one repair call per run
+— was spent before a pass ran); `AB-MODEL` (a verification model call
+failed or was schema-invalid after one retry); `AB-ALL-DROPPED`
+(every attempted claim was dropped after repair and review).
+
+Two deliberate decisions: a failed Skeptic or repair call does not
+fail the run — the K-checked claims are still stored, with `AB-MODEL`
+attached, so the gap is visible and blocking instead of losing the
+whole run. And the run status is recomputed from the final kept set:
+a repair can resurrect a run `validate_output` abstained, and the
+Skeptic can hold a run's last kept claim (flipping it to abstained).
+Replay mode skips both model passes and records the skip; T6
+grouping and abstention codes still run, because they are
+deterministic.
+
+Persistence follows the C1 precedent: a new `verification_records`
+table (one row per investigation, holding the Skeptic verdicts, the
+repair record, the T6 groups, and the abstention codes as JSON); the
+`investigations` table is unchanged, so pre-slice rows keep reading
+with a null record. The run path in `__main__.py` runs verification
+after K-checks and before storage, in live and replay mode, and the
+record is stored in the same transaction as the investigation and
+returned in the response alongside `kcheck_findings`.
+
+New `tests/test_skeptic.py` (31 tests): the Skeptic prompt contains
+only the claim and its cited evidence (independence); the planted
+misstatement "31 cm" against evidence "31 mm" passes K1–K7 and is
+caught by the Skeptic; supported/uncertain verdicts keep the claim
+with the right uncertainty and limits; Skeptic failure records
+`AB-MODEL` and keeps the claims; budget exhaustion records
+`AB-BUDGET`; the repair round fixes a fixable claim, never runs
+twice, drops an unfixable claim and a restatement that still fails,
+and is never attempted for K4/K6/K5 drops; the full abstention-code
+set; replay skips the model passes but still reconciles; T6 groups
+never merge or vote; the verification record persists and a stale run
+keeps its question open.
+
+Local suite on the slice branch: 947 tests (916 on main plus 31 new),
+FAILED with 9 failures and 8 errors — the same 17 `test_pdf_intake`
+failures as the main baseline run on the same machine, verified by
+diffing the two failure sets; zero new failures. This is
+fictional-only engineering, draft and undeployed.
+
+Unproven: the live Skeptic run. Two live calls against the Meta Model
+API (the planted "31 cm" misstatement and the "31 mm" control) both
+returned HTTP 402 "Billing verification failed" from api.meta.ai — the
+key's team has a billing issue to resolve at dev.meta.ai/billing, so
+no live model call could run. The prompt is verified only through the
+stub-driven test suite; a live run proving the real model catches the
+planted misstatement is pending that billing fix, and no substitute
+model was used. No spend was incurred on the Meta budget.
+
+## Evaluation harness: planted-defect suites + M-metrics (Slice 5) — 5 November 2026
+
+Branch `program/c5-evaluation`, from main `cc713bd`. Implements
+program-plan C5 (Notion OI-09 §9): the evaluation primitive —
+verification quality is measured by code, not asserted in prose.
+
+New `src/open_intelligence/evaluation.py` is a deterministic,
+offline harness (no live model call anywhere; every report carries
+`model_calls: 0`). It runs the planted-defect fixtures from C2/C4
+through the real pipeline code — structural validation, the
+deterministic K-checks, the Skeptic wiring, T6 grouping, and the
+replay check — and computes the M-metrics of OI-09 §9.2 that are
+measurable offline: M5 planted temporal-defect recall (five planted
+defects: cite-after-snapshot, specimen-after-report,
+report-after-received, range-start-after-end, partial-date violation
+at coarser precision); M6 contradiction recall/precision (two
+planted same-specimen contradictions plus five negative controls —
+different specimens, different assays, supersession,
+non-overlapping valid time, same value); M7 staleness recall
+(superseded citation, out-of-snapshot version, changed snapshot
+hash, changed ruleset); M8 advice-language leakage (eight planted
+scope violations, target 0 kept); M10 hypothesis support (six
+hypothesis probes: invented number, invented registry id, invented
+substance, low tier with and without the limits phrase, supported
+number); M16 replay determinism (one intact run replayed three
+times, identical, plus three tamper probes — missing route, amended
+source, tampered assertion — that must each fail replay with a typed
+reason); M27 routing record completeness (exactly one
+`route.decided` before the run's agent events); M28 hypothesis
+citation recall (a deterministic prose-attribution check over
+numbers, named substances, temporal words, relation verbs, and
+hyphenated entities — it catches what K7 cannot, such as an
+unsupported relation verb on a supported number: "The lesion
+increased to 31 mm" passes K7 and fails M28). Each metric is
+reported with value, n, target, and pass/fail against the Proposed
+targets; failures are listed as limits, never hidden. The Skeptic
+wiring probe drives `run_verification` with injected stub verdicts
+(the planted "31 cm" misstatement held with AB-CONFLICT origin
+`skeptic_challenge`; "31 mm" kept on a supported verdict) — it
+proves the wiring, not the model. The human spot-check (≥30 items)
+remains a manual protocol: the harness records the spot-check set
+built from its own probe items (51 items, complete, labels pending)
+and does not perform it. Model-dependent metrics (M25 model-judged
+entailment, M26 Skeptic challenge precision, M29 citation
+precision) are listed under `not_measured` with their reason. The
+harness measures; it never gates — nothing in it decides whether a
+run, claim, or hypothesis is accepted.
+
+Two mappings are documented in the module because the Notion
+labels and the codebase differ: `SOURCES_DISAGREE` has no literal
+in the codebase, and is surfaced as a T6 contradiction group plus
+AB-CONFLICT with origin `agent_divergence`; and the §9.2 metric
+definitions are written for live runs, so the harness scores the
+same check as judgment accuracy over planted supported/unsupported
+probes — the planted-defect reading M5/M6 already use. The
+fixture context mirrors the C2/C4 fixture shapes (same version ids,
+dates, quotes, and slot values), and the vertical wiring (synonyms,
+scope patterns, condition terms, substance names) arrives as
+parameters to `fixture_context` — the check logic holds no vertical
+knowledge, and the parameters are the seam the V1 vertical
+interface will use. A `main()` runner prints the JSON report and
+exits 0 only when every metric meets its target.
+
+New `tests/test_evaluation_harness.py` (25 tests): every metric at
+its target on healthy code; the sensitivity tests (a weakened K3
+fails M5 and the suite; a weakened K4 fails M6; a weakened K7 fails
+M10 — the harness is proved able to fail); M28 catching the
+relation verb, temporal word, and unknown entity K7 misses; the
+spot-check threshold (30 complete, 29 incomplete); the report shape
+and the live-model gap recorded as a note.
+
+Local suite on the slice branch: 972 tests (947 on the C4 branch
+head plus 25 new), FAILED with 9 failures and 8 errors — the same
+17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: the live-model half of the metrics. M25, M26, and M29
+need live runs (and, for M25, human labels); the Skeptic's live
+proof is pending the same Meta billing fix as slice C4 (HTTP 402).
+No live call was attempted here and no substitute model was used.
+
+## Vertical interface: the oncology boundary (Slice V1) — 5 November 2026
+
+Branch `program/v1-cardiology`, from main `004a5cd`. Implements
+program-plan V1: the core holds no oncology knowledge; oncology lives
+behind the vertical interface. This is the slice that makes
+"multi-vertical" real instead of aspirational.
+
+New `src/open_intelligence/vertical.py` is the interface and the
+registry: a `Vertical` dataclass (synonyms, condition terms, scope
+patterns, line-of-therapy ruleset version label, evidence kinds and
+link templates, toolsets, substance names); `register_vertical`,
+`get_vertical` (which lazy-loads a built-in definition module by
+name — the core never imports a vertical definition module by name),
+`default_vertical`, `list_verticals`; and `build_scope_patterns`, the
+one place the nine K6 patterns are assembled from a vertical's own
+condition terms, so every vertical's guard has the same shape.
+
+New `src/open_intelligence/vertical_oncology.py` is the oncology
+vertical: content moved verbatim from `investigation.py` (slice C2)
+— the synonyms map, the condition terms, the scope patterns via the
+builder — plus the ruleset version label `lot-rules-1` and the
+evidence kinds and link templates (the same values as
+`evidence_catalog.py`). No rule's content changed, only its location.
+
+New `src/open_intelligence/vertical_cardiology.py` is the minimal
+synthetic cardiology vertical — V1's stub vertical, made concrete:
+cardiology-distinctive synonyms ("not performed", "seen",
+"identified"), cardiology condition terms, the therapy-ruleset label
+`therapy-rules-1`, and ECG / echocardiogram / cardiac-lab evidence
+kinds. No guideline text is ingested; no real cardiology data is
+used. The full cardiology vertical (domain toolsets, the
+investigation dimensions against cardiology fixtures, the care loop)
+remains slice V2, after the dimensions exist.
+
+Core rewiring: `investigation.py` no longer defines the predicates
+(a comment points at the interface); `__main__.py` resolves the
+default vertical and passes its predicates — plus its ruleset label
+as both the facts-time and validation-time ruleset — at the single
+K-check-context call site shared by the live and replay paths;
+`evaluation.py`'s `fixture_context` defaults resolve through the
+registry. `kchecks.py` is untouched: it was already domain-free.
+
+What did not move, and why: the structural language guard stays in
+`investigation.py` — it is domain-free advice language (no vertical
+literal appears in it) and the vertical's own language contribution
+is its K6 scope patterns; the model prompt still names the synthetic
+oncology case (prompt templating per vertical is future work);
+`store.py`'s oncology report format is a data-format concern,
+untouched; the evidence catalog still validates against its own
+constants — the oncology vertical declares the same kinds and
+templates, and the boundary test binds the two, while per-vertical
+catalog resolution is V2 work. Cases carry no vertical yet, so
+`default_vertical()` is the documented pre-V2 default; a
+case-vertical field is the follow-up that retires it.
+
+Brief discrepancy, recorded honestly: the task brief described V1
+as "synthetic cardiology end-to-end, zero core files changed". That
+is the plan's V2 acceptance, not V1's. V1's defined work is the
+interface, which necessarily touches core files (the interface
+module itself, the rewiring, the oncology relocation). The
+addability falsifier did not fire: the cardiology vertical itself
+landed with zero additional core changes beyond the interface — one
+new module plus its tests. The full V2 proof (zero core changes for
+the whole slice) still follows after D1–D9.
+
+New `tests/test_vertical_boundary.py` (14 tests): the import-graph
+tripwire (no core module imports a vertical definition module; the
+dimension checker is proved against a fake graph while the dimension
+list is still empty); registry tests (resolution, legacy content,
+duplicate/invalid/unknown names, a runtime stub vertical, the
+default); the scope-pattern shape test (the eight generic patterns
+identical, only "you have" differing by condition terms);
+cross-vertical discriminators (a cardiology synonym resolves where
+oncology's does not; "you have heart failure" drops under
+cardiology and passes under oncology, and the reverse for "you have
+cancer"); and the cardiology end-to-end (route decided, K-checks,
+stub Skeptic holding the planted "31 cm" misstatement against "31%"
+evidence, T6 source group on rhythm, AB-CONFLICT origins
+`skeptic_challenge` and `source_disagreement`). `test_kchecks.py`
+and `test_skeptic.py` now resolve the oncology wiring through the
+registry (import lines only; no fixture changed), and the tripwire
+comment in `test_kchecks.py` points at the new location.
+
+Local suite on the slice branch: 986 tests (972 on the post-C5 main
+baseline plus 14 new), FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. The evaluation harness runner still passes all 8 metrics
+at target with `model_calls: 0`. This is fictional-only
+engineering, draft and undeployed.
+
+Unproven: the live-model half is unchanged from C4/C5 — the Meta
+billing fix (HTTP 402) is still pending, so the cardiology
+end-to-end uses stub verdicts and proves wiring, not the model. No
+live call was attempted here and no substitute model was used.
+
+## Data-integration dimension: A1 Intake & Extraction + T3 specimen chain (Slice D1) — 5 November 2026
+
+Branch `program/d1-data-integration`, from main `97e2be7`. Implements
+program-plan D1: the data-integration dimension as its own modules
+with its own tests and acceptance bar, against the vertical interface
+V1 defined. Domain rules come through the interface, never hard-coded
+in the core: the A1 certainty set and finding-key pattern are the
+ledger's own (domain-free), and the T3 chain rules are the ledger's
+asset rules; no vertical module is imported by either new module.
+
+New `src/open_intelligence/extraction.py` is A1, the deterministic
+anchor checker (Notion OI-09 section 5: "one anchor checker").
+`validate_extraction_proposal` takes a proposal — a list of fields,
+each naming a finding key, a certainty, a verbatim quote, and the
+exact source line — and returns kept/dropped with typed reasons in
+the same shape as the structural validator. The source version is
+proposal-level: it must exist, belong to the case, and be `current`,
+or every field drops with `unknown_source_version`,
+`wrong_case_source_version`, or `superseded_source_version`. Each
+field is then checked on its own: `invalid_finding_key`,
+`invalid_certainty`, `missing_quote`, `quote_too_long`,
+`invalid_source_line`, `malformed_field`, `duplicate_finding_key`,
+`finding_already_asserted`. `record_extraction_proposal` validates
+and stores the kept fields as assertions, joining the caller's
+transaction when one is open and opening its own otherwise. The
+report-import path (`store._import_report_in_transaction`) routes its
+parsed findings through the checker, so the checker is on the live
+arrival path; a drop there fails the import instead of silently
+dropping a finding (unreachable while `parse_report` holds the same
+rules). PDF, C-CDA, and FHIR arrivals route through it as their
+import paths land.
+
+New `src/open_intelligence/specimen_chain.py` is T3, the deterministic
+specimen chain (Notion OI-09 section 5: "SpecimenChain links with
+basis"). `validate_specimen_chain` walks the parent-linked lineage of
+one biological asset from the queried asset back to its original and
+returns the links root-first, each carrying its assay/specimen
+context (kind, episode, specimen id and state, observed date, and the
+anchor source version with its document, version, and state), plus
+every break as a typed record — never silent, never a raised
+exception for a broken chain: `missing_asset`, `missing_parent`,
+`cycle`, `unknown_specimen`, `specimen_mismatch`,
+`anchor_missing` / `anchor_superseded`, `episode_mismatch`, and
+`kind_violation`. Creation-time invariants (same-episode parents,
+allowed parent kinds, current anchors) are enforced by
+`add_biological_asset`; the validator also checks them on read, so a
+break introduced after creation — a superseded anchor, a specimen
+recorded under a different id — is caught here. No route or write
+gate is added: chain breaks are typed records, not rejections, per
+the D1 acceptance. The first live caller is D3's comparison
+toolsets, which consult the validator before comparing across
+specimens; the bio-assay observation path already enforces specimen
+matching for a single block at write time.
+
+Orthogonality: the import-graph tripwire in
+`tests/test_vertical_boundary.py` now lists the two D1 modules in
+`DIMENSION_MODULES`, and the tripwire is green. One correction was
+needed to make the rule mean what it says: as written, the checker
+flagged *any* module importing a dimension module, which would have
+made the dimension unusable — the shared core must be able to call
+it (that is how the A1 checker reaches the live import path). The
+checker now constrains only dimension modules themselves: it flags
+a dimension module importing another dimension module, which is what
+the orthogonality rule forbids. The fake-graph proof still passes
+unchanged.
+
+What did not move, and why: no vertical predicates were moved or
+added (the certainty set and key pattern are domain-free ledger
+rules); modality schema packs are out of scope (they arrive with
+D2); the K-checks, route, Skeptic, and evaluation harness are
+untouched; no live model call exists anywhere in the slice.
+
+Local suite on the slice branch: 1006 tests (986 on the post-V1 main
+baseline plus 20 new), FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: the live-model half is unchanged from C4/C5 — the Meta
+billing fix (HTTP 402) is still pending, so no live call was
+attempted here and no substitute model was used. The dimension is
+deterministic code; nothing in it needs a model call.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)

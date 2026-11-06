@@ -20,9 +20,9 @@ concurrency:
 jobs:
   synthetic-postgres-contract:
     runs-on: ubuntu-24.04
-    # Verified #469 run 41883746990 took nearly 30 minutes with all seven
-    # recovery gates. Preserve them and allow populated migration acceptance.
-    timeout-minutes: 40
+    # #565's 989-method API run alone took 1491 seconds. Retain the full
+    # reference/browser suites and all seven restore gates after that suite.
+    timeout-minutes: 50
     env:
       PYTHONDONTWRITEBYTECODE: '1'
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
@@ -93,6 +93,17 @@ jobs:
           python --version
       - name: Apply the explicit migration to the disposable database
         run: python -m oi_api.migrate upgrade head
+      - name: Verify source purpose compatibility and published-history preservation first
+        run: |
+          python - <<'PYTEST'
+          import unittest
+          suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_event_purpose_upgrade.py')
+          suite.addTests(unittest.defaultTestLoader.loadTestsFromName(
+              'test_source_read_authority.SourceReadAuthorityTests.'
+              'test_binding_purpose_must_match_authorized_source_operation'))
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(0 if result.wasSuccessful() and result.testsRun == 5 and not result.skipped else 1)
+          PYTEST
       - name: Verify governed encounter relay and process-death recovery
         run: |
           python - <<'PYTEST'
