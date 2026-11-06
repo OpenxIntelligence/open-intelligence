@@ -551,6 +551,154 @@ async function loadReferrals() {
       : '';
   } catch (err) { el('referrals-status').textContent = err.message; }
 }
+async function loadCareTeam() {
+  if (!caseId) { el('care-team-status').textContent = 'No case selected.'; return; }
+  const requested = caseId;
+  clear('care-team-list');
+  el('care-team-disclaimer').textContent = '';
+  el('care-team-status').textContent = 'Loading care team…';
+  try {
+    const data = await api('/api/cases/' + requested + '/care-team');
+    if (requested !== caseId) return;
+    clear('care-team-list');
+    el('care-team-disclaimer').textContent = data.disclaimer || '';
+    const updates = data.updates || [];
+    const handoffs = data.handoffs || [];
+    const counts = data.counts || {};
+    if (!updates.length && !handoffs.length) {
+      el('care-team-list').append(node('p', 'No shared updates or handoffs recorded for this fictional case yet.', 'muted'));
+    }
+    if (updates.length) {
+      el('care-team-list').append(node('p', 'Shared updates:', 'muted'));
+      for (const item of updates) {
+        const current = item.current || {};
+        const box = node('div', null, 'snapshot');
+        const top = node('div', null, 'topline');
+        top.append(node('strong', 'Update #' + item.update_id + ' · ' + (current.author_label || '') + ' (' + (current.author_role || '') + ')'));
+        top.append(node('span', (current.review_state || ''), 'muted'));
+        box.append(top);
+        if (current.update_text) box.append(node('p', current.update_text));
+        if ((item.review_events || []).length) {
+          box.append(node('p', 'Review history: ' + item.review_events.map(e =>
+            e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
+        }
+        if (current.review_state === 'pending') {
+          const actions = node('div', null, 'actions');
+          const button = node('button', 'Demo review acknowledgment', 'button minor'); button.type = 'button';
+          button.addEventListener('click', async () => {
+            try {
+              const requestedCase = readyCase();
+              await api('/api/cases/' + requestedCase + '/care-team/updates/' + item.update_id + '/review',
+                { reviewer_label: 'Synthetic reviewer (unverified)', scope: 'Demo-only acknowledgment of this fictional update.' });
+              if (requestedCase !== caseId) return;
+              notice('Acknowledged in demonstration only. This is not credentialed clinical review.'); await loadCareTeam();
+            } catch (err) { notice(err.message, true); }
+          });
+          actions.append(button);
+          box.append(actions);
+        }
+        el('care-team-list').append(box);
+      }
+    }
+    if (handoffs.length) {
+      el('care-team-list').append(node('p', 'Handoffs:', 'muted'));
+      for (const item of handoffs) {
+        const current = item.current || {};
+        const box = node('div', null, 'snapshot');
+        const top = node('div', null, 'topline');
+        top.append(node('strong', 'Handoff #' + item.handoff_id + ' · ' + (current.from_actor || '') + ' → ' + (current.to_actor || '')));
+        top.append(node('span', (current.status || '') + ' · ' + (current.review_state || ''), 'muted'));
+        box.append(top);
+        if (current.reason_text) box.append(node('p', current.reason_text));
+        if (item.question) box.append(node('p', 'About: ' + item.question, 'muted'));
+        if ((item.materials || []).length) {
+          box.append(node('p', 'Materials handed over: ' + item.materials.map(m =>
+            m.document_id + '@' + m.version + ' (' + m.state + ')').join(', '), 'muted'));
+        }
+        const history = item.history || [];
+        if (history.length) {
+          box.append(node('p', 'Status history:', 'muted'));
+          for (const event of history) {
+            let line = event.change_kind + ' — ' + (event.actor_label || '') + ' · ' + (event.noted_at || '');
+            if (event.reason) line += ' · ' + event.reason;
+            box.append(node('p', line, 'muted'));
+          }
+        }
+        if ((item.review_events || []).length) {
+          box.append(node('p', 'Review history: ' + item.review_events.map(e =>
+            e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
+        }
+        if (current.review_state === 'pending') {
+          const actions = node('div', null, 'actions');
+          const button = node('button', 'Demo review acknowledgment', 'button minor'); button.type = 'button';
+          button.addEventListener('click', async () => {
+            try {
+              const requestedCase = readyCase();
+              await api('/api/cases/' + requestedCase + '/care-team/handoffs/' + item.handoff_id + '/review',
+                { reviewer_label: 'Synthetic reviewer (unverified)', scope: 'Demo-only acknowledgment of this fictional handoff.' });
+              if (requestedCase !== caseId) return;
+              notice('Acknowledged in demonstration only. This is not credentialed clinical review.'); await loadCareTeam();
+            } catch (err) { notice(err.message, true); }
+          });
+          actions.append(button);
+          box.append(actions);
+        } else if (current.review_state === 'needs_review') {
+          box.append(node('p', 'Shared materials changed since this handoff. This record stays historical; record a new handoff against current versions.', 'muted'));
+        }
+        el('care-team-list').append(box);
+      }
+    }
+    // Fill the action-form choices from the loaded list.
+    const fillChoice = (id, labelFn) => {
+      const select = el(id);
+      const prior = select.value;
+      clear(id);
+      for (const item of handoffs) {
+        const opt = node('option', labelFn(item));
+        opt.value = item.handoff_id; select.append(opt);
+      }
+      if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+    };
+    fillChoice('ho-ack-choice', item => 'Handoff #' + item.handoff_id + ' · ' + ((item.current || {}).from_actor || '') + ' → ' + ((item.current || {}).to_actor || '') + ' (' + ((item.current || {}).status || '') + ')');
+    fillChoice('ho-close-choice', item => 'Handoff #' + item.handoff_id + ' · ' + ((item.current || {}).from_actor || '') + ' → ' + ((item.current || {}).to_actor || '') + ' (' + ((item.current || {}).status || '') + ')');
+    // The question and materials choices come from the loaded case
+    // state, like the second-opinion pickers.
+    const questions = (active && active.questions) || [];
+    const currentSources = (active && active.sources ? active.sources.filter(s => s.state === 'current') : []);
+    const fill = (id, list, labelFn) => {
+      const select = el(id);
+      const prior = select.value;
+      clear(id);
+      for (const entry of list) {
+        const opt = node('option', labelFn(entry));
+        opt.value = entry.id; select.append(opt);
+      }
+      if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+    };
+    fill('ho-question-choice', questions, q => 'Q' + q.id + ', ' + q.question.slice(0, 62));
+    // Materials: preserve checked current sources across same-case
+    // reloads. A source that is no longer current is dropped, never
+    // rebound. A case switch never inherits the previous selection.
+    const sameCase = requested === caseId;
+    const priorChecked = sameCase
+      ? new Set([...el('ho-source-choice').querySelectorAll('input:checked')].map(x => Number(x.value)))
+      : new Set();
+    const hadChoices = sameCase && el('ho-source-choice').querySelectorAll('input').length > 0;
+    clear('ho-source-choice');
+    if (!currentSources.length) empty(el('ho-source-choice'), 'No current sources to hand over.');
+    for (const source of currentSources) {
+      const label = node('label');
+      const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = source.id;
+      checkbox.checked = hadChoices ? priorChecked.has(source.id) : true;
+      label.append(checkbox, node('span', source.document_id + '@' + source.version + ', ' + source.event_date));
+      el('ho-source-choice').append(label);
+    }
+    el('care-team-status').textContent = (updates.length || handoffs.length)
+      ? (counts.updates || 0) + ' updates · ' + (counts.open || 0) + ' open · '
+        + (counts.acknowledged || 0) + ' acknowledged · ' + (counts.closed || 0) + ' closed'
+      : '';
+  } catch (err) { el('care-team-status').textContent = err.message; }
+}
 function clearCaseViews(denied) {
   for (const id of ['assertion-list', 'question-list', 'snapshot-list', 'source-list',
       'source-change-list', 'asset-list', 'event-list', 'option-list',
@@ -591,7 +739,12 @@ function clearCaseViews(denied) {
       // forms hold text inputs, so their fields have picker-guard
       // entries and clear-loop entries of their own (see the picker
       // handler).
-      'referrals-list']) {
+      'referrals-list',
+      // D9: the care-team list renders case data; it must clear under
+      // denial like every other view. The update/handoff forms hold
+      // text inputs, so their fields have picker-guard entries and
+      // clear-loop entries of their own (see the picker handler).
+      'care-team-list']) {
     clear(id);
     empty(el(id), denied);
   }
@@ -645,6 +798,7 @@ async function initialize() {
     el('appointments-apply').addEventListener('click', loadAppointments);
     el('notifications-apply').addEventListener('click', loadNotifications);
     el('referrals-apply').addEventListener('click', loadReferrals);
+    el('care-team-apply').addEventListener('click', loadCareTeam);
     const picker = el('case-picker');
     picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {
@@ -686,6 +840,14 @@ async function initialize() {
             'ref-specialty', 'ref-reason', 'ref-actor',
             'ref-ack-actor', 'ref-ack-reason',
             'ref-outcome-text', 'ref-outcome-actor', 'ref-outcome-reason',
+            // D9: care-team form inputs are case-scoped narrative text,
+            // so an unfinished update or handoff must block a case
+            // switch like every other draft. They sit before the eight
+            // test-asserted fields, which stay at the end of this array.
+            'team-update-text', 'team-update-author',
+            'ho-from', 'ho-to', 'ho-reason', 'ho-actor',
+            'ho-ack-actor', 'ho-ack-reason',
+            'ho-close-actor', 'ho-close-reason',
             'counterevidence-reason', 'safety-detail',
             'flag-reason', 'dimension-note',
             'synthesis-note-text', 'synthesis-note-author',
@@ -733,10 +895,20 @@ async function initialize() {
         // stay early in it.
         'ref-specialty', 'ref-reason', 'ref-actor',
         'ref-ack-actor', 'ref-ack-reason',
-        'ref-outcome-text', 'ref-outcome-actor', 'ref-outcome-reason']) el(id).value = '';
+        'ref-outcome-text', 'ref-outcome-actor', 'ref-outcome-reason',
+        // D9: care-team form inputs clear on an allowed switch, like
+        // every other draft. They sit at the end of this list, after
+        // the referral fields, so the eight test-asserted fields
+        // stay early in it.
+        'team-update-text', 'team-update-author',
+        'ho-from', 'ho-to', 'ho-reason', 'ho-actor',
+        'ho-ack-actor', 'ho-ack-reason',
+        'ho-close-actor', 'ho-close-reason']) el(id).value = '';
       // D8: the shared-materials checkboxes are case-scoped too — a
       // switch must not leave the previous case's sources checked.
       clear('ref-source-choice');
+      // D9: the handoff materials checkboxes are case-scoped too.
+      clear('ho-source-choice');
       clearFieldError('draft-observations');
       closeSourceViewsWithoutFocusReturn();
       refresh();
@@ -2390,6 +2562,65 @@ el('referrals-outcome-form').addEventListener('submit', async event => {
     if (requestedCase !== caseId) return;
     for (const id of ['ref-outcome-text', 'ref-outcome-actor', 'ref-outcome-reason']) el(id).value = '';
     notice('Referral outcome #' + created.outcome_id + ' recorded as a separate record. The request is unchanged.'); await loadReferrals();
+  } catch (err) { notice(err.message, true); }
+});
+
+el('care-team-update-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/care-team/updates', {
+      update_text: el('team-update-text').value,
+      author_label: el('team-update-author').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['team-update-text', 'team-update-author']) el(id).value = '';
+    notice('Fictional team update #' + created.update_id + ' posted for the patient and team. Nothing was sent.'); await loadCareTeam();
+  } catch (err) { notice(err.message, true); }
+});
+el('care-team-handoff-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/care-team/handoffs', {
+      question_id: Number(el('ho-question-choice').value),
+      from_actor: el('ho-from').value,
+      to_actor: el('ho-to').value,
+      reason_text: el('ho-reason').value,
+      source_version_ids: [...el('ho-source-choice').querySelectorAll('input:checked')].map(x => Number(x.value)),
+      actor_label: el('ho-actor').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ho-from', 'ho-to', 'ho-reason', 'ho-actor']) el(id).value = '';
+    notice('Fictional handoff #' + created.handoff_id + ' recorded with pinned source versions. Nothing was sent.'); await loadCareTeam();
+  } catch (err) { notice(err.message, true); }
+});
+el('care-team-handoff-acknowledge-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/care-team/handoffs/' +
+      Number(el('ho-ack-choice').value) + '/acknowledge', {
+      actor_label: el('ho-ack-actor').value,
+      reason: el('ho-ack-reason').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ho-ack-actor', 'ho-ack-reason']) el(id).value = '';
+    notice('Handoff #' + outcome.handoff_id + ' is now ' + outcome.result + '. History preserved.'); await loadCareTeam();
+  } catch (err) { notice(err.message, true); }
+});
+el('care-team-handoff-close-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/care-team/handoffs/' +
+      Number(el('ho-close-choice').value) + '/close', {
+      actor_label: el('ho-close-actor').value,
+      reason: el('ho-close-reason').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ho-close-actor', 'ho-close-reason']) el(id).value = '';
+    notice('Handoff #' + outcome.handoff_id + ' is now ' + outcome.result + '. History preserved.'); await loadCareTeam();
   } catch (err) { notice(err.message, true); }
 });
 

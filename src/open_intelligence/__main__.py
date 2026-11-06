@@ -46,6 +46,7 @@ from .patient_analytics import patient_analytics
 from .appointments import appointments_view
 from .notifications import notifications_view
 from .referrals import referrals_view
+from .team_collaboration import care_team_view
 from .hypothesis import assemble_hypothesis_report, claim_id
 from .literature import list_records
 from .trials import list_listings, render_listing
@@ -597,6 +598,13 @@ class Handler(BaseHTTPRequestHandler):
                 # the existing grant gate. Read-only; a referral sends
                 # nothing anywhere and performs no handoff.
                 return self._json(200, referrals_view(store, referrals[1]))
+            care_team = re.fullmatch(rf"/api/cases/{ID_PART}/care-team", path)
+            if care_team:
+                # D9: care-team collaboration — shared updates and
+                # handoffs, case-scoped behind the existing grant gate.
+                # Read-only; the patient sees the same shared record
+                # as the clinician. Nothing is sent anywhere.
+                return self._json(200, care_team_view(store, care_team[1]))
             review_queue = re.fullmatch(rf"/api/cases/{ID_PART}/review-queue", path)
             if review_queue:
                 return self._json(200, store.review_queue(review_queue[1]))
@@ -947,6 +955,62 @@ class Handler(BaseHTTPRequestHandler):
                 if referral_review:
                     return self._json(200, store.review_referral(
                         referral_review[1], int(referral_review[2]),
+                        data.get("reviewer_label"), data.get("scope")))
+                care_team_update_create = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/care-team/updates", path)
+                if care_team_update_create:
+                    # D9: post a shared team update. Writes are
+                    # operator/clinician only — the generic case gate
+                    # denies patient POSTs and auditor requests before
+                    # dispatch reaches this route. The author role comes
+                    # from the session account (the transitional header
+                    # identifies the demo clinician); it is never free
+                    # text. The update sends nothing anywhere.
+                    account, _actor = self._current_actor(store)
+                    author_role = account["role"] if account is not None else "clinician"
+                    update_id = store.create_team_update(
+                        care_team_update_create[1], data.get("update_text"),
+                        author_label=data.get("author_label"),
+                        author_role=author_role)
+                    return self._json(201, {"update_id": update_id})
+                care_team_update_review = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/care-team/updates/([0-9]+)/review", path)
+                if care_team_update_review:
+                    return self._json(200, store.review_team_update(
+                        care_team_update_review[1], int(care_team_update_review[2]),
+                        data.get("reviewer_label"), data.get("scope")))
+                care_team_handoff_create = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/care-team/handoffs", path)
+                if care_team_handoff_create:
+                    # D9: record a handoff of responsibility for a case
+                    # question. Writes are operator/clinician only, as
+                    # above. The handoff sends nothing anywhere and
+                    # performs no transfer outside the product.
+                    handoff_id = store.create_handoff(
+                        care_team_handoff_create[1], data.get("question_id"),
+                        data.get("from_actor"), data.get("to_actor"),
+                        data.get("reason_text"), data.get("source_version_ids"),
+                        actor_label=data.get("actor_label"))
+                    return self._json(201, {"handoff_id": handoff_id})
+                care_team_handoff_acknowledge = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/care-team/handoffs/([0-9]+)/acknowledge", path)
+                if care_team_handoff_acknowledge:
+                    return self._json(200, store.acknowledge_handoff(
+                        care_team_handoff_acknowledge[1], int(care_team_handoff_acknowledge[2]),
+                        actor_label=data.get("actor_label"),
+                        reason=data.get("reason")))
+                care_team_handoff_close = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/care-team/handoffs/([0-9]+)/close", path)
+                if care_team_handoff_close:
+                    return self._json(200, store.close_handoff(
+                        care_team_handoff_close[1], int(care_team_handoff_close[2]),
+                        actor_label=data.get("actor_label"),
+                        reason=data.get("reason")))
+                care_team_handoff_review = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/care-team/handoffs/([0-9]+)/review", path)
+                if care_team_handoff_review:
+                    return self._json(200, store.review_handoff(
+                        care_team_handoff_review[1], int(care_team_handoff_review[2]),
                         data.get("reviewer_label"), data.get("scope")))
                 question_owner = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/owner", path)
                 if question_owner:

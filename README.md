@@ -489,6 +489,36 @@ appointment; no per-referral snapshot link; no C5
 evaluation-harness probes for referrals yet; no live model call
 exists in the slice (Meta billing fix still pending).
 
+**Care coordination dimension (Slice D9, 6 November 2026):**
+care-team collaboration — shared updates and handoffs the patient
+and team read in the product, not outside it. A shared update is a
+short dated note posted by the operator or clinician, visible to
+the whole team including the patient on their own bound case (the
+author role comes from the session account, never free text); a
+handoff records a transfer of responsibility for a case question
+(question + from/to actor labels + reason + 1–50 pinned
+materials), with lifecycle `open` → `acknowledged` → `closed`
+(terminal; further work is a new handoff), full status history,
+and the second-opinion review/audit treatment (`pending` /
+`reviewed_in_demo` / `needs_review`, reopened on amendment of a
+pinned material). Recording either sends nothing, books nothing,
+and contacts no one; the patient sees the same shared record as
+the clinician — the role boundary is write access, not
+visibility. Role-gated through the generic case gate (patient
+reads own case only, writes are operator/clinician only); the
+follow-through text guard is reused for all care-team text. Seven
+routes, a Care team panel (02h), and 22 new tests in
+`tests/test_team_collaboration.py` (+1 guard test). The module is
+registered in `DIMENSION_MODULES` (an AST test pins that the
+module imports neither the model-call path nor any other dimension
+module). Local suite at the slice branch: 1249 tests, with the same
+17 pre-existing `test_pdf_intake` failures as the branch baseline
+(1226 tests) and zero new failures. Unproven: no message or
+handoff leaves the product; no link to a follow-through task or an
+appointment; no per-record snapshot link; no C5
+evaluation-harness probes for care-team collaboration yet; no live
+model call exists in the slice (Meta billing fix still pending).
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.
