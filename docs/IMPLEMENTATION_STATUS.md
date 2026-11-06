@@ -551,6 +551,147 @@ billing fix (HTTP 402) is still pending, so no live call was
 attempted here and no substitute model was used. The dimension is
 deterministic code; nothing in it needs a model call.
 
+## Data-integration dimension: live interoperability — FHIR/mCODE + terminology + DICOM (Slice D2) — 5 November 2026
+
+Branch `program/d2-analysis`, from main `16fa427`. Implements
+program-plan D2: the data-integration dimension's live
+interoperability, against the vertical interface V1 defined. No
+live-system connection anywhere: every exchange endpoint serves
+synthetic fixtures, and no real patient data, real-system call, or
+clinical claim is involved.
+
+Brief discrepancy, recorded honestly: the task brief described D2 as
+"the analysis dimension (modality schema packs)". That is not the
+plan's D2. Plan §D2 is the data-integration dimension's live
+interoperability (FHIR/mCODE + terminology + DICOM); the analysis
+dimension is D3–D4. The D1 section's note that "modality schema
+packs arrive with D2" is honored literally here: the terminology
+bindings are organized as per-modality schema packs (laboratory,
+pathology, imaging, clinical), each naming its code system and
+pinned codes. The slice built is the plan's D2, not an analysis
+slice.
+
+New `src/open_intelligence/fhir_exchange.py` is the FHIR R4
+exchange. `build_fhir_bundle` builds a Bundle from a case's current
+assertions and sources: one Patient, one Observation per assertion
+(status mapped from the ledger certainty, plus the exact certainty in
+the synthetic extension `https://example.invalid/oi-synthetic/certainty`),
+one DiagnosticReport per source with result references to that
+source's Observations, and one Condition per assertion whose codings
+include an ICD-10 code (verificationStatus unconfirmed, with a note
+that it is synthetic demonstration data, not a diagnosis). Findings
+with no pinned coding are exported without a coding and listed under
+`unbound_findings` — unbound, never fabricated. `fhir_bundle_to_report`
+validates an inbound bundle against the pinned synthetic contract
+(Bundle of type collection; `meta.lastUpdated` the issue date;
+`meta.versionId` the bundle version, mapping onto the ledger's Amends
+rule; exactly one Patient; every subject reference `Patient/<that
+id>`; Observations and Conditions carry `text.div` as the verbatim
+narrative the assertion quotes; DiagnosticReport result references
+must resolve inside the bundle) and translates its Observations and
+Conditions into anchored findings (finding keys re-keyed by resource
+id, `fhir-observation-<slug>` / `fhir-condition-<slug>`; source_line
+is the line number of the resource's `"id"` line in the canonical
+bundle bytes). Anything outside the contract is rejected with a typed
+reason: unknown/unsupported resources, SNOMED or unknown codings,
+mCODE or other `meta.profile` claims, entered-in-error resources,
+dangling references, missing narratives, duplicate resource ids,
+mixed specimens, date-order violations. Field-level loss is computed
+from a consumed-field allowlist, never assumed: every dropped field
+is reported as a dotted path, and the adapter delivery must declare
+exactly that set.
+
+`CaseStore.import_fhir_bundle` stores the original bundle bytes as a
+source version (kind `fhir-bundle`) through the one import path, so
+the A1 anchor checker, the amendment rules, and the
+snapshot/option/workspace invalidation cascade apply exactly as they
+do to report imports. Duplicates return `duplicate`; a bundle for
+another case is quarantined as `patient_mismatch`.
+
+New `src/open_intelligence/terminology.py` holds the code-system
+registry and the modality schema packs. LOINC and ICD-10 are
+available with pinned codes — three long-stable lab analytes
+(hemoglobin 718-7, glucose 2339-0, creatinine 2160-0) in the shared
+laboratory pack, and the oncology vertical's own binding
+(histology → ICD-10 C80.1 "Malignant (primary) neoplasm,
+unspecified", the honest code for an unclassified malignant
+neoplasm). RxNorm is registered with no pinned codes yet (no
+medication finding exists in the runtime to bind). SNOMED CT is
+BLOCKED, not merely absent: it requires an IHTSDO affiliate license,
+which is unresolved, so no SNOMED code is ever emitted or accepted —
+following the catalog's own `BLOCKED_SOURCES` precedent. A code
+enters the table only as a long-stable public code; the tests pin the
+table's exact contents so drift is caught.
+
+mCODE: conformance is NOT claimed in this slice. The mCODE profiles
+bind condition codes to SNOMED CT and no implementation-guide
+validation exists here, so the export never sets `meta.profile` to
+one and the import rejects any bundle that claims one
+(`mcode_profile_unverified`). `MCODE_PROFILES` records the profiles
+and their `not_claimed` status; the exchange response envelope
+carries that status visibly.
+
+New `src/open_intelligence/dicom.py` is the DICOM report-only
+surface: study id, modality (two-letter DICOM modality code),
+accession, narrative, and the source version reported on. The
+`dicom_reports` table has no pixel column and no column that could
+hold pixel bytes; any payload carrying a pixel field (`PixelData` and
+its spellings, bulk-data URIs, image arrays) is rejected with
+`dicom_pixels_rejected` before any record is written.
+
+The patient-access adapter graduates from library-only to a live
+HTTP path: `PatientAccessAdapter.deliver_fhir_bundle` runs a bundle
+delivery through the same authorization, revocation, identity-binding,
+and loss-contract machinery as `deliver()`, with the bundle validated
+and translated by `fhir_exchange` instead of `parse_report`. The loss
+contract uses the translator's computed dropped set.
+
+Routes (case-scoped, so the grant + role gate applies automatically):
+`GET/POST /api/cases/{ID}/fhir/bundle`, `GET
+/api/cases/{ID}/fhir/terminology`, `GET/POST /api/cases/{ID}/fhir/dicom`.
+The web app gains a display-only Exchange panel (export bundle, view
+terminology, view DICOM reports; no text inputs, so no picker-guard
+entry; the three outputs clear under denial like every other view,
+and invalidate on case switch like the access log).
+
+Orthogonality: the import-graph tripwire in
+`tests/test_vertical_boundary.py` now lists the three D2 modules and
+is green. The FHIR translator takes its terminology validator as an
+injected callable — the dimension modules never import each other —
+and resolves the case's vertical through the registry (the pre-V2
+default). The vertical interface gains one field:
+`Vertical.terminology_bindings`, declared as data on the oncology
+vertical; cardiology declares none.
+
+What did not move, and why: no vertical predicates were moved or
+added beyond the one terminology binding (the exchange rules are
+domain-free ledger rules); the K-checks, route, Skeptic, and
+evaluation harness are untouched; no live model call exists anywhere
+in the slice.
+
+One slip caught and fixed before commit: the first docs edit
+overwrote the D1 paragraph in README.md with the D2 paragraph. The
+D1 paragraph was restored verbatim from git and the D2 paragraph
+added after it as a pure insertion; the committed README diff is
+insertion-only for D2.
+
+Local suite on the slice branch: 1043 tests (1006 on the post-D1 main
+baseline plus 37 new), FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: no live system is connected — all exchange is synthetic
+fixtures, so nothing here establishes real institutional coverage,
+live identity proofing, or clinical usefulness. No live model call
+was attempted and no substitute model was used (Meta billing fix
+still pending). The HTTP adapter is constructed per request, so its
+in-memory bindings do not persist across requests; the durable
+guarantees are the ledger's duplicate detection, patient-match
+quarantine, and the recorded adapter events. mCODE conformance and
+RxNorm bindings are future work, pending terminology licensing and
+implementation-guide validation.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)

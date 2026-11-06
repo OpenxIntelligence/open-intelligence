@@ -166,6 +166,49 @@ async function loadAccessLog() {
     }
   } catch (err) { el('access-log-status').textContent = err.message; }
 }
+async function loadExchangeBundle() {
+  if (!caseId) { el('exchange-bundle-status').textContent = 'No case selected.'; return; }
+  try {
+    const data = await api('/api/cases/' + caseId + '/fhir/bundle');
+    el('exchange-bundle').textContent = JSON.stringify(data.bundle, null, 2);
+    const unbound = (data.unbound_findings || []).join(', ');
+    el('exchange-bundle-status').textContent = 'mCODE conformance: not claimed. '
+      + 'Findings without a pinned terminology code: ' + (unbound || 'none') + '.';
+  } catch (err) { el('exchange-bundle-status').textContent = err.message; }
+}
+async function loadExchangeTerminology() {
+  if (!caseId) { el('exchange-terminology-status').textContent = 'No case selected.'; return; }
+  try {
+    const data = await api('/api/cases/' + caseId + '/fhir/terminology');
+    const lines = [];
+    for (const [uri, system] of Object.entries(data.systems || {})) {
+      lines.push(system.name + ' (' + uri + '): ' + system.availability
+        + ' — ' + system.license);
+    }
+    for (const [key, codings] of Object.entries(data.vertical_bindings || {})) {
+      for (const coding of codings) {
+        lines.push('Vertical binding: ' + key + ' → ' + coding.system + ' | '
+          + coding.code + ' (' + coding.display + ')');
+      }
+    }
+    el('exchange-terminology').textContent = lines.join('\n');
+    el('exchange-terminology-status').textContent = lines.length
+      ? '' : 'No terminology bindings recorded for this case yet.';
+  } catch (err) { el('exchange-terminology-status').textContent = err.message; }
+}
+async function loadExchangeDicom() {
+  if (!caseId) { el('exchange-dicom-status').textContent = 'No case selected.'; return; }
+  try {
+    const data = await api('/api/cases/' + caseId + '/fhir/dicom');
+    clear('exchange-dicom');
+    const rows = data.dicom_reports || [];
+    el('exchange-dicom-status').textContent = rows.length ? '' : 'No DICOM reports recorded for this case yet. DICOM here is report-only: no pixels are stored or served.';
+    for (const row of rows) {
+      el('exchange-dicom').append(node('p',
+        row.study_uid + ' — ' + row.modality + ' — ' + row.accession + ' — ' + row.report_text));
+    }
+  } catch (err) { el('exchange-dicom-status').textContent = err.message; }
+}
 function clearCaseViews(denied) {
   for (const id of ['assertion-list', 'question-list', 'snapshot-list', 'source-list',
       'source-change-list', 'asset-list', 'event-list', 'option-list',
@@ -176,7 +219,11 @@ function clearCaseViews(denied) {
       // M-3: the mission projection renders case quotes (mission.js
       // renderKnown); it must clear under denial like every other view.
       'mission-summary', 'mission-known', 'mission-unresolved',
-      'mission-changes', 'mission-actions', 'access-log-list']) {
+      'mission-changes', 'mission-actions', 'access-log-list',
+      // D2: the exchange views render case data; they must clear under
+      // denial like every other view. Display-only: no text inputs, so
+      // no picker-guard entry is needed for them.
+      'exchange-bundle', 'exchange-terminology', 'exchange-dicom']) {
     clear(id);
     empty(el(id), denied);
   }
@@ -222,6 +269,9 @@ async function initialize() {
     el('signin-apply').addEventListener('click', applySignIn);
     el('signout-apply').addEventListener('click', applySignOut);
     el('access-log-apply').addEventListener('click', loadAccessLog);
+    el('exchange-bundle-apply').addEventListener('click', loadExchangeBundle);
+    el('exchange-terminology-apply').addEventListener('click', loadExchangeTerminology);
+    el('exchange-dicom-apply').addEventListener('click', loadExchangeDicom);
     const picker = el('case-picker');
     picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {
@@ -477,6 +527,13 @@ async function refresh() {
     // A newly loaded case invalidates the on-demand access-log view.
     clear('access-log-list');
     el('access-log-status').textContent = '';
+    // A newly loaded case invalidates the on-demand exchange views too.
+    clear('exchange-bundle');
+    el('exchange-bundle-status').textContent = '';
+    clear('exchange-terminology');
+    el('exchange-terminology-status').textContent = '';
+    clear('exchange-dicom');
+    el('exchange-dicom-status').textContent = '';
     // The incoming board shows per-case counts for every case, so it goes
     // stale after any write. Refresh it alongside the workspace panels.
     api('/api/cases').then(cases => {

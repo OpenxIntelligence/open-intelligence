@@ -36,10 +36,13 @@ from .orchestrator import decide_route
 from .vertical import default_vertical
 from .skeptic import run_verification
 from .clinician_overview import build_clinician_overview
+from .fhir_exchange import build_fhir_bundle
 from .mission import build_patient_mission
+from .patient_access import PatientAccessAdapter, adapter_envelope_from_dict
 from .patient_attention import case_patient_attention
 from .provenance import case_provenance
 from .patient_report import build_patient_report, render_text
+from .terminology import codings_for, terminology_table
 from .owned_questions import question_gap_rollup
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES, SESSION_TTL_SECONDS, now_utc
 from .synthetic_metrics import fixture_run
@@ -464,6 +467,23 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, render_text(payload).encode("utf-8"),
                                       "text/plain; charset=utf-8")
                 return self._json(200, payload)
+            fhir_bundle = re.fullmatch(rf"/api/cases/{ID_PART}/fhir/bundle", path)
+            if fhir_bundle:
+                # D2: synthetic FHIR R4 export of the case's current
+                # assertions and sources, with terminology codings
+                # attached where the pinned table binds them. No live
+                # system connection; mCODE conformance is not claimed.
+                return self._json(200, build_fhir_bundle(
+                    store.state(fhir_bundle[1]), default_vertical(),
+                    codings_for=codings_for))
+            fhir_terminology = re.fullmatch(rf"/api/cases/{ID_PART}/fhir/terminology", path)
+            if fhir_terminology:
+                return self._json(200, terminology_table(default_vertical()))
+            fhir_dicom = re.fullmatch(rf"/api/cases/{ID_PART}/fhir/dicom", path)
+            if fhir_dicom:
+                # D2: DICOM report-only records — metadata, never pixels.
+                return self._json(200, {"dicom_reports": store.list_dicom_reports(
+                    fhir_dicom[1])})
             changes = re.fullmatch(rf"/api/cases/{ID_PART}/changes-since-review", path)
             if changes:
                 raw_since = parse_qs(urlsplit(self.path).query).get("since_event_id", [None])[0]
@@ -593,10 +613,13 @@ class Handler(BaseHTTPRequestHandler):
             if gated_case is not None and not self._require_case_grant(store, gated_case, path, "POST"):
                 return None
             document_upload = re.fullmatch(rf"/api/cases/{ID_PART}/documents(/preview)?", path)
-            # Base64 plus bounded annotations needs a larger envelope. All
-            # other routes keep their existing request-body limit unchanged.
+            fhir_bundle_upload = re.fullmatch(rf"/api/cases/{ID_PART}/fhir/bundle", path)
+            # Base64 plus bounded annotations needs a larger envelope. A FHIR
+            # bundle body carries the same bytes plus its envelope, so it
+            # takes the larger limit too. All other routes keep their
+            # existing request-body limit unchanged.
             data = (self._body(DOCUMENT_BODY_BYTES, strict=True)
-                    if document_upload else self._body())
+                    if document_upload or fhir_bundle_upload else self._body())
             if path == "/api/auth/sign-in":
                 account_id = data.get("account_id")
                 password = data.get("password")
@@ -668,6 +691,29 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/cases":
                     store.add_case(data.get("case_id"), data.get("label"))
                     return self._json(201, {"result": "created"})
+                if fhir_bundle_upload:
+                    # D2: synthetic FHIR bundle delivery through the
+                    # patient-access adapter (authorization, revocation,
+                    # identity binding, loss receipt). The bundle is
+                    # canonicalized so the stored bytes are exactly the
+                    # bytes the translator anchored its source lines to.
+                    bundle_data = data.get("bundle")
+                    if not isinstance(bundle_data, dict):
+                        raise InvalidInput("FHIR bundle required")
+                    envelope = adapter_envelope_from_dict(data.get("envelope"))
+                    if envelope.case_id != fhir_bundle_upload[1]:
+                        raise InvalidInput(
+                            "Adapter envelope case does not match the route case")
+                    raw = json.dumps(bundle_data, indent=2, sort_keys=True,
+                                     ensure_ascii=False).encode("utf-8")
+                    adapter = PatientAccessAdapter(store)
+                    return self._json(200, adapter.deliver_fhir_bundle(envelope, raw))
+                fhir_dicom_post = re.fullmatch(rf"/api/cases/{ID_PART}/fhir/dicom", path)
+                if fhir_dicom_post:
+                    # D2: DICOM report-only record. Pixel fields are
+                    # rejected by validate_dicom_report before any write.
+                    return self._json(201, store.record_dicom_report(
+                        fhir_dicom_post[1], data))
                 if path == "/api/evidence/imports":
                     raw = data.get("text")
                     if not isinstance(raw, str):
