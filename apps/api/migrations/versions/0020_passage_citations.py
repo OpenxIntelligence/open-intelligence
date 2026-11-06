@@ -19,6 +19,10 @@ def upgrade():
     conn = op.get_bind()
     contract(conn, True)
     conn.exec_driver_sql("""
+        DROP TRIGGER zz_oi_anchor_text_question_required ON investigation.question_evidence_links;
+        CREATE TRIGGER zz_oi_anchor_text_question_required BEFORE INSERT ON investigation.question_evidence_links
+          FOR EACH ROW WHEN(NEW.source_snapshot_contract<>'oi.reviewed-document-selection/1')
+          EXECUTE FUNCTION investigation.require_text_question_target();
         CREATE FUNCTION investigation.guard_passage_citation() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN
           IF NOT EXISTS (
@@ -41,5 +45,8 @@ def downgrade():
         WHERE source_snapshot_contract='oi.reviewed-document-selection/1' LIMIT 1""").first():
         raise CommandError("Preserve passage citations before downgrade")
     conn.exec_driver_sql("""DROP TRIGGER oi_passage_citation_guard ON investigation.question_evidence_links;
-        DROP FUNCTION investigation.guard_passage_citation();""")
+        DROP FUNCTION investigation.guard_passage_citation();
+        DROP TRIGGER zz_oi_anchor_text_question_required ON investigation.question_evidence_links;
+        CREATE TRIGGER zz_oi_anchor_text_question_required BEFORE INSERT ON investigation.question_evidence_links
+          FOR EACH ROW EXECUTE FUNCTION investigation.require_text_question_target();""")
     contract(conn, False)
