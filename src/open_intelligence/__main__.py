@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import dataclasses
 import getpass
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -32,13 +33,16 @@ from .investigation import (
     validate_output,
 )
 from .kchecks import build_kcheck_context
+from .lab_series import lab_series
 from .orchestrator import decide_route
 from .vertical import default_vertical
 from .skeptic import run_verification
+from .specimen_chain import validate_specimen_chain
 from .clinician_overview import build_clinician_overview
 from .fhir_exchange import build_fhir_bundle
 from .mission import build_patient_mission
 from .patient_access import PatientAccessAdapter, adapter_envelope_from_dict
+from .patient_analytics import patient_analytics
 from .patient_attention import case_patient_attention
 from .provenance import case_provenance
 from .patient_report import build_patient_report, render_text
@@ -496,6 +500,21 @@ class Handler(BaseHTTPRequestHandler):
             timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
             if timeline:
                 return self._json(200, case_timeline(store, timeline[1]))
+            analytics = re.fullmatch(rf"/api/cases/{ID_PART}/analytics", path)
+            if analytics:
+                # D4: patient analytics — lab trends, symptom
+                # progression, record completeness, outcomes tracking.
+                # Read-only derivations of stored data; the T2 lab
+                # series is built here (with terminology codings and
+                # the specimen-chain validator, as D3's injection
+                # pattern requires) and passed in as a plain mapping.
+                case_id = analytics[1]
+                series = dataclasses.asdict(lab_series(
+                    store, case_id, codings_for=codings_for,
+                    vertical=default_vertical(),
+                    validate_chain=validate_specimen_chain))
+                return self._json(200, patient_analytics(
+                    store, case_id, lab_series=series))
             attention = re.fullmatch(rf"/api/cases/{ID_PART}/patient-attention", path)
             if attention:
                 return self._json(200, case_patient_attention(store, attention[1]))

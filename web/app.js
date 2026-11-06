@@ -209,6 +209,71 @@ async function loadExchangeDicom() {
     }
   } catch (err) { el('exchange-dicom-status').textContent = err.message; }
 }
+async function loadAnalytics() {
+  if (!caseId) { el('analytics-status').textContent = 'No case selected.'; return; }
+  try {
+    const data = await api('/api/cases/' + caseId + '/analytics');
+    clear('analytics-trends');
+    clear('analytics-symptoms');
+    clear('analytics-completeness');
+    clear('analytics-outcomes');
+    const trends = (data.lab_trends && data.lab_trends.trends) || {};
+    const trendKeys = Object.keys(trends).sort();
+    if (!trendKeys.length) {
+      el('analytics-trends').append(node('p',
+        'No lab trends: ' + ((data.lab_trends && data.lab_trends.reason) || 'no laboratory series available') + '.', 'muted'));
+    }
+    for (const key of trendKeys) {
+      const t = trends[key];
+      const text = t.trend === 'not_computable'
+        ? key + ' — no trend: ' + (t.trend_reason || 'insufficient data') + '.'
+        : key + ' — ' + t.trend + ' (' + t.first_value + ' → ' + t.last_value + ' ' + (t.unit || '')
+          + ', ' + (t.percent_change === null ? 'percent undefined' : t.percent_change.toFixed(1) + '%')
+          + ', ' + t.points_used + ' of ' + t.points_total + ' points).';
+      el('analytics-trends').append(node('p', text));
+    }
+    const symptoms = (data.symptom_progression && data.symptom_progression.notes) || [];
+    if (!symptoms.length) {
+      el('analytics-symptoms').append(node('p', 'No symptom notes recorded for this case yet.', 'muted'));
+    }
+    for (const note of symptoms) {
+      el('analytics-symptoms').append(node('p',
+        (note.noted_date || 'no date') + ' — ' + note.note_text
+        + (note.recurrence === 'repeat' ? ' (reported before)' : '')
+        + (note.amended ? ' (wording amended)' : '')));
+    }
+    const checks = (data.record_completeness && data.record_completeness.checks) || [];
+    if (!checks.length) {
+      el('analytics-completeness').append(node('p', 'No completeness data for this case yet.', 'muted'));
+    }
+    for (const check of checks) {
+      el('analytics-completeness').append(node('p',
+        check.label + ': ' + check.status + ' (' + check.count + ')'
+        + (check.status === 'missing' ? ' — blocks: ' + check.enables + '.' : '')));
+    }
+    const outcomes = data.outcomes_tracking || {};
+    const lines = (outcomes.therapy_lines && outcomes.therapy_lines.current) || [];
+    const goals = (outcomes.patient_goals && outcomes.patient_goals.goals) || [];
+    const tasks = (outcomes.followthrough_tasks && outcomes.followthrough_tasks.tasks) || [];
+    if (!lines.length && !goals.length && !tasks.length) {
+      el('analytics-outcomes').append(node('p', 'Nothing tracked yet: no therapy lines, goals, or follow-through tasks recorded.', 'muted'));
+    }
+    for (const line of lines) {
+      el('analytics-outcomes').append(node('p',
+        'Therapy line ' + line.line_number + ' — ' + line.regimen_key + ' (' + line.ruleset_version
+        + ', ' + line.first_occurred + ' → ' + line.last_occurred + ').'));
+    }
+    for (const goal of goals) {
+      el('analytics-outcomes').append(node('p',
+        'Goal — ' + goal.status + ' (stated ' + (goal.stated_date || 'no date') + ').'));
+    }
+    for (const task of tasks) {
+      el('analytics-outcomes').append(node('p',
+        'Task — ' + task.status + (task.due_date ? ' (due ' + task.due_date + ')' : ' (no due date)') + '.'));
+    }
+    el('analytics-status').textContent = '';
+  } catch (err) { el('analytics-status').textContent = err.message; }
+}
 function clearCaseViews(denied) {
   for (const id of ['assertion-list', 'question-list', 'snapshot-list', 'source-list',
       'source-change-list', 'asset-list', 'event-list', 'option-list',
@@ -223,7 +288,12 @@ function clearCaseViews(denied) {
       // D2: the exchange views render case data; they must clear under
       // denial like every other view. Display-only: no text inputs, so
       // no picker-guard entry is needed for them.
-      'exchange-bundle', 'exchange-terminology', 'exchange-dicom']) {
+      'exchange-bundle', 'exchange-terminology', 'exchange-dicom',
+      // D4: the analytics views render case data; they must clear under
+      // denial like every other view. Display-only: no text inputs, so
+      // no picker-guard entry is needed for them.
+      'analytics-trends', 'analytics-symptoms', 'analytics-completeness',
+      'analytics-outcomes']) {
     clear(id);
     empty(el(id), denied);
   }
@@ -272,6 +342,7 @@ async function initialize() {
     el('exchange-bundle-apply').addEventListener('click', loadExchangeBundle);
     el('exchange-terminology-apply').addEventListener('click', loadExchangeTerminology);
     el('exchange-dicom-apply').addEventListener('click', loadExchangeDicom);
+    el('analytics-apply').addEventListener('click', loadAnalytics);
     const picker = el('case-picker');
     picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {
