@@ -323,6 +323,38 @@ machinery the A2/A3 role agents call when parallel roster wiring
 lands; no live model call exists in the slice (Meta billing fix
 still pending).
 
+**Analysis dimension (Slice D4, 6 November 2026):** patient analytics
+— lab-trend views, symptom progression, record-completeness
+analytics, and outcomes tracking — as read-only derivations of
+stored data in `src/open_intelligence/patient_analytics.py`, with a
+read-only `GET /api/cases/{id}/analytics` route and a display-only
+Analytics panel in the web app. Lab trends build on the T2 series
+(passed in as a plain mapping, never imported, so the import-graph
+tripwire stays green): one trend per analyte over the longest run of
+consecutive parseable same-unit points, with unparseable, ambiguous,
+and unit-changed points listed as excluded with their reason, never
+silently dropped; the trend word is direction only
+(rising/falling/stable, |percent| under a pinned 1% band reads as
+stable), and no improvement or worsening is ever claimed. Symptom
+progression lists the patient's own symptom notes verbatim in
+noted-date order, marking exact-text repeats and amended wording
+(earlier versions preserved); no severity is scored and none is
+inferred. Record completeness is a pinned checklist of what the
+record holds and what it lacks, each item naming what it enables; a
+missing item is listed as missing, never filled in. Outcomes tracking
+assembles recorded states only — current vs stale therapy lines by
+ruleset, patient-goal statuses with version history, and
+follow-through tasks by status (overdue only when the caller supplies
+a date) — with no response, progression, benefit, or eligibility
+claim anywhere. No model call exists in the slice (an AST test pins
+that the module imports neither the model-call path nor any other
+dimension module). Local suite at the slice branch: 1106 tests, with
+the same 17 pre-existing `test_pdf_intake` failures as the branch
+baseline (1076 tests) and zero new failures. Unproven: the analytics
+route is the first live caller of the D3 toolsets (via the T2 series
+it builds per request); no live model call exists in the slice (Meta
+billing fix still pending).
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.

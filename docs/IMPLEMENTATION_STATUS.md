@@ -818,6 +818,93 @@ pending). The ledger holds no administered-therapy table — T4's
 regimen keys are a caller declaration. ClinVar linkage is key-prefix
 matching on synthetic ledger evidence, not a catalog lookup.
 
+## Analysis dimension: patient analytics (Slice D4) — 6 November 2026
+
+Branch `program/d4-analysis`, from main `58353304` (post-D3; main
+has since moved past it with the #523 safety-packet merge — the
+branch is rebased onto the new main before shipping). Implements
+program-plan D4: the analysis dimension as patient analytics — lab
+trends, symptom progression, record completeness, outcomes tracking
+— all read-only derivations of stored data, all on synthetic data.
+
+Design-first, as the plan requires for this slice: the design is
+drafted in the module docstring of
+`src/open_intelligence/patient_analytics.py` before the build, and
+this section records it. Four views, each with its pinned
+conventions and its hard limits:
+
+* Lab trends build on the T2 lab series: one trend per analyte over
+  the longest run of consecutive parseable points sharing one unit
+  (ties go to the earliest run). Unparseable, ambiguous, and
+  unit-changed points are listed as excluded with their reason,
+  never silently dropped. The trend word is direction only —
+  `rising` / `falling` / `stable` — from the first-to-last value:
+  |percent| >= 1% rises or falls, |percent| < 1% is stable. The 1%
+  band is a pinned display convention, recorded in the module: it
+  exists only so floating-point dust does not read as a trend; it is
+  not a clinical threshold. A zero first value leaves the percent
+  undefined (`undefined_zero_baseline`) and the direction follows
+  the sign of the last value. Fewer than two same-unit parseable
+  points is `not_computable` (`insufficient_points`). No
+  improvement or worsening is ever claimed.
+* Symptom progression reads the patient's own symptom notes
+  verbatim, in noted-date order. Progression here is an ordered
+  record plus two markers: `repeat` when the exact text was noted
+  before (a persisting report) and `amended` when the wording
+  changed (earlier versions preserved alongside). Recurrence is
+  exact-text only — a reworded repeat is a new first report of
+  different wording, never silently merged. No severity is scored
+  and no improvement or worsening is inferred: the record holds no
+  severity data, so none is invented.
+* Record completeness is a pinned checklist: each item names what it
+  is, whether it is present, how many there are, and what it
+  enables. The checklist is the module's own convention, derived
+  from what the platform's views need (labs for trends, sources for
+  the longitudinal picture, therapy lines for outcomes tracking),
+  not from any clinical guideline. A missing item is listed as
+  missing with what it blocks.
+* Outcomes tracking assembles the current state of each
+  outcome-bearing record — therapy lines (current vs stale, by
+  ruleset), patient goals (current status + version history), and
+  follow-through tasks (counts by status, overdue only when the
+  caller supplies `today`). Every value is a recorded state; no
+  response, progression, benefit, or eligibility claim is ever made.
+
+New `src/open_intelligence/patient_analytics.py` holds the four
+views plus the `patient_analytics` aggregator. The T2 series arrives
+as a plain mapping (the `dataclasses.asdict` shape of a T2
+`LabSeries`) — the module never imports the T2 module or any other
+dimension module, so the import-graph tripwire stays green with
+`open_intelligence.patient_analytics` registered. A series for a
+different case is rejected, never silently used; with no series the
+lab-trend view is reported as not computed with its reason.
+
+The slice adds the first live caller of the D3 toolsets: a read-only
+`GET /api/cases/{id}/analytics` route in `__main__.py`, case-scoped
+behind the existing grant gate, which builds the T2 series per
+request (with terminology codings and the specimen-chain validator,
+as D3's injection pattern requires) and returns the aggregator
+output; plus a display-only Analytics panel in the web app (one
+button, four sections, empty states that name what is missing,
+cleared on case switch like every other case view — display-only, so
+no picker-guard entry is needed). No vertical predicates were moved
+or added; the `Vertical.toolsets` field stays empty. The K-checks,
+route, Skeptic, and evaluation harness are untouched; no live model
+call exists anywhere in the slice.
+
+Local suite on the slice branch: 1106 tests (1076 on the post-D3
+main baseline plus 30 new), FAILED with 9 failures and 8 errors —
+the same 17 `test_pdf_intake` failures as the baseline run on the
+same machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: the analytics route is the first live caller of the D3
+toolsets, so end-to-end agent use of them is still unproven; no live
+model call was attempted and no substitute model was used (Meta
+billing fix still pending). The checklist is the module's own
+convention, not a clinical completeness standard; the 1% stable
+band is a display convention, not a clinical threshold.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)

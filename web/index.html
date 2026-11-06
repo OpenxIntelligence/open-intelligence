@@ -85,6 +85,7 @@
           <a href="#portfolio">Option portfolio</a>
           <a href="#synthetic-metrics">Fixture metrics</a>
           <a href="#exchange">Exchange</a>
+          <a href="#analytics">Analytics</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -241,6 +242,20 @@
         <button id="exchange-dicom-apply" type="button" class="button secondary minor">View DICOM reports</button>
         <p id="exchange-dicom-status" class="muted tiny"></p>
         <div id="exchange-dicom" class="activity" aria-live="polite"></div>
+      </section>
+      <section class="panel" id="analytics" aria-labelledby="analytics-heading">
+        <div class="panel-head"><div><div class="eyebrow">02c / ANALYTICS</div><h2 id="analytics-heading">Patient analytics</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Read-only derivations of this fictional case&rsquo;s stored record: lab trends (direction only — rising, falling, or stable, never improving or worsening), symptom notes in noted-date order, what the record holds and what it lacks, and the current state of therapy lines, goals, and follow-through tasks. Nothing here is a clinical interpretation, a response or progression claim, or a recommendation. Missing elements are listed as missing, never filled in.</p>
+        <button id="analytics-apply" type="button" class="button secondary minor">Load patient analytics</button>
+        <p id="analytics-status" class="muted tiny"></p>
+        <div class="subhead">Lab trends</div>
+        <div id="analytics-trends" class="activity" aria-live="polite"></div>
+        <div class="subhead">Symptom progression</div>
+        <div id="analytics-symptoms" class="activity" aria-live="polite"></div>
+        <div class="subhead">Record completeness</div>
+        <div id="analytics-completeness" class="activity" aria-live="polite"></div>
+        <div class="subhead">Outcomes tracking</div>
+        <div id="analytics-outcomes" class="activity" aria-live="polite"></div>
       </section>
       <section class="panel" id="patient-view">
         <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2>Your case, in plain words</h2></div><span class="pill">Same facts, plainer language</span></div>
