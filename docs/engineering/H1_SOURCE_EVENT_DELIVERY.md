@@ -36,8 +36,16 @@ Apply the explicit additive migration through the normal migration command:
 PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade head
 ```
 
-The application requires `0026_integrated_core`, joining the clinical
-execution head with `0020_source_event_delivery`. That historical revision captures new source-import events and
+The application requires `0027_source_event_purpose` after the preserved
+`0026_integrated_core` join, which connects clinical execution and
+`0020_source_event_delivery`. The successor validates canonical source-event
+lineage before restricting outbox delivery to operations purpose. Valid research
+originals and journal events remain with their existing canonical owner.
+All published migrations remain unchanged. Fresh and published 0026 databases
+can adopt this repair; pre-0020 research history remains held with atomic rollback
+at the original backfill pending a separately reviewed legacy adoption path.
+
+The historical 0020 revision captures new source-import events and
 strictly backfills selected historical source-import events against their
 canonical source/patient/case bindings. Malformed selected history fails the
 upgrade rather than being silently omitted or repaired. Existing originals and

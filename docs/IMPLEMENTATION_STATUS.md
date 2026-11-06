@@ -25,6 +25,16 @@ pre-capture research-history upgrade hold passes with all owner rows and exact
 sequence state preserved. This failed run establishes the regression; it does
 not qualify the candidate for landing.
 
+Repaired source `14a189a949510c67903eaf354250223a2c587a8f` passes all five
+focused PostgreSQL methods in
+[run 42136932694](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42136932694),
+including the original research HTTP regression and populated upgrade/downgrade.
+The earlier repaired run 42136728853 stopped at an incorrectly wrapped exception
+assertion in the new downgrade test; the assertion now requires the raw pg8000
+exception and exact lineage marker. Production function semantics are unchanged.
+Full exact-head acceptance is recorded in #565 as it completes; the focused pass
+alone does not establish full API or seven-stage recovery acceptance.
+
 The repair uses a new `0027_source_event_purpose` successor to the published
 `0026_integrated_core`. It validates every selected journal event before
 filtering delivery to operations purpose. All published migrations remain
