@@ -16,15 +16,19 @@ export type ReviewQueueItem=Readonly<{
  kind:'source-question';queue_fingerprint:string|null;
  source_context_state:'current_unreviewed_question'|'source_reassessment_required';
  review_state:'awaiting_independent_verification'|
-  'returned_for_independent_verification'|'source_reassessment_required';
+  'returned_for_independent_verification'|'source_reassessment_required'|'manual_reassessment_required';
  current_return_receipt_id:string|null;return_count:number;prior_return_count:number;
+ manual_reassessment_required:boolean;
  clinical_approval:false;reviewer_identity_verified:false;
 }>;
 export type ReviewHistoryReceipt=Readonly<{
  receipt_id:string;question_id:string;queue_fingerprint:string;
  source_snapshot_sha256:string;source_snapshot_contract:SourceSnapshotContract;
  queue_fingerprint_contract:ReviewFingerprintContract;actor_label:string;action:'returned';
- reason:string;created_at:string;reviewer_identity_verified:false;
+ reason:string;created_at:string;
+ manual_dependency_revision_id:string|null;
+ manual_context_state:'current_unreviewed'|'reassessment_required'|null;
+ reviewer_identity_verified:false;
  external_notification_sent:false;clinical_approval:false;
 }>;
 export type ReviewQueue=Readonly<{
@@ -39,6 +43,7 @@ export type ReviewReturnResult=Readonly<{receipt_id:string;question_id:string;du
 const QID=/^QUESTION-[0-9A-F]{32}$/;
 const SID=/^SRC-[0-9A-F]{32}$/;
 const RID=/^REVIEW-[0-9A-F]{32}$/;
+const PASSAGE=/^PASSAGES-[0-9A-F]{32}$/;
 const SHA=/^[0-9a-f]{64}$/;
 const ACCESS=/^ACCESS-[0-9A-F]{32}$/;
 const CANONICAL='oi.pg-source-world-model/1',LEGACY='oi.synthetic-postgres-world-model-sources/1';
@@ -47,10 +52,10 @@ const itemFields=['question_id','patient_id','case_id','question','source_id',
   'source_line','source_sha256','source_version','source_snapshot_sha256',
   'source_snapshot_contract','queue_fingerprint_contract','preflight_sha256','created_at','kind','queue_fingerprint','source_context_state',
   'review_state','current_return_receipt_id','return_count','prior_return_count',
-  'clinical_approval','reviewer_identity_verified'];
+  'manual_reassessment_required','clinical_approval','reviewer_identity_verified'];
 const receiptFields=['receipt_id','question_id','queue_fingerprint','source_snapshot_sha256',
  'source_snapshot_contract','queue_fingerprint_contract','actor_label','action','reason','created_at','reviewer_identity_verified',
- 'external_notification_sent','clinical_approval'];
+ 'external_notification_sent','clinical_approval','manual_dependency_revision_id','manual_context_state'];
 function exact(value:unknown,keys:readonly string[]):value is Record<string,unknown>{
  return value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  Object.keys(value).length===keys.length&&keys.every(k=>Object.hasOwn(value,k));
@@ -91,6 +96,9 @@ export function decodeReviewQueue(value:unknown,patient:string,caseId:string):Re
       (r.source_snapshot_contract===LEGACY&&r.queue_fingerprint_contract===OLD_FINGERPRINT))||
     !visible(r.actor_label,3,128)||r.action!=='returned'||
     !visible(r.reason,10,600)||!time(r.created_at)||
+    !((r.manual_dependency_revision_id===null&&r.manual_context_state===null)||
+      (typeof r.manual_dependency_revision_id==='string'&&PASSAGE.test(r.manual_dependency_revision_id)&&
+       ['current_unreviewed','reassessment_required'].includes(String(r.manual_context_state))))||
     r.reviewer_identity_verified!==false||r.external_notification_sent!==false||
     r.clinical_approval!==false)throw Error('contract');
   const receipt=Object.freeze(r as ReviewHistoryReceipt);receipts.set(receipt.receipt_id,receipt);
@@ -109,12 +117,14 @@ export function decodeReviewQueue(value:unknown,patient:string,caseId:string):Re
    item.queue_fingerprint_contract!==FINGERPRINT||
    !time(item.created_at)||item.kind!=='source-question'||
    !['current_unreviewed_question','source_reassessment_required'].includes(String(item.source_context_state))||
-   !['awaiting_independent_verification','returned_for_independent_verification','source_reassessment_required'].includes(String(item.review_state))||
+   !['awaiting_independent_verification','returned_for_independent_verification',
+      'source_reassessment_required','manual_reassessment_required'].includes(String(item.review_state))||
    !(item.queue_fingerprint===null||
      (typeof item.queue_fingerprint==='string'&&SHA.test(item.queue_fingerprint)))||
    !(item.current_return_receipt_id===null||
      (typeof item.current_return_receipt_id==='string'&&RID.test(item.current_return_receipt_id)))||
    !nonneg(item.return_count)||!nonneg(item.prior_return_count)||
+   typeof item.manual_reassessment_required!=='boolean'||
    item.clinical_approval!==false||item.reviewer_identity_verified!==false)throw Error('contract');
   questions.add(item.question_id);
   const prior=history.filter(r=>r.question_id===item.question_id);
@@ -122,13 +132,19 @@ export function decodeReviewQueue(value:unknown,patient:string,caseId:string):Re
   const matching=prior.filter(r=>item.queue_fingerprint!==null&&
     item.source_snapshot_contract===CANONICAL&&r.source_snapshot_contract===CANONICAL&&
     r.queue_fingerprint_contract===FINGERPRINT&&r.queue_fingerprint===item.queue_fingerprint&&
-    r.source_snapshot_sha256===item.source_snapshot_sha256);
+    r.source_snapshot_sha256===item.source_snapshot_sha256&&
+    r.manual_context_state!=='reassessment_required');
+  const manualStale=prior.some(r=>r.manual_context_state==='reassessment_required');
+  if(item.manual_reassessment_required!==manualStale)throw Error('contract');
   if(item.source_snapshot_contract===LEGACY&&item.source_context_state!=='source_reassessment_required')throw Error('contract');
   if(matching.length!==item.return_count)throw Error('contract');
   if(item.source_context_state==='source_reassessment_required'){
    if(item.queue_fingerprint!==null||item.review_state!=='source_reassessment_required'||
       item.return_count!==0||item.current_return_receipt_id!==null)throw Error('contract');
   }else if(item.queue_fingerprint===null||item.review_state==='source_reassessment_required')throw Error('contract');
+  if(item.review_state==='manual_reassessment_required'&&
+     (!manualStale||matching.length!==0))throw Error('contract');
+  if(item.review_state==='awaiting_independent_verification'&&manualStale)throw Error('contract');
   if(item.review_state==='returned_for_independent_verification'){
    if(matching.length===0||item.current_return_receipt_id!==matching.at(-1)?.receipt_id)
      throw Error('contract');
