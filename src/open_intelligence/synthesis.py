@@ -762,3 +762,206 @@ def render_patient_report(store: CaseStore, case_id: str, snapshot_id: int) -> s
     lines.append("- A demo acknowledgment is not a clinician sign-off.")
     lines.append("")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# T6: deterministic contradiction & gap grouping (program plan C4).
+#
+# The reconciliation primitive. These functions group what disagrees and
+# what is missing; they never merge dissent, never re-label a value, and
+# never pick a winner. A group lists both sides and states what evidence
+# would resolve it ("evidence_needed"). Conflicts become typed, visible,
+# blocking records through the verification record's abstention codes
+# (see skeptic.compute_abstention_codes); the grouping itself decides
+# nothing. Deterministic for a fixed ledger state, like the rest of this
+# module: no model call, no writes.
+#
+# The contradiction rule mirrors the K4 rule (Notion OI-09 C9, kchecks
+# module): same subject and field, different normalised values,
+# overlapping valid time, and no supersession between the versions.
+# At the source level, "overlapping valid time" is read as both versions
+# being current: a superseded version's disagreement is resolved by
+# supersession (the K5 story), and different specimens may legitimately
+# differ (the K4 specimen guard).
+# ---------------------------------------------------------------------------
+
+def group_run_contradictions(dropped: list[dict]) -> list[dict]:
+    """Reformat a run's K4 contradiction drops as T6 groups.
+
+    Each group carries the K4 detail (subject, field, values, claim
+    indices, source version ids) plus the evidence that would resolve
+    it. The claims stay dropped; the group is the visible record of
+    why. A run with no K4 drop yields no group.
+    """
+    groups: list[dict] = []
+    for entry in dropped:
+        if entry.get("reason") != "k4_contradiction":
+            continue
+        detail = entry.get("detail") or {}
+        field = detail.get("field", "")
+        subject = detail.get("subject", "")
+        groups.append({
+            "kind": "contradiction",
+            "origin": "agent_divergence",
+            "subject": subject,
+            "field": field,
+            "values": list(detail.get("values", [])),
+            "claim_indices": list(detail.get("claim_indices", [])),
+            "source_version_ids": list(detail.get("source_version_ids", [])),
+            "evidence_needed": (
+                f"a current source version stating {field} for {subject} "
+                "that resolves which claim holds"
+            ),
+        })
+    return groups
+
+
+def _supersedes(versions: dict, first_id: int, second_id: int) -> bool:
+    """True when the version chain from `first_id` reaches `second_id`
+    through supersedes_id links (direct or transitive)."""
+    seen: set[int] = set()
+    current = versions.get(first_id)
+    while current is not None and current.id not in seen:
+        seen.add(current.id)
+        if current.supersedes_id == second_id:
+            return True
+        current = versions.get(current.supersedes_id) if current.supersedes_id is not None else None
+    return False
+
+
+def group_source_contradictions(kcheck_context) -> list[dict]:
+    """T6 source-vs-source grouping over the case's assertion slots.
+
+    Two current source versions that assert different normalised values
+    for the same subject and field, with neither superseding the other
+    and the same specimen (or no specimen recorded), disagree. The
+    group lists both values, the disagreeing source versions, and the
+    quoted evidence on each side. A superseded version never joins a
+    group: its disagreement is resolved by supersession. Different
+    specimens never join a group: they may legitimately differ.
+    """
+    from .kchecks import normalise_value
+
+    slots = kcheck_context.derived_slots
+    versions = kcheck_context.source_versions
+    synonyms = kcheck_context.synonyms
+    by_key: dict[tuple[str, str], list] = {}
+    for slot in slots:
+        by_key.setdefault((slot.subject, slot.field), []).append(slot)
+    groups: list[dict] = []
+    for (subject, field), members in sorted(by_key.items()):
+        current = [
+            slot for slot in members
+            if (versions.get(slot.source_version_id) is None
+                or versions[slot.source_version_id].state == "current")
+        ]
+        values: dict[str, list] = {}
+        for slot in current:
+            values.setdefault(normalise_value(slot.value, synonyms), []).append(slot)
+        if len(values) < 2:
+            continue
+        for first_value in sorted(values):
+            for second_value in sorted(values):
+                if second_value <= first_value:
+                    continue
+                first_slots = values[first_value]
+                second_slots = values[second_value]
+                pairs = []
+                for first in first_slots:
+                    for second in second_slots:
+                        if (_supersedes(versions, first.source_version_id, second.source_version_id)
+                                or _supersedes(versions, second.source_version_id, first.source_version_id)):
+                            continue
+                        first_specimen = first.specimen
+                        second_specimen = second.specimen
+                        if (first_specimen is not None and second_specimen is not None
+                                and first_specimen != second_specimen):
+                            continue
+                        pairs.append((first, second))
+                if not pairs:
+                    continue
+                source_ids = sorted({slot.source_version_id for pair in pairs for slot in pair})
+                groups.append({
+                    "kind": "contradiction",
+                    "origin": "source_disagreement",
+                    "subject": subject,
+                    "field": field,
+                    "values": [first_value, second_value],
+                    "source_version_ids": source_ids,
+                    "quotes": sorted({slot.quote for pair in pairs for slot in pair if slot.quote}),
+                    "evidence_needed": (
+                        f"a current source version stating {field} for {subject} "
+                        "that resolves which assertion holds"
+                    ),
+                })
+    return groups
+
+
+def group_timeline_gaps(timeline: dict | None) -> list[dict]:
+    """T6 gap grouping over a `timeline.case_timeline` projection.
+
+    Two kinds of gap: interior calendar days with no source coverage
+    (the timeline's own gaps), and current entries with no occurred
+    date (the occurred facet is unknown, never filled by inference).
+    Each group states what evidence would close it.
+    """
+    if not isinstance(timeline, dict):
+        return []
+    gaps: list[dict] = []
+    for gap in timeline.get("gaps", []) if isinstance(timeline.get("gaps"), list) else []:
+        if not isinstance(gap, dict):
+            continue
+        start = gap.get("start_date", "")
+        end = gap.get("end_date", "")
+        gaps.append({
+            "kind": "gap",
+            "what": f"no source coverage {start} to {end}",
+            "start_date": start,
+            "end_date": end,
+            "before": gap.get("before", {}),
+            "after": gap.get("after", {}),
+            "evidence_needed": f"a source covering {start} to {end}",
+        })
+    for entry in timeline.get("entries", []) if isinstance(timeline.get("entries"), list) else []:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("occurred") is None:
+            gaps.append({
+                "kind": "gap",
+                "what": f"source {entry.get('source_id')} has no occurred date",
+                "source_version_id": entry.get("source_id"),
+                "document_id": entry.get("document_id"),
+                "evidence_needed": (
+                    f"a dated source version for document {entry.get('document_id')}"
+                ),
+            })
+    return gaps
+
+
+def group_timeline_conflicts(timeline: dict | None) -> list[dict]:
+    """T6 contradiction grouping over a timeline projection's conflicts.
+
+    Same specimen, different occurred dates, or same document,
+    different occurred dates across versions: the timeline flags the
+    disagreement as unknown rather than guessing. The group restates
+    it with the evidence that would settle it.
+    """
+    if not isinstance(timeline, dict):
+        return []
+    groups: list[dict] = []
+    for conflict in timeline.get("conflicts", []) if isinstance(timeline.get("conflicts"), list) else []:
+        if not isinstance(conflict, dict):
+            continue
+        key = conflict.get("conflict_key", "")
+        groups.append({
+            "kind": "contradiction",
+            "origin": "source_disagreement",
+            "conflict_key": key,
+            "conflict_kind": conflict.get("kind", ""),
+            "asserted_occurred_dates": list(conflict.get("asserted_occurred_dates", [])),
+            "sources": list(conflict.get("sources", [])),
+            "evidence_needed": (
+                f"a source version that settles the occurred date for {key}"
+            ),
+        })
+    return groups
