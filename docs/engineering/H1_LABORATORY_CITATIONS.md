@@ -17,7 +17,20 @@ Search has an explicit submit action. Query terms stay in the synthetic system.
 | POST `/evidence-search` | Searches metadata with current rights for a current question. |
 | POST `/evidence-links` | Stores an explicitly selected citation. An authorized identical retry recovers its link ID. |
 | GET `/source-citation-report` | Prepares a source-reported result and currently permitted citation metadata for authorized inspection. |
+| GET `/source-citation-report/versioned` | Returns the version-2 inspection and a SHA-256 fingerprint over its content. The changing read receipt is excluded from this fingerprint. |
+| POST `/source-citation-report/snapshots` | Requires the dedicated capture grant, a request key, and the fingerprint of the opened report. Stores the source anchor, ordered citation references and capture fingerprint. |
+| GET `/source-citation-report/snapshots` | Lists captures under the question’s current report-read permissions. |
+| GET `/source-citation-report/snapshots/{snapshot_id}` | Reopens the originally captured citation set. Current content rights and source freshness can change the visible report and its live fingerprint. |
 | GET `/evidence-links` | Reopens the original question anchor and links. Rights restrictions withhold the record metadata. |
+
+A capture stores references and a fingerprint. Each saved question supports up
+to 100 inspections. Opening one projects its original ordered citation set
+under current permissions. Metadata hidden at capture stays hidden after a
+later grant. If visible content or freshness changes, the reopened report can
+have a different fingerprint from the captured version. The write checks that
+the current content matches the submitted fingerprint. Its audit event records
+the access receipt from capture. A qualified reviewer’s disposition is still
+an outstanding operation.
 
 When a source changes, the saved question and its links retain their original
 identities. Historical reads show reassessment status. The scope of a citation

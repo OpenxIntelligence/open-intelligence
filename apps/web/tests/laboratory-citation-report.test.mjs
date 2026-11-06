@@ -20,7 +20,7 @@ function fixture(o=model.laboratory_observations[1]){
  const citations={contract:'oi.pg-question-evidence-links/1',patient_id:patient,case_id:caseId,question_id:qid,
   source_context_state:question.source_context_state,source_access_receipt_id:receipt,synthetic:true,model_executed:false,
   content_appraised:false,clinical_approval:false,question_anchor:anchor,links:[]};
- const wire={contract:'oi.laboratory-source-citation-inspection/1',question:question.question,reported_result:result,
+ const wire={report_sha256:'a'.repeat(64),contract:'oi.laboratory-source-citation-inspection/2',question:question.question,reported_result:result,
    clinical_review:'not_performed',claim_appraisal:'not_performed',citations};
  return {question,result,citations,wire};
 }
@@ -30,6 +30,7 @@ test('inspection binds exact question, source and measurement; no inferred value
   const {question,result,citations,wire}=fixture(observation);
   assert.deepEqual(readLaboratoryCitationReport(wire,model,question).result,result);
   for(const forged of [
+   ...[null, undefined, 'A'.repeat(64), 'a'.repeat(63), 'a'.repeat(63)+'\n'].map(report_sha256=>({...wire,report_sha256})),
    {...wire,question:'A different question?'},{...wire,clinical_review:'approved'},{...wire,claim_appraisal:'performed'},
    {...wire,citations:{...citations,patient_id:'PATIENT-OTHER'}},{...wire,citations:{...citations,clinical_approval:true}},
    {...wire,reported_result:{...result,resource_reference:'Observation/other'}},
@@ -81,7 +82,7 @@ async function sessionFor(readReport){
  const binding={case_id:caseId,patient_id:patient,source_organization:'ORG-A',source_system:'SYS-A',source_subject_ref:'SUBJECT-A',review_ref:'REVIEW-A',
   status:'active',revision:1,created_at:'2026-11-02T10:00:00Z',revoked_at:null,source_identity_verified:false,clinical_sources_linked:false,clinical_conclusions:false};
  const s=new RegistrySession(async(url,init)=>{
-  if(url.endsWith('/source-citation-report')){assert.equal(init.method,'GET');assert.equal(init.cache,'no-store');return readReport();}
+  if(url.endsWith('/source-citation-report/versioned')){assert.equal(init.method,'GET');assert.equal(init.cache,'no-store');return readReport();}
   if(url.endsWith('/evidence-links'))return response(citations);
   if(url.endsWith('/composer/laboratory-questions'))return response({patient_id:patient,case_id:caseId,access_receipt_id:receipt,questions:[question]});
   if(url.endsWith('/world-model'))return response(model);

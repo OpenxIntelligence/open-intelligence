@@ -72,6 +72,8 @@ class RegistryMigrationTests(unittest.TestCase):
             connection.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_event_insert()"))
             connection.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_task_insert()"))
             connection.execute(text("DROP FUNCTION IF EXISTS coordination.guard_question_followthrough_manual_dependency()"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.laboratory_inspection_snapshots"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_laboratory_inspection_snapshot()"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.laboratory_citation_anchors"))
             connection.execute(text("DROP TABLE IF EXISTS investigation.question_evidence_links"))
             connection.execute(text("DROP FUNCTION IF EXISTS investigation.require_lab_citation_current_sources()"))

@@ -24,7 +24,7 @@ BASE = 'http://127.0.0.1:8000'
 ACTIONS = ['patient_create', 'patient_read', 'case_binding_create', 'case_binding_read',
            'source_import', 'source_read', 'source_original_read', 'composer_context_read',
            'question_create', 'question_read', 'review_queue_read', 'review_return',
-           'source_brief_export', 'review_packet_read', 'followthrough_read',
+           'source_brief_export', 'review_packet_read', 'laboratory_snapshot_create', 'followthrough_read',
            'followthrough_create', 'followthrough_update', 'evidence_read', 'evidence_link',
            'authored_evidence_read', 'authored_evidence_import', 'authored_evidence_assess',
            'authored_evidence_original_read', 'evidence_report_export']

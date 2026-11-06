@@ -94,12 +94,13 @@ class LaboratoryCitationMigrationTests(SourceVersionFixture):
         with self.assertRaisesRegex(DBAPIError, "OI-LAB-CITATION-RIGHTS"):
             with self.engine.begin() as conn:
                 insert_copy(conn, rights=decision)
-        # On 0019, PostgreSQL checks the new referencing table before it
+        # PostgreSQL checks all referencing tables before it
         # runs a parent's BEFORE TRUNCATE trigger. Exercise both boundaries.
         with self.assertRaisesRegex(DBAPIError, "cannot truncate a table referenced"):
             with self.engine.begin() as conn:
                 conn.execute(text("TRUNCATE investigation.laboratory_question_anchors"))
-        for command in ("TRUNCATE investigation.laboratory_question_anchors, investigation.laboratory_citation_anchors",
+        for command in ("TRUNCATE investigation.laboratory_question_anchors, investigation.laboratory_citation_anchors, "
+                        "investigation.laboratory_inspection_snapshots",
                         "UPDATE investigation.laboratory_citation_anchors SET rights_decision_id=rights_decision_id",
                         "DELETE FROM investigation.laboratory_citation_anchors",
                         "TRUNCATE investigation.laboratory_citation_anchors"):

@@ -12,7 +12,7 @@ export type LaboratoryReportedResult=Readonly<{
   source_reported:true;review_state:'not_established';clinical_review:'not_performed';
 }>&LaboratoryValue;
 export type LaboratoryInspection=Readonly<{
-  question:string;result:LaboratoryReportedResult;citations:QuestionEvidenceLinks;
+  report_sha256:string;question:string;result:LaboratoryReportedResult;citations:QuestionEvidenceLinks;
 }>;
 function exact(v:unknown,keys:string[]):v is Record<string,unknown>{
   return !!v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
@@ -23,8 +23,9 @@ const sameInstant=(a:string,b:string)=>a.replace(/\+00:00$/,'Z')===b.replace(/\+
 /** Decode against the selected row and the authorized source *version*. History
  * need not be in today's Observation list; only the server can recover its value. */
 export function readLaboratoryCitationReport(raw:unknown,model:SourceWorldModel,q:SavedLabQuestion):LaboratoryInspection{
-  if(!exact(raw,['contract','question','reported_result','citations','clinical_review','claim_appraisal'])||
-    raw.contract!=='oi.laboratory-source-citation-inspection/1'||raw.question!==q.question||
+  if(!exact(raw,['contract','report_sha256','question','reported_result','citations','clinical_review','claim_appraisal'])||
+    typeof raw.report_sha256!=='string'||raw.report_sha256.length!==64||!/^[0-9a-f]+$/.test(raw.report_sha256)||
+    raw.contract!=='oi.laboratory-source-citation-inspection/2'||raw.question!==q.question||
     raw.clinical_review!=='not_performed'||raw.claim_appraisal!=='not_performed')throw Error('Invalid report');
   const citations=decodeQuestionEvidenceLinks(unwrapLaboratoryEvidence(raw.citations,q,false),model.patient_id,model.case_id,q.question_id);
   const r=raw.reported_result,source=[...model.current_sources,...model.history].find(x=>x.source_id===q.source_id);
@@ -48,5 +49,5 @@ export function readLaboratoryCitationReport(raw:unknown,model:SourceWorldModel,
     r.loinc_code!==current.loinc_code||r.specimen_type_text!==current.specimen_type_text||
     !sameInstant(r.effective_at,current.effective_at)||!sameInstant(r.issued_at,current.issued_at)||
     !sameInstant(r.specimen_collected_at,current.specimen_collected_at)||!sameLaboratoryValue(value,current))))throw Error('Result changed');
-  return Object.freeze({question:q.question,result:Object.freeze({...r,...value} as LaboratoryReportedResult),citations});
+  return Object.freeze({report_sha256:raw.report_sha256,question:q.question,result:Object.freeze({...r,...value} as LaboratoryReportedResult),citations});
 }

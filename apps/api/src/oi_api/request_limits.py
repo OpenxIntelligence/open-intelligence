@@ -26,7 +26,7 @@ class PatientRequestLimit:
                 ("/questions/" in route and route.endswith("/followthrough")) or
                 ("/questions/" in route and route.endswith("/manual-passages")) or
                 (("/questions/" in route or "/composer/laboratory-questions/" in route)
-                 and route.endswith(("/evidence-search", "/evidence-links"))) or
+                 and route.endswith(("/evidence-search", "/evidence-links", "/source-citation-report/snapshots"))) or
                 ("/followthrough/" in route and route.endswith("/transitions")) or
                 ("/questions/" in route and route.endswith(("/evidence", "/evidence-assessments", "/evidence-reports"))) or
                 ("/questions/" in route and "/evidence/" in route and route.endswith("/withdraw")) or
