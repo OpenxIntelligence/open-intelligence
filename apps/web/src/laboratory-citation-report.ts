@@ -1,5 +1,5 @@
 import type {SavedLabQuestion} from './laboratory-question.js';
-import type {SourceWorldModel} from './source-world-model.js';
+import {isLaboratoryAbsentReason,type SourceWorldModel} from './source-world-model.js';
 import {decodeQuestionEvidenceLinks,unwrapLaboratoryEvidence} from './question-evidence-view.js';
 import type {QuestionEvidenceLinks} from './question-evidence-view.js';
 import {citationEvidenceTimestamp} from './evidence-timestamp.js';
@@ -44,7 +44,7 @@ export function readLaboratoryCitationReport(raw:unknown,model:SourceWorldModel,
     if(!visible(r.value_text,64)||!(/^-?\d+(?:\.\d+)?$/).test(r.value_text)||!visible(r.unit_code,32)||r.absent_reason!==null)
       throw Error('Invalid reported measurement');
   }else if(r.status!=='reported_absent'||r.value_text!==null||r.unit_code!==null||
-      !['unknown','not-performed','error','masked'].includes(String(r.absent_reason)))throw Error('Invalid reported absence');
+      !isLaboratoryAbsentReason(r.absent_reason))throw Error('Invalid reported absence');
   const current=model.laboratory_observations.find(o=>o.source_id===q.source_id&&o.observation_reference===q.observation_reference);
   if((source.state==='current'&&!current)||(current&&(
     r.loinc_code!==current.loinc_code||r.specimen_type_text!==current.specimen_type_text||

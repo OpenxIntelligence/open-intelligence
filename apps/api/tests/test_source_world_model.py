@@ -123,6 +123,40 @@ class SourceWorldModelHTTPTests(SourceFixture):
                                 and x["clinical_meaning"] is None
                                 for x in body["observations"]))
 
+    def test_disagreement_preserves_all_current_lines_until_a_source_reassigns_its_episode(self):
+        from test_oncology_findings import HEADER
+
+        def report(doc, state, episode, amendment=False):
+            header = HEADER.replace("DOC-ALPHA", doc)
+            return (header + (f"Amends: {doc}@1\n" if amendment else "") +
+                    f"Oncology-Finding: marker|primary|{episode}|{state}|Fictional {doc} statement.\n")
+
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            current_ids = []
+            for doc, state in (("DOC-A", "reported"), ("DOC-B", "negative"), ("DOC-C", "pending")):
+                status, saved, _ = self.ingest(base, patient, report(doc, state, "EP-A"))
+                self.assertEqual(status, 201)
+                current_ids.append(saved["source_id"])
+            url = self.world_url(patient)
+            status, world, _ = request(base, url, token=TOKEN_A)
+            self.assertEqual(status, 200)
+            self.assertEqual(world["summary"]["source_disagreements"], 1)
+            conflict, = world["conflicts"]
+            self.assertCountEqual(conflict["source_refs"], [
+                {"source_id": source_id, "source_line": 8} for source_id in current_ids])
+            self.assertEqual(conflict["reported_states"], ["negative", "pending", "reported"])
+
+            status, _, _ = self.ingest(base, patient, report("DOC-B", "negative", "EP-B", amendment=True))
+            self.assertEqual(status, 201)
+            status, amended, _ = request(base, url, token=TOKEN_A)
+            self.assertEqual(status, 200)
+            self.assertEqual(amended["conflicts"], [])
+            self.assertEqual(amended["summary"]["source_disagreements"], 0)
+            self.assertEqual(amended["unresolved_refs"], [{"source_id": current_ids[2], "source_line": 8}])
+            self.assertEqual([item["source_id"] for item in amended["history"]], [current_ids[1]])
+            self.assertNotEqual(world["snapshot_fingerprint"], amended["snapshot_fingerprint"])
+
     def test_cancer_episode_attribution_is_versioned_scoped_and_never_inferred(self):
         from test_oncology_findings import HEADER, LINES
 

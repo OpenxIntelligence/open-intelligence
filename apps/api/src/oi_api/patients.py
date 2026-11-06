@@ -750,7 +750,7 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                         return False
                     if action == "patient_create":
                         return subject == context.organization
-                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "image_import", "image_read", "image_original_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update", "evidence_read", "evidence_link", "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess", "authored_evidence_withdraw", "authored_evidence_original_read", "evidence_report_export"} or subject not in context.patient_ids:
+                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "image_import", "image_read", "image_original_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update", "evidence_read", "evidence_link", "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess", "authored_evidence_withdraw", "authored_evidence_original_read", "evidence_report_export", "encounter.schedule", "encounter.read", "encounter.events.read", "encounter.transition", "note.write", "note.read", "episode_draft_read", "episode_draft_create"} or subject not in context.patient_ids:
                         return False
                     cursor = connection.cursor()
                     try:
@@ -1245,6 +1245,12 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
 
+    from .episode_drafts import register_episode_routes
+    register_episode_routes(router, principal=principal, registry=registry, authorize=records_authorized,
+                            refresh=final_question_authority, errors=errors)
+    from .encounter_routes import register_encounter_routes
+    register_encounter_routes(router, principal=principal, registry=registry, authorize=records_authorized,
+                              refresh=final_question_authority, errors=errors)
     from .laboratory_fhir_routes import register_laboratory_fhir_routes
     register_laboratory_fhir_routes(
         router, principal=principal, registry=registry,

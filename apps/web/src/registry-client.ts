@@ -235,16 +235,21 @@ export class RegistrySession {
     if(!q||q.patient_id!==this.#state.patient?.patient_id)throw Error('Recheck current question access');
     return this.#caseContentRequest(caseId,'/questions/'+questionId+'/manual-passages',body,questionId);
   }
+  async episodeDraftRequest(caseId:string,body?:string){
+    return this.#caseContentRequest(caseId,'/episode-drafts',body);
+  }
   async #caseContentRequest(caseId:string,path:string,body?:string,questionId?:string):Promise<import('./reviewed-documents').DocumentReply>{
     const scope=this.#scope,read=this.#read,records=this.#records,patient=this.#state.patient?.patient_id;
-    const caseContext=()=>questionId!==undefined?
+    const world=this.#state.worldModel;
+    const currentWorld=()=>this.#state.worldPhase==='ready'&&world?.case_id===caseId&&this.#state.worldModel===world;
+    const caseContext=()=>path==='/episode-drafts'?currentWorld():questionId!==undefined?
       this.#state.questionListPhase==='ready'&&this.#state.questionsCaseId===caseId&&this.#state.worldPhase==='ready'&&this.#state.worldModel?.case_id===caseId&&
        Boolean(this.#state.questions?.some(q=>q.question_id===questionId&&q.case_id===caseId&&q.patient_id===patient)):
       this.#state.sourceIndex?.case_id===caseId;
     const current=()=>scope===this.#scope&&read===this.#read&&records===this.#records&&patient===this.#state.patient?.patient_id&&caseContext();
     if(!patient||!this.#token||!current())throw Error('Recheck patient and case access');
     const control=new AbortController();this.#controllers.add(control);
-    const timeout=questionId!==undefined?setTimeout(()=>control.abort(),10000):undefined;
+    const timeout=questionId!==undefined||path==='/episode-drafts'?setTimeout(()=>control.abort(),10000):undefined;
     try{
       const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+path,this.#init(control,body));
       if(!current()){
@@ -260,7 +265,8 @@ export class RegistrySession {
         return{status:response.status,body:null,headers:response.headers};
       }
       let value:unknown;
-      if(path.endsWith('/original')&&response.status===200){
+      if(path==='/episode-drafts')value=await json(response,524288);
+      else if(path.endsWith('/original')&&response.status===200){
         value=await boundedBytes(response,65536);
       }else{
         // 64 revisions × 30 quotes × 1200 code points × at most 12 JSON bytes
