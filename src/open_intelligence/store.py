@@ -402,6 +402,22 @@ CREATE TABLE IF NOT EXISTS dicom_reports (
   report_text TEXT NOT NULL, source_version_id INTEGER REFERENCES source_versions(id),
   created_at TEXT NOT NULL, UNIQUE(case_id, study_uid)
 );
+-- D3: computed line-of-therapy rows. One row per regimen line of one
+-- computation batch, tagged with the versioned ruleset that computed
+-- it. Append-only: rows are inserted, never updated or deleted; a
+-- later computation marks the earlier batch's current rows stale
+-- (reason 'ruleset_changed' when the ruleset version differs,
+-- 'recomputed' when the same version recomputes). A stale row is a
+-- record of a superseded computation, never a deletion.
+CREATE TABLE IF NOT EXISTS therapy_lines (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  line_number INTEGER NOT NULL, regimen_key TEXT NOT NULL,
+  first_occurred TEXT NOT NULL, last_occurred TEXT NOT NULL,
+  ruleset_version TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('current','stale')),
+  stale_reason TEXT CHECK(stale_reason IN ('ruleset_changed','recomputed')),
+  computed_at TEXT NOT NULL
+);
 -- B-05 explicit subject binding. One row per imported source version,
 -- recording the declared subject id and the declared-ID-equality match
 -- decision. Append-only: no update path exists, so a recorded decision is
