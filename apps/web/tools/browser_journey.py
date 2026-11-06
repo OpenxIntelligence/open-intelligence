@@ -348,6 +348,8 @@ def main():
             assert cd.evaluate("document.querySelector('#credential').value==='' && document.querySelector('#patient-id').value==='' && localStorage.length===0 && sessionStorage.length===0")
             from reading_convergence_journey import exercise_session_reset
             exercise_session_reset(cd,pid,case,tokens[0],credentials,write_grants)
+            from patient_suspension_journey import exercise as exercise_patient_suspension
+            exercise_patient_suspension(cd,tokens[0],credentials,write_grants,add_synthetic,restart_api,out)
             print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; identity/create/retry; exact case/source read, immutable amendment history, unreviewed quoted text and rights revocation; cross-organization isolation, credential expiry/reload, keyboard landmarks and mobile layout. Independently fictional records only; no clinical workflow or production identity claim.')
         finally:
             if cd:cd.close()
