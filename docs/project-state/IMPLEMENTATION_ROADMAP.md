@@ -68,3 +68,16 @@ The [OI-24 workflow proposal](https://docs.google.com/document/d/1LFOZGne5wVW0Hi
 Record each increment in its existing source-owner engineering specification, exact PR and current assessment. Preserve `main`, draft and roadmap distinctions. A source-only brief does not complete OI-008, a verification return is not clinical sign-off, and a fictional workflow does not qualify real-patient use. Existing November 4 milestones in Drive are historical scheduling constraints to reconcile; they do not reduce the complete product scope or justify unsupported completion claims.
 
 Before new third-party adoption, use the existing [rights register](https://docs.google.com/spreadsheets/d/1QnrvNBasHSzQa7goGfolIR-kt1gzMrmpO7__CYIzxT4/edit) and [policy overlay](https://docs.google.com/document/d/19YWwkhHzL3-A6oBjffkA0Zow2RV-0awXtodB9RjST9k/edit). Evaluate an exact artifact for a named problem; a catalog candidate is not an instruction to install it. Continue reversible engineering under existing authorization, retaining separate review for merges, production release and external clinical effects.
+
+## Infrastructure dependencies for the connected oncology workflow
+
+| Component | Implementation under review or already on H1 | Next acceptance boundary |
+|---|---|---|
+| Identity and permissions | Registry-backed patient IDs, organization scope, independently checked synthetic actions and access receipts. | Workforce and patient identity, delegation and enforceable real-data consent. |
+| Operational EHR | This increment connects encounters, guarded transitions, versioned draft notes and command receipts to H1 PostgreSQL. | Link a note version to an original report, then qualify professional attestation independently. |
+| Cross-domain changes | Encounter and note commands append immutable reference events in their transaction. Other modules can resume the scoped HTTP event feed by ID. | A first consumer with durable checkpoints and retry recovery. Compare the existing outbox/inbox work before adopting a dispatcher. |
+| Patient data and interoperability | H1 already owns versioned originals, episode attribution and a bounded laboratory FHIR input. | Reviewed problem, medication and allergy lists; profile-specific FHIR/mCODE mapping and round-trip validation. |
+| Clinical and research engines | Source-grounded questions, passage/evidence review and saved reports are connected. Bioinformatics and extraction experiments have separate evidence. | Reproducible jobs with governed inputs, independently evaluated extraction and human-reviewed promotion. |
+| Treatment and care delivery | Visits can represent the setting for care; existing follow-through records operational tasks. | Regimen, order, verification, administration, adverse-event and reconciliation workflows with their own owners. |
+
+See [the operational HTTP contract](../../apps/api/README.md#connected-encounter-and-note-service) and the [existing first-principles plan](../FIRST_PRINCIPLES_PLAN.md). Each remaining acceptance boundary requires its own implementation evidence.

@@ -160,3 +160,26 @@ for(const phase of ['saving','unknown']){
   assert.match(html,phase==='unknown'?/unknown outcome/:/submission is in progress/);
  });
 }
+
+test('Overview renders saved laboratory questions separately from text-anchored counts',async()=>{
+ const session=await open(); const previous=session.snapshot(),model=previous.worldModel;
+ const sid='SRC-'+'F'.repeat(32),sha='e'.repeat(64);
+ const world={...model,current_sources:[...model.current_sources,
+  {source_id:sid,version:1,sha256:sha,kind:'laboratory',state:'current'}]};
+ const labQuestion={question_id:'QUESTION-'+'F'.repeat(32),question:'What does the fictional laboratory result report?',
+  source_id:sid,source_version:1,source_sha256:sha,observation_reference:'Observation/FICTIONAL-OBS',
+  source_snapshot_sha256:world.snapshot_fingerprint,preflight_sha256:'b'.repeat(64),
+  source_context_state:'current_unreviewed_question'};
+ const scope={...previous,worldModel:world,labQuestionListPhase:'ready',labQuestionHistory:{
+  patient_id:patientId,case_id:caseId,checked_source_snapshot_sha256:world.snapshot_fingerprint,
+  access_receipt_id:'ACCESS-'+'D'.repeat(32),questions:[labQuestion]}};
+ const html=render(scope);
+ assert.match(html,/data-testid="continuity-lab-questions"/);
+ assert.match(html,/data-testid="continuity-lab-current">1<\/strong>/);
+ assert.match(html,/data-testid="continuity-lab-reassessment">0<\/strong>/);
+ assert.match(html,/data-testid="continuity-open-lab-questions"/);
+ assert.doesNotMatch(html,/No saved questions were returned for this case and grant\./);
+ const unknown=render({...scope,labQuestionListPhase:'error',labQuestionHistory:null});
+ assert.match(unknown,/A missing check is not zero/);
+ assert.doesNotMatch(unknown,/data-testid="continuity-lab-current"/);
+});

@@ -387,8 +387,43 @@ def exercise(cd, patient_id, case_id, question_id, source_id, credentials,
         open_report(first_report['report_id'])
 
         # Navigation must invalidate disclosed report content. It cannot reappear late.
+        before_overview_reads = len(responses())
         navigate('Overview')
         assert not cd.evaluate("Boolean(document.querySelector('[data-testid=evidence-report-body]'))")
+        # Navigation correctly discards private evidence disclosures. The patient
+        # explicitly requests a fresh independently authorized read in Overview.
+        selector = (f'[data-testid=second-opinion-agenda-item][data-question-id="{question_id}"]'
+                    ' [data-testid=second-opinion-proposal-readiness]')
+        button = (f'[data-testid=second-opinion-agenda-item][data-question-id="{question_id}"]'
+                  ' [data-testid=second-opinion-check-proposals]')
+        cd.wait("Boolean(document.querySelector(" + json.dumps(selector + '[data-checked=false]') + "))",
+                'navigation clears earlier unreviewed evidence disclosure')
+        assert len(responses()) == before_overview_reads, 'Overview must not fetch or submit evidence implicitly'
+        click(button)
+        cd.wait("Boolean(document.querySelector(" + json.dumps(selector + '[data-checked=true]') + "))",
+                'explicit evidence check shows newly authorized human-authored comparisons')
+        added = responses()[before_overview_reads:]
+        assert len(added)==1 and added[0]['path']==scope+'/evidence'
+        assert added[0]['method']=='GET' and added[0]['status']==200
+        summary = cd.evaluate('document.querySelector(' + json.dumps(selector) + ').textContent')
+        assert '1 proposed support' in summary and '1 proposed contradiction' in summary
+        assert '1 current unreviewed report' in summary
+        assert 'not a scientific evidence grade' in summary
+        # Revoking the independently granted evidence read withholds the old
+        # summary after the next explicit check; separate questions stay intact.
+        credentials[0]['actions'].remove('authored_evidence_read');write_grants()
+        count = len(responses())
+        click(button)
+        cd.wait("Boolean(document.querySelector(" + json.dumps(selector + '[data-checked=false]') +
+                ")) && window.__oiAuthoredEvidenceChecks.responses.length>" + str(count),
+                'revoked evidence permission clears the previous status summary')
+        assert responses()[-1]['path']==scope+'/evidence'
+        assert responses()[-1]['status']==404 and responses()[-1]['method']=='GET'
+        assert len([r for r in responses()[count:] if r['method']=='POST'])==0
+        credentials[0]['actions'].append('authored_evidence_read');write_grants()
+        click(button)
+        cd.wait("Boolean(document.querySelector(" + json.dumps(selector + '[data-checked=true]') + "))",
+                'reauthorized evidence read rebuilds the summary from the server')
         inspect()
         restart_api()
         inspect()

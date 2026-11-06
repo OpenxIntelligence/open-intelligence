@@ -27,8 +27,28 @@ The current workflow supports independently authored fictional laboratory record
 
 ## Acceptance
 
+Journey keeps editable wording for each source ID and Observation reference
+in the current report view. Selecting another result cancels pending preparation
+and clears the active receipt. Returning to a result restores its wording and
+requires a fresh check before saving. A fresh report read or leaving Journey
+ends this local editing session. Explicitly saved questions use the durable
+history described above.
+
+The connected browser regression switches between two different questions,
+reopens the report, then revisits a previously prepared question after an
+amendment. The [baseline run](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42059235884)
+reproduced the lost wording on main. [PR #521](https://github.com/OpenxIntelligence/open-intelligence/pull/521)
+records the results on the changed revision.
+
 Use [the fictional demo](../H1_DEMO.md) to try Journey. Acceptance covers a
 mixed case with text and laboratory questions, independent grants, immutable
 source anchors, lost-response retry, an amendment that preserves the earlier
 identity, and active and revoked PostgreSQL restore. The pull request records
 the revision tested, observed results, failure history and release status.
+
+A new laboratory citation requires the saved case source set to remain current.
+PostgreSQL compares the ordered question-created and source-import receipts under
+the case binding lock. New typed citation inserts require READ COMMITTED so a
+writer waiting for the lock sees sources committed during its wait. A later independent document also requires reassessment,
+even when the selected laboratory report is still current. Previously committed
+links retain their identity and remain subject to current read and retry grants.
