@@ -197,12 +197,26 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('FICT-RECORD-CONTINUITY@1')",'question-scoped catalog search')
     cd.evaluate("""(()=>{const original=window.fetch;window.__citationWrites=[];window.fetch=async(input,init)=>{
       const response=await original(input,init);
-      if(String(input).endsWith('/evidence-links')&&init?.method==='POST')
+      if(String(input).endsWith('/evidence-links')&&init?.method==='POST'){
         window.__citationWrites.push({status:response.status,body:await response.clone().json(),command:JSON.parse(init.body)});
+        if(window.__citationWrites.length===1&&response.status===201)throw Error('Fictional lost citation response');
+      }
       return response;};window.__restoreCitationFetch=()=>{window.fetch=original};})()""")
     click('Save citation FICT-RECORD-CONTINUITY@1')
     try:
+        cd.wait("[...document.querySelectorAll('button')].some(b=>b.textContent==='Retry exact citation save'&&!b.disabled)",'citation retry offered')
+        assert cd.evaluate('window.__citationWrites[0].status')==201
+        click('Refresh reviewed documents')
+        cd.wait("[...document.querySelectorAll('button')].some(b=>b.textContent==='WEB-PDF · v1 · current'&&!b.disabled)",'citation original reopened')
+        click('WEB-PDF · v1 · current')
+        cd.wait("[...document.querySelectorAll('button')].some(b=>b.textContent==='Open saved passage questions'&&!b.disabled)",'passage question history available')
+        click('Open saved passage questions')
+        cd.wait("[...document.querySelectorAll('button')].some(b=>b.textContent==='Retry exact citation save'&&!b.disabled)",'citation retry survives remount')
+        click('Retry exact citation save')
         cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('Citation saved.')",'passage citation saved')
+        writes=cd.evaluate('window.__citationWrites')
+        assert len(writes)==2 and writes[0]['command']==writes[1]['command']
+        assert writes[1]['status']==200 and writes[1]['body']=={**writes[0]['body'],'duplicate':True}
     except Exception:
         print('CITATION FAILURE',cd.evaluate("({writes:window.__citationWrites,visible:document.querySelector('[data-testid=saved-passage-questions]')?.textContent})"))
         raise
