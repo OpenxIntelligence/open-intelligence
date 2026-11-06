@@ -245,7 +245,8 @@ class PostgresQuestionReviewReturns:
                                 organization: str, actor: str, purpose: str,
                                 request_key: str, expected_queue_fingerprint: str, reason: str,
                                 recheck_authority: Callable[[], None],
-                                prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
+                                prepare_response: Callable[[dict], PreparedResponse] | None = None,
+                                manual_dependency: dict | None = None) -> dict | PreparedResponse:
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         question_id = _question_id(question_id)
@@ -258,6 +259,12 @@ class PostgresQuestionReviewReturns:
         if (type(expected_queue_fingerprint) is not str
                 or SHA256.fullmatch(expected_queue_fingerprint) is None):
             raise PatientRegistryError("Invalid queue fingerprint")
+        bound = (ManualTaskDependency(**manual_dependency).model_dump(mode="json")
+                 if manual_dependency is not None else None)
+        if bound is not None and any(bound[k] != v for k, v in (
+                ("patient_id", patient_id), ("case_id", case_id),
+                ("question_id", question_id))):
+            raise PatientRegistryDenied("Manual Review dependency has a different question scope")
         intent = _digest({
             "patient_id": patient_id, "case_id": case_id, "question_id": question_id,
             "organization": organization, "actor": actor, "purpose": purpose,
@@ -265,6 +272,7 @@ class PostgresQuestionReviewReturns:
             "source_snapshot_contract": SOURCE_SNAPSHOT_CONTRACT,
             "queue_fingerprint_contract": FINGERPRINT_CONTRACT,
             "reason": reason, "action": ACTION,
+            **({"manual_dependency": bound} if bound is not None else {}),
         })
 
         def response(receipt_id, duplicate):
@@ -292,6 +300,8 @@ class PostgresQuestionReviewReturns:
                 # legacy keys never become canonical through a retry. The source
                 # owner still performs final refreshed authorization and audit.
                 self.registry._allow(actor, patient_id, "review_return", purpose)
+                if bound is not None:
+                    self.registry._allow(actor, patient_id, "source_original_read", purpose)
                 return response(prior[0], True)
             if len(receipts) >= MAX_RECEIPTS:
                 raise PatientRegistryError("Review receipt history exceeds bounded limit")
@@ -303,6 +313,16 @@ class PostgresQuestionReviewReturns:
             if not hmac.compare_digest(expected_queue_fingerprint, item["queue_fingerprint"]):
                 raise PatientRegistryConflict("Review queue item changed; refresh")
             self.registry._allow(actor, patient_id, "review_return", purpose)
+            if bound is not None:
+                self.registry._allow(actor, patient_id, "source_original_read", purpose)
+                scope = dict(patient_id=patient_id, case_id=case_id,
+                             question_id=question_id, organization=organization,
+                             actor=actor, purpose=purpose)
+                state = QuestionPassages(self.registry).manual_dependency_state_locked(
+                    scope, bound)
+                if state["needs_recheck"]:
+                    raise PatientRegistryConflict(
+                        "Selected manual Review context requires reassessment")
             recheck_authority()
             receipt_id = "REVIEW-" + uuid.uuid4().hex.upper()
             inserted = self.registry._fetchone(
@@ -321,6 +341,14 @@ class PostgresQuestionReviewReturns:
                 if not matching_prior(winner):
                     raise PatientRegistryConflict("Review request key belongs to different intent")
                 return response(winner[0], True)
+            if bound is not None:
+                self.registry._execute(
+                    "INSERT INTO investigation.question_review_manual_dependencies "
+                    "(receipt_id,question_id,revision_id,patient_id,case_id,"
+                    "origin_org,references_sha256) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (receipt_id, question_id, bound["revision_id"], patient_id,
+                     case_id, organization, bound["references_sha256"]),
+                )
             self.registry.append_event(
                 patient_id, "investigation.review.returned_for_verification",
                 case_id=case_id, question_id=question_id, receipt_id=receipt_id,
@@ -328,6 +356,8 @@ class PostgresQuestionReviewReturns:
                 source_snapshot_sha256=item["source_snapshot_sha256"],
                 source_snapshot_contract=SOURCE_SNAPSHOT_CONTRACT,
                 queue_fingerprint_contract=FINGERPRINT_CONTRACT, actor=actor,
+                **({"manual_dependency_revision_id": bound["revision_id"]}
+                   if bound is not None else {}),
             )
             return response(receipt_id, False)
 
