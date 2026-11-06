@@ -228,6 +228,37 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         queue=operator(path+'/review-queue')
         review_item=next(item for item in queue['items'] if item['question_id']==question_id)
         assert review_item['queue_fingerprint'] and review_item['review_state']=='awaiting_independent_verification'
+        # Select the exact saved manual-context revision without sending the
+        # original quotations in Review command or receipt. Save this *before*
+        # the independently source-only Review return so the latter remains
+        # current after the supplemental document is corrected.
+        refs=sorted((dict(source_id=p['anchor']['source_id'],
+                          annotation_revision_id=p['anchor']['annotation_revision_id'],
+                          selection_key=p['anchor']['selection_key'],
+                          anchor_sha256=p['anchor_sha256'])
+                     for p in saved_context['passages']),
+                    key=lambda r:(r['source_id'],r['annotation_revision_id'],r['selection_key']))
+        selected_hash=hashlib.sha256(json.dumps(
+            refs,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
+        bound_identity=dict(patient_id=patient_id,case_id=CASE,question_id=question_id,
+                            revision_id=saved_context['revision_id'],
+                            references_sha256=selected_hash)
+        bound_command=dict(synthetic=True,request_key='MANUAL-WEB-RETURN-DEPENDENT',
+                           expected_queue_fingerprint=review_item['queue_fingerprint'],
+                           reason='Independently verify this selected fictional document context.',
+                           manual_dependency=bound_identity)
+        assert denied_quote not in json.dumps(bound_command,ensure_ascii=False)
+        bound_receipt=operator(qpath+'/return-for-verification',bound_command)
+        bound_retry=operator(qpath+'/return-for-verification',bound_command)
+        assert bound_retry=={**bound_receipt,'duplicate':True}
+        bound_history=operator(path+'/review-queue')
+        bound_item=next(item for item in bound_history['items'] if item['question_id']==question_id)
+        assert bound_item['current_return_receipt_id']==bound_receipt['receipt_id']
+        assert bound_item['return_count']==1 and bound_item['manual_reassessment_required'] is False
+        bound_record=next(r for r in bound_history['receipts'] if r['receipt_id']==bound_receipt['receipt_id'])
+        assert bound_record['manual_dependency_revision_id']==saved_context['revision_id']
+        assert bound_record['manual_context_state']=='current_unreviewed'
+        assert denied_quote not in json.dumps(bound_history,ensure_ascii=False)
         review_receipt=operator(qpath+'/return-for-verification',dict(
             synthetic=True,request_key='MANUAL-WEB-RETURN',
             expected_queue_fingerprint=review_item['queue_fingerprint'],
@@ -237,6 +268,7 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
                       if item['question_id']==question_id)
         assert returned['current_return_receipt_id']==review_receipt['receipt_id']
         assert returned['review_state']=='returned_for_independent_verification'
+        assert returned['return_count']==2 and returned['manual_reassessment_required'] is False
         assert returned['clinical_approval'] is False and returned['reviewer_identity_verified'] is False
         task_command=dict(synthetic=True,request_key='MANUAL-WEB-FOLLOWTHROUGH',
             title='Verify fictional violet source wording',
@@ -275,6 +307,17 @@ def exercise(cd,patient_id,token,credentials,write_grants,artifacts):
         after_review=next(item for item in operator(path+'/review-queue')['items']
                           if item['question_id']==question_id)
         assert after_review['current_return_receipt_id']==review_receipt['receipt_id']
+        assert after_review['source_context_state']=='current_unreviewed_question'
+        assert after_review['review_state']=='returned_for_independent_verification'
+        assert (after_review['return_count'],after_review['prior_return_count'])==(1,1)
+        assert after_review['manual_reassessment_required'] is True
+        after_history=operator(path+'/review-queue')
+        manual_record=next(r for r in after_history['receipts'] if r['receipt_id']==bound_receipt['receipt_id'])
+        source_only_record=next(r for r in after_history['receipts'] if r['receipt_id']==review_receipt['receipt_id'])
+        assert manual_record['manual_context_state']=='reassessment_required'
+        assert manual_record['manual_dependency_revision_id']==saved_context['revision_id']
+        assert source_only_record['manual_context_state'] is None
+        assert denied_quote not in json.dumps(after_history,ensure_ascii=False)
         assert after_review['clinical_approval'] is False
         screenshot=cd.command('Page.captureScreenshot',{'format':'png'})
         (artifacts/'manual-context-reassessment.png').write_bytes(base64.b64decode(screenshot['data']))
