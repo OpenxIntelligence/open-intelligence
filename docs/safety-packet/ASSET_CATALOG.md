@@ -1,17 +1,17 @@
 # Asset catalog — every demo asset and its origin
 
-Scope: assets in the current tree on branch `oi/safety-packet`
-(current `main` merged in; refreshed 2026-11-02). This supersedes the
-earlier `main`-only revision (`46bb1db`), which listed three web files
-and seven synthetic files; nothing listed there has been removed, and
-the files merged since are added below.
+Scope: assets in the current tree on `main` (HEAD `4b13bc2`;
+refreshed 2026-11-05). This supersedes the 2026-11-02 revision,
+which described the pre-submission tree on the `oi/safety-packet`
+branch; nothing listed there has been removed, and the files merged
+since are added below.
 
 There are no fonts, images, icons, audio, video, or vendored files in the
-demo. The complete asset list is: six web files; twenty-one fictional
+demo. The complete asset list is: twelve web files; twenty-four fictional
 report, evidence, and discovery text files plus one replay fixture, one
-bibliographic fixture, and one readme in `examples/synthetic/`; and
-seven fictional report text files plus one expectations file in
-`examples/patient-access/`.
+bibliographic fixture, one FHIR lab-bundle fixture, and one readme in
+`examples/synthetic/`; and seven fictional report text files plus one
+expectations file in `examples/patient-access/`.
 
 ## Web assets (authored for this repository)
 
@@ -19,6 +19,12 @@ seven fictional report text files plus one expectations file in
 |---|---|---|
 | `web/index.html` | Independently authored for this repository | Demo page structure. Loads only local `/style.css`, `/app.js`, and `/mission.js`. |
 | `web/app.js` | Independently authored for this repository | Demo UI logic. No third-party library. All requests go to relative `/api/…` paths. |
+| `web/case_search.js` | Independently authored for this repository | Case search and triage list logic. All requests go to relative `/api/…` paths. |
+| `web/clinician-overview.js` | Independently authored for this repository | Clinician overview panel logic. All requests go to relative `/api/…` paths. |
+| `web/consent.js` | Independently authored for this repository | Consent panel logic. All requests go to relative `/api/…` paths. |
+| `web/intake.js` | Independently authored for this repository | Document intake and preview logic. All requests go to relative `/api/…` paths. |
+| `web/provenance.js` | Independently authored for this repository | Source provenance panel logic. All requests go to relative `/api/…` paths. |
+| `web/report.js` | Independently authored for this repository | Patient report panel logic. All requests go to relative `/api/…` paths. |
 | `web/mission.js` | Independently authored for this repository | Patient Mission panel logic. Fetches only the relative `/api/cases/{id}/mission` projection. |
 | `web/style.css` | Independently authored for this repository | Demo styling. Imports only the local `./tokens.css` and `./base.css`. No external fonts or imported stylesheets. |
 | `web/tokens.css` | Independently authored for this repository | Design tokens (spacing, type, color, system font stacks). No external resources. |
@@ -49,6 +55,8 @@ seven fictional report text files plus one expectations file in
 | `examples/synthetic/oi019-evidence-hypothetical.txt` | Independently authored fictional evidence, format `OI-SYNTHETIC-EVIDENCE/1`, id `EVID-OI019-HYPOTHETICAL`, declaration `Rights: original-synthetic` | Hypothetical-criterion example. That declaration is not clearance for arbitrary user-supplied text. |
 | `examples/synthetic/oi019-evidence-invalid.txt` | Independently authored fictional evidence, format `OI-SYNTHETIC-EVIDENCE/1`, id `EVID-OI019-INVALID`, declaration `Rights: original-synthetic` | Invalid-candidate example. That declaration is not clearance for arbitrary user-supplied text. |
 | `examples/synthetic/oi019-wrong-patient.txt` | Independently authored fictional report, format `OI-SYNTHETIC-REPORT/1`, document `PATH-OI019-WRONG`, declares `CASE-OI019-B` | Negative test asset: intentionally declares the other synthetic subject. Not a real record. |
+| `examples/synthetic/h1-demo-report.txt` | Independently authored fictional report, format `OI-SYNTHETIC-REPORT/1`, document `DOC-DEMO-PATHOLOGY`, case `CASE-DEMO` | H1 demo pathology source. First line carries the `OI-SYNTHETIC-REPORT/1` marker. |
+| `examples/synthetic/plaintext-record.txt` | Independently authored fictional source record, format `OI-SYNTHETIC-PLAIN-TEXT` | Synthetic teaching material for the plaintext intake path; states no real patient or published patient narrative was used. First line carries the `OI-SYNTHETIC-PLAIN-TEXT` marker. |
 | `examples/patient-access/oi017-pathology-specimen-a.txt` | Independently authored fictional report, format `OI-SYNTHETIC-REPORT/1`, document `PATH-OI017-A`, case `CASE-OI017` | Institution A pathology on specimen A. |
 | `examples/patient-access/oi017-pathology-specimen-a-amended.txt` | Independently authored fictional report, format `OI-SYNTHETIC-REPORT/1`, document `PATH-OI017-A`, case `CASE-OI017`, amends `PATH-OI017-A@1` | Amended version of the specimen A document. |
 | `examples/patient-access/oi017-pathology-specimen-b.txt` | Independently authored fictional report, format `OI-SYNTHETIC-REPORT/1`, document `PATH-OI017-B`, case `CASE-OI017` | Institution B pathology on a different specimen B. |
@@ -61,10 +69,52 @@ seven fictional report text files plus one expectations file in
 
 | Asset | Origin | Purpose / note |
 |---|---|---|
+| `examples/synthetic/fictional-fhir-r4-lab-bundle.json` | Independently authored fictional FHIR R4 Bundle (Patient `FICTIONAL-PATIENT-A`, Specimen `FICTIONAL-SPECIMEN-A`, Observation `FICTIONAL-OBS-A`, DiagnosticReport `FICTIONAL-REPORT-A`) | Fictional laboratory bundle fixture for the H1 FHIR lab-custody path. All identifiers are `FICTIONAL-*`; no real patient data. |
 | `examples/synthetic/crossref-metadata-fixture.json` | Independently authored fictional entry in Crossref JSON shape; DOI `10.5555/oi-synthetic-001`; journal "Fictional Examples Journal" | Offline bibliography demonstration. Not a real article citation. No live lookup is performed for this entry. |
 | `examples/synthetic/demo-investigation.json` | Independently authored recorded demonstration output with `FIRST_SOURCE` / `FIRST_ASSESSMENT` citation placeholders | Offline replay for model investigation. Placeholders are replaced server-side with real current case ids and validated like live output; labeled `mode=replay`, never a live run. |
 | `examples/synthetic/oi019-readme.md` | Independently authored demonstration note | Describes the OI-019 two-case staging (T0/T1/T2 by file import) and the four evaluation elements. Not advice or a recommendation. |
 | `examples/patient-access/EXPECTED_RESULTS.json` | Independently authored expectations record for `CASE-OI017` | Per-fixture hashes and sizes plus a synthetic-provenance statement. Synthetic contract evidence only. |
+
+## Merged-main top-up (2026-11-05): growth since the 2026-11-02 revision
+
+682 files were added to `main` since 2026-11-02 (counted with
+`git log --since=2026-11-02 --diff-filter=A --name-only main`):
+397 under `apps/`, 181 under `docs/`, 57 under `tests/`, 25 under
+`src/`, 6 under `web/`, 6 under `tools/`, 3 under `examples/`, 3
+under `.github/`, plus the repository-root `requirements-pdf.lock`.
+The demo-asset tables above remain file-by-file; the non-demo
+growth below is summarized by category, with safety-relevant new
+files named individually. A per-file listing of all 682 is not
+attempted — at this scale it would be unreadable and would go stale
+faster than it could be checked — and this packet says so rather
+than pretending otherwise. Every count here is re-derivable from
+the repository with the `git log` command above.
+
+### Safety-relevant new files (named individually)
+
+| Asset | Origin | Purpose / note |
+|---|---|---|
+| `requirements-pdf.lock` (repository root) | Authored for this repository | Hash-pinned `pypdf==6.21.4` lock for the optional bounded PDF intake runtime. The guard test's no-package-manager check covers `requirements.txt`, `pyproject.toml`, `package.json`, `package-lock.json`, `Pipfile`, `Pipfile.lock` at the root — this lock filename is not in that list, and the guard passes with it present. |
+| `THIRD_PARTY_NOTICES/pypdf.txt` | `pypdf` project notice | BSD license notice for the optional PDF runtime. |
+| `docs/engineering/DOCUMENT_INTAKE.md` | Authored for this repository | Source and license record for the bounded PDF intake runtime. |
+| `tools/research/data_policy.py` | Authored for this repository | Research data-policy helpers (fictional/offline only). |
+| `tools/research/test_restricted_research_entrypoints.py` | Authored for this repository | Regression tests enforcing the named-person / public-case acquisition refusal (PR #137, merged). |
+| `tools/research/test_sid_case_data_disabled.py` | Authored for this repository | Regression tests: named-person case data disabled in research paths. |
+| `apps/api/migrations/versions/0015_manual_report_context.py` through `0018_laboratory_questions.py` | Authored for this repository | H1 PostgreSQL migrations; chain ends at `0018_laboratory_questions`, with the 0016 fork converged by `0017_lab_manual_convergence`. |
+| `apps/web/package.json`, `apps/web/package-lock.json` | Authored for this repository | H1 React tree manifest (`open-intelligence-h1-web` 0.1.0). Outside the legacy demo's standard-library claim and outside the root package-manifest guard. |
+
+### Growth by category (counts only)
+
+| Category | Files added | Note |
+|---|---|---|
+| `apps/` (H1 API + H1 web) | 397 | FastAPI/PostgreSQL tree, React tree, migrations 0015–0018, laboratory/FHIR modules, question/passage/review contracts, dependency-gate tooling. Covered at inventory level in `SBOM.md` (26 pinned packages, `SCHEMA_REVISION` 0018); not demo assets. |
+| `docs/` | 181 | Engineering notes, H1 contracts, research and evaluation docs. Complementary inputs, not shipped code; no new license decision. |
+| `tests/` | 57 | Vanilla + H1 tests, including the case-switch guard test and the restricted-entrypoint tests. Test-only, not shipped. |
+| `src/` | 25 | New `src/open_intelligence` modules (see `SBOM.md` first-party table). Demo code; no new model path, no new dependency. |
+| `web/` | 6 | The six new panel scripts listed in the web-assets table above. Demo code; all requests to relative `/api/…` paths. |
+| `tools/` | 6 | Research-policy helpers and regression tests (named above). |
+| `examples/` | 3 | The three new synthetic fixtures listed above. |
+| `.github/` | 3 | `offline-scientific-safety.yml`, `h1-api.yml`, `h1-web.yml` (see `SBOM.md` CI table). |
 
 ## Merged-main top-up (2026-11-02): covered non-demo files
 
@@ -165,10 +215,15 @@ Each probe hits live public endpoints read-only (except `runtime_probe.py`, whic
 
 ## Verification method
 
-Each file above was listed from the repository and its first lines
-inspected on 2026-11-02: every `.txt` file opens with an
-`OI-SYNTHETIC-*` marker, the JSON fixtures carry the fictional
-identifiers shown above, and the two readme/expectations files carry
-their own fictional-provenance statements. The guard test
+Each demo file above was listed from the repository and its first
+lines inspected: every `.txt` file in both example directories opens
+with an `OI-SYNTHETIC-*` marker, the JSON fixtures carry the
+fictional identifiers shown above, and the two readme/expectations
+files carry their own fictional-provenance statements. The guard test
 `tests/test_safety_packet.py` re-checks these markers in both example
-directories on every test run.
+directories on every test run, and the full vanilla suite was run on
+the refold base (`main` `4b13bc2`, 2026-11-05): 772 tests, 17
+failures, all pre-existing `test_pdf_intake` failures from the
+missing local `pypdf`, zero other failures. The 682-file growth
+count was measured with `git log --since=2026-11-02
+--diff-filter=A --name-only main`.
