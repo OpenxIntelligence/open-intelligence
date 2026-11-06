@@ -43,6 +43,9 @@ from .fhir_exchange import build_fhir_bundle
 from .mission import build_patient_mission
 from .patient_access import PatientAccessAdapter, adapter_envelope_from_dict
 from .patient_analytics import patient_analytics
+from .hypothesis import assemble_hypothesis_report, claim_id
+from .literature import list_records
+from .trials import list_listings, render_listing
 from .patient_attention import case_patient_attention
 from .provenance import case_provenance
 from .patient_report import build_patient_report, render_text
@@ -515,6 +518,37 @@ class Handler(BaseHTTPRequestHandler):
                     validate_chain=validate_specimen_chain))
                 return self._json(200, patient_analytics(
                     store, case_id, lab_series=series))
+            hypothesis_report = re.fullmatch(rf"/api/cases/{ID_PART}/hypothesis-report", path)
+            if hypothesis_report:
+                # D5: hypothesis generation — T5 report assembly over
+                # stored kept claims (non-stale investigations only)
+                # plus the pinned A4 literature records and A5 trial
+                # listings. Read-only; no composed hypothesis is
+                # stored yet, so that section reports not_composed
+                # (persistence is a follow-up, not invented here).
+                case_id = hypothesis_report[1]
+                kept_claims = []
+                abstentions = []
+                stale_excluded = 0
+                for inv in store.list_investigations(case_id):
+                    if inv.get("stale"):
+                        stale_excluded += 1
+                        continue
+                    full = store.get_investigation(case_id, inv["id"])
+                    for index, claim in enumerate(full.get("claims", []), start=1):
+                        kept_claims.append({
+                            "id": claim_id(inv["id"], index),
+                            "text": claim.get("text", ""),
+                            "uncertainty": claim.get("uncertainty", ""),
+                            "citations": claim.get("citations", []),
+                        })
+                    abstentions.extend(full.get("abstentions", []))
+                report = assemble_hypothesis_report(
+                    case_id, kept_claims, list_records(),
+                    [render_listing(item) for item in list_listings()],
+                    abstentions=abstentions)
+                report["stale_investigations_excluded"] = stale_excluded
+                return self._json(200, report)
             attention = re.fullmatch(rf"/api/cases/{ID_PART}/patient-attention", path)
             if attention:
                 return self._json(200, case_patient_attention(store, attention[1]))
