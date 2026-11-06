@@ -60,7 +60,7 @@ def fictional_bundle(*, amended=False):
 
 
 def exercise(cd, patient_id, directory, token, credentials, write_grants, artifacts):
-    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'question_create', 'composer_context_read', 'evidence_read', 'evidence_link', 'review_packet_read', 'laboratory_snapshot_create'}
+    grants = {'case_binding_create', 'case_binding_read', 'source_import', 'source_read', 'source_original_read', 'question_read', 'question_create', 'composer_context_read', 'evidence_read', 'evidence_link', 'review_packet_read', 'laboratory_snapshot_create', 'review_queue_read', 'review_return'}
     credentials[0]['actions'] = sorted(set(credentials[0]['actions']) | grants)
     write_grants()
     root = '/v1/patients/' + patient_id
@@ -120,7 +120,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     raw = fictional_bundle()
     records()
     cd.evaluate('''(() => {
-      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];window.__oiLabQuestionPosts=[];window.__oiLabHistoryCodes=[];window.__oiLabCatalog=[];
+      window.__oiLabFetch=window.fetch;window.__oiLabWrites=[];window.__oiLabDrop=true;window.__oiLabRequests=0;window.__oiLabPrepareCodes=[];window.__oiLabQuestionPosts=[];window.__oiLabHistoryCodes=[];window.__oiLabCatalog=[];window.__oiLabReviewDrop=true;
       window.fetch=async(input,init)=>{
         window.__oiLabRequests++;
         const laboratory=String(input).endsWith('/laboratory/fhir-r4/sources')&&init?.method==='POST';
@@ -132,6 +132,10 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
           window.__oiLabCatalog.push(item);
           if(path.endsWith('/evidence-links')&&init.method==='POST'&&response.status===201){
             throw Error('Fictional lost laboratory citation acknowledgement');
+          }
+          if(path.endsWith('/review-returns')&&init.method==='POST'&&response.status===201&&window.__oiLabReviewDrop){
+            window.__oiLabReviewDrop=false;
+            throw Error('Fictional lost laboratory review return acknowledgement');
           }
         }
         if(String(input).endsWith('/composer/laboratory-questions')&&init?.method==='GET')window.__oiLabHistoryCodes.push(response.status);
@@ -462,6 +466,40 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert captured['captured_report_sha256'] == opened_digest
     cd.wait('document.querySelector('+json.dumps(control('lab-snapshot-status'))+').textContent.includes('+json.dumps(snapshot_id)+')',
             'capture receipt reopened by the browser')
+    review_path = laboratory_history + '/' + question_id + '/source-citation-report/snapshots/' + snapshot_id + '/review-returns'
+    saved_selector = control('lab-snapshot-row') + '[data-snapshot-id="' + snapshot_id + '"]'
+
+    def reopen_inspection():
+        click(cd, control('lab-snapshot-list'))
+        cd.wait(exists('lab-snapshot-row'), 'saved laboratory inspection history')
+        click(cd, saved_selector + ' [data-testid=lab-snapshot-reopen]')
+        cd.wait('Boolean(document.querySelector('+json.dumps(control('lab-citation-report') + '[data-snapshot-id="' + snapshot_id + '"]')+'))',
+                'saved inspection opened before independent verification')
+
+    reopen_inspection()
+    assert not cd.evaluate(exists('lab-review-return')), 'Returning an inspection requires an explicit current check'
+    click(cd, control('lab-review-check'))
+    cd.wait(exists('lab-review-reason'), 'fresh review history authorizes the reason form')
+    checked_review = cd.evaluate("window.__oiLabCatalog.filter(r=>r.method==='GET'&&r.path.endsWith('/review-returns')).at(-1).result")
+    assert checked_review['return_count'] == checked_review['prior_return_count'] == 0
+    assert checked_review['review_state'] == 'awaiting_independent_verification'
+    assert checked_review['captured_report_sha256'] == checked_review['current_report_sha256'] == opened_digest
+    fill(cd, control('lab-review-reason'), 'Please independently verify this fictional result and the cited source context.')
+    click(cd, control('lab-review-return'))
+    cd.wait(exists('lab-review-retry'), 'lost review acknowledgement exposes exact retry')
+    actual_review = operator(review_path)
+    original_return, = actual_review['receipts']
+    assert actual_review['review_state'] == 'returned_for_independent_verification'
+    assert actual_review['current_return_receipt_id'] == original_return['receipt_id']
+    assert original_return['captured_report_sha256'] == original_return['report_sha256'] == opened_digest
+    assert original_return['action'] == 'returned' and original_return['clinical_approval'] is False
+    click(cd, control('lab-review-retry'))
+    cd.wait('document.querySelector('+json.dumps(control('lab-review-status'))+')?.textContent.includes('+json.dumps(original_return['receipt_id'])+')',
+            'lost review receipt recovered by exact retry')
+    review_writes = cd.evaluate("window.__oiLabCatalog.filter(r=>r.method==='POST'&&r.path.endsWith('/review-returns'))")
+    assert [item['status'] for item in review_writes] == [201, 200]
+    assert review_writes[0]['body'] == review_writes[1]['body']
+    assert operator(review_path)['receipts'] == [original_return]
     draft_question(first['source_id'], 'ABSENT', 'Why was the selected result not performed?')
     assert not cd.evaluate("Boolean(document.querySelector('[data-testid=lab-question-receipt]'))"), 'Editing clears previous receipt'
     assert operator(questions_path)['questions'] == []
@@ -512,18 +550,47 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         assert all(part in historical_report for part in ('NOT-DETECTED', 'Not detected', 'urn:oi:synthetic:lab-results', 'fixture-v1'))
         assert 'Detected' not in historical_report
         assert all(v not in historical_report for v in (current['source_id'],catalog_record['title'],catalog_record['licence'],catalog_record['link']))
-        click(cd, control('lab-snapshot-list'))
-        cd.wait(exists('lab-snapshot-row'), 'saved inspection listed under current access')
-        saved_selector = control('lab-snapshot-row') + '[data-snapshot-id="' + snapshot_id + '"]'
-        click(cd, saved_selector+' [data-testid=lab-snapshot-reopen]')
-        cd.wait('Boolean(document.querySelector('+json.dumps(control('lab-citation-report') + '[data-snapshot-id="' + snapshot_id + '"]')+'))',
-                'original inspection reopened under current rights')
+        reopen_inspection()
         reopened_report = visible_text('lab-citation-report')
         assert 'NOT-DETECTED' in reopened_report and catalog_record['title'] not in reopened_report
         reopened_snapshot = cd.evaluate("window.__oiLabCatalog.filter(r=>r.method==='GET'&&r.path.endsWith('/"+snapshot_id+"')).at(-1).result")
         assert reopened_snapshot['snapshot']['captured_report_sha256'] == opened_digest
         assert reopened_snapshot['inspection']['report_sha256'] != opened_digest
         assert reopened_snapshot['inspection']['citations']['links'][0]['record'] is None
+        click(cd, control('lab-review-check'))
+        cd.wait(exists('lab-review-reason'), 'amended inspection has fresh review and rights checks')
+        changed_review = cd.evaluate("window.__oiLabCatalog.filter(r=>r.method==='GET'&&r.path.endsWith('/review-returns')).at(-1).result")
+        assert changed_review['review_state'] == changed_review['source_context_state'] == 'source_reassessment_required'
+        assert changed_review['return_count'] == 0 and changed_review['prior_return_count'] == 1
+        assert changed_review['current_return_receipt_id'] is None
+        assert changed_review['receipts'] == [original_return]
+        assert changed_review['captured_report_sha256'] == opened_digest
+        assert changed_review['current_report_sha256'] == reopened_snapshot['inspection']['report_sha256']
+        assert original_return['receipt_id'] in visible_text('lab-review-history')
+        assert catalog_record['title'] not in visible_text('lab-review-history')
+        fill(cd, control('lab-review-reason'), 'Please recheck this preserved fictional inspection after the source and citation permissions changed.')
+        click(cd, control('lab-review-return'))
+        cd.wait("window.__oiLabCatalog.filter(r=>r.method==='POST'&&r.path.endsWith('/review-returns')).length===3",
+                'reassessment return saved against the newly opened inspection')
+        changed_receipt = cd.evaluate("window.__oiLabCatalog.filter(r=>r.method==='POST'&&r.path.endsWith('/review-returns')).at(-1).result")
+        cd.wait('document.querySelector('+json.dumps(control('lab-review-status'))+')?.textContent.includes('+json.dumps(changed_receipt['receipt_id'])+')',
+                'reassessment receipt accepted by the browser')
+        reassessed = operator(review_path)
+        assert reassessed['review_state'] == 'source_reassessment_required'
+        assert reassessed['return_count'] == reassessed['prior_return_count'] == 1
+        assert original_return in reassessed['receipts']
+        current_return, = [row for row in reassessed['receipts'] if row['receipt_id'] == changed_receipt['receipt_id']]
+        assert current_return['report_sha256'] == changed_review['current_report_sha256']
+        assert current_return['captured_report_sha256'] == opened_digest
+        assert current_return['clinical_approval'] is False and current_return['external_notification_sent'] is False
+        (artifacts / 'laboratory-inspection-review-returns.json').write_text(json.dumps({
+            'synthetic':True, 'question_id':question_id, 'snapshot_id':snapshot_id,
+            'captured_report_sha256':opened_digest, 'current_report_sha256':changed_review['current_report_sha256'],
+            'original_return_receipt_id':original_return['receipt_id'], 'reassessment_receipt_id':current_return['receipt_id'],
+            'create_and_retry_statuses':[item['status'] for item in review_writes],
+            'retry_bytes_identical':True, 'prior_receipt_preserved':True,
+            'review_state_after_return':reassessed['review_state'], 'clinical_approval':False,
+        },indent=2)+'\n')
         (artifacts / 'laboratory-question-citations.json').write_text(json.dumps({
             'synthetic':True,'question_id':question_id,'question_anchor':expected_anchor,'catalog_query':'continuity',
             'citation':CITATION,'link_id':saved_link['link_id'],'metadata_sha256':saved_link['metadata_sha256'],
@@ -537,6 +604,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         if fixture_rights.rights_revoked:
             fixture_rights.set_fixture_rights(False)
     print('PASS LABORATORY CITATIONS: exact Observation search, one durable link, lost response recovery, original anchor after amendment, withdrawn metadata withheld from history and report.')
+    print('PASS LABORATORY REVIEW: saved inspection explicitly reopened and checked, lost return acknowledgement recovered exactly, amendment and withdrawn rights preserved prior history, reassessment retained after another return.')
     credentials[0]['actions'].remove('question_read');write_grants()
     cd.evaluate("document.querySelector('[data-testid=lab-questions-reopen]').click()")
     cd.wait("window.__oiLabHistoryCodes.at(-1)===404 && Boolean(document.querySelector('[data-testid=world-no-patient]')) && !document.querySelector('[data-testid=lab-saved-question]')", 'denied question read removes prior history')
@@ -619,7 +687,7 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.evaluate('[...document.querySelectorAll(".world-cases li")].find(e=>e.textContent.includes(' + json.dumps(CASE) + ')).querySelector("[data-testid=world-load]").click()')
     cd.wait('!document.querySelector("[data-testid=world-projection]") && document.querySelector("[data-testid=world-status]").textContent.includes("unavailable or revoked")', 'revoked laboratory projection cleared')
     credentials[0]['actions'].append('source_read');write_grants()
-    cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests;delete window.__oiLabPrepareCodes;delete window.__oiLabQuestionPosts;delete window.__oiLabHistoryCodes;delete window.__oiLabCatalog')
+    cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests;delete window.__oiLabPrepareCodes;delete window.__oiLabQuestionPosts;delete window.__oiLabHistoryCodes;delete window.__oiLabCatalog;delete window.__oiLabReviewDrop')
     navigate('Overview')
     (artifacts / 'laboratory-fhir-workflow.json').write_text(json.dumps({
         'synthetic': True, 'case_id': CASE, 'original_source_id': first['source_id'],

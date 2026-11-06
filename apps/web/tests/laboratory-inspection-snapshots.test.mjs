@@ -126,3 +126,102 @@ test('an amended source and withdrawn display rights retain the captured identit
   for(const forged of [{...wire,inspection:disclosed},{...wire,snapshot:{...summary,citation_count:2}},
       {...wire,snapshot:{...summary,captured_report_sha256:'1'.repeat(64)}}])assert.throws(()=>reopenedSnapshot(forged,summary,historical,saved));
 });
+
+const fingerprint='f'.repeat(64),rid='REVIEW-'+'1'.repeat(32);
+const reviewQueue={contract:'oi.laboratory-inspection-review-returns/1',patient_id:patient,case_id:caseId,question_id:qid,
+ snapshot_id:snapshotId,captured_report_sha256:digest,current_report_sha256:digest,source_context_state:state,
+ queue_fingerprint:fingerprint,source_access_receipt_id:grant,review_state:'awaiting_independent_verification',
+ current_return_receipt_id:null,return_count:0,prior_return_count:0,receipts:[],synthetic:true,clinical_approval:false,
+ reviewer_identity_verified:false,external_notification_sent:false};
+const returned=duplicate=>({receipt_id:rid,question_id:qid,snapshot_id:snapshotId,duplicate});
+const reason='Please independently verify this fictional laboratory report.';
+async function reviewSetup(handle){return setup((path,init)=>path.endsWith('/review-returns')?handle(path,init):
+ reply(path==='/snapshots'?list:{snapshot:row,inspection:report}));}
+async function openReview(s){const {snapshots:[selected]}=await s.listLaboratorySnapshots(qid,sig());
+ const opened=await s.reopenLaboratorySnapshot(qid,selected,sig());
+ return s.readLaboratoryReviewReturns(qid,opened,sig());}
+test('inspection verification return requires actually reopened scope and current checked history',async()=>{
+ const writes=[];const s=await reviewSetup((_path,init)=>{if(init.method!=='POST')return reply(reviewQueue);
+ writes.push(init.body);return reply(returned(false),201);});
+ const {snapshots:[selected]}=await s.listLaboratorySnapshots(qid,sig());
+ const opened=await s.reopenLaboratorySnapshot(qid,selected,sig());
+ await assert.rejects(s.readLaboratoryReviewReturns(qid,{...opened},sig()));
+ const checked=await s.readLaboratoryReviewReturns(qid,opened,sig());
+ assert.equal(checked.generation,s.snapshot().evidenceGeneration);
+ await assert.rejects(s.returnLaboratoryInspection(qid,{...checked},reason,sig()));
+ await assert.rejects(s.returnLaboratoryInspection(qid,checked,'short',sig()));
+ const result=await s.returnLaboratoryInspection(qid,checked,reason,sig());
+ assert.equal(result.receipt.receipt_id,rid);assert.equal(s.laboratoryReviewWritePhase(qid),'idle');
+ const {request_key,...body}=JSON.parse(writes[0]);assert.match(request_key,/^[a-f0-9-]{36}$/);
+ assert.deepEqual(body,{synthetic:true,expected_queue_fingerprint:fingerprint,
+ expected_captured_report_sha256:digest,expected_report_sha256:digest,reason});
+});
+test('ambiguous review return retries exact intent after reauthorization and discards late scope errors',async()=>{
+ for(const mode of ['lost','in-flight']){
+  let release;const writes=[];const s=await reviewSetup((_p,i)=>{
+   if(i.method!=='POST')return reply(reviewQueue);writes.push(i.body);
+   if(writes.length===1)return mode==='lost'?reply({},503):new Promise(r=>release=r);
+   return reply(returned(true));
+  });
+  const checked=await openReview(s),original=s.returnLaboratoryInspection(qid,checked,reason,sig());
+  if(mode==='lost')await assert.rejects(original);
+  assert.equal(s.laboratoryReviewWritePhase(qid),mode==='lost'?'unknown':'saving');
+  await reauthorize(s);assert.equal(s.laboratoryReviewWritePhase(qid),'unknown');
+  const recovered=await s.returnLaboratoryInspection(qid,null,'',sig());
+  assert.equal(recovered.receipt.duplicate,true);assert.deepEqual(writes,[writes[0],writes[0]]);
+  if(release){release(reply({},404));await assert.rejects(original);assert.equal(s.snapshot().patient.patient_id,patient);}
+  assert.equal(s.laboratoryReviewWritePhase(qid),'idle');
+ }
+});
+test('changed opened digest and contradictory return history never authorize a return',async()=>{
+ for(const bad of [{...reviewQueue,current_report_sha256:'a'.repeat(64)},
+  {...reviewQueue,snapshot_id:'LAB-SNAPSHOT-'+'2'.repeat(32)},
+  {...reviewQueue,clinical_approval:true},{...reviewQueue,return_count:1},
+  {...reviewQueue,review_state:'returned_for_independent_verification'},
+  {...reviewQueue,current_return_receipt_id:rid}]){
+   const s=await reviewSetup(()=>reply(bad));await assert.rejects(openReview(s));
+ }
+});
+test('review denials clear pending intent, and disconnect cannot recover it',async()=>{
+ for(const code of [403,409]){
+  let count=0;const s=await reviewSetup((_p,i)=>i.method!=='POST'?reply(reviewQueue):reply({},++count===1?503:code));
+  const opened=await openReview(s);await assert.rejects(s.returnLaboratoryInspection(qid,opened,reason,sig()));
+  await assert.rejects(s.returnLaboratoryInspection(qid,null,'',sig()));
+  assert.equal(s.laboratoryReviewWritePhase(qid),'idle');
+  await assert.rejects(s.returnLaboratoryInspection(qid,null,'',sig()));assert.equal(count,2);
+ }
+ const s=await reviewSetup((_p,i)=>reply(i.method==='POST'?{}:reviewQueue,i.method==='POST'?503:200));
+ const checked=await openReview(s);await assert.rejects(s.returnLaboratoryInspection(qid,checked,reason,sig()));
+ s.disconnect();s.connect('fictional_snapshot_recovery_token_00000000001');await reauthorize(s);
+ await assert.rejects(s.returnLaboratoryInspection(qid,null,'',sig()));
+});
+
+test('earlier and current requests keep captured and reopened hashes separate without clearing reassessment',async()=>{
+ const {inspectionReview}=await import('../.test-dist/laboratory-review-returns.js');
+ const old={receipt_id:rid,question_id:qid,snapshot_id:snapshotId,captured_report_sha256:digest,report_sha256:digest,
+  source_context_state:state,queue_fingerprint:fingerprint,actor_label:'ACTOR-FICTIONAL',action:'returned',reason,
+  created_at:row.captured_at,clinical_approval:false,reviewer_identity_verified:false,external_notification_sent:false};
+ const newer={...old,receipt_id:'REVIEW-'+'2'.repeat(32),report_sha256:'1'.repeat(64),
+  source_context_state:'source_reassessment_required',queue_fingerprint:'2'.repeat(64)};
+ const opened={snapshot:row,report:{report_sha256:newer.report_sha256,citations:{...citations,source_context_state:newer.source_context_state}},generation:1};
+ const wire={...reviewQueue,current_report_sha256:newer.report_sha256,source_context_state:newer.source_context_state,
+  queue_fingerprint:newer.queue_fingerprint,review_state:'source_reassessment_required',current_return_receipt_id:newer.receipt_id,
+  return_count:1,prior_return_count:1,receipts:[old,newer]};
+ const parsed=inspectionReview(wire,opened);assert.equal(parsed.review_state,'source_reassessment_required');
+ assert.equal(parsed.receipts[0].report_sha256,digest);assert.equal(parsed.receipts[1].report_sha256,newer.report_sha256);
+ for(const bad of [{...wire,review_state:'returned_for_independent_verification'},
+  {...wire,receipts:[old,{...newer,report_sha256:digest}]},
+  {...wire,receipts:[old,{...newer,clinical_approval:true}]},
+  {...wire,receipts:[old,{...newer,reason:'unsafe\u202etext'}]},
+  {...wire,current_return_receipt_id:old.receipt_id},
+  {...wire,receipts:[old,old,newer],prior_return_count:2}])assert.throws(()=>inspectionReview(bad,opened));
+});
+test('fresh inspection reads invalidate previous checked return context and late replies',async()=>{
+ let release;let reads=0;const s=await reviewSetup(()=>++reads===1?reply(reviewQueue):new Promise(r=>release=r));
+ const checked=await openReview(s);await s.readLaboratoryCitationReport(qid,sig());
+ await assert.rejects(s.returnLaboratoryInspection(qid,checked,reason,sig()));
+ const pending=openReview(s);await new Promise(r=>setImmediate(r));
+ const fresh=await s.readLaboratoryCitationReport(qid,sig());release(reply({},404));
+ await assert.rejects(pending);assert.equal(s.snapshot().patient.patient_id,patient);
+ assert.equal(fresh.generation,s.snapshot().evidenceGeneration);
+});

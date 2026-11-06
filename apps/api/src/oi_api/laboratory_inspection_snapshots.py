@@ -157,6 +157,7 @@ class LaboratoryInspectionSnapshots:
                 self.registry.append_event(patient_id, "investigation.laboratory_snapshot.reopened",
                     snapshot_id=snapshot_id, case_id=case_id, question_id=question_id, actor=actor,
                     captured_report_sha256=row["captured_report_sha256"], report_sha256=inspection["report_sha256"],
+                    source_context_state=inspection["citations"]["source_context_state"],
                     source_access_receipt_id=inspection["citations"]["source_access_receipt_id"])
                 return prepare_response({"snapshot": _summary(row), "inspection": inspection})
             rows = self.registry._fetchall(select + " ORDER BY captured_at,snapshot_id LIMIT 101", scope)

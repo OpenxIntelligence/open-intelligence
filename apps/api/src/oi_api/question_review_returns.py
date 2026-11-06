@@ -24,6 +24,8 @@ from .composer_preflight import SHA256, SOURCE_SNAPSHOT_CONTRACT
 from .source_questions import LEGACY_SNAPSHOT_CONTRACT, PostgresSourceQuestions
 from .sources import PostgresSourceVersions
 
+LAB_QUEUE_CONTRACT = "oi.laboratory-inspection-review-returns/1"
+LAB_FINGERPRINT_CONTRACT = "oi.laboratory-inspection-review-return/1"
 MAX_RECEIPTS = 750
 KIND = "source-question"
 ACTION = "returned"
@@ -67,6 +69,16 @@ def _queue_fingerprint(question: dict) -> str:
     })
 
 
+def _laboratory_return_fingerprint(context):
+    return _digest({"contract": LAB_FINGERPRINT_CONTRACT, **context})
+
+
+def _laboratory_return_intent(context, organization, actor, purpose, command):
+    return _digest({"contract": LAB_FINGERPRINT_CONTRACT,
+        **{k: context[k] for k in ("patient_id", "case_id", "question_id", "snapshot_id")},
+        "organization": organization, "actor": actor, "purpose": purpose, "action": ACTION, **command})
+
+
 class PostgresQuestionReviewReturns:
     """Nonterminal question-review receipts in the existing investigation schema."""
 
@@ -86,8 +98,9 @@ class PostgresQuestionReviewReturns:
             "source_snapshot_contract,queue_fingerprint_contract "
             "FROM investigation.question_review_receipts "
             "WHERE patient_id=%s AND case_id=%s AND origin_org=%s "
+            "AND queue_fingerprint_contract<>%s "
             "ORDER BY created_at,receipt_id LIMIT 751",
-            (patient_id, case_id, organization),
+            (patient_id, case_id, organization, LAB_FINGERPRINT_CONTRACT),
         )
         if len(receipt_rows) > MAX_RECEIPTS:
             raise PatientRegistryError("Review receipt history exceeds bounded limit")
@@ -265,3 +278,164 @@ class PostgresQuestionReviewReturns:
                 patient_id, case_id, organization=organization, actor=actor, purpose=purpose,
                 prepare_response=save, recheck_authority=recheck_authority,
             )
+
+    def laboratory_inspection_queue(self, patient_id, case_id, question_id, snapshot_id, *,
+                                    organization, actor, purpose, recheck_authority, prepare_response=None):
+        return self._laboratory_inspection(
+            patient_id, case_id, question_id, snapshot_id, organization=organization,
+            actor=actor, purpose=purpose, recheck_authority=recheck_authority,
+            prepare_response=prepare_response)
+
+    def return_laboratory_inspection(self, patient_id, case_id, question_id, snapshot_id, *,
+                                    organization, actor, purpose, request_key, expected_queue_fingerprint,
+                                    expected_captured_report_sha256, expected_report_sha256, reason,
+                                    recheck_authority, prepare_response=None):
+        command = {"request_key": _key(request_key, "request_key"), "reason": _reason(reason),
+                   "queue_fingerprint": expected_queue_fingerprint,
+                   "captured_report_sha256": expected_captured_report_sha256,
+                   "report_sha256": expected_report_sha256}
+        if any(type(command[k]) is not str or SHA256.fullmatch(command[k]) is None
+               for k in ("queue_fingerprint", "captured_report_sha256", "report_sha256")):
+            raise PatientRegistryError("Exact laboratory inspection fingerprints required")
+        return self._laboratory_inspection(
+            patient_id, case_id, question_id, snapshot_id, organization=organization,
+            actor=actor, purpose=purpose, recheck_authority=recheck_authority,
+            prepare_response=prepare_response, command=command)
+
+    def _laboratory_inspection(self, patient_id, case_id, question_id, snapshot_id, *,
+                               organization, actor, purpose, recheck_authority,
+                               prepare_response, command=None):
+        from .laboratory_inspection_snapshots import LaboratoryInspectionSnapshots
+        patient_id, case_id, question_id = _key(patient_id, "patient_id"), _case_id(case_id), _question_id(question_id)
+        organization, actor = _key(organization, "organization"), _key(actor, "actor")
+        if purpose != "operations":
+            raise PatientRegistryDenied("Laboratory inspection review unavailable")
+        action = "review_return" if command is not None else "review_queue_read"
+        source_owner = PostgresSourceVersions(self.registry)
+        source_signature = None
+        binding_revision = None
+
+        def authority():
+            recheck_authority()
+            self.registry._allow(actor, patient_id, action, purpose)
+            # Case locks serialize other connections. Also detect a trusted callback
+            # changing the binding or source versions within this same transaction.
+            if source_signature is not None:
+                if (source_owner._binding(patient_id, case_id, organization, purpose) != binding_revision
+                        or _digest(source_owner._sources(case_id)) != source_signature):
+                    raise PatientRegistryDenied("Laboratory review context changed")
+
+        def render(value):
+            return prepare_response(value) if prepare_response is not None else value
+
+        def project(reopened):
+            nonlocal source_signature, binding_revision
+            source_signature = _digest(source_owner._sources(case_id))
+            binding_revision = source_owner._binding(patient_id, case_id, organization, purpose)
+            snapshot, report = reopened["snapshot"], reopened["inspection"]
+            citations = report["citations"]
+            anchor = citations["question_anchor"]
+            context = {"patient_id": patient_id, "case_id": case_id, "question_id": question_id,
+                       "snapshot_id": snapshot_id, "captured_report_sha256": snapshot["captured_report_sha256"],
+                       "current_report_sha256": report["report_sha256"],
+                       "source_context_state": citations["source_context_state"]}
+            fingerprint = _laboratory_return_fingerprint(context)
+            rows = self._laboratory_return_history(context, organization, purpose, anchor)
+            if command is not None:
+                intent = _laboratory_return_intent(context, organization, actor, purpose, command)
+                prior = self.registry._fetchone(
+                    "SELECT receipt_id,intent_sha256,question_id,queue_fingerprint_contract "
+                    "FROM investigation.question_review_receipts WHERE patient_id=%s AND request_key=%s FOR UPDATE",
+                    (patient_id, command["request_key"]))
+                if prior is not None:
+                    if (prior[2] != question_id or prior[3] != LAB_FINGERPRINT_CONTRACT
+                            or not hmac.compare_digest(prior[1], intent)
+                            or not any(r["receipt_id"] == prior[0] for r in rows)):
+                        raise PatientRegistryConflict("Review request key reused with changed intent")
+                    return render({"receipt_id": prior[0], "question_id": question_id,
+                                   "snapshot_id": snapshot_id, "duplicate": True})
+                if (not hmac.compare_digest(fingerprint, command["queue_fingerprint"])
+                        or not hmac.compare_digest(snapshot["captured_report_sha256"], command["captured_report_sha256"])
+                        or not hmac.compare_digest(report["report_sha256"], command["report_sha256"])):
+                    raise PatientRegistryConflict("Saved inspection changed; reopen before returning")
+                count, = self.registry._fetchone(
+                    "SELECT count(*) FROM investigation.question_review_receipts "
+                    "WHERE patient_id=%s AND case_id=%s AND origin_org=%s", (patient_id, case_id, organization))
+                if count >= MAX_RECEIPTS or len(rows) >= 100:
+                    raise PatientRegistryError("Review receipt history exceeds bounded limit")
+                authority()
+                receipt_id = "REVIEW-" + uuid.uuid4().hex.upper()
+                self.registry._execute(
+                    "INSERT INTO investigation.laboratory_review_origins "
+                    "(receipt_id,snapshot_id,captured_report_sha256,report_sha256,source_context_state,source_access_receipt_id) "
+                    "VALUES (%s,%s,%s,%s,%s,%s)",
+                    (receipt_id, snapshot_id, snapshot["captured_report_sha256"], report["report_sha256"],
+                     citations["source_context_state"], citations["source_access_receipt_id"]))
+                inserted = self.registry._fetchone(
+                    "INSERT INTO investigation.question_review_receipts "
+                    "(receipt_id,question_id,patient_id,case_id,origin_org,request_key,intent_sha256,"
+                    "queue_fingerprint,source_snapshot_sha256,actor,purpose,action,reason,"
+                    "source_snapshot_contract,queue_fingerprint_contract) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'returned',%s,%s,%s) "
+                    "ON CONFLICT (patient_id,request_key) DO NOTHING RETURNING receipt_id",
+                    (receipt_id, question_id, patient_id, case_id, organization, command["request_key"], intent,
+                     fingerprint, anchor["source_snapshot_sha256"], actor, purpose, command["reason"],
+                     SOURCE_SNAPSHOT_CONTRACT, LAB_FINGERPRINT_CONTRACT))
+                if inserted is None:
+                    # Same-case commands serialize on the existing source lock.
+                    # A winner from a different case necessarily has different intent.
+                    raise PatientRegistryConflict("Review request key belongs to different intent")
+                self.registry.append_event(patient_id, "investigation.review.returned_for_verification",
+                    case_id=case_id, question_id=question_id, receipt_id=receipt_id, actor=actor,
+                    snapshot_id=snapshot_id, captured_report_sha256=snapshot["captured_report_sha256"],
+                    report_sha256=report["report_sha256"], source_context_state=citations["source_context_state"],
+                    queue_fingerprint=fingerprint, queue_fingerprint_contract=LAB_FINGERPRINT_CONTRACT,
+                    source_snapshot_sha256=anchor["source_snapshot_sha256"],
+                    source_snapshot_contract=SOURCE_SNAPSHOT_CONTRACT)
+                return render({"receipt_id": receipt_id, "question_id": question_id,
+                               "snapshot_id": snapshot_id, "duplicate": False})
+            matching = [r for r in rows if hmac.compare_digest(r["queue_fingerprint"], fingerprint)]
+            state = ("source_reassessment_required" if context["source_context_state"] == "source_reassessment_required"
+                     else "returned_for_independent_verification" if matching else "awaiting_independent_verification")
+            return render({**context, "contract": LAB_QUEUE_CONTRACT, "queue_fingerprint": fingerprint,
+                "source_access_receipt_id": citations["source_access_receipt_id"], "review_state": state,
+                "current_return_receipt_id": matching[-1]["receipt_id"] if matching else None,
+                "return_count": len(matching), "prior_return_count": len(rows) - len(matching), "receipts": rows,
+                "synthetic": True, "clinical_approval": False, "reviewer_identity_verified": False,
+                "external_notification_sent": False})
+
+        return LaboratoryInspectionSnapshots(self.registry).read(
+            patient_id, case_id, question_id, snapshot_id=snapshot_id, organization=organization,
+            actor=actor, purpose=purpose, recheck_authority=authority, prepare_response=project)
+
+    def _laboratory_return_history(self, context, organization, purpose, anchor):
+        fields = ("receipt_id", "question_id", "patient_id", "case_id", "origin_org", "request_key", "intent_sha256",
+                  "queue_fingerprint", "source_snapshot_sha256", "actor", "purpose", "action", "reason", "created_at",
+                  "source_snapshot_contract", "queue_fingerprint_contract")
+        origins = ("snapshot_id", "captured_report_sha256", "report_sha256", "source_context_state", "source_access_receipt_id")
+        rows = self.registry._fetchall(
+            "SELECT " + ",".join("r." + f for f in fields) + "," + ",".join("o." + f for f in origins) +
+            " FROM investigation.question_review_receipts r JOIN investigation.laboratory_review_origins o USING(receipt_id) "
+            "WHERE r.patient_id=%s AND r.case_id=%s AND r.question_id=%s AND r.origin_org=%s AND o.snapshot_id=%s "
+            "ORDER BY r.created_at,r.receipt_id LIMIT 101",
+            (context["patient_id"], context["case_id"], context["question_id"], organization, context["snapshot_id"]))
+        if len(rows) > 100:
+            raise PatientRegistryError("Review receipt history exceeds bounded limit")
+        result = []
+        for raw in rows:
+            row = dict(zip((*fields, *origins), raw))
+            command = {k: row[k] for k in ("request_key", "reason", "queue_fingerprint", "captured_report_sha256", "report_sha256")}
+            saved_context = {**context, "current_report_sha256": row["report_sha256"],
+                             "source_context_state": row["source_context_state"]}
+            if (row["purpose"] != purpose or row["action"] != ACTION
+                    or row["source_snapshot_contract"] != SOURCE_SNAPSHOT_CONTRACT
+                    or row["queue_fingerprint_contract"] != LAB_FINGERPRINT_CONTRACT
+                    or row["source_snapshot_sha256"] != anchor["source_snapshot_sha256"]
+                    or row["captured_report_sha256"] != context["captured_report_sha256"]
+                    or row["queue_fingerprint"] != _laboratory_return_fingerprint(saved_context)
+                    or row["intent_sha256"] != _laboratory_return_intent(context, organization, row["actor"], purpose, command)):
+                raise PatientRegistryError("Laboratory review history provenance is inconsistent")
+            result.append({**{k: row[k] for k in ("receipt_id", "question_id", *origins[:-1], "queue_fingerprint", "action", "reason")},
+                "actor_label": row["actor"], "created_at": row["created_at"].isoformat(), "clinical_approval": False,
+                "reviewer_identity_verified": False, "external_notification_sent": False})
+        return result

@@ -93,8 +93,12 @@ the inspection. Open the saved inspections for the same question and select
 the saved version. Check its capture time and original fingerprint. Later
 citations belong to later inspections. An amendment can flag the original
 for reassessment, and current permissions can hide previously visible metadata.
-Saving records an inspection. Recording a qualified reviewer’s decision is a
-separate workflow.
+After reopening a saved inspection, choose **Check verification requests**, enter
+what needs verification, and select **Return saved inspection for verification**.
+The receipt records the actor, reason and exact opened version. Reopening shows
+current and earlier requests. If a reply was lost, use the explicit retry control
+to recover the original request. Source reassessment remains visible after an
+amendment. Recording a qualified reviewer’s completed decision remains separate.
 
 ## Verification boundary
 
