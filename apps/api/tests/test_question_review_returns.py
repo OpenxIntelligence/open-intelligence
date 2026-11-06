@@ -138,7 +138,8 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
         return save[1]["question_id"],source
 
     def test_explicit_manual_review_dependency_reassesses_without_staling_source_only(self):
-        self.creds[0]["actions"].append("source_original_read")
+        if "source_original_read" not in self.creds[0]["actions"]:
+            self.creds[0]["actions"].append("source_original_read")
         self.write()
         with running_server(create_app(self.settings)) as base:
             patient = self.setup_case(base)
