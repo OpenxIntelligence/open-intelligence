@@ -24,11 +24,12 @@ const item=(overrides={})=>({question_id:questionId,patient_id:patientId,case_id
  preflight_sha256:'b'.repeat(64),created_at:'2026-11-03T10:00:00Z',kind:'source-question',
  queue_fingerprint:fingerprint,queue_fingerprint_contract:currentFingerprint,
  source_context_state:'current_unreviewed_question',review_state:'awaiting_independent_verification',
- current_return_receipt_id:null,return_count:0,prior_return_count:0,clinical_approval:false,
+ current_return_receipt_id:null,return_count:0,prior_return_count:0,manual_reassessment_required:false,clinical_approval:false,
  reviewer_identity_verified:false,...overrides});
 const receipt=(overrides={})=>({receipt_id:receiptId,question_id:questionId,queue_fingerprint:fingerprint,
  queue_fingerprint_contract:currentFingerprint,source_snapshot_contract:canonical,source_snapshot_sha256:'a'.repeat(64),
  actor_label:'ACTOR-FICTIONAL',action:'returned',reason,created_at:'2026-11-03T10:05:00Z',
+ manual_dependency_revision_id:null,manual_context_state:null,
  reviewer_identity_verified:false,external_notification_sent:false,clinical_approval:false,...overrides});
 const queue=(items=[item()],receipts=[],overrides={})=>({contract:'oi.synthetic-question-review-return-queue/2',
  access_receipt_id:'ACCESS-'+'D'.repeat(32),patient_id:patientId,case_id:caseId,synthetic:true,items,receipts,
