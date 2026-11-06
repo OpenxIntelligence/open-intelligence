@@ -117,6 +117,49 @@ class ComposerRunsPostgresTests(source_fixture.SourceVersionFixture):
                                          {'run': run}).all()
             return dict(row), results, [tuple(item) for item in history]
 
+    def suspend_patient(self, base, patient):
+        self.creds[0]['actions'].append('patient_suspend')
+        self.write()
+        code, result, _ = patient_fixture.request(
+            base, f'/v1/patients/{patient}/suspensions', token=TOKEN,
+            body={'synthetic': True, 'request_key': 'SUSPEND-WORKER', 'expected_revision': 1})
+        self.assertEqual(code, 200, result)
+
+    def test_patient_suspension_blocks_queued_worker_without_changing_intent(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, question, preflight, run = self.seeded_run(base)
+            self.suspend_patient(base, patient)
+            before = self.stored(run)
+            self.assertEqual(self.work(patient), {'status': 'blocked'})
+            self.assertEqual(self.status(base, patient, question, run)[0], 404)
+            self.assertEqual(self.enqueue(base, patient, question, preflight)[0], 404)
+            self.assertEqual(self.stored(run), before)
+            self.assertEqual(before[0]['state'], 'queued')
+            self.assertEqual(before[1], 0)
+
+    def test_patient_suspension_fences_claimed_work_before_result_commit(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, question, _, run = self.seeded_run(base)
+            claim = self.claim(patient)
+            self.suspend_patient(base, patient)
+            before = self.stored(run)
+            with self.assertRaises(PatientRegistryDenied):
+                self.complete(claim)
+            self.assertEqual(self.status(base, patient, question, run)[0], 404)
+            self.assertEqual(self.stored(run), before)
+            self.assertEqual(before[1], 0)
+
+    def test_patient_suspension_withholds_existing_result_without_erasing_history(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, question, _, run = self.seeded_run(base)
+            self.assertEqual(self.work(patient)['status'], 'completed')
+            self.assertEqual(self.status(base, patient, question, run, '/result')[0], 200)
+            self.suspend_patient(base, patient)
+            before = self.stored(run)
+            self.assertEqual(self.status(base, patient, question, run, '/result')[0], 404)
+            self.assertEqual(self.stored(run), before)
+            self.assertEqual(before[1], 1)
+
     def test_idempotency_changed_intent_unknown_kind_and_restart(self):
         with running_server(create_app(self.settings)) as base:
             patient, question, preflight, run = self.seeded_run(base)

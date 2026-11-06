@@ -1,5 +1,41 @@
 # Open Intelligence H1 patient registry API
 
+## Administrative patient suspension
+
+`POST /v1/patients/{patient_id}/suspensions` connects the canonical registry's
+existing active-to-suspended transition. The request is
+`{"synthetic":true,"request_key":"SUSPEND-ONE","expected_revision":1}`;
+the successful response contains the patient ID, `status: "suspended"`, and
+revision 2. An operator needs independent `patient_suspend` and `patient_read`
+grants, exact-patient scope, the persisted origin organization, and `operations`
+purpose. Request bodies are bounded to 16 KiB. OpenAPI exposes the typed route.
+
+The patient row serializes concurrent suspension commands. Its existing immutable
+domain journal stores the request key and actor/purpose/revision digest in the
+same transaction as the state change. Exact retries recover the original receipt;
+changed intent, actor or a new command against an already suspended patient
+conflicts. The original bearer is reauthenticated after acquiring the patient
+lock and after preparing actual response bytes. Encoding failure, expired or
+revoked authority aborts both state and event. Receipt recovery also needs the
+current grants. Existing journal history and migration identities are retained;
+this increment adds no table or migration.
+
+Existing record, source and Composer owners enforce active-patient state. Their
+held patient locks let an already authorized transaction finish before suspension
+commits. After that commit, new reads, queued-work claims, claimed-work completion
+and result disclosure are denied. Historical source/job/result rows remain intact;
+queued and leased work is not silently marked cancelled. Authorized identity-only
+metadata remains readable so an operator can see the suspended status.
+
+This is a synthetic administrative API; no UI control, reactivation, identity
+proofing, patient consent withdrawal or caregiver delegation is provided.
+Those broader WS-02 foundations remain construction work. Acceptance cases live
+in `test_patient_suspensions.py` and `test_composer_runs_postgres.py`. The existing
+`verify_registry_compose.py` also checks API/database restart, a second actual
+dump/restore, exact receipt recovery, withheld notes and revoked retries. Local
+contract and 31 architecture checks pass at publication; actual PG16/HTTP and
+Compose outcomes must be recorded against the dependent PR's exact source.
+
 ## Current connected application
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together

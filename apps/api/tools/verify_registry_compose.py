@@ -353,6 +353,40 @@ def main():
             status, history = request(second_history, tokens[1])
             assert status == 200 and history["versions"] == []
             assert snapshot() == original
+
+            # The suspension uses the original patient/journal owners. Recover
+            # its exact receipt after process restart and a second actual dump.
+            credentials[0]["actions"].extend(["patient_suspend", "note.read"])
+            save_access()
+            suspension_path = "/v1/patients/" + patient + "/suspensions"
+            suspension = {"synthetic": True, "request_key": "RESTORE-SUSPEND-ONE", "expected_revision": 1}
+            suspended = (200, {"patient_id": patient, "revision": 2, "status": "suspended"})
+            assert request(suspension_path, tokens[0], suspension) == suspended
+            suspended_state = snapshot("oi_api_test_restore")
+            for service in ("api", "db"):
+                command(["restart", service])
+                ready()
+                assert request(suspension_path, tokens[0], suspension) == suspended
+                assert request(note_path, tokens[0])[0] == 404
+                assert request(path, tokens[0])[1]["status"] == "suspended"
+                assert snapshot("oi_api_test_restore") == suspended_state
+            suspended_dump = command(["exec", "-T", "db", "pg_dump", "-U", "oi_api", "-d",
+                                      "oi_api_test_restore", "--format=custom"], capture_output=True).stdout
+            command(["exec", "-T", "db", "createdb", "-U", "oi_api", "oi_api_test_suspended"])
+            command(["exec", "-T", "db", "pg_restore", "-U", "oi_api", "-d", "oi_api_test_suspended",
+                     "--exit-on-error", "--no-owner"], input=suspended_dump)
+            serve_database("oi_api_test_suspended")
+            assert request(suspension_path, tokens[0], suspension) == suspended
+            assert request(note_path, tokens[0])[0] == 404
+            assert request(suspension_path, tokens[0], {**suspension, "expected_revision": 2})[0] == 409
+            assert snapshot("oi_api_test_suspended") == suspended_state
+            credentials[0]["actions"].remove("patient_suspend")
+            save_access()
+            assert request(suspension_path, tokens[0], suspension)[0] == 404
+            assert snapshot("oi_api_test_suspended") == suspended_state
+            assert snapshot() == original
+            print("PASS suspension: API/DB restart and actual restored HTTP recover one receipt; "
+                  "notes withheld, changed intent and revoked retry denied, original database unchanged")
             credentials[0]["patient_ids"] = []
             save_access()
             assert request(path, tokens[0])[0] == 404

@@ -55,6 +55,16 @@ class CreatedPatient(Contract):
     duplicate: bool
 
 
+class SuspendPatient(CreatePatient):
+    expected_revision: int = Field(strict=True, ge=1, le=9_223_372_036_854_775_806)
+
+
+class SuspendedPatient(Contract):
+    patient_id: str
+    revision: int = Field(ge=2)
+    status: Literal["suspended"]
+
+
 class Patient(Contract):
     patient_id: str
     origin_org: str
@@ -836,6 +846,26 @@ def patient_router(database: Database, authentication: Authentication, *, image_
             raise PatientRegistryDenied("Source authority changed")
         # Both patient grant and operation grant are independently enforced.
         records_authorized(patients, current, patient_id, action)
+
+    @router.post("/{patient_id}/suspensions", response_model=SuspendedPatient,
+                 responses=errors, operation_id="suspend_patient_access_v1")
+    def suspend_patient(patient_id: str, payload: SuspendPatient, request: Request,
+                        context: Principal = Depends(principal)):
+        if context.purpose != "operations":
+            raise HTTPException(404, "Patient unavailable")
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "patient_suspend")
+                return patients.suspend_patient(
+                    patient_id, actor=context.actor, purpose=context.purpose,
+                    expected_revision=payload.expected_revision, request_key=payload.request_key,
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "patient_suspend"),
+                    prepare_response=lambda value: JSONResponse(
+                        SuspendedPatient(**value).model_dump(mode="json")),
+                )
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Patient unavailable") from None
 
     def final_question_authority(request: Request, initial: Principal,
                                  patients: PostgresPatientRegistry,
