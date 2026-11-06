@@ -27,6 +27,7 @@ from .laboratory_fhir_store import PostgresLaboratoryFHIR
 from .composer_preflight import PostgresSourceComposerPreflight, SHA256
 from .source_questions import PostgresSourceQuestions
 from .question_review_returns import PostgresQuestionReviewReturns
+from .followthrough_contracts import ManualTaskDependency
 from .source_brief import MAX_ENVELOPE_BYTES, check_brief_size
 from .question_source_review_packet import PostgresQuestionSourcePacket
 from .images import PostgresSourceImages
@@ -528,11 +529,16 @@ class SourceImageIndex(Contract):
     source_identity_verified: Literal[False]
 
 
+class ManualReviewDependency(ManualTaskDependency):
+    """Exact optional Review provenance; no source grant or clinical approval."""
+
+
 class ReturnForVerification(Contract):
     synthetic: StrictBool
     request_key: str = Field(min_length=3, max_length=128)
     expected_queue_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     reason: str = Field(min_length=10, max_length=600)
+    manual_dependency: ManualReviewDependency | None = None
 
     @field_validator("synthetic")
     @classmethod
@@ -567,7 +573,9 @@ class QuestionReviewItem(Contract):
     queue_fingerprint_contract: Literal["oi.synthetic-source-review-return/2"]
     source_context_state: Literal["current_unreviewed_question", "source_reassessment_required"]
     review_state: Literal["awaiting_independent_verification",
-                          "returned_for_independent_verification", "source_reassessment_required"]
+                          "returned_for_independent_verification", "source_reassessment_required",
+                          "manual_reassessment_required"]
+    manual_reassessment_required: bool
     current_return_receipt_id: str | None
     return_count: int = Field(ge=0)
     prior_return_count: int = Field(ge=0)
@@ -588,6 +596,8 @@ class QuestionReturnHistory(Contract):
     action: Literal["returned"]
     reason: str
     created_at: datetime
+    manual_dependency_revision_id: str | None
+    manual_context_state: Literal["current_unreviewed", "reassessment_required"] | None
     reviewer_identity_verified: Literal[False]
     external_notification_sent: Literal[False]
     clinical_approval: Literal[False]
@@ -1042,7 +1052,8 @@ def patient_router(database: Database, authentication: Authentication, *, image_
             raise HTTPException(404, "Review return unavailable")
         try:
             with registry(context) as patients:
-                actions = ("question_read", "source_read", "review_return")
+                actions = ("question_read", "source_read", "review_return") + (
+                    ("source_original_read",) if payload.manual_dependency is not None else ())
                 for action in actions:
                     records_authorized(patients, context, patient_id, action)
                 return PostgresQuestionReviewReturns(patients).return_for_verification(
@@ -1051,6 +1062,8 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                     request_key=payload.request_key,
                     expected_queue_fingerprint=payload.expected_queue_fingerprint,
                     reason=payload.reason,
+                    manual_dependency=(payload.manual_dependency.model_dump(mode="json")
+                                       if payload.manual_dependency is not None else None),
                     prepare_response=lambda result: JSONResponse(
                         ReturnForVerificationReceipt(**result).model_dump(mode="json"),
                         status_code=200 if result["duplicate"] else 201,
