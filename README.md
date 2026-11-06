@@ -355,6 +355,44 @@ route is the first live caller of the D3 toolsets (via the T2 series
 it builds per request); no live model call exists in the slice (Meta
 billing fix still pending).
 
+**Hypothesis generation dimension (Slice D5, 6 November 2026):** A4
+Literature, A5 Trials, T5 report assembly, and HYPOTHESIS
+composition per REQ-09-10 — as deterministic code in
+`src/open_intelligence/literature.py`,
+`src/open_intelligence/trials.py`, and
+`src/open_intelligence/hypothesis.py`, with a read-only
+`GET /api/cases/{id}/hypothesis-report` route and a display-only
+Hypothesis generation panel in the web app. Literature records are
+bibliographic metadata only (six pinned synthetic records standing
+in for Europe PMC, Crossref, and OpenAlex — no live fetch, no full
+text, no findings; a record carrying findings is rejected). Trial
+listings are registry metadata only (four pinned synthetic listings
+in the reserved NCT9 block — no live lookup); listings are never
+eligibility, enforced in code: eligibility language is detected and
+rejected, and every rendered listing carries the fixed label
+"Registry listing — not an eligibility determination." HYPOTHESIS
+composition enforces REQ-09-10: at most 280 characters, resting only
+on kept claims (deterministic claim ids `inv{id}:c{index}`), each
+sentence citing at least one claim id, with no new number,
+identifier, or drug — a token absent from its cited claims rejects
+the composition — plus the scope guard (no advice or eligibility
+language) and the fixed limits phrase when all cited claims are
+low-tier. T5 assembles the report deterministically (fixed section
+order, lists sorted by id): kept claims, composed hypothesis,
+literature, trials, abstentions; an empty input produces an empty
+section, never invented content. No model call exists in the slice
+(an AST test pins that none of the three modules imports the
+model-call path or any other dimension module, including each
+other). Local suite at the slice branch: 1161 tests, with the same
+17 pre-existing `test_pdf_intake` failures as the branch baseline
+(1106 tests) and zero new failures. Unproven: no composed
+hypothesis is stored yet — the report section reports
+`not_composed` and persistence is a follow-up (it needs a store
+table and write-contract treatment); the pinned literature and trial
+fixtures are not matched to the case; no live registry lookup
+exists; no live model call exists in the slice (Meta billing fix
+still pending).
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.

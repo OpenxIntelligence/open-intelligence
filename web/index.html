@@ -86,6 +86,7 @@
           <a href="#synthetic-metrics">Fixture metrics</a>
           <a href="#exchange">Exchange</a>
           <a href="#analytics">Analytics</a>
+          <a href="#hypothesis-report">Hypothesis generation</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -256,6 +257,20 @@
         <div id="analytics-completeness" class="activity" aria-live="polite"></div>
         <div class="subhead">Outcomes tracking</div>
         <div id="analytics-outcomes" class="activity" aria-live="polite"></div>
+      </section>
+      <section class="panel" id="hypothesis-report" aria-labelledby="hypothesis-report-heading">
+        <div class="panel-head"><div><div class="eyebrow">02d / HYPOTHESIS GENERATION</div><h2 id="hypothesis-report-heading">Hypothesis generation</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Read-only assembly of this fictional case&rsquo;s kept claims, a composed hypothesis, bibliographic records, and trial registry listings. A composed hypothesis is a proposal, never an assertion: at most 280 characters, resting only on the kept claims listed, each sentence citing at least one claim id, with no new number, identifier, or drug. Literature records are metadata only — no full text, no findings. Trial listings are registry listings, never eligibility determinations. Nothing here recommends treatment, selects therapy, doses, or diagnoses.</p>
+        <button id="hypothesis-report-apply" type="button" class="button secondary minor">Load hypothesis report</button>
+        <p id="hypothesis-report-status" class="muted tiny"></p>
+        <div class="subhead">Kept claims</div>
+        <div id="hypothesis-claims" class="activity" aria-live="polite"></div>
+        <div class="subhead">Composed hypothesis</div>
+        <div id="hypothesis-text" class="activity" aria-live="polite"></div>
+        <div class="subhead">Literature (metadata only)</div>
+        <div id="hypothesis-literature" class="activity" aria-live="polite"></div>
+        <div class="subhead">Trial listings (not eligibility)</div>
+        <div id="hypothesis-trials" class="activity" aria-live="polite"></div>
       </section>
       <section class="panel" id="patient-view">
         <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2>Your case, in plain words</h2></div><span class="pill">Same facts, plainer language</span></div>

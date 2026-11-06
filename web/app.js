@@ -274,6 +274,57 @@ async function loadAnalytics() {
     el('analytics-status').textContent = '';
   } catch (err) { el('analytics-status').textContent = err.message; }
 }
+async function loadHypothesisReport() {
+  if (!caseId) { el('hypothesis-report-status').textContent = 'No case selected.'; return; }
+  try {
+    const data = await api('/api/cases/' + caseId + '/hypothesis-report');
+    clear('hypothesis-claims');
+    clear('hypothesis-text');
+    clear('hypothesis-literature');
+    clear('hypothesis-trials');
+    const claims = data.kept_claims || [];
+    if (!claims.length) {
+      el('hypothesis-claims').append(node('p', 'No kept claims for this case yet.', 'muted'));
+    }
+    for (const claim of claims) {
+      const cites = (claim.citations || []).map(c => c.type + ' ' + c.id).join(', ');
+      el('hypothesis-claims').append(node('p',
+        claim.id + ' — ' + claim.text + ' (' + (claim.uncertainty || 'uncertainty unstated')
+        + (cites ? '; cites ' + cites : '') + ').'));
+    }
+    const hypothesis = data.hypothesis || {};
+    if (hypothesis.status === 'composed' && hypothesis.text) {
+      el('hypothesis-text').append(node('p', hypothesis.text));
+      el('hypothesis-text').append(node('p',
+        'Cites: ' + (hypothesis.claim_ids || []).join(', ')
+        + ' (' + (hypothesis.char_count || 0) + ' characters).', 'muted'));
+    } else {
+      el('hypothesis-text').append(node('p',
+        'No composed hypothesis stored for this case yet.', 'muted'));
+    }
+    const records = (data.literature && data.literature.records) || [];
+    if (!records.length) {
+      el('hypothesis-literature').append(node('p', 'No literature records.', 'muted'));
+    }
+    for (const record of records) {
+      el('hypothesis-literature').append(node('p',
+        record.title + ' — ' + (record.authors || []).join(', ') + ', '
+        + record.journal + ' ' + record.year + ' (' + record.source + '; ' + record.doi + ').'));
+    }
+    const listings = (data.trials && data.trials.listings) || [];
+    if (!listings.length) {
+      el('hypothesis-trials').append(node('p', 'No trial listings.', 'muted'));
+    }
+    for (const item of listings) {
+      const listing = item.listing || {};
+      el('hypothesis-trials').append(node('p',
+        (item.label || 'Registry listing — not an eligibility determination.') + ' '
+        + listing.title + ' — ' + listing.registry_id + ', ' + listing.phase + ', '
+        + listing.status + ' (' + listing.sponsor + ').'));
+    }
+    el('hypothesis-report-status').textContent = '';
+  } catch (err) { el('hypothesis-report-status').textContent = err.message; }
+}
 function clearCaseViews(denied) {
   for (const id of ['assertion-list', 'question-list', 'snapshot-list', 'source-list',
       'source-change-list', 'asset-list', 'event-list', 'option-list',
@@ -293,7 +344,12 @@ function clearCaseViews(denied) {
       // denial like every other view. Display-only: no text inputs, so
       // no picker-guard entry is needed for them.
       'analytics-trends', 'analytics-symptoms', 'analytics-completeness',
-      'analytics-outcomes']) {
+      'analytics-outcomes',
+      // D5: the hypothesis report renders case data; it must clear
+      // under denial like every other view. Display-only: no text
+      // inputs, so no picker-guard entry is needed for it.
+      'hypothesis-claims', 'hypothesis-text', 'hypothesis-literature',
+      'hypothesis-trials']) {
     clear(id);
     empty(el(id), denied);
   }
@@ -343,6 +399,7 @@ async function initialize() {
     el('exchange-terminology-apply').addEventListener('click', loadExchangeTerminology);
     el('exchange-dicom-apply').addEventListener('click', loadExchangeDicom);
     el('analytics-apply').addEventListener('click', loadAnalytics);
+    el('hypothesis-report-apply').addEventListener('click', loadHypothesisReport);
     const picker = el('case-picker');
     picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {

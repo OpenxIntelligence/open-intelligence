@@ -905,6 +905,114 @@ billing fix still pending). The checklist is the module's own
 convention, not a clinical completeness standard; the 1% stable
 band is a display convention, not a clinical threshold.
 
+## Hypothesis generation dimension: A4 Literature + A5 Trials + T5 + HYPOTHESIS composition (Slice D5) — 6 November 2026
+
+Branch `program/d5-hypothesis-generation`, from main `003c97c`
+(post-D4). Implements program-plan D5: the hypothesis-generation
+dimension — bounded, cited, reviewable hypotheses, proposed, never
+asserted.
+
+Design-first, as the plan requires for this slice: the design is
+drafted in the module docstrings of
+`src/open_intelligence/literature.py`,
+`src/open_intelligence/trials.py`, and
+`src/open_intelligence/hypothesis.py` before the build, and this
+section records it. Four parts, each with its pinned conventions
+and its hard limits:
+
+* A4 Literature (`literature.py`): bibliographic records are
+  metadata only — record id, source registry, title, authors,
+  journal, year, DOI, topics. No full text, no findings, no
+  efficacy claim, no conclusion ever rides on a record; a record
+  carrying any of those fields is rejected with
+  `carries_findings`. The six records are pinned synthetic fixtures
+  standing in for the three registries the plan names (Europe PMC,
+  Crossref, OpenAlex); there is no network call anywhere in the
+  module and no record is presented as a live lookup result. Every
+  record carries `synthetic: True`; DOIs use the `10.0000/`
+  documentation prefix. Lookup is keyword matching over title and
+  topics, returning copies, never the fixtures themselves.
+* A5 Trials (`trials.py`): registry listings are metadata only —
+  listing id, registry id, title, phase, status, sponsor,
+  condition. A listing states what a registry entry says exists;
+  it never states who may join or whether anyone is eligible, and
+  that boundary is enforced in code: `check_eligibility_claim`
+  detects eligibility language and names the matched predicate;
+  `validate_trial_listing` rejects a listing whose own text states
+  eligibility; `render_listing` always attaches the fixed label
+  "Registry listing — not an eligibility determination." — there is
+  no render path without it. The four listings are pinned synthetic
+  fixtures in the reserved `NCT9` registry-id block (the real
+  registry sequence has not reached the 9-block), each carrying
+  `synthetic: True`; no live registry lookup exists in this slice.
+  Registry status language ("enrollment is open") is listing
+  metadata, not an eligibility claim, and does not match the
+  predicates.
+* HYPOTHESIS composition (`hypothesis.py`, REQ-09-10): the composer
+  takes structured sentences, each with its own claim-id
+  citations, plus the kept claims, and returns `composed` or
+  `rejected` with typed violations — a rejected composition returns
+  no text, so a failed hypothesis can never be rendered as if it
+  passed. Rules, enforced in code: at most 280 characters
+  (`over_length`); every sentence cites at least one claim id
+  (`missing_citation`); every cited id resolves to a kept claim
+  (`unknown_claim`) — claim ids are deterministic,
+  `inv{investigation_id}:c{index}` (1-based within that
+  investigation's kept claims), so a citation is checkable without
+  any new table; every number, identifier, and named substance in
+  a sentence must appear in the text of the claims that sentence
+  cites (`unsupported_number` / `unsupported_identifier` /
+  `unsupported_substance`) — token shapes mirror the K-checks, and
+  numbers compare by value (`31` and `31.0` are the same number);
+  no advice or verdict language (`scope_language` — the domain-free
+  guard plus the eligibility predicates, mirrored in `trials.py`,
+  with the D5 tests pinning the two modules to agree on a shared
+  probe set); malformed identifiers rejected via the K-checks' own
+  `malformed_identifiers`; and when the caller supplies evidence
+  tiers and every cited claim with a known tier is low-tier (D/E),
+  the joined text must carry the fixed limits phrase verbatim
+  (`missing_limits_phrase`). The substance arm runs only when a
+  vocabulary is supplied and the tier arm only when tiers are
+  supplied; both report `checked`/`skipped` in the result.
+* T5 report assembly (`assemble_hypothesis_report` in
+  `hypothesis.py`): deterministically assembles the report from
+  kept claims, literature records, trial listings, an optional
+  composed hypothesis, and recorded abstentions. Fixed section
+  order, lists sorted by id, no timestamps unless the caller
+  supplies `as_of`. The report states its own limits in its labels:
+  the hypothesis is "proposed, not asserted"; trial listings are
+  "not eligibility determinations"; literature is "metadata only".
+  An empty input produces an empty section, never invented content.
+
+The slice adds a read-only `GET /api/cases/{id}/hypothesis-report`
+route in `__main__.py`, case-scoped behind the existing grant gate
+(the gate is generic for case routes), which builds the kept claims
+from stored investigations — non-stale only, with the count of
+excluded stale investigations reported — plus the pinned A4/A5
+fixtures, and returns the assembled report; plus a display-only
+Hypothesis generation panel in the web app (one button, four
+sections, empty states that name what is missing, cleared on case
+switch like every other case view — display-only, so no
+picker-guard entry is needed). No vertical predicates were moved
+or added; the `Vertical.toolsets` field stays empty. The K-checks,
+route, Skeptic, and evaluation harness are untouched; no live model
+call exists anywhere in the slice.
+
+Local suite on the slice branch: 1161 tests (1106 on the main
+baseline plus 55 new), FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure-name sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: no composed hypothesis is stored yet — the report section
+reports `not_composed` and persistence is a follow-up (it needs a
+store table and write-contract treatment); the pinned literature and
+trial fixtures are not matched to the case; no live registry or
+literature lookup exists; no live model call was attempted and no
+substitute model was used (Meta billing fix still pending). The
+evaluation harness (C5) has no D5 probes yet — a follow-up could add
+hypothesis-composition probes to it.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)
