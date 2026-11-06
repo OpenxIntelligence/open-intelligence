@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from tools.crossref_metadata import MetadataInputError, fetch_public_doi, project_work
 
+from .agent_writes import build_investigation_contract
 from .case_search import list_cases
 from .changes import changes_since_review
 from .packet import build_case_packet, render_packet_text
@@ -30,13 +31,17 @@ from .investigation import (
     meta_api_key,
     validate_output,
 )
+from .kchecks import build_kcheck_context
+from .orchestrator import decide_route
+from .vertical import default_vertical
+from .skeptic import run_verification
 from .clinician_overview import build_clinician_overview
 from .mission import build_patient_mission
 from .patient_attention import case_patient_attention
 from .provenance import case_provenance
 from .patient_report import build_patient_report, render_text
 from .owned_questions import question_gap_rollup
-from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES, SESSION_TTL_SECONDS
+from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES, SESSION_TTL_SECONDS, now_utc
 from .synthetic_metrics import fixture_run
 from .timeline import case_timeline
 
@@ -1001,6 +1006,38 @@ class Handler(BaseHTTPRequestHandler):
                     if type(question_id) is not int:
                         raise InvalidInput("question_id must be an integer")
                     facts = store.investigation_facts(case_id, question_id)
+                    # Slice 3 assignment (program plan C3): the route is
+                    # decided before any agent event — the model call in
+                    # live mode, the fixture validation in replay mode.
+                    # The authority is the current account's role; the
+                    # case gate already denied patients and auditors here.
+                    account, _actor = self._current_actor(store)
+                    if account is None:
+                        return self._json(401, {"error": AUTH_REQUIRED_MESSAGE})
+                    decide_route(store, case_id, template, question_id,
+                                 account["role"])
+                    # Slice 2 K-checks (program plan C2): the deterministic
+                    # verification half. The vertical's own predicates are
+                    # resolved through the vertical interface (slice V1)
+                    # and passed as explicit parameters; the
+                    # condition-scope, substance, and tier sub-checks are
+                    # data-pending in the runtime (no relation, tier, or
+                    # substance data exists yet), so they skip live and
+                    # run in tests. No run snapshot is pinned yet, so the
+                    # snapshot-hash comparison is not supplied live
+                    # either. The case carries no vertical yet, so the
+                    # default vertical resolves here; a case-vertical
+                    # field is the V2 follow-up that retires it.
+                    vertical = default_vertical()
+                    kcheck_context = build_kcheck_context(
+                        facts, store.source_version_facts(case_id),
+                        case_id=case_id, snapshot_as_of=now_utc(),
+                        synonyms=vertical.synonyms,
+                        scope_patterns=vertical.scope_patterns,
+                        condition_terms=vertical.condition_terms,
+                        lot_ruleset=vertical.lot_ruleset,
+                        current_lot_ruleset=vertical.lot_ruleset,
+                        substance_names=[], evidence_tiers={})
                     if mode == "replay":
                         fixture = json.loads((SYNTHETIC / "demo-investigation.json").read_text())
                         # Replace placeholders with real current ids, then
@@ -1013,17 +1050,45 @@ class Handler(BaseHTTPRequestHandler):
                                     cite["id"] = first_source
                                 if cite.get("id") == "FIRST_ASSESSMENT" and first_assessment is not None:
                                     cite["id"] = first_assessment
-                        validated = validate_output(fixture, facts["valid_sources"], facts["valid_assessments"])
+                        validated = validate_output(fixture, facts["valid_sources"], facts["valid_assessments"],
+                                                    kcheck_context)
                         validated.model = "recorded-replay"
                         validated.mode = "replay"
                     else:
                         prompt = build_prompt(template, facts["question"]["question"],
                                               facts["assertions"], facts["assessments"])
                         payload = call_meta_api(prompt, meta_api_key())
-                        validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"])
+                        validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"],
+                                                    kcheck_context)
+                    # Slice 4 verification (program plan C4): one repair
+                    # round, the Skeptic's independent second opinion,
+                    # T6 grouping, and the typed abstention codes. The
+                    # model passes run in live mode only; replay skips
+                    # them and records the skip, while the deterministic
+                    # half still runs. The verification record is stored
+                    # with the run and returned, like the K-check
+                    # findings. A failed Skeptic or repair call records
+                    # AB-MODEL and the run proceeds with its K-checked
+                    # claims; it never fails the run.
+                    verification = run_verification(
+                        validated, kcheck_context, facts, mode=mode,
+                        store=store, case_id=case_id)
+                    # Slice 1 write contract (program plan section 5.4):
+                    # the run is stored only with its complete, validated
+                    # contract attached; a missing or mismatched contract
+                    # is rejected by save_investigation below.
+                    contract = build_investigation_contract(
+                        store, case_id, question_id, template, validated.model,
+                        facts=facts)
                     investigation_id = store.save_investigation(
-                        case_id, question_id, template, validated, mode)
-                    return self._json(201, store.get_investigation(case_id, investigation_id))
+                        case_id, question_id, template, validated, mode,
+                        write_contract=contract,
+                        verification_record=verification)
+                    stored = store.get_investigation(case_id, investigation_id)
+                    # K-check findings are returned, not persisted (slice
+                    # C2 follow-up: persisting them is a schema change).
+                    stored["kcheck_findings"] = validated.findings
+                    return self._json(201, stored)
                 visits_record = re.fullmatch(rf"/api/cases/{ID_PART}/visits", path)
                 if visits_record:
                     return self._json(201, store.record_visit(
