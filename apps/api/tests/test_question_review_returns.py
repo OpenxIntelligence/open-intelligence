@@ -176,12 +176,35 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
                 question_id=question, revision_id=passage["revision_id"],
                 references_sha256=provenance_fingerprint([ref]))
             fp = self.inbox(base, patient)[1]["items"][0]["queue_fingerprint"]
+            for changed, status_expected in (
+                ({"patient_id": "PAT-FOREIGN"}, 404),
+                ({"case_id": "CASE-BETA"}, 404),
+                ({"question_id": "QUESTION-" + "F"*32}, 404),
+                ({"references_sha256": "0"*64}, 422),
+            ):
+                with self.subTest(forged=changed):
+                    status, withheld, _ = self.returning(base, patient, question, fp,
+                        request_key="REVIEW-BAD-" + next(iter(changed)).upper(),
+                        manual_dependency=manual | changed)
+                    self.assertEqual(status, status_expected, withheld)
+            with self.engine.connect() as db:
+                self.assertEqual(db.execute(text(
+                    "SELECT count(*) FROM investigation.question_review_receipts"
+                )).scalar_one(), 0)
+                self.assertEqual(db.execute(text(
+                    "SELECT count(*) FROM investigation.question_review_manual_dependencies"
+                )).scalar_one(), 0)
             status, receipt, _ = self.returning(base, patient, question, fp,
                 request_key="REVIEW-EXPLICIT-MANUAL", manual_dependency=manual)
             self.assertEqual(status, 201, receipt)
             status, duplicate, _ = self.returning(base, patient, question, fp,
                 request_key="REVIEW-EXPLICIT-MANUAL", manual_dependency=manual)
             self.assertEqual((status, duplicate), (200, receipt | {"duplicate": True}))
+            self.assertEqual(self.returning(base, patient, question, fp,
+                request_key="REVIEW-EXPLICIT-MANUAL")[0], 409)
+            self.assertEqual(self.returning(base, patient, question, fp,
+                request_key="REVIEW-EXPLICIT-MANUAL",
+                manual_dependency=manual | {"references_sha256": "0"*64})[0], 409)
             current = self.inbox(base, patient)[1]
             self.assertEqual(current["items"][0]["review_state"],
                              "returned_for_independent_verification")
