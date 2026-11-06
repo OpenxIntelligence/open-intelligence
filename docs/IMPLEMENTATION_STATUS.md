@@ -692,6 +692,132 @@ quarantine, and the recorded adapter events. mCODE conformance and
 RxNorm bindings are future work, pending terminology licensing and
 implementation-guide validation.
 
+## Analysis dimension: A2 Longitudinal + A3 Molecular + T1 + T2 + T4 (Slice D3) — 6 November 2026
+
+Branch `program/d3-analysis`, from main `1595dac`. Implements
+program-plan D3: the analysis dimension as five deterministic
+toolsets, each its own module with its own fixture suite, against the
+vertical interface V1 defined. No model call exists anywhere in the
+slice — an AST test in `tests/test_analysis.py` pins that none of the
+five modules imports the model-call path (`investigation`, `skeptic`,
+`__main__`) or names a model.
+
+New `src/open_intelligence/longitudinal.py` is A2, the longitudinal
+picture: one ordered track per finding key over the case's current
+sources (timeline ordering: occurred, documented, received, document,
+version), with certainty changes between consecutive points on
+different occurred dates, same-date conflicts reported as unknown
+(never resolved by picking a winner), and interior coverage gaps
+under the `timeline.py` rule. Superseded versions appear nowhere in
+the tracks. No response, progression, staging, grading, eligibility,
+or benefit claim is ever made here.
+
+New `src/open_intelligence/lab_series.py` is T2, the lab/marker
+series: analytes are finding keys asserted on current
+`laboratory`-kind sources (the ledger decides what is a lab finding,
+never a key-name guess). Quotes parse strictly — exactly one number
+parses to a value plus the following unit token (a missing unit is
+`unit_not_stated`, never guessed); zero numbers is `unparseable`,
+more than one is `ambiguous`, both typed and listed. Deltas are
+arithmetic between consecutive parseable points and only when units
+match (a unit change is `unit_mismatch` with no delta; a percent
+change off a zero earlier value is `percent_undefined`). No trend
+word is ever attached — trend views are slice D4's work. LOINC
+codings attach through an injected `codings_for` callable (the D2
+signature, vertical first then shared packs); a key with no binding
+is listed as `unbound`, never fabricated. Cross-specimen transitions
+consult the specimen chain through an injected validator (see below).
+
+New `src/open_intelligence/imaging.py` is T1, the imaging
+comparison: consecutive studies of the same modality, ordered by
+occurred date, compared as finding-key set diffs —
+`persisting` (same certainty), `changed_state` (from/to), `added`,
+`removed`. The modality comes from the linked DICOM report-only
+record; an imaging source with no linked record is `unpaired`
+(`modality_unknown`), a lone study of a modality is `unpaired`
+(`no_other_study_of_modality`), and a DICOM record with no linked
+source is listed as `unanchored`. No measurement numbers are
+compared and no pixels are read, stored, or compared anywhere — the
+surface is report-only by construction.
+
+New `src/open_intelligence/molecular.py` is A3, the molecular
+evidence link: a variant identity is a finding key on a current
+`molecular`-kind source; the gene token is the key itself, or the
+middle token of the `variant-<gene>-<change>` convention. A link is
+a *pinned* CIViC/ClinVar link only — a current `evidence_versions`
+row whose key starts with `CIVIC-` or `CLINVAR-`, whose
+hyphen-separated tokens contain the gene exactly (never as a
+substring), and which has a case assessment (relation and
+applicability carried on the link, so a contradicting or limited
+record is never presented as support). A current version naming the
+gene with no assessment is listed as `unassessed`; one under any
+other prefix is listed as `unrecognized_prefix` — both named, never
+linked. ClinVar is not an `evidence_catalog` source kind; the link
+is prefix matching on synthetic ledger evidence keys, not a catalog
+lookup, and no new catalog kind is declared. Genomic delta tables
+are per-variant ordered points plus certainty changes. No variant
+interpretation — no pathogenicity, actionability, or clinical
+significance — is ever stated.
+
+New `src/open_intelligence/therapy.py` is T4, the line-of-therapy
+calculation as a versioned ruleset. The ruleset version comes from
+the case's vertical (`lot_ruleset` — `lot-rules-1` on oncology) and
+is recorded on every computed row in the new `therapy_lines` table
+(append-only; rows are never updated or deleted). Two synthetic
+fixture rulesets are pinned — `lot-rules-1` (a regimen re-appearing
+after a different regimen starts a new line) and `lot-rules-2` (it
+resumes its earlier line); the labels are opaque version strings
+and the rules are fixture logic, not guideline content. An unknown
+label fails closed with `unknown_ruleset_version` (cardiology's
+`therapy-rules-1` is unknown until its ruleset is defined).
+Regimens are named explicitly by the caller
+(`therapy_finding_keys`); the module never guesses from key names,
+because the ledger holds no administered-therapy table yet. Only
+`reported` assertions count as a regimen occurrence; any other
+certainty is listed as `not_counted`. Recording a batch marks the
+case's previous current rows stale — `ruleset_changed` when their
+version differs, `recomputed` when the same version recomputes — and
+`mark_therapy_lines_stale` marks rows stale for a ruleset change
+without recomputing. T4 is not a RECIST calculator (per DEC-09-07):
+it counts regimen lines only and never computes response,
+progression, staging, grading, eligibility, or benefit.
+
+Orthogonality: the import-graph tripwire in
+`tests/test_vertical_boundary.py` now lists the five D3 modules and
+is green. The chain validator and the terminology bindings reach T1
+and T2 as injected callables — the dimension modules never import
+each other — which makes T1/T2 the first live callers of the D1
+chain validator, as D1's note anticipated: a cross-specimen
+transition or comparison consults the validator for every biological
+asset anchored to either side and records any break as a typed
+record on the comparison; with no validator supplied the comparison
+records `chain_not_checked`, with no anchored assets
+`no_anchored_assets`. A break never silently blocks the comparison.
+
+What did not move, and why: no routes and no UI — the toolsets are
+library code with no live caller yet; they are the deterministic
+machinery the A2/A3 role agents call when parallel roster wiring
+lands (program plan C4 out of scope), and any user-facing surface
+belongs to the design-first slices (D4, D6–D9). No vertical
+predicates were moved or added; the `Vertical.toolsets` field stays
+empty — it names vertical-provided toolsets, and D3's toolsets are
+dimension machinery, not vertical-provided. The K-checks, route,
+Skeptic, and evaluation harness are untouched; no live model call
+exists anywhere in the slice.
+
+Local suite on the slice branch: 1076 tests (1043 on the post-D2 main
+baseline plus 33 new), FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: no live caller wires the toolsets yet, so nothing here
+establishes end-to-end agent use of them; no live model call was
+attempted and no substitute model was used (Meta billing fix still
+pending). The ledger holds no administered-therapy table — T4's
+regimen keys are a caller declaration. ClinVar linkage is key-prefix
+matching on synthetic ledger evidence, not a catalog lookup.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)
