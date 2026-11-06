@@ -13,7 +13,8 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from .reviewed_documents import ReviewedDocuments
-from .reviewed_questions import resolve_question_locked
+from .reviewed_questions import resolve_question_locked, CONTRACT as PASSAGE_CONTRACT
+from .reviewed_documents import fingerprint as passage_fingerprint
 from .case_bindings import _case_id
 from .composer_preflight import SOURCE_SNAPSHOT_CONTRACT, SHA256
 from .evidence_catalog import RECORD_FIELDS, _visible, materialize_locked, public_metadata
@@ -88,7 +89,9 @@ class PostgresQuestionEvidence:
                 current = selection["selection_state"] == "current_unreviewed_selection"
                 receipt = "ACCESS-" + uuid.uuid4().hex.upper()
                 prepared = encode({"source_context_state": "current_unreviewed_question" if current
-                                   else "source_reassessment_required"}, receipt)
+                                   else "source_reassessment_required",
+                                   "source_snapshot_sha256": selection["anchor_sha256"],
+                                   "preflight_sha256": passage_fingerprint([selection["anchor_sha256"],question["question"]])}, receipt)
                 owner._read_receipt(patient_id, case_id, actor=actor, purpose=purpose,
                     binding_revision=binding, event="source.document_question_access_authorized",
                     receipt_id=receipt, source_id=reviewed_source, sha256=selection["anchor"]["original_sha256"],
@@ -159,7 +162,7 @@ class PostgresQuestionEvidence:
                          recheck_authority=recheck_authority, prepare_response=prepare_response, reviewed_source=reviewed_source)
 
     def links(self, patient_id, case_id, question_id, *, organization, actor, purpose,
-              recheck_authority, prepare_response=None):
+              recheck_authority, prepare_response=None, reviewed_source=None):
         def operation(question, scope, rights_versions):
             rows = self.registry._fetchall(
                 "SELECT link_id,record_id,version,metadata_sha256,created_at,actor "
@@ -194,12 +197,12 @@ class PostgresQuestionEvidence:
 
         return self._run(patient_id, case_id, question_id, organization=organization,
                          actor=actor, purpose=purpose, operation=operation,
-                         recheck_authority=recheck_authority, prepare_response=prepare_response)
+                         recheck_authority=recheck_authority, prepare_response=prepare_response, reviewed_source=reviewed_source)
 
     def create_link(self, patient_id, case_id, question_id, *, organization, actor, purpose,
                     request_key, citation, expected_metadata_sha256, source_snapshot_contract,
                     expected_source_snapshot_sha256, expected_preflight_sha256,
-                    recheck_authority, prepare_response=None):
+                    recheck_authority, prepare_response=None, reviewed_source=None):
         request_key = _key(request_key, "request_key")
         try:
             record_id, version = parse_citation(citation)
@@ -208,7 +211,7 @@ class PostgresQuestionEvidence:
         if (not record_id.startswith("FICT-") or version is None
                 or citation != f"{record_id}@{version}"):
             raise PatientRegistryError("An exact fictional evidence version is required")
-        if source_snapshot_contract != SOURCE_SNAPSHOT_CONTRACT:
+        if source_snapshot_contract != (PASSAGE_CONTRACT if reviewed_source is not None else SOURCE_SNAPSHOT_CONTRACT):
             raise PatientRegistryConflict("Question context requires reassessment")
         for fingerprint in (expected_metadata_sha256, expected_source_snapshot_sha256,
                             expected_preflight_sha256):
@@ -286,4 +289,4 @@ class PostgresQuestionEvidence:
 
         return self._run(patient_id, case_id, question_id, organization=organization,
                          actor=actor, purpose=purpose, operation=operation,
-                         recheck_authority=recheck_authority, prepare_response=prepare_response, write=True)
+                         recheck_authority=recheck_authority, prepare_response=prepare_response, write=True, reviewed_source=reviewed_source)

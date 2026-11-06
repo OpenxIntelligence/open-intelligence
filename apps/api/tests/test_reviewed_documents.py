@@ -214,6 +214,24 @@ class ReviewedDocumentTests(SourceVersionFixture):
             self.assertIn('FICT-RECORD-CONTINUITY@1', [row['citation'] for row in results['records']])
             self.assertEqual(results['source_context_state'], 'current_unreviewed_question')
             self.assertEqual(request(base, search, token=TOKEN_B, body=query)[0], 404)
+            from oi_api.reviewed_documents import fingerprint
+            links_path = search.replace('evidence-search', 'evidence-links')
+            record = next(row for row in results['records'] if row['citation']=='FICT-RECORD-CONTINUITY@1')
+            link = dict(synthetic=True, request_key='PASSAGE-CITATION-ONE',
+                        citation=record['citation'], expected_metadata_sha256=record['metadata_sha256'],
+                        source_snapshot_contract='oi.reviewed-document-selection/1',
+                        expected_source_snapshot_sha256=selected['anchor_sha256'],
+                        expected_preflight_sha256=fingerprint([selected['anchor_sha256'], command['question']]))
+            self.assertEqual(request(base, links_path, token=TOKEN_A, body=link)[0], 404)
+            self.creds[0]['actions'].append('evidence_link'); self.write()
+            code, link_receipt, _ = request(base, links_path, token=TOKEN_A, body=link)
+            self.assertEqual(code, 201, link_receipt)
+            self.assertEqual(request(base, links_path, token=TOKEN_A, body=link)[1],
+                             {**link_receipt, 'duplicate': True})
+            self.assertEqual(request(base, links_path, token=TOKEN_A, body={**link,'citation':'FICT-OTHER@1'})[0],409)
+            self.assertEqual(request(base, links_path, token=TOKEN_A)[1]['links'][0]['record']['citation'],record['citation'])
+            with self.assertRaises(CommandError):
+                migrate(self.admin,'downgrade','0019_reviewed_questions')
             with self.assertRaises(CommandError):
                 migrate(self.admin,'downgrade','0018_laboratory_questions')
             with self.assertRaisesRegex(DBAPIError,'OI-LAB-QUESTION-ANCHOR-CONTRACT'), self.engine.begin() as conn:
@@ -237,7 +255,21 @@ class ReviewedDocumentTests(SourceVersionFixture):
             self.assertEqual(question['selection']['selection_state'],'selection_reassessment_required')
             self.assertEqual(request(base, search, token=TOKEN_A, body=query)[1]['source_context_state'],
                              'source_reassessment_required')
+            self.assertEqual(request(base, links_path, token=TOKEN_A, body={**link,'request_key':'STALE-CITATION'})[0],409)
+            self.assertEqual(request(base, links_path, token=TOKEN_A, body=link)[1],
+                             {**link_receipt, 'duplicate': True})
+            from oi_api.evidence_catalog import append_rights_decision
+            with Database(self.settings).registry_connection() as connection:
+                append_rights_decision(PostgresPatientRegistry(connection, lambda *args: False),
+                    'FICT-RECORD-CONTINUITY','1', recorded_by='FIXTURE-AUTHOR',
+                    permissions={'metadata':{'store':'allowed','display':'allowed'}},
+                    revoked=True, superseded=False, reason='Fictional permission withdrawal')
+            hidden = request(base, links_path, token=TOKEN_A)[1]
+            self.assertEqual(hidden['source_context_state'], 'source_reassessment_required')
+            self.assertEqual(hidden['links'][0]['status'], 'rights_restricted')
+            self.assertIsNone(hidden['links'][0]['record'])
             self.creds[0]['actions'].remove('source_original_read');self.write()
             self.assertEqual(request(base,endpoint,token=TOKEN_A)[0],404)
             self.assertEqual(request(base,endpoint,token=TOKEN_A,body=command)[0],404)
             self.assertEqual(request(base, search, token=TOKEN_A, body=query)[0], 404)
+            self.assertEqual(request(base, links_path, token=TOKEN_A)[0], 404)

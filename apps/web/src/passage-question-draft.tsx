@@ -1,17 +1,21 @@
 import {useEffect,useRef,useState} from 'react';
 import type {Document,Finding} from './reviewed-documents';
-import {decodeChosenPassage,decodeSavedPassage} from './question-passages';
+import {decodeChosenPassage,decodeSavedPassage,manualHash} from './question-passages';
 import type {RegistrySession} from './registry-client';
 
-import {decodeQuestionEvidenceSearch,validEvidenceQuery} from './question-evidence-view';
-import type {QuestionEvidenceSearch} from './question-evidence-view';
+import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,validEvidenceQuery} from './question-evidence-view';
+import type {QuestionEvidenceSearch,QuestionEvidenceLinks,QuestionEvidenceRecord} from './question-evidence-view';
 
-function PassageEvidenceSearch({patient,caseId,source,id,session}:{
- patient:string;caseId:string;source:string;id:string;session:RegistrySession;
+function PassageEvidenceSearch({patient,caseId,source,id,anchor,question,current,session}:{
+ patient:string;caseId:string;source:string;id:string;anchor:string;question:string;current:boolean;session:RegistrySession;
 }){
  const [query,setQuery]=useState('');
  const [result,setResult]=useState<QuestionEvidenceSearch|null>(null);
  const [status,setStatus]=useState('');
+ const intent=session.documentQuestionIntent(patient,caseId,source,id);
+ const [pending,setPending]=useState<string|null>(()=>intent.read());
+ const [saving,setSaving]=useState(false);
+ const [links,setLinks]=useState<QuestionEvidenceLinks|null>(null);
  const generation=useRef(0);
  useEffect(()=>()=>{generation.current++;},[patient,caseId,source,id,session]);
  async function search(){
@@ -25,13 +29,53 @@ function PassageEvidenceSearch({patient,caseId,source,id,session}:{
    if(request===generation.current){setResult(data);setStatus('');}
   }catch{if(request===generation.current)setStatus('Evidence search unavailable. Recheck access and try again.');}
  }
- return <form onSubmit={event=>{event.preventDefault();if(validEvidenceQuery(query))void search();}}>
-  <label>Search fictional evidence metadata<input value={query} maxLength={200} data-testid="passage-evidence-query"
+ async function save(record?:QuestionEvidenceRecord){
+  const request=++generation.current;
+  setSaving(true);setLinks(null);setStatus('');
+  let body=pending;
+  try{
+   if(!body){
+    if(!record||!current)throw Error();
+    const preflight=await manualHash([anchor,question]);
+    if(request!==generation.current)return;
+    body=intent.begin(JSON.stringify({synthetic:true,request_key:'PASSAGE-CITATION-'+crypto.randomUUID(),
+      citation:record.citation,expected_metadata_sha256:record.metadata_sha256,
+      source_snapshot_contract:'oi.reviewed-document-selection/1',
+      expected_source_snapshot_sha256:anchor,expected_preflight_sha256:preflight}));
+    setPending(body);
+   }
+   const reply=await session.documentRequest(caseId,'/'+source+'/questions/'+id+'/evidence-links',body);
+   if([409,422].includes(reply.status)){intent.finish(body);if(request===generation.current)setPending(null);throw Error();}
+   if(![200,201].includes(reply.status))throw Error();
+   const expected=JSON.parse(body),receipt=reply.body as Record<string,unknown>;
+   if(!receipt||!/^EVIDENCE-LINK-[A-F0-9]{32}$/.test(String(receipt.link_id))||
+     receipt.citation!==expected.citation||receipt.metadata_sha256!==expected.expected_metadata_sha256||
+     typeof receipt.duplicate!=='boolean')throw Error();
+   intent.finish(body);
+   if(request===generation.current){setPending(null);setStatus('Citation saved. Reopen saved citations to inspect it.');}
+  }catch{if(request===generation.current)setStatus('Citation save unavailable or outcome unknown. Recheck access and retry the exact save.');}
+  finally{if(request===generation.current)setSaving(false);}
+ }
+ async function reopen(){
+  const request=++generation.current;setLinks(null);setStatus('');
+  try{
+   const reply=await session.documentRequest(caseId,'/'+source+'/questions/'+id+'/evidence-links');
+   if(reply.status!==200)throw Error();
+   const data=decodeQuestionEvidenceLinks(reply.body,patient,caseId,id);
+   if(request===generation.current)setLinks(data);
+  }catch{if(request===generation.current)setStatus('Saved citations unavailable. Recheck access.');}
+ }
+ return <form onSubmit={event=>{event.preventDefault();if(!saving&&validEvidenceQuery(query))void search();}}>
+  <label>Search fictional evidence metadata<input value={query} disabled={saving} maxLength={200} data-testid="passage-evidence-query"
    onChange={event=>{generation.current++;setQuery(event.target.value);setStatus('');setResult(null);}}/></label>
-  <button disabled={!validEvidenceQuery(query)||status==='Searching…'}>Search evidence catalog</button>
+  <button disabled={saving||!validEvidenceQuery(query)||status==='Searching…'}>Search evidence catalog</button>
   <div role="status">{status}{result&&<><p>{result.records.length} matching fictional catalog records.</p>
    {result.source_context_state==='source_reassessment_required'&&<p>The source passage needs reassessment.</p>}
-   {result.records.map(record=><p key={record.citation}>{record.title} · {record.citation} · {record.licence}</p>)}</>}</div>
+   {result.records.map(record=><p key={record.citation}>{record.title} · {record.citation} · {record.licence} <button type="button" disabled={saving||!!pending||!current} onClick={()=>void save(record)}>Save citation {record.citation}</button></p>)}</>}</div>
+  {pending&&<button type="button" disabled={saving} onClick={()=>void save()}>Retry exact citation save</button>}
+  <button type="button" disabled={saving} onClick={()=>void reopen()}>Open saved passage citations</button>
+  {links&&<div data-testid="passage-citations">{links.source_context_state==='source_reassessment_required'&&<p>The source passage needs reassessment.</p>}
+   {links.links.length===0?<p>No saved citations.</p>:links.links.map(link=><p key={link.link_id}>{link.citation} · {link.status}{link.record&&' · '+link.record.title}</p>)}</div>}
  </form>;
 }
 
@@ -46,7 +90,7 @@ export function PassageQuestionDraft({doc,session,patientId,caseId}:{
  const intent=session.documentQuestionIntent(patientId,caseId,doc.source_id);
  const [pending,setPending]=useState<string|null>(()=>intent.read());
  const [busy,setBusy]=useState(false);
- const [history,setHistory]=useState<{id:string;text:string;quote:string;line:number;revision:number;state:string}[]|null>(null);
+ const [history,setHistory]=useState<{id:string;text:string;quote:string;line:number;revision:number;state:string;anchor:string}[]|null>(null);
  const [message,setMessage]=useState('');
  useEffect(()=>()=>{generation.current++;},[doc,session,patientId,caseId]);
  async function start(chosen:Finding){
@@ -106,7 +150,7 @@ export function PassageQuestionDraft({doc,session,patientId,caseId}:{
     if(!revision||!finding)throw Error();
     const verified=await decodeSavedPassage({...selection,access_receipt_id:receipt},{patient_id:patientId,case_id:caseId},doc,revision,finding);
     if(!/^QUESTION-[A-F0-9]{32}$/.test(row.question_id)||typeof row.question!=='string'||verified.anchor.original_sha256!==doc.sha256)throw Error();
-    return {id:row.question_id,text:row.question,quote:verified.anchor.quote,line:verified.anchor.line,revision:verified.anchor.annotation_revision,state:verified.selection_state};
+    return {id:row.question_id,text:row.question,anchor:verified.anchor_sha256,quote:verified.anchor.quote,line:verified.anchor.line,revision:verified.anchor.annotation_revision,state:verified.selection_state};
    }));
    if(request===generation.current)setHistory(rows);
   }catch{if(request===generation.current)setMessage('Saved questions unavailable. Recheck record access.');}
@@ -123,7 +167,7 @@ export function PassageQuestionDraft({doc,session,patientId,caseId}:{
   </>:pending?<button type="button" disabled={busy} onClick={()=>void save()}>Retry exact save</button>:doc.state==='current'&&revision.findings.map(item=><button type="button" key={item.key}
    disabled={busy} onClick={()=>void start(item)}>Draft a question about “{item.quote}” (line {item.line})</button>)}
   {!finding&&<button type="button" disabled={busy} onClick={()=>void reopen()}>Open saved passage questions</button>}
-  {history&&<div data-testid="saved-passage-questions">{history.length===0?'No saved passage questions.':history.map(row=><article key={row.id}><h5>{row.text}</h5><blockquote>{row.quote}</blockquote><p>Selection revision {row.revision} · line {row.line} · {row.state==='current_unreviewed_selection'?'Current selection':'Source or selection changed'}</p><PassageEvidenceSearch patient={patientId} caseId={caseId} source={doc.source_id} id={row.id} session={session}/></article>)}</div>}
+  {history&&<div data-testid="saved-passage-questions">{history.length===0?'No saved passage questions.':history.map(row=><article key={row.id}><h5>{row.text}</h5><blockquote>{row.quote}</blockquote><p>Selection revision {row.revision} · line {row.line} · {row.state==='current_unreviewed_selection'?'Current selection':'Source or selection changed'}</p><PassageEvidenceSearch patient={patientId} caseId={caseId} source={doc.source_id} id={row.id} anchor={row.anchor} question={row.text} current={row.state==='current_unreviewed_selection'} session={session}/></article>)}</div>}
   {message&&<p role="status">{message}</p>}
  </section>;
 }
