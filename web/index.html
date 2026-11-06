@@ -89,6 +89,7 @@
           <a href="#hypothesis-report">Hypothesis generation</a>
           <a href="#appointments">Appointments</a>
           <a href="#notifications">Notifications</a>
+          <a href="#referrals">Referrals</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -326,6 +327,56 @@
         <p id="notifications-status" class="muted tiny"></p>
         <p id="notifications-disclaimer" class="muted tiny"></p>
         <div id="notifications-list" class="activity" aria-live="polite"></div>
+      </section>
+      <section class="panel" id="referrals" aria-labelledby="referrals-heading">
+        <div class="panel-head"><div><div class="eyebrow">02g / REFERRALS</div><h2 id="referrals-heading">Referrals</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Requests to send a question about this fictional case to another team for input, with their status and outcome. Recording a referral records the request — it sends no message, books nothing, and contacts no one. An outcome is a separate record that never overwrites the request; a referral with a recorded outcome stays in history, and further work is a new referral. Nothing here recommends treatment, selects therapy, doses, or diagnoses.</p>
+        <button id="referrals-apply" type="button" class="button secondary minor">Load referrals</button>
+        <p id="referrals-status" class="muted tiny"></p>
+        <p id="referrals-disclaimer" class="muted tiny"></p>
+        <div id="referrals-list" class="activity" aria-live="polite"></div>
+        <div class="subhead">Record a referral</div>
+        <form id="referrals-form">
+          <label for="ref-question-choice">Case question this referral is about</label><select id="ref-question-choice" required></select>
+          <label for="ref-specialty">Receiving team or specialty (plain label)</label>
+          <input id="ref-specialty" type="text" maxlength="120" required placeholder="Fictional specialty, for example cardiology">
+          <label for="ref-reason">Why this referral is requested (plain description)</label>
+          <textarea id="ref-reason" rows="2" minlength="10" maxlength="500" required placeholder="What the other team is being asked about, in plain words."></textarea>
+          <fieldset class="choice-group">
+            <legend>Materials shared by reference</legend>
+            <div id="ref-source-choice" class="source-choice"></div>
+          </fieldset>
+          <label for="ref-actor">Your label (who records this)</label>
+          <input id="ref-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <button class="button" type="submit">Record referral</button>
+        </form>
+        <div class="subhead">Record receipt of a referral</div>
+        <form id="referrals-acknowledge-form">
+          <label for="ref-ack-choice">Referral</label><select id="ref-ack-choice" required></select>
+          <label for="ref-ack-actor">Your label (who records receipt)</label>
+          <input id="ref-ack-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <label for="ref-ack-reason">Why this receipt is recorded (required, kept in history)</label>
+          <textarea id="ref-ack-reason" rows="2" minlength="10" maxlength="600" required></textarea>
+          <button class="button" type="submit">Record acknowledgment</button>
+        </form>
+        <div class="subhead">Record a referral outcome</div>
+        <form id="referrals-outcome-form">
+          <label for="ref-outcome-choice">Referral</label><select id="ref-outcome-choice" required></select>
+          <label for="ref-outcome-kind">Outcome</label>
+          <select id="ref-outcome-kind" required>
+            <option value="accepted">Accepted — the receiving team took it on for review</option>
+            <option value="declined">Declined — the receiving team declined it</option>
+            <option value="completed">Completed — the consultation is done</option>
+          </select>
+          <label for="ref-outcome-text">Outcome (plain description, 10–2000 characters)</label>
+          <textarea id="ref-outcome-text" rows="3" minlength="10" maxlength="2000" required placeholder="Describe the recorded outcome in plain words."></textarea>
+          <label for="ref-outcome-anchor-choice">Source version this outcome discusses</label><select id="ref-outcome-anchor-choice" required></select>
+          <label for="ref-outcome-actor">Your label (who records this outcome)</label>
+          <input id="ref-outcome-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <label for="ref-outcome-reason">Why this outcome is recorded (required, kept in history)</label>
+          <textarea id="ref-outcome-reason" rows="2" minlength="10" maxlength="600" required></textarea>
+          <button class="button" type="submit">Record outcome</button>
+        </form>
       </section>
       <section class="panel" id="patient-view">
         <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2>Your case, in plain words</h2></div><span class="pill">Same facts, plainer language</span></div>

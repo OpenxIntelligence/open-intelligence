@@ -25,6 +25,11 @@ GUARDED_APPOINTMENTS = (
     "appt-actor", "appt-reason",
     "appt-new-date", "appt-new-time", "appt-change-actor", "appt-change-reason",
 )
+GUARDED_REFERRALS = (
+    "ref-specialty", "ref-reason", "ref-actor",
+    "ref-ack-actor", "ref-ack-reason",
+    "ref-outcome-text", "ref-outcome-actor", "ref-outcome-reason",
+)
 
 
 class CaseSwitchGuardTests(unittest.TestCase):
@@ -115,6 +120,26 @@ class CaseSwitchGuardTests(unittest.TestCase):
                 self.assertIn("'%s'" % field, guard, "missing draft guard")
                 self.assertIn("'%s'" % field, clear, "missing draft clear")
 
+    def test_referral_inputs_guarded_and_cleared(self):
+        """D8: an unfinished referral draft must block a case switch
+        and clear once a switch is allowed — same treatment as every
+        other case-scoped draft. Full-span check (like the recent-main
+        and appointment tests): the referral fields sit before the
+        eight test-asserted fields in the guard array and at the end
+        of the clear loop, so the fixed lookbacks of the other tests
+        are untouched."""
+        text = APP_JS.read_text()
+        at = text.index("picker.addEventListener('change'")
+        guard_end = text.index(".some(id => el(id).value.trim())", at)
+        guard = text[at:guard_end]
+        clear_start = text.index("for (const id of [", guard_end)
+        clear_end = text.index("]) el(id).value = '';", clear_start)
+        clear = text[clear_start:clear_end]
+        for field in GUARDED_REFERRALS:
+            with self.subTest(field=field):
+                self.assertIn("'%s'" % field, guard, "missing draft guard")
+                self.assertIn("'%s'" % field, clear, "missing draft clear")
+
     def test_post_submit_clears_sensitive_draft_fields(self):
         text = APP_JS.read_text()
         dep_start = text.index("el('option-dependency-form').addEventListener")
@@ -137,6 +162,21 @@ class CaseSwitchGuardTests(unittest.TestCase):
         for field in ("appt-new-date", "appt-new-time", "appt-change-actor",
                       "appt-change-reason"):
             self.assertIn("'%s'" % field, text[change_start:change_end])
+        # D8: the referral forms clear their drafts after a successful
+        # submit (create clears the create fields, acknowledge clears
+        # the acknowledge fields, outcome clears the outcome fields).
+        ref_create_start = text.index("el('referrals-form').addEventListener")
+        ref_create_end = text.index("el('referrals-acknowledge-form').addEventListener", ref_create_start)
+        for field in ("ref-specialty", "ref-reason", "ref-actor"):
+            self.assertIn("'%s'" % field, text[ref_create_start:ref_create_end])
+        ref_ack_start = text.index("el('referrals-acknowledge-form').addEventListener")
+        ref_ack_end = text.index("el('referrals-outcome-form').addEventListener", ref_ack_start)
+        for field in ("ref-ack-actor", "ref-ack-reason"):
+            self.assertIn("'%s'" % field, text[ref_ack_start:ref_ack_end])
+        ref_outcome_start = text.index("el('referrals-outcome-form').addEventListener")
+        ref_outcome_end = text.index("el('goal-form').addEventListener", ref_outcome_start)
+        for field in ("ref-outcome-text", "ref-outcome-actor", "ref-outcome-reason"):
+            self.assertIn("'%s'" % field, text[ref_outcome_start:ref_outcome_end])
 
 
 if __name__ == "__main__":

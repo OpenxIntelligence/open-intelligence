@@ -45,6 +45,7 @@ from .patient_access import PatientAccessAdapter, adapter_envelope_from_dict
 from .patient_analytics import patient_analytics
 from .appointments import appointments_view
 from .notifications import notifications_view
+from .referrals import referrals_view
 from .hypothesis import assemble_hypothesis_report, claim_id
 from .literature import list_records
 from .trials import list_listings, render_listing
@@ -589,6 +590,13 @@ class Handler(BaseHTTPRequestHandler):
                 role = account["role"] if account is not None else "auditor"
                 return self._json(200, notifications_view(
                     store, notifications[1], role))
+            referrals = re.fullmatch(rf"/api/cases/{ID_PART}/referrals", path)
+            if referrals:
+                # D8: care-coordination referrals — list with materials,
+                # outcome, and full status history, case-scoped behind
+                # the existing grant gate. Read-only; a referral sends
+                # nothing anywhere and performs no handoff.
+                return self._json(200, referrals_view(store, referrals[1]))
             review_queue = re.fullmatch(rf"/api/cases/{ID_PART}/review-queue", path)
             if review_queue:
                 return self._json(200, store.review_queue(review_queue[1]))
@@ -904,6 +912,42 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, store.clear_notification(
                         notification_clear[1], data.get("notification_key"),
                         role, self._actor_label(store)))
+                referral_create = re.fullmatch(rf"/api/cases/{ID_PART}/referrals", path)
+                if referral_create:
+                    # D8: record a fictional referral request. Writes
+                    # are operator/clinician only — the generic case
+                    # gate denies patient POSTs and auditor requests
+                    # before dispatch reaches this route. The request
+                    # sends nothing anywhere.
+                    referral_id = store.create_referral(
+                        referral_create[1], data.get("question_id"),
+                        data.get("specialty_label"), data.get("reason_text"),
+                        data.get("source_version_ids"),
+                        actor_label=data.get("actor_label"))
+                    return self._json(201, {"referral_id": referral_id})
+                referral_acknowledge = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/referrals/([0-9]+)/acknowledge", path)
+                if referral_acknowledge:
+                    return self._json(200, store.acknowledge_referral(
+                        referral_acknowledge[1], int(referral_acknowledge[2]),
+                        actor_label=data.get("actor_label"),
+                        reason=data.get("reason")))
+                referral_outcome = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/referrals/([0-9]+)/outcome", path)
+                if referral_outcome:
+                    outcome_id = store.record_referral_outcome(
+                        referral_outcome[1], int(referral_outcome[2]),
+                        data.get("outcome_kind"), data.get("outcome_text"),
+                        data.get("anchor_source_version_id"),
+                        actor_label=data.get("actor_label"),
+                        reason=data.get("reason"))
+                    return self._json(201, {"outcome_id": outcome_id})
+                referral_review = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/referrals/([0-9]+)/review", path)
+                if referral_review:
+                    return self._json(200, store.review_referral(
+                        referral_review[1], int(referral_review[2]),
+                        data.get("reviewer_label"), data.get("scope")))
                 question_owner = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/owner", path)
                 if question_owner:
                     history_id = store.assign_question_owner(

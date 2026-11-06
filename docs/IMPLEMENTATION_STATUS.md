@@ -1209,6 +1209,120 @@ derived (the idempotence check now precedes the active-set check,
 with separate read/write transactions), and the key regex accepted
 record id 0 (ids are now `[1-9][0-9]*`).
 
+## Care coordination dimension: referrals (Slice D8) — 6 November 2026
+
+Branch `program/d8-referrals`, from main `1ce52e0a`
+(post-D7). Implements program-plan D8: the care-coordination
+dimension's third slice — referral status is tracked as a product
+feature. Appointments record a plan and notifications derive due
+items, but nothing tracked a request sent to another team for input
+through to its outcome; referrals close that gap as records, not as
+a handoff.
+
+Design-first, as the plan requires for this slice: the design is
+drafted in the module docstring of
+`src/open_intelligence/referrals.py` before the build, and this
+section records it. A referral is a fictional, case-scoped record
+of a request to send a question about the case to another team or
+specialty for input: a question, a specialty label (a plain label
+such as "cardiology" — never a real destination, address, or
+contact), a reason in plain words, and 1–50 pinned current source
+versions as materials. Recording a referral records the request;
+it sends nothing, contacts no one, books nothing, makes no
+appointment, and performs no handoff outside the product.
+
+* Lifecycle: `requested` → `acknowledged` → `outcome_recorded`.
+  Acknowledgment records receipt by the receiving team (actor label
+  and reason, only from `requested`); the outcome arrives as a
+  separate record (outcome kind + text + anchor, only from
+  `acknowledged`). `outcome_recorded` is terminal — further work is
+  a new referral, never a reopen (mirroring the follow-through rule
+  that completed work stays in history). Every transition appends
+  one event row — who, when, why, previous and new status — and
+  history rows are never updated or deleted.
+* Outcome: exactly one per referral, so no outcome can silently
+  replace an earlier one (mirroring the second-opinion response
+  rule). Outcome kinds are pinned: `accepted` (taken on for
+  review), `declined`, `completed` (consultation done, outcome text
+  records what was returned). The outcome text is a plain
+  description (10–2000 characters) and anchors to one current
+  source version in this case, like a second-opinion response
+  anchor. The outcome never overwrites the request.
+* Review/audit treatment (the second-opinion pattern, followed
+  exactly): a referral carries `review_state` (`pending` /
+  `reviewed_in_demo` / `needs_review`) alongside its status. Review
+  is a demo acknowledgment (reviewer label, scope 10–300
+  characters) moving `pending` → `reviewed_in_demo` with one review
+  event; review is refused while `needs_review` ("preserve it and
+  create a new referral") or already `reviewed_in_demo`. Receipt of
+  an amendment moves `review_state` to `needs_review` when a pinned
+  material or the outcome anchor is superseded
+  (`_invalidate_care_records`, extended by this slice to return the
+  invalidated referrals alongside second opinions and survivorship
+  items; the import result gains `invalidated_referrals`). The
+  request, materials, and outcome stay visible with their own
+  states; nothing is silently rebound.
+* Role visibility: case-scoped and role-gated from the start
+  through the existing generic case gate — no new gate code. A
+  patient reads only their own bound case (GET); writes
+  (create/acknowledge/outcome/review) are operator/clinician only,
+  so a patient POST is denied by role even on their own case; an
+  auditor holds no case grants and is denied everywhere. The UI
+  renders what the server returns and shows the denial text on a
+  403.
+* Text guard: referral text is author-controlled, so the same
+  narrow guard as follow-through tasks applies — reused, not
+  forked: the validators import the follow-through checks, so the
+  specialty label, reason, outcome text, actor label, and reviewer
+  label must not state a clinical recommendation, order,
+  eligibility claim, diagnosis, or dose. Human review remains the
+  gate; the disclaimer on every view states the boundary.
+
+The slice adds five tables (`referrals`,
+`referral_materials`, `referral_outcomes`, `referral_events`,
+`referral_review_events`) plus `create_referral`,
+`acknowledge_referral`, `record_referral_outcome`,
+`review_referral`, and `list_referrals` in `store.py`; five routes
+in `__main__.py` (`GET /api/cases/{id}/referrals`,
+`POST /api/cases/{id}/referrals`,
+`POST /api/cases/{id}/referrals/{n}/acknowledge`,
+`POST /api/cases/{id}/referrals/{n}/outcome`,
+`POST /api/cases/{id}/referrals/{n}/review`); and a Referrals
+panel in the web app (02g — list with materials, outcome, and full
+status history; create, acknowledge, and outcome forms; per-item
+demo-review button; the list container clears on case switch and
+on denial, and the form fields sit in the picker guard array
+before the eight test-asserted fields and at the end of the clear
+loop, so the fixed lookbacks of the guard tests are untouched; the
+shared-materials checkboxes clear on a case switch so the previous
+case's sources are never left checked).
+`open_intelligence.referrals` is registered in
+`DIMENSION_MODULES`; the import-graph tripwire stays green. No
+vertical predicates were moved or added; the K-checks, route,
+Skeptic, and evaluation harness are untouched; no live model call
+exists anywhere in the slice.
+
+Local suite on the slice branch: 1226 tests (1206 on the main
+baseline plus 20 new — 19 referral tests and 1 guard test),
+FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: no message, email, or handoff leaves the product; no
+link to a follow-through task or an appointment (no speculative
+coupling); no per-referral link to a snapshot (a referral is about
+a question, not a conclusion — the outcome anchors to a source
+version, like a second-opinion response); no live model call was
+attempted and no substitute model was used (Meta billing fix still
+pending). The evaluation harness (C5) has no D8 probes yet — a
+follow-up could add referral-lifecycle probes to it. Two test-side
+defects were caught and fixed during the build, both in the tests:
+an empty materials list was silently replaced by the default
+fixture (`or` in the test helper), and the outcome-anchor
+assertion read an `id` the anchor projection does not carry
+(document/version/state only).
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)
