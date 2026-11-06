@@ -39,6 +39,10 @@ def exercise(cd, value, credentials, tokens, write_grants):
         submit("#vet-animal")
         shown("Animal identity")
         click("Create a case")
+        retry_key = cd.evaluate("document.querySelector('#vet-key').value")
+        click("Find a record")
+        click("Create a case")
+        assert cd.evaluate("document.querySelector('#vet-key').value") == retry_key, "Navigation lost the retry identity"
         cd.evaluate("document.querySelector('input[type=checkbox]').click()")
         submit("#vet-key")
         shown("Registration saved")

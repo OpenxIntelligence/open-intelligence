@@ -28,7 +28,7 @@ function RegistryForm({token, onDisconnect}: {token: string; onDisconnect: () =>
 
   function clearResult() { setResult(null); setMessage(''); }
   function select(next: Mode) {
-    clearResult(); setMode(next); setConfirmed(false); setKey(crypto.randomUUID()); setCaseId('');
+    clearResult(); setMode(next); setConfirmed(false); setCaseId('');
   }
   async function submit() {
     if (pending.current || (mode !== 'read' && !confirmed)) return;

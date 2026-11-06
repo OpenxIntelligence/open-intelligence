@@ -104,6 +104,12 @@ class VeterinaryRegistryTests(unittest.TestCase):
             self.assertEqual(human.request(base, cases[1], token=human.TOKEN_A, body=CASE)[0], 409)
             for changes in ({"species": "human"}, {"species": None}, {"synthetic": 1}, {"patient_id": "PAT-ONE"}):
                 self.assertEqual(human.request(base, ROOT, token=human.TOKEN_A, body={**ANIMAL, **changes})[0], 422)
+        with self.assertRaises(DBAPIError), self.engine.begin() as c:
+            c.execute(text("""
+                INSERT INTO coordination.veterinary_cases
+                    (case_id, animal_id, origin_org, request_key, created_by, purpose)
+                VALUES (:case, :animal, 'ORG-OTHER', 'WRONG-CLINIC', 'ACTOR-OTHER', 'operations')
+            """), {"case": "VCASE-" + "F" * 32, "animal": ids[0]})
         for sql in ("UPDATE coordination.veterinary_cases SET animal_id=:other",
                     "DELETE FROM identity.veterinary_animals",
                     "UPDATE identity.veterinary_animals SET species='cat'"):
@@ -127,3 +133,21 @@ class VeterinaryRegistryTests(unittest.TestCase):
                 self.assertEqual(c.execute(text("SELECT count(*) FROM identity.veterinary_animals")).scalar_one(), 0)
             self.grant()
             self.assertEqual(human.request(base, ROOT, token=human.TOKEN_A, body=ANIMAL)[0], 201)
+
+    def test_scope_revoked_during_read_encoding_withholds_the_record(self):
+        from oi_api import veterinary
+        self.grant()
+        with running_server(create_app(self.settings)) as base:
+            aid = human.request(base, ROOT, token=human.TOKEN_A, body=ANIMAL)[1]["animal_id"]
+            self.grant([aid])
+            original = veterinary.AnimalRecord.model_dump
+
+            def withdraw(record, **options):
+                result = original(record, **options)
+                self.grant()
+                return result
+
+            with patch.object(veterinary.AnimalRecord, "model_dump", withdraw):
+                status, body, _ = human.request(base, ROOT + "/" + aid, token=human.TOKEN_A)
+            self.assertEqual((status, body), (404, {"detail": "Veterinary record unavailable"}))
+            self.assertNotIn(aid, str(body))
