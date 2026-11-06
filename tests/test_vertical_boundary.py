@@ -49,6 +49,9 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "open_intelligence"
 DIMENSION_MODULES: tuple[str, ...] = (
     "open_intelligence.extraction",
     "open_intelligence.specimen_chain",
+    "open_intelligence.terminology",
+    "open_intelligence.fhir_exchange",
+    "open_intelligence.dicom",
 )
 
 
@@ -272,6 +275,16 @@ class RegistryTests(unittest.TestCase):
     def test_default_vertical_is_oncology(self):
         self.assertEqual(default_vertical().name, "oncology")
         self.assertIs(default_vertical(), get_vertical("oncology"))
+
+    def test_terminology_bindings_live_on_the_vertical(self):
+        # D2: the oncology vertical declares its own terminology
+        # binding (histology -> ICD-10 C80.1); cardiology declares none.
+        oncology = get_vertical("oncology")
+        self.assertEqual(
+            oncology.terminology_bindings["histology"],
+            ({"system": "http://hl7.org/fhir/sid/icd-10", "code": "C80.1",
+              "display": "Malignant (primary) neoplasm, unspecified"},))
+        self.assertEqual(get_vertical("cardiology").terminology_bindings, {})
 
 
 class CrossVerticalBehaviourTests(unittest.TestCase):

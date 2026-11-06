@@ -391,6 +391,17 @@ CREATE TABLE IF NOT EXISTS quarantine (
   declared_patient_id TEXT NOT NULL, sha256 TEXT NOT NULL, raw BLOB NOT NULL,
   reason TEXT NOT NULL, received_at TEXT NOT NULL
 );
+-- D2: DICOM report-only records. Report metadata only — study id,
+-- modality, accession, narrative, and the source version reported on.
+-- There is deliberately NO pixel column: no pixel bytes can be stored
+-- here, by construction, and the dicom module rejects any payload
+-- carrying them before a row is written.
+CREATE TABLE IF NOT EXISTS dicom_reports (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  study_uid TEXT NOT NULL, modality TEXT NOT NULL, accession TEXT NOT NULL,
+  report_text TEXT NOT NULL, source_version_id INTEGER REFERENCES source_versions(id),
+  created_at TEXT NOT NULL, UNIQUE(case_id, study_uid)
+);
 -- B-05 explicit subject binding. One row per imported source version,
 -- recording the declared subject id and the declared-ID-equality match
 -- decision. Append-only: no update path exists, so a recorded decision is
@@ -1672,6 +1683,72 @@ class CaseStore:
             return self._import_report_in_transaction(
                 case_id, raw, report, digest,
                 assignee_label=assignee_label, due_date=due_date)
+
+    def import_fhir_bundle(self, case_id: str, raw: bytes) -> dict:
+        """Import a synthetic FHIR R4 bundle as a source version (D2).
+
+        The bundle is validated and translated by ``fhir_exchange``
+        into a ``ParsedReport`` with kind ``"fhir-bundle"``, then stored
+        through the one import path — so the A1 anchor check, the
+        amendment rules, and the snapshot/option/workspace invalidation
+        cascade apply exactly as they do to report imports. The original
+        bundle bytes are the stored source; the translation is lossy by
+        design (finding keys are re-keyed by resource id) and the
+        delivery's transformation receipt records that loss.
+        """
+        from .fhir_exchange import fhir_bundle_to_report
+        from .terminology import validate_coding
+        case_id = self._case(case_id)
+        report, _dropped = fhir_bundle_to_report(
+            raw, validate_coding=validate_coding)
+        digest = hashlib.sha256(raw).hexdigest()
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            return self._import_report_in_transaction(case_id, raw, report, digest)
+
+    def record_dicom_report(self, case_id: str, fields: dict) -> dict:
+        """Store a DICOM report-only record (D2). Report metadata only.
+
+        ``fields`` is the normalized record from ``dicom.validate_dicom_report``.
+        A linked source version must belong to this case. No pixel column
+        exists, so no pixel bytes can be stored here.
+        """
+        from .dicom import validate_dicom_report
+        case_id = self._case(case_id)
+        record = validate_dicom_report(fields)
+        source_version_id = record["source_version_id"]
+        if source_version_id is not None:
+            row = self.db.execute(
+                "SELECT id FROM source_versions WHERE id=? AND case_id=?",
+                (source_version_id, case_id)).fetchone()
+            if row is None:
+                raise InvalidInput(
+                    "dicom source version does not belong to this case")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                cur = self.db.execute(
+                    """INSERT INTO dicom_reports
+                    (case_id,study_uid,modality,accession,report_text,source_version_id,created_at)
+                    VALUES (?,?,?,?,?,?,?)""",
+                    (case_id, record["study_uid"], record["modality"],
+                     record["accession"], record["report_text"],
+                     source_version_id, now_utc()))
+            except sqlite3.IntegrityError:
+                raise InvalidInput(
+                    "dicom study already recorded for this case") from None
+            report_id = cur.lastrowid
+        return {"result": "recorded", "dicom_report_id": report_id,
+                "study_uid": record["study_uid"]}
+
+    def list_dicom_reports(self, case_id: str) -> list[dict]:
+        """DICOM report-only records for a case, newest first."""
+        case_id = self._case(case_id)
+        return self._dicts(self.db.execute(
+            """SELECT id,study_uid,modality,accession,report_text,
+            source_version_id,created_at FROM dicom_reports
+            WHERE case_id=? ORDER BY id DESC""",
+            (case_id,)).fetchall())
 
     def preview_document(self, case_id: str, raw: bytes, filename: str) -> dict:
         """Read-only plain-text preview; no inferred assertions or persistent upload."""

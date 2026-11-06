@@ -172,6 +172,53 @@ def classify_coverage(manifest: list[dict]) -> dict:
     return {"counts": counts, "artifacts": classified}
 
 
+def adapter_envelope_from_dict(data) -> AdapterEnvelope:
+    """Build an adapter envelope from a request-body dict (D2 route input).
+
+    The authorization receipt and the optional transformation receipt
+    are validated by their own constructors; a malformed envelope is a
+    typed rejection, never a half-built delivery.
+    """
+    if not isinstance(data, dict):
+        raise InvalidInput("Adapter envelope must be an object")
+    if not isinstance(data.get("source_system"), str) \
+            or not data["source_system"].strip():
+        raise InvalidInput("Adapter envelope requires a source system")
+    authorization = data.get("authorization")
+    if not isinstance(authorization, dict):
+        raise InvalidInput("Adapter envelope requires an authorization receipt")
+    scope = authorization.get("scope")
+    if not isinstance(scope, (list, tuple)) or not scope \
+            or any(not isinstance(item, str) for item in scope):
+        raise InvalidInput("Authorization receipt scope must be a nonempty list")
+    receipt = AuthorizationReceipt(
+        receipt_id=authorization.get("receipt_id"),
+        purpose=authorization.get("purpose"),
+        scope=tuple(scope),
+        granted_at=authorization.get("granted_at"),
+        expires_at=authorization.get("expires_at"),
+        revoked_at=authorization.get("revoked_at"))
+    transformation = None
+    raw_transformation = data.get("transformation")
+    if raw_transformation is not None:
+        if not isinstance(raw_transformation, dict):
+            raise InvalidInput("Transformation receipt must be an object")
+        transformation = TransformationReceipt(
+            dropped_fields=tuple(raw_transformation.get("dropped_fields", ())),
+            truncated_fields=tuple(raw_transformation.get("truncated_fields", ())),
+            cardinality_changes=tuple(raw_transformation.get("cardinality_changes", ())),
+            notes=raw_transformation.get("notes", ""))
+    return AdapterEnvelope(
+        adapter_id=data.get("adapter_id"),
+        source_organization=data.get("source_organization"),
+        source_system=data.get("source_system"),
+        case_id=data.get("case_id"),
+        source_subject_ref=data.get("source_subject_ref"),
+        authorization=receipt,
+        retrieved_at=data.get("retrieved_at"),
+        transformation=transformation)
+
+
 class PatientAccessAdapter:
     """Stateful (in-memory) binding/revocation gate over an existing CaseStore.
 
@@ -280,3 +327,82 @@ class PatientAccessAdapter:
                     truncated_fields=list(envelope.transformation.truncated_fields),
                     cardinality_changes=list(envelope.transformation.cardinality_changes))
         return outcome
+
+    def deliver_fhir_bundle(self, envelope: AdapterEnvelope, raw: bytes) -> dict:
+        """Validate a FHIR bundle delivery and, only if valid, import it (D2).
+
+        This is the patient-access adapter graduating from library-only
+        to a live HTTP path: the same binding, revocation, time-semantics,
+        and loss-contract machinery as ``deliver()``, with the bundle
+        validated and translated by ``fhir_exchange`` instead of
+        ``parse_report``. The loss contract uses the translator's computed
+        dropped-field set: a lossy translation without a declared receipt
+        is rejected, and a declared receipt must match the computed set
+        exactly. Bytes that fail contract checks are never imported.
+        """
+        auth = envelope.authorization
+        auth.validate()
+        if not isinstance(envelope.adapter_id, str) or not envelope.adapter_id.strip() \
+                or not isinstance(envelope.source_organization, str) \
+                or not envelope.source_organization.strip():
+            raise InvalidInput("Adapter id and source organization are required")
+        if not isinstance(envelope.source_subject_ref, str) \
+                or not envelope.source_subject_ref.strip():
+            raise InvalidInput("Source subject reference is required")
+        if auth.receipt_id in self._revoked_receipts:
+            self.store.record_adapter_event(
+                envelope.case_id, "adapter_delivery_rejected",
+                reason="revoked_authorization", receipt_id=auth.receipt_id)
+            return {"result": "rejected", "reason": "revoked_authorization"}
+        # Translate first so time semantics are checked against the real bundle.
+        from .fhir_exchange import fhir_bundle_to_report
+        from .terminology import validate_coding
+        report, dropped = fhir_bundle_to_report(raw, validate_coding=validate_coding)
+        envelope.validate_time_semantics(report.event_date, report.issued_at)
+        # Loss contract: the translator computes the dropped set; the
+        # envelope must declare exactly that set, never less, never more.
+        declared = envelope.transformation
+        if dropped and declared is None:
+            self.store.record_adapter_event(
+                envelope.case_id, "adapter_delivery_rejected",
+                reason="transformation_loss_undocumented",
+                document_id=report.document_id)
+            return {"result": "rejected", "reason": "transformation_loss_undocumented"}
+        if declared is not None and set(declared.dropped_fields) != set(dropped):
+            raise InvalidInput("Declared loss receipt does not match computed dropped fields")
+        # Identity binding: first binding wins per organization and per
+        # subject reference. A conflict is quarantined/rejected, never merged.
+        org_bound = self._org_bindings.get(envelope.source_organization)
+        subject_case = self._subject_cases.get(envelope.source_subject_ref)
+        if (org_bound is not None and org_bound != envelope.source_subject_ref) or \
+                (subject_case is not None and subject_case != envelope.case_id):
+            digest = hashlib.sha256(raw).hexdigest()
+            outcome = self.store.quarantine_adapter_delivery(
+                envelope.case_id, raw, report.patient_id, "identity_collision")
+            self.store.record_adapter_event(
+                envelope.case_id, "adapter_delivery_quarantined",
+                reason="identity_collision", quarantine_id=outcome["quarantine_id"],
+                sha256=digest)
+            return {"result": "rejected", "reason": "identity_collision",
+                    "quarantine_id": outcome["quarantine_id"]}
+        # Bind on first successful contract pass (before import, so a later
+        # duplicate delivery from the same binding is not a collision).
+        self._org_bindings.setdefault(envelope.source_organization, envelope.source_subject_ref)
+        self._subject_cases.setdefault(envelope.source_subject_ref, envelope.case_id)
+        outcome = self.store.import_fhir_bundle(envelope.case_id, raw)
+        if outcome["result"] == "imported":
+            self.store.record_adapter_event(
+                envelope.case_id, "adapter_delivery_accepted",
+                document_id=report.document_id, version=outcome["version"],
+                source_id=outcome["source_id"], adapter_id=envelope.adapter_id,
+                source_organization=envelope.source_organization,
+                receipt_id=auth.receipt_id, retrieved_at=envelope.retrieved_at,
+                sha256=hashlib.sha256(raw).hexdigest())
+            if declared is not None and declared.is_lossy:
+                self.store.record_adapter_event(
+                    envelope.case_id, "adapter_loss_receipt",
+                    document_id=report.document_id,
+                    dropped_fields=list(declared.dropped_fields),
+                    truncated_fields=list(declared.truncated_fields),
+                    cardinality_changes=list(declared.cardinality_changes))
+        return {**outcome, "dropped_fields": list(dropped)}

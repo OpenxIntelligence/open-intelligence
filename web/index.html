@@ -84,6 +84,7 @@
           <a href="#followthrough">Follow-through</a>
           <a href="#portfolio">Option portfolio</a>
           <a href="#synthetic-metrics">Fixture metrics</a>
+          <a href="#exchange">Exchange</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -227,6 +228,19 @@
         <button id="access-log-apply" type="button" class="button secondary minor">View access log</button>
         <p id="access-log-status" class="muted tiny"></p>
         <div id="access-log-list" class="activity" aria-live="polite"></div>
+      </section>
+      <section class="panel" id="exchange" aria-labelledby="exchange-heading">
+        <div class="panel-head"><div><div class="eyebrow">02b / EXCHANGE</div><h2 id="exchange-heading">Exchange</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Synthetic FHIR R4 exchange for this fictional case only. No live system is connected: the bundle is built from the case&rsquo;s current assertions, terminology codes come from a pinned fixture table, SNOMED CT is unavailable (license unresolved), mCODE conformance is not claimed, and DICOM is report-only — no pixels are stored or served anywhere.</p>
+        <button id="exchange-bundle-apply" type="button" class="button secondary minor">Export FHIR bundle</button>
+        <p id="exchange-bundle-status" class="muted tiny"></p>
+        <div id="exchange-bundle" class="exchange-json" aria-live="polite"></div>
+        <button id="exchange-terminology-apply" type="button" class="button secondary minor">View terminology bindings</button>
+        <p id="exchange-terminology-status" class="muted tiny"></p>
+        <div id="exchange-terminology" class="exchange-json" aria-live="polite"></div>
+        <button id="exchange-dicom-apply" type="button" class="button secondary minor">View DICOM reports</button>
+        <p id="exchange-dicom-status" class="muted tiny"></p>
+        <div id="exchange-dicom" class="activity" aria-live="polite"></div>
       </section>
       <section class="panel" id="patient-view">
         <div class="panel-head"><div><div class="eyebrow">PATIENT VIEW · SAME RECORD</div><h2>Your case, in plain words</h2></div><span class="pill">Same facts, plainer language</span></div>
