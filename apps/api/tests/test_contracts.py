@@ -145,6 +145,7 @@ class HTTPContractTests(unittest.TestCase):
             "/v1",
             "/v1/patients",
             "/v1/patients/{patient_id}",
+            "/v1/patients/{patient_id}/suspensions",
             "/v1/patients/{patient_id}/case-bindings",
             "/v1/patients/{patient_id}/case-bindings/{case_id}/revoke",
             "/v1/patients/{patient_id}/cases/{case_id}/composer/source-preflight",
@@ -214,6 +215,11 @@ class HTTPContractTests(unittest.TestCase):
         self.assertEqual(schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/source-review-packet"]["get"]["operationId"], "read_question_source_review_packet_v1")
         self.assertEqual(schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/source-review-packet"]["get"]["security"], [{"SyntheticFixture": []}])
         self.assertIn("503", schema["paths"]["/health/ready"]["get"]["responses"])
+        suspension = schema["paths"]["/v1/patients/{patient_id}/suspensions"]["post"]
+        self.assertEqual(suspension["security"], [{"SyntheticFixture": []}])
+        self.assertEqual(suspension["operationId"], "suspend_patient_access_v1")
+        for status in ("401", "404", "409", "422", "503"):
+            self.assertIn(status, suspension["responses"])
         self.assertFalse(schema["components"]["schemas"]["Readiness"]["additionalProperties"])
         for suffix, method in (("evidence-search", "post"), ("evidence-links", "post"), ("evidence-links", "get")):
             operation = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/" + suffix][method]
