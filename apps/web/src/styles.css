@@ -245,3 +245,15 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 .source-image-studies details { margin-block: .5rem; }
 
 .lab-coded-label { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Source-only same-test grouping: bounded, honest and readable at mobile width. */
+.laboratory-same-test{margin:18px 0;padding:14px;border:1px solid #c6d8c9;border-radius:8px;background:#f9fcf7;min-width:0}
+.laboratory-same-test>summary{cursor:pointer;font-weight:600;min-height:44px;align-content:center;overflow-wrap:anywhere}
+.laboratory-same-test>summary:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
+.laboratory-same-test section{border-top:1px solid #d5e1d9;margin:15px 0 0;padding-top:10px}
+.laboratory-same-test h5{margin:8px 0;font-size:15px}
+.laboratory-same-test-rows{display:grid;gap:10px;padding-left:22px}
+.laboratory-same-test-rows li{min-width:0;overflow-wrap:anywhere;border:1px solid #d5e1d9;background:white;border-radius:6px;padding:12px}
+.laboratory-same-test-rows p{margin:7px 0}.laboratory-same-test-rows code{word-break:break-all}
+.laboratory-same-test-rows dl{margin:10px 0}.laboratory-same-test-rows dd{margin:4px 0 10px}
+@media(max-width:600px){.laboratory-same-test{padding:10px}.laboratory-same-test-rows{padding-left:18px}}
