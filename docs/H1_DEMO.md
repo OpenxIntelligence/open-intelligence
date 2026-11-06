@@ -41,6 +41,8 @@ The supplied laboratory file `examples/synthetic/fictional-fhir-r4-lab-bundle.js
 
 In Records, open a saved text or PDF original with a saved passage selection. Choose **Draft a question about** the quotation, enter a question, and choose **Save passage question**. Reopen the document and select **Open saved passage questions** to retrieve it. The original quotation, line and selection revision remain attached after a correction. The history labels questions affected by the change. After an interrupted save, **Retry exact save** recovers the original request within the connected session.
 
+With a current evidence-read grant, open a saved passage question and enter a term under **Search fictional evidence metadata**. Search results show the catalog title, citation version and license. After a source correction the search identifies the original question as needing reassessment. Saving a comparison, report or task from this passage still requires further integration.
+
 ## Stop, resume and inspect
 
 Stop the frontend with Ctrl+C, then:

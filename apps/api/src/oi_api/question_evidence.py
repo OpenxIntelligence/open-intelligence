@@ -12,6 +12,8 @@ from open_intelligence.patient_registry import (
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
+from .reviewed_documents import ReviewedDocuments
+from .reviewed_questions import resolve_question_locked
 from .case_bindings import _case_id
 from .composer_preflight import SOURCE_SNAPSHOT_CONTRACT, SHA256
 from .evidence_catalog import RECORD_FIELDS, _visible, materialize_locked, public_metadata
@@ -28,7 +30,7 @@ class PostgresQuestionEvidence:
         self.registry = registry
 
     def _run(self, patient_id, case_id, question_id, *, organization, actor, purpose,
-             operation, recheck_authority, prepare_response, write=False):
+             operation, recheck_authority, prepare_response, write=False, reviewed_source=None):
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization, "organization")
@@ -43,6 +45,8 @@ class PostgresQuestionEvidence:
             for action in ("patient_read", "question_read", "source_read", "evidence_read") + (
                     ("evidence_link",) if write else ()):
                 self.registry._allow(actor, patient_id, action, purpose)
+            if reviewed_source is not None:
+                self.registry._allow(actor, patient_id, "source_original_read", purpose)
             # Record row locks serialize a different connection's rights append.
             # Also refuse a same-transaction callback changing inspected rights.
             for (record_id, version), expected in rights_versions.items():
@@ -61,10 +65,13 @@ class PostgresQuestionEvidence:
             question = next((item for item in items if item["question_id"] == question_id), None)
             if question is None:
                 raise PatientRegistryDenied("Question evidence unavailable")
+            return encode(question, index["access_receipt_id"])
+
+        def encode(question, receipt):
             scope = {
                 "patient_id": patient_id, "case_id": case_id, "question_id": question_id,
                 "source_context_state": question["source_context_state"],
-                "source_access_receipt_id": index["access_receipt_id"],
+                "source_access_receipt_id": receipt,
                 "synthetic": True, "model_executed": False,
                 "content_appraised": False, "clinical_approval": False,
             }
@@ -73,6 +80,21 @@ class PostgresQuestionEvidence:
 
         with self.registry.transaction():
             authority()
+            if reviewed_source is not None:
+                owner = ReviewedDocuments(self.registry)
+                scope = (patient_id, case_id, organization, purpose, reviewed_source)
+                question, binding = resolve_question_locked(owner, scope, question_id)
+                selection = question["selection"]
+                current = selection["selection_state"] == "current_unreviewed_selection"
+                receipt = "ACCESS-" + uuid.uuid4().hex.upper()
+                prepared = encode({"source_context_state": "current_unreviewed_question" if current
+                                   else "source_reassessment_required"}, receipt)
+                owner._read_receipt(patient_id, case_id, actor=actor, purpose=purpose,
+                    binding_revision=binding, event="source.document_question_access_authorized",
+                    receipt_id=receipt, source_id=reviewed_source, sha256=selection["anchor"]["original_sha256"],
+                    recheck_authority=authority)
+                authority()
+                return prepared
             prepared = PostgresSourceVersions(self.registry).list_locked(
                 patient_id, case_id, organization=organization, actor=actor,
                 purpose=purpose, prepare_response=prepare, recheck_authority=authority,
@@ -96,7 +118,7 @@ class PostgresQuestionEvidence:
         return record, digest
 
     def search(self, patient_id, case_id, question_id, *, organization, actor, purpose,
-               query, recheck_authority, prepare_response=None):
+               query, recheck_authority, prepare_response=None, reviewed_source=None):
         _visible(query, 200)
         tokens = re.findall(r"\w+", query.casefold())
         if not tokens or len(tokens) > 24:
@@ -134,7 +156,7 @@ class PostgresQuestionEvidence:
 
         return self._run(patient_id, case_id, question_id, organization=organization,
                          actor=actor, purpose=purpose, operation=operation,
-                         recheck_authority=recheck_authority, prepare_response=prepare_response)
+                         recheck_authority=recheck_authority, prepare_response=prepare_response, reviewed_source=reviewed_source)
 
     def links(self, patient_id, case_id, question_id, *, organization, actor, purpose,
               recheck_authority, prepare_response=None):

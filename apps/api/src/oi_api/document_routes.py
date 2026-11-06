@@ -3,6 +3,9 @@ from fastapi import Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from open_intelligence.patient_registry import PatientRegistryDenied, PatientRegistryError
 from open_intelligence.store import InvalidInput
+from .evidence_contracts import EvidenceSearch, EvidenceSearchResult
+from .evidence_routes import _prepare
+from .question_evidence import PostgresQuestionEvidence
 from .access import Principal
 from .document_contracts import DocumentUpload, DocumentImport, AnnotationCorrection
 from .reviewed_questions import PassageQuestionWrite, passage_questions
@@ -86,3 +89,12 @@ def register_document_routes(router, *, principal, registry, records_authorized,
     def list_passage_questions(request:Request,patient_id:str,case_id:str,source_id:str,context:Principal=Depends(principal)):
         return execute(request,context,patient_id,case_id,("patient_read","source_read","source_original_read","question_read"),
             lambda owner,kwargs:passage_questions(owner,patient_id,case_id,source_id,None,**kwargs))
+
+    @router.post(prefix+"/{source_id}/questions/{question_id}/evidence-search", response_model=EvidenceSearchResult)
+    def search_passage_evidence(request: Request, patient_id: str, case_id: str, source_id: str,
+                                question_id: str, payload: EvidenceSearch, context: Principal = Depends(principal)):
+        actions = ("patient_read", "source_read", "source_original_read", "question_read", "evidence_read")
+        return execute(request, context, patient_id, case_id, actions, lambda owner, kwargs:
+            PostgresQuestionEvidence(owner.registry).search(patient_id, case_id, question_id,
+                reviewed_source=source_id, query=payload.query, **kwargs,
+                prepare_response=lambda result: _prepare(EvidenceSearchResult, result)))

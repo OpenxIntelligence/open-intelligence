@@ -3,6 +3,38 @@ import type {Document,Finding} from './reviewed-documents';
 import {decodeChosenPassage,decodeSavedPassage} from './question-passages';
 import type {RegistrySession} from './registry-client';
 
+import {decodeQuestionEvidenceSearch,validEvidenceQuery} from './question-evidence-view';
+import type {QuestionEvidenceSearch} from './question-evidence-view';
+
+function PassageEvidenceSearch({patient,caseId,source,id,session}:{
+ patient:string;caseId:string;source:string;id:string;session:RegistrySession;
+}){
+ const [query,setQuery]=useState('');
+ const [result,setResult]=useState<QuestionEvidenceSearch|null>(null);
+ const [status,setStatus]=useState('');
+ const generation=useRef(0);
+ useEffect(()=>()=>{generation.current++;},[patient,caseId,source,id,session]);
+ async function search(){
+  const request=++generation.current;
+  setResult(null);setStatus('Searching…');
+  try{
+   const reply=await session.documentRequest(caseId,'/'+source+'/questions/'+id+'/evidence-search',
+    JSON.stringify({synthetic:true,query}));
+   if(reply.status!==200)throw Error();
+   const data=decodeQuestionEvidenceSearch(reply.body,patient,caseId,id,query);
+   if(request===generation.current){setResult(data);setStatus('');}
+  }catch{if(request===generation.current)setStatus('Evidence search unavailable. Recheck access and try again.');}
+ }
+ return <form onSubmit={event=>{event.preventDefault();if(validEvidenceQuery(query))void search();}}>
+  <label>Search fictional evidence metadata<input value={query} maxLength={200} data-testid="passage-evidence-query"
+   onChange={event=>{generation.current++;setQuery(event.target.value);setStatus('');setResult(null);}}/></label>
+  <button disabled={!validEvidenceQuery(query)||status==='Searching…'}>Search evidence catalog</button>
+  <div role="status">{status}{result&&<><p>{result.records.length} matching fictional catalog records.</p>
+   {result.source_context_state==='source_reassessment_required'&&<p>The source passage needs reassessment.</p>}
+   {result.records.map(record=><p key={record.citation}>{record.title} · {record.citation} · {record.licence}</p>)}</>}</div>
+ </form>;
+}
+
 export function PassageQuestionDraft({doc,session,patientId,caseId}:{
  doc:Document;session:RegistrySession;patientId:string;caseId:string;
 }){
@@ -91,7 +123,7 @@ export function PassageQuestionDraft({doc,session,patientId,caseId}:{
   </>:pending?<button type="button" disabled={busy} onClick={()=>void save()}>Retry exact save</button>:doc.state==='current'&&revision.findings.map(item=><button type="button" key={item.key}
    disabled={busy} onClick={()=>void start(item)}>Draft a question about “{item.quote}” (line {item.line})</button>)}
   {!finding&&<button type="button" disabled={busy} onClick={()=>void reopen()}>Open saved passage questions</button>}
-  {history&&<div data-testid="saved-passage-questions">{history.length===0?'No saved passage questions.':history.map(row=><article key={row.id}><h5>{row.text}</h5><blockquote>{row.quote}</blockquote><p>Selection revision {row.revision} · line {row.line} · {row.state==='current_unreviewed_selection'?'Current selection':'Source or selection changed'}</p></article>)}</div>}
+  {history&&<div data-testid="saved-passage-questions">{history.length===0?'No saved passage questions.':history.map(row=><article key={row.id}><h5>{row.text}</h5><blockquote>{row.quote}</blockquote><p>Selection revision {row.revision} · line {row.line} · {row.state==='current_unreviewed_selection'?'Current selection':'Source or selection changed'}</p><PassageEvidenceSearch patient={patientId} caseId={caseId} source={doc.source_id} id={row.id} session={session}/></article>)}</div>}
   {message&&<p role="status">{message}</p>}
  </section>;
 }
