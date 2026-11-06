@@ -304,3 +304,44 @@ class LaboratoryReviewReturnTests(SourceVersionFixture):
             self.expect(409, base, path, payload | {"expected_captured_report_sha256":"0"*64})
             self.expect(409, base, path, payload | {"expected_report_sha256":"0"*64})
             self.assertEqual(self.expect(200, base, path)["receipts"], [])
+
+    def _source_change_during_reopen(self, *, write):
+        with running_server(create_app(self.settings)) as base:
+            patient, case = self.scope(base)
+            status, other, _ = self.ingest(base, patient)
+            self.assertEqual(status, 201, other)
+            source = self.import_lab(base, case)
+            question, _ = self.saved(base, case, source)
+            report = question + "/source-citation-report"
+            current = self.expect(200, base, report + "/versioned")
+            snapshot = self.expect(201, base, report + "/snapshots", {
+                "synthetic":True, "request_key":"SNAPSHOT-WITH-OTHER-SOURCE",
+                "expected_report_sha256":current["report_sha256"]})
+            path = report + "/snapshots/" + snapshot["snapshot_id"] + "/review-returns"
+            queue = self.expect(200, base, path)
+            self.assertEqual(queue["source_context_state"], "current_unreviewed_question")
+            before = self.counts()
+            original = PostgresPatientRegistry.append_event
+            changed = []
+            def supersede_other_source(registry, subject, event, **details):
+                original(registry, subject, event, **details)
+                if event == "investigation.laboratory_snapshot.reopened":
+                    # This state-only transition is allowed by the source owner's
+                    # immutable-original guard. The selected lab source stays current.
+                    changed.append(registry._execute(
+                        "UPDATE clinical_source.source_versions SET state='superseded' WHERE source_id=%s",
+                        (other["source_id"],)))
+            with patch.object(PostgresPatientRegistry,"append_event",new=supersede_other_source):
+                self.expect(404, base, path, self.payload(queue, "RETURN-SOURCE-CHANGED") if write else None)
+            self.assertEqual(changed, [1])
+            self.assertEqual(self.counts(), before)
+            with self.engine.connect() as conn:
+                state = conn.execute(text("SELECT state FROM clinical_source.source_versions WHERE source_id=:id"),
+                                     {"id":other["source_id"]}).scalar_one()
+            self.assertEqual(state, "current")
+
+    def test_source_change_during_reopen_rolls_back_history_read(self):
+        self._source_change_during_reopen(write=False)
+
+    def test_source_change_during_reopen_rolls_back_new_return(self):
+        self._source_change_during_reopen(write=True)
