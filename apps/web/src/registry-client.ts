@@ -1737,7 +1737,7 @@ export class RegistrySession {
         question.case_id !== world.case_id || question.source_snapshot_contract !== 'oi.pg-source-world-model/1' ||
         view?.busy || this.#uploading || this.#savingQuestion) return;
     const enqueue = action === 'enqueue' || action === 'retry';
-    if ((action !== 'enqueue' && !previous) ||
+    if ((action !== 'enqueue' && action !== 'latest' && !previous) ||
         (action === 'retry' && (!previous || !canRetryRun(previous.state))) ||
         (action === 'cancel' && previous?.state !== 'queued' && previous?.state !== 'running') ||
         (action === 'result' && previous?.state !== 'completed') ||
@@ -1766,7 +1766,7 @@ export class RegistrySession {
           source_snapshot_contract: question.source_snapshot_contract,
           expected_source_snapshot_sha256: question.source_snapshot_sha256,
           expected_preflight_sha256: question.preflight_sha256});
-      } else {
+      } else if (action !== 'latest') {
         path += '/' + previous!.run_id;
         if (action === 'cancel') { path += '/cancel'; body = JSON.stringify({synthetic: true}); }
         if (action === 'result') path += '/result';
@@ -1775,8 +1775,13 @@ export class RegistrySession {
       if (!current()) { void response.body?.cancel().catch(() => {}); return; }
       if (response.status === 401) { this.#httpError(401); return; }
       if (response.status === 403 || response.status === 404) {
-        await this.#recheckQuestionDenial(world.case_id, control, 'case', {
-          briefPhase: 'error', briefMessage: 'Background brief unavailable under current access. Reopen the case to check again.'});
+        if (action === 'latest') {
+          await this.#recheckQuestionDenial(world.case_id, control, 'questions', {
+            briefPhase: 'error', briefMessage: 'No previous background run is visible under current access.'});
+        } else {
+          await this.#recheckQuestionDenial(world.case_id, control, 'case', {
+            briefPhase: 'error', briefMessage: 'Background brief unavailable under current access. Reopen the case to check again.'});
+        }
         return;
       }
       if (response.status === 409) {
@@ -1789,7 +1794,7 @@ export class RegistrySession {
       const value = await json(response, 73728);
       const result = action === 'result' ? await readRunResult(value, previous!, world, question) : null;
       const status = enqueue ? readRunReceipt(value, response.status, question) :
-        result ? previous! : readRunStatus(value, question, previous!);
+        result ? previous! : readRunStatus(value, question, action === 'latest' ? undefined : previous!);
       if (action === 'cancel' && (status.state === 'queued' || status.state === 'running'))
         throw Error('Cancellation returned active work');
       if (action === 'retry' && status.run_id === previous!.run_id) throw Error('Replacement returned its predecessor');

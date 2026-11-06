@@ -104,6 +104,8 @@ class EvidenceOriginPostgresTests(PublishedEvidenceFixture, EvidenceFixture):
                 self.assertEqual(self.persisted_state(), before)
 
     def legacy_checkpoint(self):
+        # Seed the published owner before source-outbox history exists. Reuse
+        # canonical owners without bypassing the current API readiness check.
         patient, question, prepared = self.start_at("0010_authored_evidence_origin")
         state = self.seed_authored_report(patient, question, prepared)
         legacy_body = render_evidence_report(state["prepared"]["snapshot"], renderer="oi.h1-evidence-text/1")

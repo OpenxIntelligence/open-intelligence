@@ -15,6 +15,8 @@
 - Contract: `oi.h1-source-context-event/1`; producer: `source.original.imported`.
 - Migration: `0020_source_event_delivery` after `0019_composer_runs`.
 - Purpose: `operations`; actions: `patient_read`, `question_read`, `source_read`, `source_brief_export`.
+- Preserve canonical research source custody; validate both supported source
+  purposes before publishing only operations events to this Composer adapter.
 - Maximum **100** affected Composer runs per consume transaction.
 - Maximum **three** consecutive failures; successful progress resets that budget.
 - No global acknowledgment/cursor, stored bearer, service delegation or clinical authority.
@@ -221,3 +223,66 @@ rewriting them as passes. PR #529 remains the living exact-source acceptance led
 | Independent review | Reviewer scope, findings, reproductions and corrections | Pending review evidence |
 | Artifact parity | Archived source/receipt content matched to the tested tree | Pending verification |
 | Release | PR status and explicit remaining foundation/clinical/production work | Draft continuation; no merge/deployment/clinical claim |
+
+## Combined-application continuation — 6 November 2026 UTC
+
+Continue GH-104-L1 in an isolated dependent draft of
+[foundation #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565).
+Checked publication leases exposed the concurrent published purpose repair and
+its documentation continuation. Freeze upstream at
+`462e6c25f805089fadcb290567045447e6d627b7`, the documentation-only child of
+`14a189a949510c67903eaf354250223a2c587a8f`, and retain all 42 published migration
+files, including 0020 and 0027. The isolated branch is
+`integration/h1-workspace-event-continuation-20261106`; #565 remains the upstream
+owner. No 0028 migration or parallel roadmap is introduced. Earlier publication
+checklists and #529's acceptance retain their source-specific scope.
+
+| Frozen input | Source | Contribution retained |
+| --- | --- | --- |
+| Upstream #565 | `462e6c25f805089fadcb290567045447e6d627b7` | Published 0027 repair, owner receipts, clinical receiver, laboratory histories, evidence review and the three-parent 0026 join |
+| Source-event #529 | `79960c49f356e7a4259484f5d1523f9bda365887` | Verified execution/event runtime and purpose-validation semantics; edited historical 0020 is not adopted |
+| Workspace #559 | `adca9b8cacdbd2fe8b7ad82813d3e32a142841e8` | Latest original-run recovery after amendment and real relay interruption/replay browser scenario |
+| Laboratory preparation #569 | `d28f8dcb4124ccb52b42be28f996cc9e99a29c92` | Independently authorized follow-up beside the selected original Observation |
+| Accepted main | `16fa42781aa40e3899e36b5b441de8d920fced8e` | Accepted evaluation, vertical and data-integration changes in the separate SQLite reference implementation |
+
+### Behavior and acceptance
+
+1. Preserve canonical owners, all published migration files and the 0026
+   convergence. Retain both workspace donors and the evidence-return interface.
+2. Adopt the published `0027_source_event_purpose` function replacements. New
+   operations/research events must pass canonical lineage validation; only
+   operations creates delivery work. Existing rows and receipts remain intact.
+   There is no historical rescan or backfill in 0027, and readiness requires it.
+3. Verify fresh and populated published-0026 upgrades, rejected malformed new
+   lineage, unchanged custody/delivery history and downgrade/re-upgrade.
+   Downgrade restores previous functions and removes the helper without deleting
+   research custody. Preserve the pre-0020 research-history hold and its atomic
+   rollback; a separate legacy-adoption contract remains necessary. The
+   [published purpose-repair contract](../../implementation/SOURCE_EVENT_PURPOSE_REPAIR.md)
+   retains the tests-first regression and this compatibility boundary.
+4. Run combined client, ownership and reference checks; actual PostgreSQL
+   migration/authority/execution; SIGKILL/replay browser recovery; the research
+   HTTP original-byte restore, exact retry and cross-purpose denial; and all
+   seven recovery gates. Grant/binding-revocation coverage remains in the
+   existing operations recovery probe.
+   Donor passes or skipped local database tests are not combined acceptance.
+5. Publish the exact reviewed tree on the isolated branch as a dependent draft
+   of the frozen #565 foundation. Inspect its terminal results and artifact/source
+   parity, then append to the existing canonical records. Preserve the upstream
+   branch and its acceptance runs. Review and deployment remain separate.
+
+### Preserved failure and pending evidence
+
+Earlier integration `acf736082467ef5416f47951e3469090919be045` ran 989 API tests in
+1,491.473 seconds in [run 42108825811](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42108825811).
+One research import errored and all seven recovery stages were skipped; its
+40 encounter, 40 joined-owner and five migration prechecks passed. Purpose-repair
+tests-first source `dbb0bbb7f0a88b3d4f9b6ae283b8acb63cfca30b` then reproduced
+one failure and three errors in five actual PostgreSQL tests in
+[run 42136266769](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42136266769).
+The pre-0020 hold passed with preserved history. These failed receipts remain
+unchanged. Published 14a189a subsequently passed its five focused PostgreSQL
+methods in [run 42136932694](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42136932694);
+that owner receipt does not qualify the broader workspace composition. The
+50-minute full API budget retains every recovery gate. This dependent draft's
+PR records its own final source, counts, outcomes and retained evidence.

@@ -61,6 +61,12 @@ jobs:
           python apps/api/tools/prepare_dependencies.py --wheel-dir /tmp/oi-execution-wheels
           python apps/api/tools/check_dependencies.py --wheel-dir /tmp/oi-execution-wheels
           python -m pip install --no-deps --require-hashes --no-index --find-links /tmp/oi-execution-wheels -r apps/api/requirements.lock
+      - name: Verify modular ownership on this integration source
+        run: |
+          set -o pipefail
+          mkdir -p verification-execution
+          python -m unittest discover -s tools/architecture -p 'test_*.py' -v 2>&1 | tee verification-execution/architecture-tests.txt
+          python tools/architecture/check_engine_boundaries.py --json > verification-execution/engine-boundaries.json
       - name: Verify execution and event delivery with real PostgreSQL and no skips
         run: |
           set -o pipefail
@@ -73,6 +79,15 @@ jobs:
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_event*.py'),
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_evidence_run_review.py'),
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_encounter*.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_laboratory_question_migration.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_question_fingerprint_migration.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_review_convergence_migration.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_image_evidence_migration.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_image_review_migration.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_authored_evidence_origin.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_authored_evidence_authority.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_question_followthrough_storage.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_read_authority.py'),
           ])
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           if result.skipped:

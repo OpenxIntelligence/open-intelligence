@@ -4,15 +4,34 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. This revision requires `0027_source_event_purpose`,
-whose parent is the preserved `0026_integrated_core` join.
-Run `python -m oi_api.migrate upgrade head` from fresh or published 0026 databases.
-Pre-0020 research history remains held at the original backfill with atomic rollback;
-see [the compatibility boundary](../../docs/implementation/SOURCE_EVENT_PURPOSE_REPAIR.md#deliberate-compatibility-boundary).
-The preserved join's immediate parents are
-`0025_clinical_source_events`, `0023_composer_clinical_join`, and `0023_ehr_lab_ownership_join`. The join retains
-[encounters and note drafts](#connected-encounter-and-note-service), laboratory
-citation and follow-up history, and [durable execution](../../docs/engineering/H1_DURABLE_EXECUTION.md).
+records the original integration. This candidate requires
+`0027_source_event_purpose`. Run `python -m oi_api.migrate upgrade head` from the
+published histories before startup. Its single parent is `0026_integrated_core`,
+whose existing no-DDL join retains the three parents
+`0025_clinical_source_events`, `0023_composer_clinical_join`, and
+`0023_ehr_lab_ownership_join` without renaming their migration identities.
+
+This dependent draft retains all 42 migration files from upstream #565 source
+`462e6c25f805089fadcb290567045447e6d627b7`, including 0020 and 0027. The published
+0027 installs the lineage resolver and replacement capture/outbox guard functions
+without rewriting existing source, journal, delivery or receipt rows. New
+`operations` and `research` source events are validated; only operations creates
+Composer obligations. Downgrade restores the earlier functions and removes the
+helper, retaining custody but allowing later research imports to fail until
+re-upgrade.
+
+The supported upgrade scope is fresh databases and published 0026 installations.
+Pre-0020 research journal history remains held by the original backfill with
+atomic rollback. See the [purpose-repair contract](../../docs/implementation/SOURCE_EVENT_PURPOSE_REPAIR.md)
+for that unresolved legacy-adoption boundary. No 0028 migration is introduced.
+
+The integrated owners retain [encounters and note drafts](#connected-encounter-and-note-service),
+laboratory citation and follow-up history, and
+[durable execution](../../docs/engineering/H1_DURABLE_EXECUTION.md).
+[PR #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565) remains
+the upstream foundation owner. This dependent draft's PR records its own exact
+combined-source acceptance, pending at this publication checkpoint. Earlier
+owner results do not qualify this composition automatically.
 The [source-event worker](../../docs/engineering/H1_SOURCE_EVENT_DELIVERY.md) reconciles changed context. See
 [the laboratory question contract](../../docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md)
 for save, retry and history behavior.

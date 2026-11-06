@@ -112,3 +112,10 @@ amended report.
 `apps/web/tools/demo_journey.py` exercises these exact fixtures through a real built browser and a separately owned Docker/PostgreSQL application, then checks repeated setup and persistence after stopping and resuming. It deletes only its own newly created disposable test project. The ordinary launcher never deletes volumes.
 
 The full integration workflow separately exercises wrong-scope and revoked access, text/PDF passages, immutable reports, uncertain saves, images, laboratory sources, keyboard/mobile flows, migration history, and seven backup/recovery stages. Final acceptance belongs to the exact candidate revision and its CI receipts in the PR; this guide alone is not a passing test or a deployment claim.
+
+
+### Check laboratory follow-up when preparing for a second opinion
+
+Open the fictional case's source view, then go to second-opinion preparation on Overview. Select **Check laboratory questions** and choose the saved question by its wording, report, version and Observation. **Inspect result and citations together** reopens the original result. **Check follow-up** reads the recorded tasks under their separate permission. For each open task, the screen shows its recorded action, owner, status, revisit date when supplied, and review trigger. Completed and deferred work is available under its own disclosure.
+
+In the synthetic browser scenario, two questions have identical wording. Only the earlier result has an acknowledged task. When its report is amended, the original question and assignment remain inspectable with a reassessment notice. Withdrawing task access hides the assignment on refresh while the independently permitted result remains available. Use Investigations to change a task's recorded status.

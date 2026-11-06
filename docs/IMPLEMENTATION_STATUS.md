@@ -1,13 +1,93 @@
 # Implementation slice 01 — source and investigation ledger
 
-**Current connected application:** use the [persistent fictional demo](H1_DEMO.md)
-and [foundation integration #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565)
-for the current revision, verification receipts and landing status. The
+**Current connected application:** use the [persistent fictional demo](H1_DEMO.md).
+This dependent draft's PR records its combined revision, verification receipts
+and landing status; [foundation #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565)
+remains the upstream owner.
+[Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
+records the original accepted application; the
 [convergence record](engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) maps retained
 contributions. The dated slices below are historical checkpoints; their old
 draft labels, schema heads and test counts are not current acceptance claims.
 
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
+
+## Current integrated H1 checkpoint
+
+This dependent draft composes the published #565 foundation frozen at
+`462e6c25f805089fadcb290567045447e6d627b7`, the documentation-only successor of
+`14a189a949510c67903eaf354250223a2c587a8f`, and preserves its 42 migration files,
+including the original `0020_source_event_delivery` and the published
+`0027_source_event_purpose`. It introduces no 0028 migration. The canonical
+clinical, laboratory, source, question, Composer, evidence, review and
+follow-through owners remain intact.
+
+| Input | Pinned source | Retained contribution |
+| --- | --- | --- |
+| Upstream #565 | `462e6c25f805089fadcb290567045447e6d627b7` | Clinical/laboratory convergence, encounter receiver and backup, evidence review, published 0027 purpose repair and owner receipts |
+| #529 | `79960c49f356e7a4259484f5d1523f9bda365887` | Verified execution/event contribution and purpose-validation semantics; its edited historical 0020 file is not adopted |
+| #559 | `adca9b8cacdbd2fe8b7ad82813d3e32a142841e8` | Latest-run recovery after amendment and the interrupted-relay browser journey |
+| #569 | `d28f8dcb4124ccb52b42be28f996cc9e99a29c92` | Read-only assigned follow-up beside the exact selected laboratory result |
+| Accepted main | `16fa42781aa40e3899e36b5b441de8d920fced8e` | Reference Skeptic/reconciliation, evaluation harness, vertical interface and data-integration modules |
+
+The application requires `0027_source_event_purpose`, whose single parent is
+`0026_integrated_core`. The existing no-DDL 0026 join retains
+`0025_clinical_source_events`, `0023_composer_clinical_join`, and
+`0023_ehr_lab_ownership_join`. The published 0027 installs a binding resolver
+and replaces capture/outbox guard functions: new operations and research events
+undergo canonical lineage validation, then only operations creates a Composer
+obligation. It rewrites no historical rows and performs no historical rescan or
+backfill. Downgrade restores the earlier functions and removes the helper;
+existing custody remains, while later research imports can fail until re-upgrade.
+
+Compatibility is bounded to fresh databases and published 0026 installations.
+Pre-0020 research journal history remains held by the original backfill, with
+atomic rollback and preserved rows/sequence state. A separate legacy adoption
+path remains open. The clinical receiver retains its separate event contract;
+no service or dependency is added. The preserved published-owner checkpoint
+below and [construction contract](implementation/SOURCE_EVENT_PURPOSE_REPAIR.md)
+record that boundary.
+
+**Evidence is source-specific.** The pinned #529 source passed
+[878 API tests and all seven recovery gates](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42112478756)
+and [155 focused execution/event tests](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42112478630),
+with zero failures or skips. The focused suite is part of the full API suite;
+these counts are not additive. Its populated delivery restore coverage is in
+that focused suite, distinct from the complete recovery fixture's restored
+outbox and empty delivery tables. The earlier #565 source `acf736082467ef5416f47951e3469090919be045`
+ran [989 API tests with one research-import error](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42108825811);
+the subsequent reference/browser/recovery stages within that full API run did
+not execute. The separate tests-first purpose-repair failure below also remains
+preserved. Neither donor nor earlier failed results qualify this composition.
+
+Before adopting the concurrent published repair, local assembly `02f40eb84b3aedbcf25719fce55e06d8e0a2db38`
+passed 1,036 reference tests, 704 client tests, 13 dependency-rights tests,
+the client production build and 31 architecture tests. The ownership gate
+reported 61 H1 modules, 10 owners and 86 declared legacy imports. Final checks
+had no failures or skips; the initial optional-package notice failure was
+resolved by matching CI's existing `--omit=optional` acquisition setting without
+changing dependencies, lockfiles or rights controls. These are pre-reconciliation
+receipts, not PostgreSQL or hosted acceptance of the current combined tree.
+
+Combined migration/authority/execution, historical upgrade/rollback,
+research-custody restore, built-browser journeys and all seven recovery gates
+remain pending at this source-publication checkpoint. The isolated branch is
+`integration/h1-workspace-event-continuation-20261106`; this dependent draft's PR
+is the living ledger for its exact source/tree and artifacts. #565 retains the
+upstream foundation and its separate acceptance history. Review, merge and
+deployment remain separate. The entire PF-01–PF-10 / PD-01–PD-16 scope,
+including #104's further workflow and mission-state contracts, remains open.
+
+**Reference-only audit.** An exact archive of accepted main `16fa42781aa40e3899e36b5b441de8d920fced8e`
+passed 1,006 local reference tests with zero failures, errors or skips. A separate
+probe nevertheless confirmed that `record_extraction_proposal` can store a quote
+absent from its original and a line beyond the original's length: its new checker
+validates presence/shape, not exact text/location binding. The normal reference
+report import obtains findings from `parse_report`; H1 uses unchanged
+`open_intelligence.store` parsing helpers and does not call the proposal writer.
+This is a scoped reference finding for its existing owner, not an H1 extraction
+capability or resolved acceptance item. The live-model and full-vertical limits
+in the preserved slice records below remain applicable.
 
 ## Shared foundation purpose repair — 6 November 2026
 

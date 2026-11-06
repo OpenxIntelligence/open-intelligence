@@ -107,8 +107,13 @@ class SourceQuestionChecks:
         write_grants()
         count = self.cd.evaluate('window.__oiBriefChecks.reads.length')
         blobs = self.cd.evaluate('window.__oiBriefChecks.blobs')
-        downloads = sorted(path for path in self.artifacts.glob('source-brief-downloads/**/*')
-                           if not path.name.endswith('.crdownload'))
+        # Observe the denied action in its own fresh directory. Chromium may still
+        # remove bookkeeping files from the earlier successful download directory.
+        denied_destination = self.artifacts/'denied-source-brief-downloads'/self.original_question_id
+        denied_destination.mkdir(parents=True, exist_ok=False)
+        self.cd.command('Browser.setDownloadBehavior', {
+            'behavior': 'allow', 'downloadPath': str(denied_destination.resolve()),
+        })
         self.cd.evaluate("document.querySelector('[data-testid=brief-download]').click()")
         self.cd.wait("document.querySelector('[data-testid=brief-status]').textContent.includes('unavailable under current authority')",
                      'fresh download denies withdrawn export permission')
@@ -116,20 +121,12 @@ class SourceQuestionChecks:
         assert self.cd.evaluate('window.__oiBriefChecks.reads.at(-1).status') == 404
         assert self.cd.evaluate('window.__oiBriefChecks.blobs') == blobs
         assert not self.cd.evaluate("Boolean(document.querySelector('[data-testid=source-brief-preview]'))")
-        # Wait for any in-progress Chromium download marker to settle before
-        # snapshotting, and compare completed artifacts only: a *.crdownload
-        # is a download still being written, not an artifact the revoked
-        # export produced.
-        wait_for(lambda: not list(self.artifacts.glob('source-brief-downloads/**/*.crdownload')),
-                 'denied export leaves no in-progress download')
-        after_downloads = sorted(path for path in self.artifacts.glob('source-brief-downloads/**/*')
-                                 if not path.name.endswith('.crdownload'))
-        assert after_downloads == downloads, (
-            'Revoked export changed the exact source-brief artifact inventory: '
-            f"before={[str(path.relative_to(self.artifacts)) for path in downloads]!r}, "
-            f"after={[str(path.relative_to(self.artifacts)) for path in after_downloads]!r}"
-        )
+        denied_files = list(denied_destination.iterdir())
+        assert not denied_files, f'Revoked export produced files: {denied_files!r}'
         assert self.original_download.read_bytes() == self.original_download_bytes
+        self.cd.command('Browser.setDownloadBehavior', {
+            'behavior': 'allow', 'downloadPath': str(self.original_download.parent.resolve()),
+        })
         credentials[0]['actions'].append('source_brief_export')
         write_grants()
         self.cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
@@ -285,12 +282,25 @@ class SourceQuestionChecks:
         self.inspect_quote(self.original_question_id,current=True,
             expected_text='Fictional café <script>literal</script>.')
 
-    def after_amendment(self, replacement_source_id):
+    def after_amendment(self, replacement_source_id, stale_run):
         self.navigate('Investigations')
         history = self.history('Source changed')
         assert self.original_question_id in history and self.original_source_id in history
         assert replacement_source_id not in history
         self.overview_counts(current=0, reassessment=1)
+        row = f'.question-items li[data-question-id="{self.original_question_id}"]'
+        check = f'document.querySelector({json.dumps(row + " [data-testid=run-latest]")})'
+        self.cd.wait(f'{check}?.disabled === false', 'read-only historical run lookup')
+        self.cd.evaluate(f'{check}.click()')
+        panel = f'document.querySelector({json.dumps(row + " [data-testid=run-status]")})'
+        self.cd.wait(f'{panel}?.dataset.state === "stale"', 'relay marked the previous run stale')
+        assert self.cd.evaluate(f'{panel}.dataset.runId') == stale_run
+        assert 'reassessment required' in self.cd.evaluate(f'{panel}.textContent')
+        for control in ('run-open', 'run-result', 'run-result-body', 'run-retry'):
+            assert not self.cd.evaluate(f'Boolean(document.querySelector({json.dumps(row + " [data-testid=" + control + "]")}))')
+        print('PASS AMENDED BACKGROUND BRIEF: browser reopened the exact stale run after SIGKILL and relay restart; '
+              'one receipt and one stale transition after replaying the amendment; a second patient completed while the relay was down.')
+
         assert self.original_download.read_bytes() == self.original_download_bytes
         assert not self.cd.evaluate("Boolean(document.querySelector('[data-testid=source-brief-preview]'))")
         stale = f'.question-items li[data-question-id="{self.original_question_id}"] [data-testid=brief-prepare]'

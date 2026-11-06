@@ -1,5 +1,30 @@
 # H1 durable Composer execution
 
+## Current integrated application
+
+This dependent draft composes upstream
+[PR #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565), with
+the published migration owner frozen at `462e6c25f805089fadcb290567045447e6d627b7`,
+execution/source-event semantics from #529 at
+`79960c49f356e7a4259484f5d1523f9bda365887`, the #559 workspace through
+`adca9b8cacdbd2fe8b7ad82813d3e32a142841e8`, the #569 laboratory follow-up view
+and the existing clinical, evidence and review owners. Its current requirement
+is `0027_source_event_purpose`, following the preserved `0026_integrated_core`
+join. All published migrations remain intact. The
+[source-event guide](H1_SOURCE_EVENT_DELIVERY.md) describes the fresh/0026 upgrade
+scope, the held pre-0020 research-history path, reversible function replacement
+and operations-only delivery. The donor's edited historical 0020 is not adopted.
+
+The donor execution/event source is separately verified in
+[PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529).
+Combined acceptance is pending at this source-publication checkpoint and is
+recorded in this dependent draft's PR against the exact resulting source. The
+[implementation status](../IMPLEMENTATION_STATUS.md#current-integrated-h1-checkpoint)
+pins all inputs and distinguishes the earlier failed integration run. The dated
+receipts below preserve their original scope.
+
+## Original execution source-publication checkpoint
+
 **Source-publication checkpoint — 5 November 2026:** implemented synthetic
 candidate. This checkpoint records the preflight evidence below; current
 exact-source hosted acceptance is maintained in
@@ -93,9 +118,11 @@ unrecoverable.
 
 ## Persistence and lifecycle
 
-The combined application requires PostgreSQL 16 at `0025_clinical_source_events`.
-Run the explicit upgrade before startup. The original `0019_composer_runs`
-revision follows `0018_laboratory_questions` and adds three owned tables.
+The combined application requires PostgreSQL 16 at `0027_source_event_purpose`.
+Run the explicit upgrade before startup. Its parent is the preserved
+`0026_integrated_core` join; the source-event function repair does not rewrite
+execution history. The original `0019_composer_runs` revision follows
+`0018_laboratory_questions` and adds three owned tables.
 
 | Table in `investigation` | Responsibility |
 | --- | --- |
@@ -193,6 +220,23 @@ The synchronous preparation/download control remains available.
 The connected Chromium journey exercises queue, recovery after a history refresh, cancellation,
 replacement, real worker completion, result display and access withdrawal. Exact execution
 results for the workspace change belong to its stacked pull request.
+
+### Inspecting work after an amendment
+
+In Investigations, refresh the saved questions and choose **Check previous run** on an
+amended text-source question. The workspace calls `GET` on that question's `/runs`
+collection to read the most recently created run belonging to the current actor, organization
+and purpose. This lookup uses the existing status contract, current grants, case binding,
+read audit and no-store response. It reads status only. A question without a visible run
+returns the ordinary unavailable response. The workspace keeps the result body closed even
+when an older run completed before the amendment. A queued run retired by the relay shows
+**Source changed — reassessment required**.
+
+The amendment browser journey holds the affected run row in disposable PostgreSQL until the
+real relay has committed its claim, kills the relay, completes a second fictional patient's
+work and restarts the relay after database-clock lease expiry. It replays the same amendment,
+checks one consumer receipt and one stale transition, and reopens the exact run by question
+in Chromium. The source-reported question and its original pins remain owned by Investigations.
 
 ## Run one worker attempt
 
