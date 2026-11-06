@@ -47,6 +47,20 @@ Parent receipts retain their original source scope. No published migration or
 backend implementation changes in this increment. Readiness remains
 `0027_source_event_purpose`.
 
+The connected web gate passed at source `02c79bfb2896c91e8b74cc11e477cba9d155f198`
+in [run 42157008466](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42157008466),
+including the PostgreSQL/browser suspension scenario and persistent demo.
+This receipt qualifies that source; a successor needs its own hosted result.
+
+The inherited #588 [full API run 42141613138](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42141613138)
+ran 1,006 tests with one failure: the explicit OpenAPI route inventory omitted
+`/v1/patients/{patient_id}/suspensions`. Subsequent recovery stages were skipped.
+The exact failure was reproduced locally. This continuation adds the existing
+route to the inventory and verifies its authentication, operation identity and
+error responses. Eleven actual HTTP/configuration/typed-contract tests now pass
+locally with zero skips. Runtime code is unchanged; full API/recovery acceptance
+must be recorded separately on the repaired source, not inferred from this fix.
+
 ## Remaining dependencies
 
 Production identity, caregiver delegation, enforceable consent and reactivation
