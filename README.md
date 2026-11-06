@@ -519,6 +519,43 @@ appointment; no per-record snapshot link; no C5
 evaluation-harness probes for care-team collaboration yet; no live
 model call exists in the slice (Meta billing fix still pending).
 
+**Second vertical (Slice V2, 6 November 2026):** the capstone —
+a full synthetic cardiology end-to-end (CASE-CARDIO) through the
+same coordination core + ledger + dimensions as the oncology path,
+with zero core changes. The cardiology vertical
+(`vertical_cardiology.py`) now carries its own terminology
+bindings, pinned only from the publishers' own listings (LOINC
+`10230-1` "Left ventricular Ejection fraction" for
+`ejection-fraction`; ICD-10 `I50.9` "Heart failure, unspecified"
+for `heart-failure`), and its own substance vocabulary
+(`metoprolol`, `lisinopril`, `atorvastatin`, `furosemide`) for the
+K7 substance arm. The one domain toolset is the line-of-therapy
+equivalent: `therapy-rules-1` in the T4 table counts one line per
+therapy class in first-occurrence order (a re-appearing regimen
+resumes its earlier line; class is the regimen key minus its final
+hyphen-delimited segment), so the two beta-blockers share a line
+and the ACE inhibitor starts a new one. The end-to-end test
+(`tests/test_cardiology_end_to_end.py`) runs route → K-checks →
+Skeptic → T6 → D1 extraction and T3 specimen chain → D2
+terminology and FHIR exchange (the ejection-fraction Observation
+carries LOINC 10230-1, the heart-failure Condition carries ICD-10
+I50.9 unconfirmed) → D3 longitudinal / lab series / imaging
+comparison / therapy lines → D4 patient analytics → D5 HYPOTHESIS
+composition and T5 assembly → the D6–D9 care loop, all against
+CASE-CARDIO. The K-check context is built from the ledger, as the
+live route does. Core-change accounting: no core module changed;
+the single dimension-module touch is the `therapy-rules-1` entry
+in `therapy.py`'s own fixture table, reported transparently in
+the V2 section of `docs/IMPLEMENTATION_STATUS.md`. Local suite at
+the slice branch: 1251 tests, with the same 17 pre-existing
+`test_pdf_intake` failures as the branch baseline (1249 tests)
+and zero new failures; the C5 harness still passes all 8 measured
+metrics with `model_calls: 0`. Unproven: the live-model half of
+the end-to-end (Skeptic over muse-spark-1.3, Meta billing fix
+still pending — stub verdicts prove wiring only); per-case
+vertical selection via a case-vertical field; per-vertical
+evidence-catalog resolution; no C5 cardiology probes yet.
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.
