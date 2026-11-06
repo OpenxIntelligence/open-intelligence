@@ -13,7 +13,9 @@ class SourceEventGraphTests(unittest.TestCase):
     def test_single_successor_and_exact_readiness(self):
         script = ScriptDirectory.from_config(Config(str(Path(__file__).resolve().parents[1] / 'alembic.ini')))
         self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
-        self.assertEqual(set(script.get_revision(SCHEMA_REVISION).down_revision), {
+        self.assertEqual(SCHEMA_REVISION, "0027_source_event_purpose")
+        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0026_integrated_core")
+        self.assertEqual(set(script.get_revision("0026_integrated_core").down_revision), {
             "0025_clinical_source_events", "0023_composer_clinical_join", "0023_ehr_lab_ownership_join",
         })
         self.assertEqual(script.get_revision(REVISION).down_revision, PARENT)

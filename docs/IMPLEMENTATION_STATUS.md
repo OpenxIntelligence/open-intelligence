@@ -1,13 +1,45 @@
 # Implementation slice 01 — source and investigation ledger
 
 **Current connected application:** use the [persistent fictional demo](H1_DEMO.md)
-and [consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
+and [foundation integration #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565)
 for the current revision, verification receipts and landing status. The
 [convergence record](engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) maps retained
 contributions. The dated slices below are historical checkpoints; their old
 draft labels, schema heads and test counts are not current acceptance claims.
 
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
+
+## Shared foundation purpose repair — 6 November 2026
+
+The current construction lane is [#565](https://github.com/OpenxIntelligence/open-intelligence/pull/565),
+preserving its existing event, execution, laboratory, encounter and evidence
+owners and accepted main `16fa42781aa40e3899e36b5b441de8d920fced8e`.
+Its prior full API run failed one of 989 methods and skipped all seven recovery
+stages: valid research source custody attempted an operations-only outbox write.
+
+The tests-first source `dbb0bbb7f0a88b3d4f9b6ae283b8acb63cfca30b`
+reproduces that exact failure on actual PostgreSQL 16 in
+[run 42136266769](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42136266769):
+five focused tests, one assertion failure and three lineage errors. The
+pre-capture research-history upgrade hold passes with all owner rows and exact
+sequence state preserved. This failed run establishes the regression; it does
+not qualify the candidate for landing.
+
+The repair uses a new `0027_source_event_purpose` successor to the published
+`0026_integrated_core`. It validates every selected journal event before
+filtering delivery to operations purpose. All published migrations remain
+unchanged. The source recovery probe adds research original-byte custody,
+dump/restore, exact retry and purpose-only denials through the existing HTTP API.
+Exact repaired-head PostgreSQL, full API, browser and seven-stage recovery
+acceptance must execute before this lane is qualified.
+
+Compatibility is bounded to fresh databases and published 0026 databases.
+Pre-0020 research history remains held at the historical backfill with atomic
+rollback; a separate legacy adoption path is still required. See the
+[active construction contract](implementation/SOURCE_EVENT_PURPOSE_REPAIR.md).
+The PF-01–PF-10 / PD-01–PD-16 construction scope remains open. The next domain
+increment extends the existing episode draft owner in #570 after the foundation
+dependency is qualified.
 
 ## H1 source-event delivery — source-publication checkpoint, 5 November 2026
 

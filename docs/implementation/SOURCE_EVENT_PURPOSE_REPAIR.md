@@ -23,6 +23,12 @@ to capture a valid research journal event. All seven recovery stages were
 therefore skipped. The published #565 0020 migration contains that behavior;
 donor #529 corrects it but changes the same historical migration file.
 
+Tests-first source `dbb0bbb7f0a88b3d4f9b6ae283b8acb63cfca30b` reproduced
+the failure in actual PostgreSQL 16: run 42136266769, job 127625084131,
+five tests in 7.402 seconds, one failure and three errors, zero skips. The
+three canonical-service imports failed with `OI-SOURCE-EVENT-LINEAGE`; HTTP
+returned 503 instead of 201. The pre-capture research-history hold passed.
+
 ## Implementation steps and contracts
 
 1. Add a populated PostgreSQL regression before implementation. Preserve an

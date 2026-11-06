@@ -112,6 +112,7 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.execute(text('DROP TABLE IF EXISTS coordination.source_event_outbox'))
             conn.execute(text('DROP FUNCTION IF EXISTS coordination.capture_source_event()'))
             conn.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_outbox()'))
+            conn.execute(text('DROP FUNCTION IF EXISTS coordination.source_event_binding(bigint)'))
             conn.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_delivery()'))
             conn.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_delivery_event()'))
             conn.execute(text('DROP FUNCTION IF EXISTS coordination.require_source_delivery_consistency()'))
