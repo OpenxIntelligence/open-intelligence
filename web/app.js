@@ -325,6 +325,63 @@ async function loadHypothesisReport() {
     el('hypothesis-report-status').textContent = '';
   } catch (err) { el('hypothesis-report-status').textContent = err.message; }
 }
+async function loadAppointments() {
+  if (!caseId) { el('appointments-status').textContent = 'No case selected.'; return; }
+  const requested = caseId;
+  clear('appointments-list');
+  el('appointments-disclaimer').textContent = '';
+  el('appointments-status').textContent = 'Loading appointments…';
+  try {
+    const data = await api('/api/cases/' + requested + '/appointments');
+    if (requested !== caseId) return;
+    clear('appointments-list');
+    el('appointments-disclaimer').textContent = data.disclaimer || '';
+    const items = data.appointments || [];
+    const counts = data.counts || {};
+    if (!items.length) {
+      el('appointments-list').append(node('p', 'No appointments recorded for this fictional case yet.', 'muted'));
+    }
+    for (const item of items) {
+      const current = item.current || {};
+      const box = node('div', null, 'snapshot');
+      const top = node('div', null, 'topline');
+      top.append(node('strong', 'Appointment #' + item.appointment_id + ' · ' + (current.title || '')));
+      top.append(node('span', (current.status || '') + ' · ' + (current.scheduled_date || '')
+        + (current.scheduled_time ? ' ' + current.scheduled_time : ''), 'muted'));
+      box.append(top);
+      if (current.purpose) box.append(node('p', current.purpose));
+      if (current.location) box.append(node('p', 'Where: ' + current.location, 'muted'));
+      const history = item.history || [];
+      if (history.length) {
+        box.append(node('p', 'Change history:', 'muted'));
+        for (const event of history) {
+          let line = event.change_kind + ' — ' + (event.actor_label || '') + ' · ' + (event.noted_at || '');
+          if (event.change_kind === 'rescheduled') {
+            line += ' · ' + (event.previous_date || '') + (event.previous_time ? ' ' + event.previous_time : '')
+              + ' → ' + (event.new_date || '') + (event.new_time ? ' ' + event.new_time : '');
+          }
+          if (event.reason) line += ' · ' + event.reason;
+          box.append(node('p', line, 'muted'));
+        }
+      }
+      el('appointments-list').append(box);
+    }
+    // Fill the change-form choice from the loaded list.
+    const select = el('appt-choice');
+    const prior = select.value;
+    clear('appt-choice');
+    for (const item of items) {
+      const opt = node('option', 'Appointment #' + item.appointment_id + ' · ' + ((item.current || {}).title || '')
+        + ' (' + ((item.current || {}).status || '') + ')');
+      opt.value = item.appointment_id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+    el('appointments-status').textContent = items.length
+      ? (counts.scheduled || 0) + ' scheduled · ' + (counts.cancelled || 0) + ' cancelled · '
+        + (counts.completed || 0) + ' completed'
+      : '';
+  } catch (err) { el('appointments-status').textContent = err.message; }
+}
 function clearCaseViews(denied) {
   for (const id of ['assertion-list', 'question-list', 'snapshot-list', 'source-list',
       'source-change-list', 'asset-list', 'event-list', 'option-list',
@@ -349,7 +406,12 @@ function clearCaseViews(denied) {
       // under denial like every other view. Display-only: no text
       // inputs, so no picker-guard entry is needed for it.
       'hypothesis-claims', 'hypothesis-text', 'hypothesis-literature',
-      'hypothesis-trials']) {
+      'hypothesis-trials',
+      // D6: the appointments list renders case data; it must clear
+      // under denial like every other view. The create/change forms
+      // hold text inputs, so their fields have picker-guard entries
+      // and clear-loop entries of their own (see the picker handler).
+      'appointments-list']) {
     clear(id);
     empty(el(id), denied);
   }
@@ -400,6 +462,7 @@ async function initialize() {
     el('exchange-dicom-apply').addEventListener('click', loadExchangeDicom);
     el('analytics-apply').addEventListener('click', loadAnalytics);
     el('hypothesis-report-apply').addEventListener('click', loadHypothesisReport);
+    el('appointments-apply').addEventListener('click', loadAppointments);
     const picker = el('case-picker');
     picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {
@@ -426,6 +489,14 @@ async function initialize() {
             'visit-amend-date', 'visit-amend-type', 'visit-amend-notes', 'visit-amend-anchor',
             'option-label', 'dependency-anchor', 'task-label', 'task-owner',
             'threat-description', 'threat-anchor', 'reviewer-label', 'review-scope',
+            // D6: appointment form inputs are case-scoped narrative
+            // text (and the date/time they belong to), so an unfinished
+            // appointment must block a case switch like every other
+            // draft. They sit before the eight test-asserted fields,
+            // which stay at the end of this array.
+            'appt-title', 'appt-purpose', 'appt-date', 'appt-time', 'appt-location',
+            'appt-actor', 'appt-reason',
+            'appt-new-date', 'appt-new-time', 'appt-change-actor', 'appt-change-reason',
             'counterevidence-reason', 'safety-detail',
             'flag-reason', 'dimension-note',
             'synthesis-note-text', 'synthesis-note-author',
@@ -460,7 +531,13 @@ async function initialize() {
         'workspace-question-text', 'workspace-status-reason',
         'workspace-status-answer', 'visit-date', 'visit-type', 'visit-notes',
         'visit-anchor', 'visit-amend-date', 'visit-amend-type', 'visit-amend-notes',
-        'visit-amend-anchor']) el(id).value = '';
+        'visit-amend-anchor',
+        // D6: appointment form inputs clear on an allowed switch, like
+        // every other draft. They sit at the end of this list so the
+        // eight test-asserted fields stay early in it.
+        'appt-title', 'appt-purpose', 'appt-date', 'appt-time', 'appt-location',
+        'appt-actor', 'appt-reason', 'appt-new-date', 'appt-new-time',
+        'appt-change-actor', 'appt-change-reason']) el(id).value = '';
       clearFieldError('draft-observations');
       closeSourceViewsWithoutFocusReturn();
       refresh();
@@ -2029,6 +2106,43 @@ el('followthrough-update-form').addEventListener('submit', async event => {
     el('ft-clear-due').checked = false;
     el('ft-update-actor').value = ''; el('ft-update-reason').value = '';
     notice('Task #' + outcome.task_id + ' is now ' + outcome.result + '. History preserved.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+
+el('appointments-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/appointments', {
+      title: el('appt-title').value,
+      purpose: el('appt-purpose').value || null,
+      scheduled_date: el('appt-date').value,
+      scheduled_time: el('appt-time').value || null,
+      location: el('appt-location').value || null,
+      actor_label: el('appt-actor').value, reason: el('appt-reason').value || null,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['appt-title', 'appt-purpose', 'appt-date', 'appt-time', 'appt-location', 'appt-actor', 'appt-reason']) el(id).value = '';
+    notice('Fictional appointment #' + created.appointment_id + ' recorded. Nothing was booked or sent.'); await loadAppointments();
+  } catch (err) { notice(err.message, true); }
+});
+el('appointments-change-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const payload = {
+      action: el('appt-action').value, actor_label: el('appt-change-actor').value,
+      reason: el('appt-change-reason').value,
+    };
+    if (el('appt-action').value === 'reschedule') {
+      payload.scheduled_date = el('appt-new-date').value;
+      if (el('appt-new-time').value) payload.scheduled_time = el('appt-new-time').value;
+    }
+    const outcome = await api('/api/cases/' + requestedCase + '/appointments/' +
+      Number(el('appt-choice').value) + '/change', payload);
+    if (requestedCase !== caseId) return;
+    for (const id of ['appt-new-date', 'appt-new-time', 'appt-change-actor', 'appt-change-reason']) el(id).value = '';
+    notice('Appointment #' + outcome.appointment_id + ' is now ' + outcome.result + '. History preserved.'); await loadAppointments();
   } catch (err) { notice(err.message, true); }
 });
 
