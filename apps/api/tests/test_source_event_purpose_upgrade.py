@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import json
 
 from alembic.util.exc import CommandError
+from pg8000.dbapi import ProgrammingError
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -198,7 +199,9 @@ class SourceEventPurposeUpgradeTests(SourceVersionFixture):
             self.assertEqual(connection.execute(text(
                 "SELECT version_num FROM public.alembic_version")).scalar_one(), OLD_CORE)
         with self.owner(research=True) as (registry, common):
-            with self.assertRaises(DBAPIError):
+            # This owner uses the raw pg8000 DB-API connection, whereas the
+            # forged-event probes above use SQLAlchemy's wrapped exceptions.
+            with self.assertRaisesRegex(ProgrammingError, "OI-SOURCE-EVENT-LINEAGE"):
                 PostgresSourceVersions(registry).import_original(research_patient, RESEARCH_CASE,
                     AMENDED.replace(CASE, RESEARCH_CASE).encode(), **common,
                     recheck_authority=lambda: None)
