@@ -818,6 +818,769 @@ pending). The ledger holds no administered-therapy table — T4's
 regimen keys are a caller declaration. ClinVar linkage is key-prefix
 matching on synthetic ledger evidence, not a catalog lookup.
 
+## Analysis dimension: patient analytics (Slice D4) — 6 November 2026
+
+Branch `program/d4-analysis`, from main `58353304` (post-D3; main
+has since moved past it with the #523 safety-packet merge — the
+branch is rebased onto the new main before shipping). Implements
+program-plan D4: the analysis dimension as patient analytics — lab
+trends, symptom progression, record completeness, outcomes tracking
+— all read-only derivations of stored data, all on synthetic data.
+
+Design-first, as the plan requires for this slice: the design is
+drafted in the module docstring of
+`src/open_intelligence/patient_analytics.py` before the build, and
+this section records it. Four views, each with its pinned
+conventions and its hard limits:
+
+* Lab trends build on the T2 lab series: one trend per analyte over
+  the longest run of consecutive parseable points sharing one unit
+  (ties go to the earliest run). Unparseable, ambiguous, and
+  unit-changed points are listed as excluded with their reason,
+  never silently dropped. The trend word is direction only —
+  `rising` / `falling` / `stable` — from the first-to-last value:
+  |percent| >= 1% rises or falls, |percent| < 1% is stable. The 1%
+  band is a pinned display convention, recorded in the module: it
+  exists only so floating-point dust does not read as a trend; it is
+  not a clinical threshold. A zero first value leaves the percent
+  undefined (`undefined_zero_baseline`) and the direction follows
+  the sign of the last value. Fewer than two same-unit parseable
+  points is `not_computable` (`insufficient_points`). No
+  improvement or worsening is ever claimed.
+* Symptom progression reads the patient's own symptom notes
+  verbatim, in noted-date order. Progression here is an ordered
+  record plus two markers: `repeat` when the exact text was noted
+  before (a persisting report) and `amended` when the wording
+  changed (earlier versions preserved alongside). Recurrence is
+  exact-text only — a reworded repeat is a new first report of
+  different wording, never silently merged. No severity is scored
+  and no improvement or worsening is inferred: the record holds no
+  severity data, so none is invented.
+* Record completeness is a pinned checklist: each item names what it
+  is, whether it is present, how many there are, and what it
+  enables. The checklist is the module's own convention, derived
+  from what the platform's views need (labs for trends, sources for
+  the longitudinal picture, therapy lines for outcomes tracking),
+  not from any clinical guideline. A missing item is listed as
+  missing with what it blocks.
+* Outcomes tracking assembles the current state of each
+  outcome-bearing record — therapy lines (current vs stale, by
+  ruleset), patient goals (current status + version history), and
+  follow-through tasks (counts by status, overdue only when the
+  caller supplies `today`). Every value is a recorded state; no
+  response, progression, benefit, or eligibility claim is ever made.
+
+New `src/open_intelligence/patient_analytics.py` holds the four
+views plus the `patient_analytics` aggregator. The T2 series arrives
+as a plain mapping (the `dataclasses.asdict` shape of a T2
+`LabSeries`) — the module never imports the T2 module or any other
+dimension module, so the import-graph tripwire stays green with
+`open_intelligence.patient_analytics` registered. A series for a
+different case is rejected, never silently used; with no series the
+lab-trend view is reported as not computed with its reason.
+
+The slice adds the first live caller of the D3 toolsets: a read-only
+`GET /api/cases/{id}/analytics` route in `__main__.py`, case-scoped
+behind the existing grant gate, which builds the T2 series per
+request (with terminology codings and the specimen-chain validator,
+as D3's injection pattern requires) and returns the aggregator
+output; plus a display-only Analytics panel in the web app (one
+button, four sections, empty states that name what is missing,
+cleared on case switch like every other case view — display-only, so
+no picker-guard entry is needed). No vertical predicates were moved
+or added; the `Vertical.toolsets` field stays empty. The K-checks,
+route, Skeptic, and evaluation harness are untouched; no live model
+call exists anywhere in the slice.
+
+Local suite on the slice branch: 1106 tests (1076 on the post-D3
+main baseline plus 30 new), FAILED with 9 failures and 8 errors —
+the same 17 `test_pdf_intake` failures as the baseline run on the
+same machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: the analytics route is the first live caller of the D3
+toolsets, so end-to-end agent use of them is still unproven; no live
+model call was attempted and no substitute model was used (Meta
+billing fix still pending). The checklist is the module's own
+convention, not a clinical completeness standard; the 1% stable
+band is a display convention, not a clinical threshold.
+
+## Hypothesis generation dimension: A4 Literature + A5 Trials + T5 + HYPOTHESIS composition (Slice D5) — 6 November 2026
+
+Branch `program/d5-hypothesis-generation`, from main `003c97c`
+(post-D4). Implements program-plan D5: the hypothesis-generation
+dimension — bounded, cited, reviewable hypotheses, proposed, never
+asserted.
+
+Design-first, as the plan requires for this slice: the design is
+drafted in the module docstrings of
+`src/open_intelligence/literature.py`,
+`src/open_intelligence/trials.py`, and
+`src/open_intelligence/hypothesis.py` before the build, and this
+section records it. Four parts, each with its pinned conventions
+and its hard limits:
+
+* A4 Literature (`literature.py`): bibliographic records are
+  metadata only — record id, source registry, title, authors,
+  journal, year, DOI, topics. No full text, no findings, no
+  efficacy claim, no conclusion ever rides on a record; a record
+  carrying any of those fields is rejected with
+  `carries_findings`. The six records are pinned synthetic fixtures
+  standing in for the three registries the plan names (Europe PMC,
+  Crossref, OpenAlex); there is no network call anywhere in the
+  module and no record is presented as a live lookup result. Every
+  record carries `synthetic: True`; DOIs use the `10.0000/`
+  documentation prefix. Lookup is keyword matching over title and
+  topics, returning copies, never the fixtures themselves.
+* A5 Trials (`trials.py`): registry listings are metadata only —
+  listing id, registry id, title, phase, status, sponsor,
+  condition. A listing states what a registry entry says exists;
+  it never states who may join or whether anyone is eligible, and
+  that boundary is enforced in code: `check_eligibility_claim`
+  detects eligibility language and names the matched predicate;
+  `validate_trial_listing` rejects a listing whose own text states
+  eligibility; `render_listing` always attaches the fixed label
+  "Registry listing — not an eligibility determination." — there is
+  no render path without it. The four listings are pinned synthetic
+  fixtures in the reserved `NCT9` registry-id block (the real
+  registry sequence has not reached the 9-block), each carrying
+  `synthetic: True`; no live registry lookup exists in this slice.
+  Registry status language ("enrollment is open") is listing
+  metadata, not an eligibility claim, and does not match the
+  predicates.
+* HYPOTHESIS composition (`hypothesis.py`, REQ-09-10): the composer
+  takes structured sentences, each with its own claim-id
+  citations, plus the kept claims, and returns `composed` or
+  `rejected` with typed violations — a rejected composition returns
+  no text, so a failed hypothesis can never be rendered as if it
+  passed. Rules, enforced in code: at most 280 characters
+  (`over_length`); every sentence cites at least one claim id
+  (`missing_citation`); every cited id resolves to a kept claim
+  (`unknown_claim`) — claim ids are deterministic,
+  `inv{investigation_id}:c{index}` (1-based within that
+  investigation's kept claims), so a citation is checkable without
+  any new table; every number, identifier, and named substance in
+  a sentence must appear in the text of the claims that sentence
+  cites (`unsupported_number` / `unsupported_identifier` /
+  `unsupported_substance`) — token shapes mirror the K-checks, and
+  numbers compare by value (`31` and `31.0` are the same number);
+  no advice or verdict language (`scope_language` — the domain-free
+  guard plus the eligibility predicates, mirrored in `trials.py`,
+  with the D5 tests pinning the two modules to agree on a shared
+  probe set); malformed identifiers rejected via the K-checks' own
+  `malformed_identifiers`; and when the caller supplies evidence
+  tiers and every cited claim with a known tier is low-tier (D/E),
+  the joined text must carry the fixed limits phrase verbatim
+  (`missing_limits_phrase`). The substance arm runs only when a
+  vocabulary is supplied and the tier arm only when tiers are
+  supplied; both report `checked`/`skipped` in the result.
+* T5 report assembly (`assemble_hypothesis_report` in
+  `hypothesis.py`): deterministically assembles the report from
+  kept claims, literature records, trial listings, an optional
+  composed hypothesis, and recorded abstentions. Fixed section
+  order, lists sorted by id, no timestamps unless the caller
+  supplies `as_of`. The report states its own limits in its labels:
+  the hypothesis is "proposed, not asserted"; trial listings are
+  "not eligibility determinations"; literature is "metadata only".
+  An empty input produces an empty section, never invented content.
+
+The slice adds a read-only `GET /api/cases/{id}/hypothesis-report`
+route in `__main__.py`, case-scoped behind the existing grant gate
+(the gate is generic for case routes), which builds the kept claims
+from stored investigations — non-stale only, with the count of
+excluded stale investigations reported — plus the pinned A4/A5
+fixtures, and returns the assembled report; plus a display-only
+Hypothesis generation panel in the web app (one button, four
+sections, empty states that name what is missing, cleared on case
+switch like every other case view — display-only, so no
+picker-guard entry is needed). No vertical predicates were moved
+or added; the `Vertical.toolsets` field stays empty. The K-checks,
+route, Skeptic, and evaluation harness are untouched; no live model
+call exists anywhere in the slice.
+
+Local suite on the slice branch: 1161 tests (1106 on the main
+baseline plus 55 new), FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure-name sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: no composed hypothesis is stored yet — the report section
+reports `not_composed` and persistence is a follow-up (it needs a
+store table and write-contract treatment); the pinned literature and
+trial fixtures are not matched to the case; no live registry or
+literature lookup exists; no live model call was attempted and no
+substitute model was used (Meta billing fix still pending). The
+evaluation harness (C5) has no D5 probes yet — a follow-up could add
+hypothesis-composition probes to it.
+
+## Care coordination dimension: appointments (Slice D6) — 6 November 2026
+
+Branch `program/d6-appointments`, from main `35c979e`
+(post-D5). Implements program-plan D6: the care-coordination
+dimension's first slice — the patient can know appointment times
+and changes. Follow-through tasks and receipts existed, but nothing
+told the patient something is due; appointments close that gap as
+records, not as bookings.
+
+Design-first, as the plan requires for this slice: the design is
+drafted in the module docstring of
+`src/open_intelligence/appointments.py` before the build, and this
+section records it. An appointment is a fictional, case-scoped
+record of a planned meeting about the case: a short title, an
+optional purpose, a scheduled date (YYYY-MM-DD, required) and an
+optional scheduled time (HH:MM, 24-hour), an optional location (a
+room, a clinic name, or a video-link label — never a real address
+or a real scheduling link), and a status. Recording an appointment
+records the plan; it does not book anything anywhere, and there is
+no real scheduling integration — no calendar, no invite, no
+message, no reminder is sent.
+
+* Statuses and transitions: `scheduled` is the only open status. A
+  reschedule changes the date and/or time and keeps the status
+  `scheduled` — the change is the event, not a new state; a
+  reschedule that changes neither is rejected, since history
+  records changes, not no-ops. A scheduled appointment may be
+  `cancelled` or `completed`; both are terminal — further work is a
+  new appointment, never a reopen (mirroring the follow-through
+  rule that completed work stays in history). Every change appends
+  one event row — who, when, why, and the previous and new date,
+  time, and status — and history rows are never updated or deleted.
+* Change history: each appointment carries its full event history
+  in order (created, then each reschedule, cancellation, and
+  completion with previous and new values). The list view projects
+  the current appointment plus its history, oldest first, mirroring
+  `list_visits`; the view sorts by scheduled date, then id, and
+  derives status counts. When a caller supplies `today`, each
+  scheduled appointment also carries `days_until` and a
+  `past_due_date` flag — a past due date never auto-cancels or
+  auto-completes anything, it is only flagged (D7 is where due
+  items become notifications). The route does not pass `today` (the
+  server date is not the patient's date).
+* Role visibility: case-scoped and role-gated from the start
+  through the existing generic case gate — no new gate code. A
+  patient reads only their own bound case (GET); writes
+  (create/change) are operator/clinician only, so a patient POST is
+  denied by role even on their own case; an auditor holds no case
+  grants and is denied everywhere. The UI renders what the server
+  returns and shows the denial text on a 403.
+* Text guard: appointment text is author-controlled, so the same
+  narrow guard as follow-through tasks applies — reused, not
+  forked: the validators import the follow-through checks, so the
+  title, purpose, location, actor label, and change reason must not
+  state a clinical recommendation, order, eligibility claim,
+  diagnosis, or dose. Human review remains the gate; the disclaimer
+  on every view states the boundary.
+
+The slice adds two tables (`appointments`,
+`appointment_events`) plus `create_appointment`,
+`change_appointment`, and `list_appointments` in `store.py`;
+three routes in `__main__.py` (`GET /api/cases/{id}/appointments`,
+`POST /api/cases/{id}/appointments`,
+`POST /api/cases/{id}/appointments/{n}/change`); and an
+Appointments panel in the web app (02e — list with change history,
+create form, change form; the list container clears on case switch
+and on denial, and the form fields sit in the picker guard array
+before the eight test-asserted fields and at the end of the clear
+loop, so the fixed lookbacks of the guard tests are untouched).
+`open_intelligence.appointments` is registered in
+`DIMENSION_MODULES`; the import-graph tripwire stays green. No
+vertical predicates were moved or added; the K-checks, route,
+Skeptic, and evaluation harness are untouched; no live model call
+exists anywhere in the slice.
+
+Local suite on the slice branch: 1182 tests (1161 on the main
+baseline plus 21 new — 20 appointment tests and 1 guard test),
+FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure-name sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: no reminder or notification delivery exists yet — that is
+D7, which builds on follow-through tasks, re-review tasks, and
+staleness events; appointments carry no link to a follow-through
+task (no speculative coupling) and no link to a source version (an
+appointment is a plan, not evidence); no live model call was
+attempted and no substitute model was used (Meta billing fix still
+pending). The evaluation harness (C5) has no D6 probes yet — a
+follow-up could add appointment-lifecycle probes to it.
+
+## Care coordination dimension: notifications (Slice D7) — 6 November 2026
+
+Branch `program/d7-notifications`, from main `317e4eb`
+(post-D6). Implements program-plan D7: the care-coordination
+dimension's second slice — the patient and team learn of changes
+and due items. Follow-through tasks, appointments, re-review tasks,
+and stale drafts existed, but nothing told anyone something was due
+or had changed; notifications close that gap as a derived in-app
+list, not as a delivery channel.
+
+Design-first, as the plan requires for this slice: the design is
+drafted in the module docstring of
+`src/open_intelligence/notifications.py` before the build, and this
+section records it. A notification is a derived, in-app-only record:
+one per trigger, computed from the ledger at read time. Nothing is
+ever sent anywhere — no message, email, push, or reminder leaves
+the product, and no reminder is scheduled. The trigger kinds are a
+pinned allowlist in the module; adding a kind is a code change,
+never runtime expansion, and there is no silent self-training or
+unreviewed expansion (OI-018).
+
+* Triggers — each produces exactly one visible notification per
+  source record, keyed stably so a trigger cannot duplicate itself:
+  an open follow-through task overdue (`followthrough-overdue`) or
+  due soon within the 7-day window (`followthrough-due-soon`) — a
+  task is due-soon or overdue, never both at once; an open
+  follow-through task anchored to a superseded source version
+  (`followthrough-recheck`); an open re-review task, one per newly
+  stale snapshot (`rereview-open`); a stale snapshot whose question
+  is still open (`snapshot-stale`); a scheduled appointment whose
+  date has passed (`appointment-due`, the D6 deferral: a past due
+  date never auto-cancels, it is only flagged — here the flag
+  becomes a notification). Keys carry the distinguishing value (due
+  date, scheduled date, source version id), so a changed due date
+  or a rescheduled appointment is a new occurrence, never the
+  resurrection of a cleared one. No separate notification is derived
+  for options with `review_state='needs_review'`: that is the same
+  event the re-review task already owns, and a second notification
+  would double-notify one event. Both `rereview-open` and
+  `snapshot-stale` derive from one amendment because they are
+  different work items with different lifecycles — the stale draft
+  needs a new answer (it lapses when its question closes), while
+  the re-review task is the owned follow-up with an assignee and a
+  due date (it lapses only when the task closes).
+* Role visibility. The patient sees due kinds only (overdue,
+  due-soon, appointment-due) on their own bound case; operator and
+  clinician see all kinds; an auditor sees none (auditors hold no
+  case grants). The team sees everything the patient sees plus the
+  review work.
+* Clearing is explicit and per-role. `POST
+  /api/cases/{id}/notifications/clear` records (case, key, role,
+  who, when) in the new `notification_clears` table; cleared rows
+  are never deleted, and clearing is idempotent. A cleared key
+  never derives again for that role; other roles keep seeing it
+  until they clear it too. Clearing acknowledges the alert only —
+  it never changes the underlying task, draft, or review item, which
+  stays exactly as it was until a human changes it in its own
+  panel. A clear of a well-formed but inactive key, or of a key
+  this role may not see, is rejected (422).
+* Patient clearing carve-out (deliberate, narrow, tested). The
+  generic case gate makes patients read-only (GET only), which
+  would leave the primary audience of due notifications unable to
+  dismiss them. `_role_may_use_case` therefore allows a patient to
+  POST only to the notifications-clear route, only on their own
+  bound case — and `clear_notification` additionally rejects any key
+  whose kind is not patient-visible, so a guessed team-only key
+  cannot be cleared by a patient. A clear writes only an
+  acknowledgment row; it cannot change, hide, or delete any case
+  content. This is the single exception to patient read-only in the
+  product, and it is pinned by tests (patient clears own due key:
+  200; patient clears team-only key: 422; patient POSTs to any
+  other route: 403; patient clears on another case: 403).
+
+The slice adds one table (`notification_clears`) plus
+`clear_notification` and `list_notification_clears` in `store.py`;
+two routes in `__main__.py` (`GET /api/cases/{id}/notifications`,
+`POST /api/cases/{id}/notifications/clear`); and a Notifications
+panel in the web app (02f — list with one explicit Clear button per
+notification, no text inputs, so no picker-guard entry is needed;
+the list container clears on case switch and on denial like every
+other view). `open_intelligence.notifications` is registered in
+`DIMENSION_MODULES`; the import-graph tripwire stays green. No
+vertical predicates were moved or added; the K-checks, route,
+Skeptic, and evaluation harness are untouched; no live model call
+exists anywhere in the slice. Ordering uses recorded dates only
+(oldest first), then kind order, then record id — mirroring the
+patient-attention projection; no urgency or priority is inferred.
+
+Local suite on the slice branch: 1206 tests (1182 on the main
+baseline plus 24 new), FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: no external delivery of any kind; no reminder scheduling
+(no "send at" — the list is computed at read time); no snooze; no
+C5 evaluation-harness probes for notifications yet — a follow-up
+could add them; no live model call was attempted and no substitute
+model was used (Meta billing fix still pending). Two test-side
+defects were caught and fixed during the build, both in the slice
+code: clearing twice was rejected because the cleared key no longer
+derived (the idempotence check now precedes the active-set check,
+with separate read/write transactions), and the key regex accepted
+record id 0 (ids are now `[1-9][0-9]*`).
+
+## Care coordination dimension: referrals (Slice D8) — 6 November 2026
+
+Branch `program/d8-referrals`, from main `1ce52e0a`
+(post-D7). Implements program-plan D8: the care-coordination
+dimension's third slice — referral status is tracked as a product
+feature. Appointments record a plan and notifications derive due
+items, but nothing tracked a request sent to another team for input
+through to its outcome; referrals close that gap as records, not as
+a handoff.
+
+Design-first, as the plan requires for this slice: the design is
+drafted in the module docstring of
+`src/open_intelligence/referrals.py` before the build, and this
+section records it. A referral is a fictional, case-scoped record
+of a request to send a question about the case to another team or
+specialty for input: a question, a specialty label (a plain label
+such as "cardiology" — never a real destination, address, or
+contact), a reason in plain words, and 1–50 pinned current source
+versions as materials. Recording a referral records the request;
+it sends nothing, contacts no one, books nothing, makes no
+appointment, and performs no handoff outside the product.
+
+* Lifecycle: `requested` → `acknowledged` → `outcome_recorded`.
+  Acknowledgment records receipt by the receiving team (actor label
+  and reason, only from `requested`); the outcome arrives as a
+  separate record (outcome kind + text + anchor, only from
+  `acknowledged`). `outcome_recorded` is terminal — further work is
+  a new referral, never a reopen (mirroring the follow-through rule
+  that completed work stays in history). Every transition appends
+  one event row — who, when, why, previous and new status — and
+  history rows are never updated or deleted.
+* Outcome: exactly one per referral, so no outcome can silently
+  replace an earlier one (mirroring the second-opinion response
+  rule). Outcome kinds are pinned: `accepted` (taken on for
+  review), `declined`, `completed` (consultation done, outcome text
+  records what was returned). The outcome text is a plain
+  description (10–2000 characters) and anchors to one current
+  source version in this case, like a second-opinion response
+  anchor. The outcome never overwrites the request.
+* Review/audit treatment (the second-opinion pattern, followed
+  exactly): a referral carries `review_state` (`pending` /
+  `reviewed_in_demo` / `needs_review`) alongside its status. Review
+  is a demo acknowledgment (reviewer label, scope 10–300
+  characters) moving `pending` → `reviewed_in_demo` with one review
+  event; review is refused while `needs_review` ("preserve it and
+  create a new referral") or already `reviewed_in_demo`. Receipt of
+  an amendment moves `review_state` to `needs_review` when a pinned
+  material or the outcome anchor is superseded
+  (`_invalidate_care_records`, extended by this slice to return the
+  invalidated referrals alongside second opinions and survivorship
+  items; the import result gains `invalidated_referrals`). The
+  request, materials, and outcome stay visible with their own
+  states; nothing is silently rebound.
+* Role visibility: case-scoped and role-gated from the start
+  through the existing generic case gate — no new gate code. A
+  patient reads only their own bound case (GET); writes
+  (create/acknowledge/outcome/review) are operator/clinician only,
+  so a patient POST is denied by role even on their own case; an
+  auditor holds no case grants and is denied everywhere. The UI
+  renders what the server returns and shows the denial text on a
+  403.
+* Text guard: referral text is author-controlled, so the same
+  narrow guard as follow-through tasks applies — reused, not
+  forked: the validators import the follow-through checks, so the
+  specialty label, reason, outcome text, actor label, and reviewer
+  label must not state a clinical recommendation, order,
+  eligibility claim, diagnosis, or dose. Human review remains the
+  gate; the disclaimer on every view states the boundary.
+
+The slice adds five tables (`referrals`,
+`referral_materials`, `referral_outcomes`, `referral_events`,
+`referral_review_events`) plus `create_referral`,
+`acknowledge_referral`, `record_referral_outcome`,
+`review_referral`, and `list_referrals` in `store.py`; five routes
+in `__main__.py` (`GET /api/cases/{id}/referrals`,
+`POST /api/cases/{id}/referrals`,
+`POST /api/cases/{id}/referrals/{n}/acknowledge`,
+`POST /api/cases/{id}/referrals/{n}/outcome`,
+`POST /api/cases/{id}/referrals/{n}/review`); and a Referrals
+panel in the web app (02g — list with materials, outcome, and full
+status history; create, acknowledge, and outcome forms; per-item
+demo-review button; the list container clears on case switch and
+on denial, and the form fields sit in the picker guard array
+before the eight test-asserted fields and at the end of the clear
+loop, so the fixed lookbacks of the guard tests are untouched; the
+shared-materials checkboxes clear on a case switch so the previous
+case's sources are never left checked).
+`open_intelligence.referrals` is registered in
+`DIMENSION_MODULES`; the import-graph tripwire stays green. No
+vertical predicates were moved or added; the K-checks, route,
+Skeptic, and evaluation harness are untouched; no live model call
+exists anywhere in the slice.
+
+Local suite on the slice branch: 1226 tests (1206 on the main
+baseline plus 20 new — 19 referral tests and 1 guard test),
+FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: no message, email, or handoff leaves the product; no
+link to a follow-through task or an appointment (no speculative
+coupling); no per-referral link to a snapshot (a referral is about
+a question, not a conclusion — the outcome anchors to a source
+version, like a second-opinion response); no live model call was
+attempted and no substitute model was used (Meta billing fix still
+pending). The evaluation harness (C5) has no D8 probes yet — a
+follow-up could add referral-lifecycle probes to it. Two test-side
+defects were caught and fixed during the build, both in the tests:
+an empty materials list was silently replaced by the default
+fixture (`or` in the test helper), and the outcome-anchor
+assertion read an `id` the anchor projection does not carry
+(document/version/state only).
+
+## Care coordination dimension: care-team collaboration (Slice D9) — 6 November 2026
+
+Branch `program/d9-care-team`, from main `c3020afc`
+(post-D8). Implements program-plan D9: the care-coordination
+dimension's fourth and last slice — patient and team share updates
+in the product, not outside it. Appointments record a plan,
+notifications derive due items, and referrals track a request to
+another team, but nothing let the patient and team share notes and
+hand responsibility over in the product itself; care-team
+collaboration closes that gap as records, not as messages.
+
+Design-first, as the plan requires for this slice: the design is
+drafted in the module docstring of
+`src/open_intelligence/team_collaboration.py` before the build, and
+this section records it. Two record kinds, one module: shared
+updates and handoffs.
+
+* Shared updates: a short dated note posted by the operator or
+  clinician and visible to the whole team — including the patient
+  on their own bound case. Fields are the update text (10–1000
+  characters, descriptive-only), the author label, and the author
+  role (`operator` or `clinician`, taken from the session account
+  at the route, never free text). An update pins no evidence and
+  links no question: it is a note about the shared record, not a
+  conclusion about it, so no amendment can reopen it — its review
+  state is a demo acknowledgment only (`pending` →
+  `reviewed_in_demo`, reviewer label and scope 10–300 characters;
+  review is refused once reviewed). The patient sees exactly the
+  same shared record as the clinician; the role boundary is write
+  access, not a hidden subset — that is the acceptance, "a
+  clinician and a patient account see the same case with
+  role-appropriate views", proved by an HTTP test comparing the
+  clinician and patient GET payloads field for field.
+* Handoffs: a transfer of responsibility for a case question from
+  one actor to another — the question, a `from_actor` and a
+  `to_actor` (labels, 2–80 characters each), a reason in plain
+  words (10–500 characters), and 1–50 pinned current source
+  versions as the handed-over materials (exactly like a
+  referral's materials). Lifecycle `open` → `acknowledged` →
+  `closed`: acknowledgment records receipt by the receiving actor
+  (actor label and reason, only from `open`); closing records the
+  handoff as taken up (actor label and closing note, only from
+  `acknowledged`). `closed` is terminal — further work is a new
+  handoff, never a reopen (mirroring the follow-through rule
+  that completed work stays in history). Every transition appends
+  one event row — who, when, why, previous and new status — and
+  history rows are never updated or deleted.
+* Review/audit treatment (the second-opinion pattern, followed
+  exactly): a handoff carries `review_state` (`pending` /
+  `reviewed_in_demo` / `needs_review`) alongside its status.
+  Review is a demo acknowledgment (reviewer label, scope 10–300
+  characters) moving `pending` → `reviewed_in_demo` with one
+  review event; review is refused while `needs_review` ("preserve
+  it and create a new handoff") or already `reviewed_in_demo`.
+  Receipt of an amendment moves `review_state` to `needs_review`
+  when a pinned material is superseded (`_invalidate_care_records`,
+  extended by this slice to return the invalidated handoffs
+  alongside second opinions, survivorship items, and referrals;
+  the import result gains `invalidated_handoffs`). The handoff,
+  its materials, and its history stay visible with their own
+  states; nothing is silently rebound.
+* Role visibility: case-scoped and role-gated from the start
+  through the existing generic case gate — no new gate code. A
+  patient reads only their own bound case (GET); writes (post
+  update, review update, create/acknowledge/close/review handoff)
+  are operator/clinician only, so a patient POST is denied by
+  role even on their own case; an auditor holds no case grants
+  and is denied everywhere. The UI renders what the server
+  returns and shows the denial text on a 403.
+* Text guard: care-team text is author-controlled, so the same
+  narrow guard as follow-through tasks applies — reused, not
+  forked: the validators import the follow-through checks, so the
+  update text, author labels, handoff actors, reasons, closing
+  note, and reviewer labels must not state a clinical
+  recommendation, order, eligibility claim, diagnosis, or dose.
+  Human review remains the gate; the disclaimer on every view
+  states the boundary.
+
+The slice adds six tables (`team_updates`,
+`team_update_review_events`, `handoffs`, `handoff_materials`,
+`handoff_events`, `handoff_review_events`) plus
+`create_team_update`, `review_team_update`, `list_team_updates`,
+`create_handoff`, `acknowledge_handoff`, `close_handoff`,
+`review_handoff`, and `list_handoffs` in `store.py`; seven routes
+in `__main__.py` (`GET /api/cases/{id}/care-team`,
+`POST /api/cases/{id}/care-team/updates`,
+`POST /api/cases/{id}/care-team/updates/{n}/review`,
+`POST /api/cases/{id}/care-team/handoffs`,
+`POST /api/cases/{id}/care-team/handoffs/{n}/acknowledge`,
+`POST /api/cases/{id}/care-team/handoffs/{n}/close`,
+`POST /api/cases/{id}/care-team/handoffs/{n}/review`); and a Care
+team panel in the web app (02h — shared updates and handoffs with
+full status history; post-update, record-handoff, acknowledge,
+and close forms; per-item demo-review buttons; the list container
+clears on case switch and on denial, and the form fields sit in
+the picker guard array before the eight test-asserted fields and
+at the end of the clear loop, so the fixed lookbacks of the guard
+tests are untouched; the handoff-materials checkboxes clear on a
+case switch so the previous case's sources are never left
+checked). `open_intelligence.team_collaboration` is registered in
+`DIMENSION_MODULES`; the import-graph tripwire stays green. No
+vertical predicates were moved or added; the K-checks, route,
+Skeptic, and evaluation harness are untouched; no live model call
+exists anywhere in the slice.
+
+Local suite on the slice branch: 1249 tests (1226 on the main
+baseline plus 23 new — 22 care-team tests and 1 guard test),
+FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the same
+machine, verified by diffing the two failure sets; zero new
+failures. This is fictional-only engineering, draft and undeployed.
+
+Unproven: no message, email, or handoff leaves the product; no
+link to a follow-through task or an appointment (no speculative
+coupling); no per-record link to a snapshot (a handoff is about a
+question, not a conclusion — the materials pin source versions,
+like a referral); updates carry no question link and no materials
+(a note about the shared record, not evidence about it); no live
+model call was attempted and no substitute model was used (Meta
+billing fix still pending). The evaluation harness (C5) has no D9
+probes yet — a follow-up could add collaboration-lifecycle probes
+to it. One test-side defect was caught and fixed during the build,
+in the test: the HTTP round-trip test asserted absolute counts on
+a server shared with the patient-visibility test, which had
+already posted records; the test now asserts relative to the list
+seen at its start.
+
+## Second vertical: full cardiology end-to-end, zero core changes (Slice V2) — 6 November 2026
+
+Branch `program/v2-cardiology`, from main `19d523b5`
+(post-D9). Implements program-plan V2, the capstone: prove a new
+vertical lands with zero core changes. V1 defined the vertical
+interface and proved the core holds no oncology knowledge; V2
+proves a second vertical — cardiology — runs the full pipeline
+(route → claims → K-checks → Skeptic → HYPOTHESIS) and the care
+loop (appointments, notifications, referrals, care-team
+collaboration) against synthetic cardiology fixtures, with the
+core untouched. If a vertical needs a core change, the slice
+stops and reports — that is the falsifier firing, not a reason
+to force it. It did not fire.
+
+Design-first, as the plan requires: the design is drafted here
+and in the cardiology vertical's module docstring before the
+build, and this section records it.
+
+* The core/dimension line. The core is plan §2.4's eight shared
+  coordination primitives plus the interface and ledger they
+  run on: `store.py`, `__main__.py`, `investigation.py`,
+  `kchecks.py`, `skeptic.py`, `synthesis.py`, `timeline.py`,
+  `orchestrator.py`, `agent_writes.py`, `evaluation.py`,
+  `vertical.py`, `evidence_catalog.py`, `packet.py`,
+  `patient_report.py`. Dimension modules (D1–D9) are not core:
+  they plug into the core and never import each other. The
+  cardiology end-to-end is function-level, like V1's: the
+  route, K-checks, Skeptic, and HYPOTHESIS composition take the
+  vertical explicitly, so the pipeline is vertical-parameterized
+  end to end. No case-vertical field was added — that would
+  touch `store.py`, the core ledger — so the live HTTP route
+  still resolves `default_vertical()` (oncology) at its single
+  K-check call site; per-case vertical selection remains the
+  follow-up V1 already recorded. No web/UI change in this slice.
+* What the vertical carries. `vertical_cardiology.py` gains the
+  domain rules the interface was built for: terminology
+  bindings and substance names. The bindings are pinned only
+  from the publishers' own listings, per the terminology
+  honesty rule — a code enters the table only as a long-stable
+  public code, never invented or "close enough": LOINC
+  `10230-1` "Left ventricular Ejection fraction" (Regenstrief
+  LOINC listing, also carried in the HL7 FHIR observation-codes
+  value set and DICOM CP-2147) for finding key
+  `ejection-fraction`, and ICD-10 `I50.9` "Heart failure,
+  unspecified" (WHO ICD-10, category I50) for finding key
+  `heart-failure`. SNOMED CT stays blocked (license
+  unresolved); no SNOMED code is ever emitted or accepted.
+  Substance names are a fixture vocabulary for the K7
+  substance arm only — `metoprolol`, `lisinopril`,
+  `atorvastatin`, `furosemide` — token matching, never a
+  recommendation or a dose.
+* The one domain toolset: the line-of-therapy equivalent.
+  Cardiology's `therapy-rules-1` is defined as a pinned entry
+  in `therapy.py`'s `LOT_RULESETS` table, the dimension
+  module's own fixture table — the module's docstring already
+  anticipated it ("cardiology's `therapy-rules-1` is unknown
+  until its ruleset is defined, and is reported as such"). The
+  rule: one line per distinct therapy CLASS in first-occurrence
+  order; a re-appearing regimen resumes its earlier line;
+  class is the regimen key minus its final hyphen-delimited
+  segment (the agent name), so `beta-blocker-metoprolol` and
+  `beta-blocker-atenolol` are one class, `ace-inhibitor-lisinopril`
+  another; a key with no hyphen is its own class. The line's
+  `regimen_key` value stores the class label, documented as
+  such. The rationale, as fixture logic: switching agents
+  within a drug class is a regimen adjustment, not a new line;
+  switching classes starts a new line. This is pinned
+  synthetic fixture logic, not guideline content — the same
+  pattern as `lot-rules-1` / `lot-rules-2`. The plan's §V2
+  test-scope sentence ("the PR diff must touch only vertical +
+  dimension-registration files") is stricter than its binding
+  acceptance ("zero changes to core modules"); the acceptance
+  governs, and the accounting is reported transparently:
+  `therapy.py` is a D3 dimension module, not core, and it is
+  the single dimension-module touch in the slice. Leaving T4
+  fail-closed for cardiology would have left the capstone's
+  sharpest test — "a different line-of-therapy equivalent" —
+  unproven.
+* What the end-to-end exercises, on one synthetic cardiology
+  case (CASE-CARDIO, independently authored fictional data,
+  explicit provenance): D1 extraction validation and the T3
+  specimen chain; D2 terminology (vertical bindings resolve
+  through `codings_for` / `validate_coding`) and a FHIR R4
+  bundle built with the cardiology vertical; D3 A2
+  longitudinal, T1 imaging comparison, T2 lab series, and T4
+  therapy lines under `therapy-rules-1`; D4 patient analytics
+  over the T2 series; D5 HYPOTHESIS composition (kept claims
+  only, cardiology substance names through the K7 arm) and T5
+  report assembly; the care loop D6–D9 — an appointment, a
+  derived notification, a referral, a shared update and a
+  handoff — all against CASE-CARDIO with no core change. The
+  Skeptic in the end-to-end is the deterministic stub, as in
+  V1: the live model proof is still blocked by the Meta
+  billing fix, and no substitute model was used. The planted
+  "31 cm" misstatement against "31%" evidence is held by the
+  stub, proving wiring, not the model.
+* What was deliberately NOT done. The evidence catalog
+  (`evidence_catalog.py`) was not touched: its `SOURCE_KINDS`
+  is a hardcoded frozenset and a cardiology record with kind
+  `ecg` fails catalog validation — per-vertical catalog
+  resolution was recorded as V2 work in the V1 doc, but plan
+  §V2 does not require it, the catalog is not in the
+  investigation pipeline path, and changing it would have
+  touched a core module; it remains a follow-up, recorded
+  honestly here. `Vertical.toolsets` stays empty (nothing
+  consumes the field; the cardiology domain rule is the
+  `therapy-rules-1` counting rule in the T4 table, not a
+  separately-named toolset). No new dimension module was added,
+  so `DIMENSION_MODULES` does not change. The two existing
+  tests that pinned the pre-V2 state were updated, not deleted:
+  `test_terminology_bindings_live_on_the_vertical` now asserts
+  the cardiology bindings instead of `{}`, and
+  `test_unknown_ruleset_fails_closed` now asserts the cardiology
+  vertical computes under `therapy-rules-1` while an unknown
+  label (e.g. `lot-rules-99`) still fails closed.
+
+Local suite on the slice branch: 1251 tests (1249 on the main
+baseline plus 2 new — the cardiology end-to-end test and the
+therapy-rules-1 edge test), FAILED with 9 failures and 8 errors —
+the same 17 `test_pdf_intake` failures as the baseline run on the
+same machine, verified by diffing the two failure-name sets; zero
+new failures. The C5 evaluation harness still passes all 8
+measured metrics with `model_calls: 0`. This is fictional-only
+engineering, draft and undeployed.
+
+Unproven: the live-model half of the end-to-end (Skeptic over
+muse-spark-1.3) — blocked by the Meta billing fix, stub
+verdicts prove wiring only; per-case vertical selection via a
+case-vertical field; per-vertical evidence-catalog resolution;
+the C5 evaluation harness has no cardiology probes yet.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)

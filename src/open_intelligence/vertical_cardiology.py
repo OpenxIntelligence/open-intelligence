@@ -8,9 +8,12 @@ no core change beyond the interface itself. It is deliberately
 minimal: synonyms, condition terms, scope patterns, a ruleset version
 label, and evidence bindings. No guideline text is ingested; no real
 cardiology data is used; every fixture value is independently
-authored synthetic data. The full cardiology vertical — domain
-toolsets, the investigation dimensions against cardiology fixtures,
-the care loop — is slice V2, after the dimensions exist.
+authored synthetic data. Slice V2 lands the full cardiology
+vertical here: the investigation dimensions run against
+cardiology fixtures and the care loop works for the cardiology
+case, with zero core changes (see the V2 section of
+``docs/IMPLEMENTATION_STATUS.md`` for the core-change
+accounting).
 """
 from __future__ import annotations
 
@@ -57,8 +60,40 @@ LOT_RULESET = "therapy-rules-1"
 # Evidence bindings for this vertical. The kinds are plain labels for
 # the evidence this domain produces (ECG, echocardiogram, cardiac
 # labs); the link templates mirror the catalog's example.invalid
-# shape. Per-vertical catalog resolution is V2 work; until then the
-# catalog still validates against the oncology binding.
+# shape. Per-vertical catalog resolution was recorded as V2 work in
+# the V1 doc, but plan §V2 does not require it and the catalog is
+# not in the investigation pipeline path; it remains a follow-up,
+# and the catalog still validates against the oncology binding.
+
+# Terminology bindings (V2): pinned only from the publishers' own
+# listings, per the terminology honesty rule — a code enters the
+# table only as a long-stable public code, never invented or "close
+# enough". LOINC 10230-1 "Left ventricular Ejection fraction"
+# (Regenstrief LOINC listing; also carried in the HL7 FHIR
+# observation-codes value set and DICOM CP-2147) for finding key
+# "ejection-fraction"; ICD-10 I50.9 "Heart failure, unspecified"
+# (WHO ICD-10, category I50) for finding key "heart-failure".
+# SNOMED CT stays blocked (license unresolved); no SNOMED code is
+# ever emitted or accepted.
+TERMINOLOGY_BINDINGS = {
+    "ejection-fraction": (
+        {"system": "http://loinc.org", "code": "10230-1",
+         "display": "Left ventricular Ejection fraction"},
+    ),
+    "heart-failure": (
+        {"system": "http://hl7.org/fhir/sid/icd-10", "code": "I50.9",
+         "display": "Heart failure, unspecified"},
+    ),
+}
+
+# Substance names (V2): a fixture vocabulary for the K7 substance
+# arm only — token matching against cited evidence, never a
+# recommendation or a dose. Common cardiology agents used in the
+# synthetic fixtures; a claim naming one without citing evidence
+# that carries it is dropped as k7_unsupported_token.
+SUBSTANCE_NAMES = (
+    "metoprolol", "lisinopril", "atorvastatin", "furosemide",
+)
 EVIDENCE_KINDS = frozenset(
     {"ecg", "echocardiogram", "cardiac-lab", "fictional"}
 )
@@ -77,6 +112,11 @@ CARDIOLOGY = Vertical(
     lot_ruleset=LOT_RULESET,
     evidence_kinds=frozenset(EVIDENCE_KINDS),
     link_templates=dict(LINK_TEMPLATES),
+    substance_names=tuple(SUBSTANCE_NAMES),
+    terminology_bindings={
+        key: tuple(codings)
+        for key, codings in TERMINOLOGY_BINDINGS.items()
+    },
 )
 
 register_vertical(CARDIOLOGY)

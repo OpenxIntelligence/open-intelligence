@@ -20,6 +20,22 @@ GUARDED_RECENT_MAIN = (
     "option-label", "dependency-anchor", "task-label", "task-owner",
     "threat-description", "threat-anchor", "reviewer-label", "review-scope",
 )
+GUARDED_APPOINTMENTS = (
+    "appt-title", "appt-purpose", "appt-date", "appt-time", "appt-location",
+    "appt-actor", "appt-reason",
+    "appt-new-date", "appt-new-time", "appt-change-actor", "appt-change-reason",
+)
+GUARDED_REFERRALS = (
+    "ref-specialty", "ref-reason", "ref-actor",
+    "ref-ack-actor", "ref-ack-reason",
+    "ref-outcome-text", "ref-outcome-actor", "ref-outcome-reason",
+)
+GUARDED_CARE_TEAM = (
+    "team-update-text", "team-update-author",
+    "ho-from", "ho-to", "ho-reason", "ho-actor",
+    "ho-ack-actor", "ho-ack-reason",
+    "ho-close-actor", "ho-close-reason",
+)
 
 
 class CaseSwitchGuardTests(unittest.TestCase):
@@ -90,6 +106,66 @@ class CaseSwitchGuardTests(unittest.TestCase):
                 self.assertIn("'%s'" % field, guard, "missing draft guard")
                 self.assertIn("'%s'" % field, clear, "missing draft clear")
 
+    def test_appointment_inputs_guarded_and_cleared(self):
+        """D6: an unfinished appointment draft must block a case switch
+        and clear once a switch is allowed — same treatment as every
+        other case-scoped draft. Full-span check (like the recent-main
+        test): the appointment fields sit before the eight
+        test-asserted fields in the guard array and at the end of the
+        clear loop, so the fixed lookbacks of the other tests are
+        untouched."""
+        text = APP_JS.read_text()
+        at = text.index("picker.addEventListener('change'")
+        guard_end = text.index(".some(id => el(id).value.trim())", at)
+        guard = text[at:guard_end]
+        clear_start = text.index("for (const id of [", guard_end)
+        clear_end = text.index("]) el(id).value = '';", clear_start)
+        clear = text[clear_start:clear_end]
+        for field in GUARDED_APPOINTMENTS:
+            with self.subTest(field=field):
+                self.assertIn("'%s'" % field, guard, "missing draft guard")
+                self.assertIn("'%s'" % field, clear, "missing draft clear")
+
+    def test_referral_inputs_guarded_and_cleared(self):
+        """D8: an unfinished referral draft must block a case switch
+        and clear once a switch is allowed — same treatment as every
+        other case-scoped draft. Full-span check (like the recent-main
+        and appointment tests): the referral fields sit before the
+        eight test-asserted fields in the guard array and at the end
+        of the clear loop, so the fixed lookbacks of the other tests
+        are untouched."""
+        text = APP_JS.read_text()
+        at = text.index("picker.addEventListener('change'")
+        guard_end = text.index(".some(id => el(id).value.trim())", at)
+        guard = text[at:guard_end]
+        clear_start = text.index("for (const id of [", guard_end)
+        clear_end = text.index("]) el(id).value = '';", clear_start)
+        clear = text[clear_start:clear_end]
+        for field in GUARDED_REFERRALS:
+            with self.subTest(field=field):
+                self.assertIn("'%s'" % field, guard, "missing draft guard")
+                self.assertIn("'%s'" % field, clear, "missing draft clear")
+
+    def test_care_team_inputs_guarded_and_cleared(self):
+        """D9: an unfinished update or handoff draft must block a case
+        switch and clear once a switch is allowed — same treatment as
+        every other case-scoped draft. Full-span check (like the
+        recent-main, appointment, and referral tests): the care-team
+        fields sit before the eight test-asserted fields in the guard
+        array and at the end of the clear loop, so the fixed lookbacks
+        of the other tests are untouched."""
+        text = APP_JS.read_text()
+        at = text.index("picker.addEventListener('change'")
+        guard_end = text.index(".some(id => el(id).value.trim())", at)
+        guard = text[at:guard_end]
+        clear_start = text.index("for (const id of [", guard_end)
+        clear_end = text.index("]) el(id).value = '';", clear_start)
+        clear = text[clear_start:clear_end]
+        for field in GUARDED_CARE_TEAM:
+            with self.subTest(field=field):
+                self.assertIn("'%s'" % field, guard, "missing draft guard")
+                self.assertIn("'%s'" % field, clear, "missing draft clear")
+
     def test_post_submit_clears_sensitive_draft_fields(self):
         text = APP_JS.read_text()
         dep_start = text.index("el('option-dependency-form').addEventListener")
@@ -99,6 +175,54 @@ class CaseSwitchGuardTests(unittest.TestCase):
         rev_end = text.index("el('visit-form').addEventListener", rev_start)
         self.assertIn("el('reviewer-label').value = '';", text[rev_start:rev_end])
         self.assertIn("el('review-scope').value = '';", text[rev_start:rev_end])
+        # D6: the appointment forms clear their drafts after a
+        # successful submit (create clears the create fields, change
+        # clears the change fields).
+        create_start = text.index("el('appointments-form').addEventListener")
+        create_end = text.index("el('appointments-change-form').addEventListener", create_start)
+        for field in ("appt-title", "appt-purpose", "appt-date", "appt-time",
+                      "appt-location", "appt-actor", "appt-reason"):
+            self.assertIn("'%s'" % field, text[create_start:create_end])
+        change_start = text.index("el('appointments-change-form').addEventListener")
+        change_end = text.index("el('goal-form').addEventListener", change_start)
+        for field in ("appt-new-date", "appt-new-time", "appt-change-actor",
+                      "appt-change-reason"):
+            self.assertIn("'%s'" % field, text[change_start:change_end])
+        # D8: the referral forms clear their drafts after a successful
+        # submit (create clears the create fields, acknowledge clears
+        # the acknowledge fields, outcome clears the outcome fields).
+        ref_create_start = text.index("el('referrals-form').addEventListener")
+        ref_create_end = text.index("el('referrals-acknowledge-form').addEventListener", ref_create_start)
+        for field in ("ref-specialty", "ref-reason", "ref-actor"):
+            self.assertIn("'%s'" % field, text[ref_create_start:ref_create_end])
+        ref_ack_start = text.index("el('referrals-acknowledge-form').addEventListener")
+        ref_ack_end = text.index("el('referrals-outcome-form').addEventListener", ref_ack_start)
+        for field in ("ref-ack-actor", "ref-ack-reason"):
+            self.assertIn("'%s'" % field, text[ref_ack_start:ref_ack_end])
+        ref_outcome_start = text.index("el('referrals-outcome-form').addEventListener")
+        ref_outcome_end = text.index("el('care-team-update-form').addEventListener", ref_outcome_start)
+        for field in ("ref-outcome-text", "ref-outcome-actor", "ref-outcome-reason"):
+            self.assertIn("'%s'" % field, text[ref_outcome_start:ref_outcome_end])
+        # D9: the care-team forms clear their drafts after a successful
+        # submit (update clears the update fields, handoff clears the
+        # handoff fields, acknowledge clears the acknowledge fields,
+        # close clears the close fields).
+        team_update_start = text.index("el('care-team-update-form').addEventListener")
+        team_update_end = text.index("el('care-team-handoff-form').addEventListener", team_update_start)
+        for field in ("team-update-text", "team-update-author"):
+            self.assertIn("'%s'" % field, text[team_update_start:team_update_end])
+        team_handoff_start = text.index("el('care-team-handoff-form').addEventListener")
+        team_handoff_end = text.index("el('care-team-handoff-acknowledge-form').addEventListener", team_handoff_start)
+        for field in ("ho-from", "ho-to", "ho-reason", "ho-actor"):
+            self.assertIn("'%s'" % field, text[team_handoff_start:team_handoff_end])
+        team_ack_start = text.index("el('care-team-handoff-acknowledge-form').addEventListener")
+        team_ack_end = text.index("el('care-team-handoff-close-form').addEventListener", team_ack_start)
+        for field in ("ho-ack-actor", "ho-ack-reason"):
+            self.assertIn("'%s'" % field, text[team_ack_start:team_ack_end])
+        team_close_start = text.index("el('care-team-handoff-close-form').addEventListener")
+        team_close_end = text.index("el('goal-form').addEventListener", team_close_start)
+        for field in ("ho-close-actor", "ho-close-reason"):
+            self.assertIn("'%s'" % field, text[team_close_start:team_close_end])
 
 
 if __name__ == "__main__":

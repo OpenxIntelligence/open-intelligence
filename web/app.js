@@ -209,6 +209,496 @@ async function loadExchangeDicom() {
     }
   } catch (err) { el('exchange-dicom-status').textContent = err.message; }
 }
+async function loadAnalytics() {
+  if (!caseId) { el('analytics-status').textContent = 'No case selected.'; return; }
+  try {
+    const data = await api('/api/cases/' + caseId + '/analytics');
+    clear('analytics-trends');
+    clear('analytics-symptoms');
+    clear('analytics-completeness');
+    clear('analytics-outcomes');
+    const trends = (data.lab_trends && data.lab_trends.trends) || {};
+    const trendKeys = Object.keys(trends).sort();
+    if (!trendKeys.length) {
+      el('analytics-trends').append(node('p',
+        'No lab trends: ' + ((data.lab_trends && data.lab_trends.reason) || 'no laboratory series available') + '.', 'muted'));
+    }
+    for (const key of trendKeys) {
+      const t = trends[key];
+      const text = t.trend === 'not_computable'
+        ? key + ' — no trend: ' + (t.trend_reason || 'insufficient data') + '.'
+        : key + ' — ' + t.trend + ' (' + t.first_value + ' → ' + t.last_value + ' ' + (t.unit || '')
+          + ', ' + (t.percent_change === null ? 'percent undefined' : t.percent_change.toFixed(1) + '%')
+          + ', ' + t.points_used + ' of ' + t.points_total + ' points).';
+      el('analytics-trends').append(node('p', text));
+    }
+    const symptoms = (data.symptom_progression && data.symptom_progression.notes) || [];
+    if (!symptoms.length) {
+      el('analytics-symptoms').append(node('p', 'No symptom notes recorded for this case yet.', 'muted'));
+    }
+    for (const note of symptoms) {
+      el('analytics-symptoms').append(node('p',
+        (note.noted_date || 'no date') + ' — ' + note.note_text
+        + (note.recurrence === 'repeat' ? ' (reported before)' : '')
+        + (note.amended ? ' (wording amended)' : '')));
+    }
+    const checks = (data.record_completeness && data.record_completeness.checks) || [];
+    if (!checks.length) {
+      el('analytics-completeness').append(node('p', 'No completeness data for this case yet.', 'muted'));
+    }
+    for (const check of checks) {
+      el('analytics-completeness').append(node('p',
+        check.label + ': ' + check.status + ' (' + check.count + ')'
+        + (check.status === 'missing' ? ' — blocks: ' + check.enables + '.' : '')));
+    }
+    const outcomes = data.outcomes_tracking || {};
+    const lines = (outcomes.therapy_lines && outcomes.therapy_lines.current) || [];
+    const goals = (outcomes.patient_goals && outcomes.patient_goals.goals) || [];
+    const tasks = (outcomes.followthrough_tasks && outcomes.followthrough_tasks.tasks) || [];
+    if (!lines.length && !goals.length && !tasks.length) {
+      el('analytics-outcomes').append(node('p', 'Nothing tracked yet: no therapy lines, goals, or follow-through tasks recorded.', 'muted'));
+    }
+    for (const line of lines) {
+      el('analytics-outcomes').append(node('p',
+        'Therapy line ' + line.line_number + ' — ' + line.regimen_key + ' (' + line.ruleset_version
+        + ', ' + line.first_occurred + ' → ' + line.last_occurred + ').'));
+    }
+    for (const goal of goals) {
+      el('analytics-outcomes').append(node('p',
+        'Goal — ' + goal.status + ' (stated ' + (goal.stated_date || 'no date') + ').'));
+    }
+    for (const task of tasks) {
+      el('analytics-outcomes').append(node('p',
+        'Task — ' + task.status + (task.due_date ? ' (due ' + task.due_date + ')' : ' (no due date)') + '.'));
+    }
+    el('analytics-status').textContent = '';
+  } catch (err) { el('analytics-status').textContent = err.message; }
+}
+async function loadHypothesisReport() {
+  if (!caseId) { el('hypothesis-report-status').textContent = 'No case selected.'; return; }
+  try {
+    const data = await api('/api/cases/' + caseId + '/hypothesis-report');
+    clear('hypothesis-claims');
+    clear('hypothesis-text');
+    clear('hypothesis-literature');
+    clear('hypothesis-trials');
+    const claims = data.kept_claims || [];
+    if (!claims.length) {
+      el('hypothesis-claims').append(node('p', 'No kept claims for this case yet.', 'muted'));
+    }
+    for (const claim of claims) {
+      const cites = (claim.citations || []).map(c => c.type + ' ' + c.id).join(', ');
+      el('hypothesis-claims').append(node('p',
+        claim.id + ' — ' + claim.text + ' (' + (claim.uncertainty || 'uncertainty unstated')
+        + (cites ? '; cites ' + cites : '') + ').'));
+    }
+    const hypothesis = data.hypothesis || {};
+    if (hypothesis.status === 'composed' && hypothesis.text) {
+      el('hypothesis-text').append(node('p', hypothesis.text));
+      el('hypothesis-text').append(node('p',
+        'Cites: ' + (hypothesis.claim_ids || []).join(', ')
+        + ' (' + (hypothesis.char_count || 0) + ' characters).', 'muted'));
+    } else {
+      el('hypothesis-text').append(node('p',
+        'No composed hypothesis stored for this case yet.', 'muted'));
+    }
+    const records = (data.literature && data.literature.records) || [];
+    if (!records.length) {
+      el('hypothesis-literature').append(node('p', 'No literature records.', 'muted'));
+    }
+    for (const record of records) {
+      el('hypothesis-literature').append(node('p',
+        record.title + ' — ' + (record.authors || []).join(', ') + ', '
+        + record.journal + ' ' + record.year + ' (' + record.source + '; ' + record.doi + ').'));
+    }
+    const listings = (data.trials && data.trials.listings) || [];
+    if (!listings.length) {
+      el('hypothesis-trials').append(node('p', 'No trial listings.', 'muted'));
+    }
+    for (const item of listings) {
+      const listing = item.listing || {};
+      el('hypothesis-trials').append(node('p',
+        (item.label || 'Registry listing — not an eligibility determination.') + ' '
+        + listing.title + ' — ' + listing.registry_id + ', ' + listing.phase + ', '
+        + listing.status + ' (' + listing.sponsor + ').'));
+    }
+    el('hypothesis-report-status').textContent = '';
+  } catch (err) { el('hypothesis-report-status').textContent = err.message; }
+}
+async function loadAppointments() {
+  if (!caseId) { el('appointments-status').textContent = 'No case selected.'; return; }
+  const requested = caseId;
+  clear('appointments-list');
+  el('appointments-disclaimer').textContent = '';
+  el('appointments-status').textContent = 'Loading appointments…';
+  try {
+    const data = await api('/api/cases/' + requested + '/appointments');
+    if (requested !== caseId) return;
+    clear('appointments-list');
+    el('appointments-disclaimer').textContent = data.disclaimer || '';
+    const items = data.appointments || [];
+    const counts = data.counts || {};
+    if (!items.length) {
+      el('appointments-list').append(node('p', 'No appointments recorded for this fictional case yet.', 'muted'));
+    }
+    for (const item of items) {
+      const current = item.current || {};
+      const box = node('div', null, 'snapshot');
+      const top = node('div', null, 'topline');
+      top.append(node('strong', 'Appointment #' + item.appointment_id + ' · ' + (current.title || '')));
+      top.append(node('span', (current.status || '') + ' · ' + (current.scheduled_date || '')
+        + (current.scheduled_time ? ' ' + current.scheduled_time : ''), 'muted'));
+      box.append(top);
+      if (current.purpose) box.append(node('p', current.purpose));
+      if (current.location) box.append(node('p', 'Where: ' + current.location, 'muted'));
+      const history = item.history || [];
+      if (history.length) {
+        box.append(node('p', 'Change history:', 'muted'));
+        for (const event of history) {
+          let line = event.change_kind + ' — ' + (event.actor_label || '') + ' · ' + (event.noted_at || '');
+          if (event.change_kind === 'rescheduled') {
+            line += ' · ' + (event.previous_date || '') + (event.previous_time ? ' ' + event.previous_time : '')
+              + ' → ' + (event.new_date || '') + (event.new_time ? ' ' + event.new_time : '');
+          }
+          if (event.reason) line += ' · ' + event.reason;
+          box.append(node('p', line, 'muted'));
+        }
+      }
+      el('appointments-list').append(box);
+    }
+    // Fill the change-form choice from the loaded list.
+    const select = el('appt-choice');
+    const prior = select.value;
+    clear('appt-choice');
+    for (const item of items) {
+      const opt = node('option', 'Appointment #' + item.appointment_id + ' · ' + ((item.current || {}).title || '')
+        + ' (' + ((item.current || {}).status || '') + ')');
+      opt.value = item.appointment_id; select.append(opt);
+    }
+    if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+    el('appointments-status').textContent = items.length
+      ? (counts.scheduled || 0) + ' scheduled · ' + (counts.cancelled || 0) + ' cancelled · '
+        + (counts.completed || 0) + ' completed'
+      : '';
+  } catch (err) { el('appointments-status').textContent = err.message; }
+}
+async function loadNotifications() {
+  if (!caseId) { el('notifications-status').textContent = 'No case selected.'; return; }
+  const requested = caseId;
+  clear('notifications-list');
+  el('notifications-disclaimer').textContent = '';
+  el('notifications-status').textContent = 'Loading notifications…';
+  try {
+    const data = await api('/api/cases/' + requested + '/notifications');
+    if (requested !== caseId) return;
+    clear('notifications-list');
+    el('notifications-disclaimer').textContent = data.disclaimer || '';
+    const items = data.notifications || [];
+    const counts = data.counts || {};
+    if (!items.length) {
+      el('notifications-list').append(node('p', 'No notifications for this fictional case and role right now.', 'muted'));
+    }
+    for (const item of items) {
+      const box = node('div', null, 'snapshot');
+      const top = node('div', null, 'topline');
+      top.append(node('strong', item.title || ''));
+      top.append(node('span', (item.kind || '') + (item.recorded_date ? ' · ' + item.recorded_date : ''), 'muted'));
+      box.append(top);
+      if (item.detail) box.append(node('p', item.detail));
+      if (item.source_anchor) box.append(node('p', item.source_anchor, 'muted'));
+      // Clearing is explicit: one button per notification, which records
+      // the clear for this role and reloads the list. The underlying
+      // task, draft, or review item is untouched by a clear.
+      const clearButton = document.createElement('button');
+      clearButton.type = 'button';
+      clearButton.textContent = 'Clear this notification';
+      clearButton.className = 'button secondary minor';
+      clearButton.addEventListener('click', async () => {
+        clearButton.disabled = true;
+        try {
+          await api('/api/cases/' + requested + '/notifications/clear', { notification_key: item.key });
+          await loadNotifications();
+        } catch (err) {
+          el('notifications-status').textContent = err.message;
+          clearButton.disabled = false;
+        }
+      });
+      box.append(clearButton);
+      el('notifications-list').append(box);
+    }
+    const active = Object.entries(counts).filter(([, n]) => n).map(([kind, n]) => n + ' ' + kind).join(' · ');
+    el('notifications-status').textContent = items.length ? active : '';
+  } catch (err) { el('notifications-status').textContent = err.message; }
+}
+async function loadReferrals() {
+  if (!caseId) { el('referrals-status').textContent = 'No case selected.'; return; }
+  const requested = caseId;
+  clear('referrals-list');
+  el('referrals-disclaimer').textContent = '';
+  el('referrals-status').textContent = 'Loading referrals…';
+  try {
+    const data = await api('/api/cases/' + requested + '/referrals');
+    if (requested !== caseId) return;
+    clear('referrals-list');
+    el('referrals-disclaimer').textContent = data.disclaimer || '';
+    const items = data.referrals || [];
+    const counts = data.counts || {};
+    if (!items.length) {
+      el('referrals-list').append(node('p', 'No referrals recorded for this fictional case yet.', 'muted'));
+    }
+    for (const item of items) {
+      const current = item.current || {};
+      const box = node('div', null, 'snapshot');
+      const top = node('div', null, 'topline');
+      top.append(node('strong', 'Referral #' + item.referral_id + ' · ' + (current.specialty_label || '')));
+      top.append(node('span', (current.status || '') + ' · ' + (current.review_state || ''), 'muted'));
+      box.append(top);
+      if (current.reason_text) box.append(node('p', current.reason_text));
+      if (item.question) box.append(node('p', 'About: ' + item.question, 'muted'));
+      if ((item.materials || []).length) {
+        box.append(node('p', 'Materials shared: ' + item.materials.map(m =>
+          m.document_id + '@' + m.version + ' (' + m.state + ')').join(', '), 'muted'));
+      }
+      if (item.outcome) {
+        const outcome = item.outcome;
+        box.append(node('p', 'Outcome (' + (outcome.outcome_kind || '') + '): ' + (outcome.outcome_text || '')));
+        if (outcome.anchor) box.append(node('p', 'Anchored to ' + outcome.anchor.document_id + '@' + outcome.anchor.version +
+          ' (' + outcome.anchor.state + ') · ' + (outcome.created_at || ''), 'snapshot-meta'));
+      } else {
+        box.append(node('p', 'No outcome recorded yet.', 'muted'));
+      }
+      const history = item.history || [];
+      if (history.length) {
+        box.append(node('p', 'Status history:', 'muted'));
+        for (const event of history) {
+          let line = event.change_kind + ' — ' + (event.actor_label || '') + ' · ' + (event.noted_at || '');
+          if (event.reason) line += ' · ' + event.reason;
+          box.append(node('p', line, 'muted'));
+        }
+      }
+      if ((item.review_events || []).length) {
+        box.append(node('p', 'Review history: ' + item.review_events.map(e =>
+          e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
+      }
+      if (current.review_state === 'pending') {
+        const actions = node('div', null, 'actions');
+        const button = node('button', 'Demo review acknowledgment', 'button minor'); button.type = 'button';
+        button.addEventListener('click', async () => {
+          try {
+            const requestedCase = readyCase();
+            await api('/api/cases/' + requestedCase + '/referrals/' + item.referral_id + '/review',
+              { reviewer_label: 'Synthetic reviewer (unverified)', scope: 'Demo-only acknowledgment of this fictional referral.' });
+            if (requestedCase !== caseId) return;
+            notice('Acknowledged in demonstration only. This is not credentialed clinical review.'); await loadReferrals();
+          } catch (err) { notice(err.message, true); }
+        });
+        actions.append(button);
+        box.append(actions);
+      } else if (current.review_state === 'needs_review') {
+        box.append(node('p', 'Shared materials changed since this referral. This record stays historical; record a new referral against current versions.', 'muted'));
+      }
+      el('referrals-list').append(box);
+    }
+    // Fill the action-form choices from the loaded list.
+    const fillChoice = (id, labelFn) => {
+      const select = el(id);
+      const prior = select.value;
+      clear(id);
+      for (const item of items) {
+        const opt = node('option', labelFn(item));
+        opt.value = item.referral_id; select.append(opt);
+      }
+      if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+    };
+    fillChoice('ref-ack-choice', item => 'Referral #' + item.referral_id + ' · ' + ((item.current || {}).specialty_label || '') + ' (' + ((item.current || {}).status || '') + ')');
+    fillChoice('ref-outcome-choice', item => 'Referral #' + item.referral_id + ' · ' + ((item.current || {}).specialty_label || '') + ' (' + ((item.current || {}).status || '') + ')');
+    // The question, materials, and outcome-anchor choices come from the
+    // loaded case state, like the second-opinion pickers.
+    const questions = (active && active.questions) || [];
+    const currentSources = (active && active.sources ? active.sources.filter(s => s.state === 'current') : []);
+    const fill = (id, list, labelFn) => {
+      const select = el(id);
+      const prior = select.value;
+      clear(id);
+      for (const entry of list) {
+        const opt = node('option', labelFn(entry));
+        opt.value = entry.id; select.append(opt);
+      }
+      if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+    };
+    fill('ref-question-choice', questions, q => 'Q' + q.id + ', ' + q.question.slice(0, 62));
+    fill('ref-outcome-anchor-choice', currentSources, s => s.document_id + '@' + s.version);
+    // Materials: preserve checked current sources across same-case
+    // reloads. A source that is no longer current is dropped, never
+    // rebound. A case switch never inherits the previous selection.
+    const sameCase = requested === caseId;
+    const priorChecked = sameCase
+      ? new Set([...el('ref-source-choice').querySelectorAll('input:checked')].map(x => Number(x.value)))
+      : new Set();
+    const hadChoices = sameCase && el('ref-source-choice').querySelectorAll('input').length > 0;
+    clear('ref-source-choice');
+    if (!currentSources.length) empty(el('ref-source-choice'), 'No current sources to share.');
+    for (const source of currentSources) {
+      const label = node('label');
+      const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = source.id;
+      checkbox.checked = hadChoices ? priorChecked.has(source.id) : true;
+      label.append(checkbox, node('span', source.document_id + '@' + source.version + ', ' + source.event_date));
+      el('ref-source-choice').append(label);
+    }
+    el('referrals-status').textContent = items.length
+      ? (counts.requested || 0) + ' requested · ' + (counts.acknowledged || 0) + ' acknowledged · '
+        + (counts.outcome_recorded || 0) + ' outcome recorded'
+      : '';
+  } catch (err) { el('referrals-status').textContent = err.message; }
+}
+async function loadCareTeam() {
+  if (!caseId) { el('care-team-status').textContent = 'No case selected.'; return; }
+  const requested = caseId;
+  clear('care-team-list');
+  el('care-team-disclaimer').textContent = '';
+  el('care-team-status').textContent = 'Loading care team…';
+  try {
+    const data = await api('/api/cases/' + requested + '/care-team');
+    if (requested !== caseId) return;
+    clear('care-team-list');
+    el('care-team-disclaimer').textContent = data.disclaimer || '';
+    const updates = data.updates || [];
+    const handoffs = data.handoffs || [];
+    const counts = data.counts || {};
+    if (!updates.length && !handoffs.length) {
+      el('care-team-list').append(node('p', 'No shared updates or handoffs recorded for this fictional case yet.', 'muted'));
+    }
+    if (updates.length) {
+      el('care-team-list').append(node('p', 'Shared updates:', 'muted'));
+      for (const item of updates) {
+        const current = item.current || {};
+        const box = node('div', null, 'snapshot');
+        const top = node('div', null, 'topline');
+        top.append(node('strong', 'Update #' + item.update_id + ' · ' + (current.author_label || '') + ' (' + (current.author_role || '') + ')'));
+        top.append(node('span', (current.review_state || ''), 'muted'));
+        box.append(top);
+        if (current.update_text) box.append(node('p', current.update_text));
+        if ((item.review_events || []).length) {
+          box.append(node('p', 'Review history: ' + item.review_events.map(e =>
+            e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
+        }
+        if (current.review_state === 'pending') {
+          const actions = node('div', null, 'actions');
+          const button = node('button', 'Demo review acknowledgment', 'button minor'); button.type = 'button';
+          button.addEventListener('click', async () => {
+            try {
+              const requestedCase = readyCase();
+              await api('/api/cases/' + requestedCase + '/care-team/updates/' + item.update_id + '/review',
+                { reviewer_label: 'Synthetic reviewer (unverified)', scope: 'Demo-only acknowledgment of this fictional update.' });
+              if (requestedCase !== caseId) return;
+              notice('Acknowledged in demonstration only. This is not credentialed clinical review.'); await loadCareTeam();
+            } catch (err) { notice(err.message, true); }
+          });
+          actions.append(button);
+          box.append(actions);
+        }
+        el('care-team-list').append(box);
+      }
+    }
+    if (handoffs.length) {
+      el('care-team-list').append(node('p', 'Handoffs:', 'muted'));
+      for (const item of handoffs) {
+        const current = item.current || {};
+        const box = node('div', null, 'snapshot');
+        const top = node('div', null, 'topline');
+        top.append(node('strong', 'Handoff #' + item.handoff_id + ' · ' + (current.from_actor || '') + ' → ' + (current.to_actor || '')));
+        top.append(node('span', (current.status || '') + ' · ' + (current.review_state || ''), 'muted'));
+        box.append(top);
+        if (current.reason_text) box.append(node('p', current.reason_text));
+        if (item.question) box.append(node('p', 'About: ' + item.question, 'muted'));
+        if ((item.materials || []).length) {
+          box.append(node('p', 'Materials handed over: ' + item.materials.map(m =>
+            m.document_id + '@' + m.version + ' (' + m.state + ')').join(', '), 'muted'));
+        }
+        const history = item.history || [];
+        if (history.length) {
+          box.append(node('p', 'Status history:', 'muted'));
+          for (const event of history) {
+            let line = event.change_kind + ' — ' + (event.actor_label || '') + ' · ' + (event.noted_at || '');
+            if (event.reason) line += ' · ' + event.reason;
+            box.append(node('p', line, 'muted'));
+          }
+        }
+        if ((item.review_events || []).length) {
+          box.append(node('p', 'Review history: ' + item.review_events.map(e =>
+            e.action + ' by ' + e.reviewer_label + ' · scope: ' + e.scope).join(' ; '), 'snapshot-meta'));
+        }
+        if (current.review_state === 'pending') {
+          const actions = node('div', null, 'actions');
+          const button = node('button', 'Demo review acknowledgment', 'button minor'); button.type = 'button';
+          button.addEventListener('click', async () => {
+            try {
+              const requestedCase = readyCase();
+              await api('/api/cases/' + requestedCase + '/care-team/handoffs/' + item.handoff_id + '/review',
+                { reviewer_label: 'Synthetic reviewer (unverified)', scope: 'Demo-only acknowledgment of this fictional handoff.' });
+              if (requestedCase !== caseId) return;
+              notice('Acknowledged in demonstration only. This is not credentialed clinical review.'); await loadCareTeam();
+            } catch (err) { notice(err.message, true); }
+          });
+          actions.append(button);
+          box.append(actions);
+        } else if (current.review_state === 'needs_review') {
+          box.append(node('p', 'Shared materials changed since this handoff. This record stays historical; record a new handoff against current versions.', 'muted'));
+        }
+        el('care-team-list').append(box);
+      }
+    }
+    // Fill the action-form choices from the loaded list.
+    const fillChoice = (id, labelFn) => {
+      const select = el(id);
+      const prior = select.value;
+      clear(id);
+      for (const item of handoffs) {
+        const opt = node('option', labelFn(item));
+        opt.value = item.handoff_id; select.append(opt);
+      }
+      if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+    };
+    fillChoice('ho-ack-choice', item => 'Handoff #' + item.handoff_id + ' · ' + ((item.current || {}).from_actor || '') + ' → ' + ((item.current || {}).to_actor || '') + ' (' + ((item.current || {}).status || '') + ')');
+    fillChoice('ho-close-choice', item => 'Handoff #' + item.handoff_id + ' · ' + ((item.current || {}).from_actor || '') + ' → ' + ((item.current || {}).to_actor || '') + ' (' + ((item.current || {}).status || '') + ')');
+    // The question and materials choices come from the loaded case
+    // state, like the second-opinion pickers.
+    const questions = (active && active.questions) || [];
+    const currentSources = (active && active.sources ? active.sources.filter(s => s.state === 'current') : []);
+    const fill = (id, list, labelFn) => {
+      const select = el(id);
+      const prior = select.value;
+      clear(id);
+      for (const entry of list) {
+        const opt = node('option', labelFn(entry));
+        opt.value = entry.id; select.append(opt);
+      }
+      if (prior && [...select.options].some(x => x.value === prior)) select.value = prior;
+    };
+    fill('ho-question-choice', questions, q => 'Q' + q.id + ', ' + q.question.slice(0, 62));
+    // Materials: preserve checked current sources across same-case
+    // reloads. A source that is no longer current is dropped, never
+    // rebound. A case switch never inherits the previous selection.
+    const sameCase = requested === caseId;
+    const priorChecked = sameCase
+      ? new Set([...el('ho-source-choice').querySelectorAll('input:checked')].map(x => Number(x.value)))
+      : new Set();
+    const hadChoices = sameCase && el('ho-source-choice').querySelectorAll('input').length > 0;
+    clear('ho-source-choice');
+    if (!currentSources.length) empty(el('ho-source-choice'), 'No current sources to hand over.');
+    for (const source of currentSources) {
+      const label = node('label');
+      const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = source.id;
+      checkbox.checked = hadChoices ? priorChecked.has(source.id) : true;
+      label.append(checkbox, node('span', source.document_id + '@' + source.version + ', ' + source.event_date));
+      el('ho-source-choice').append(label);
+    }
+    el('care-team-status').textContent = (updates.length || handoffs.length)
+      ? (counts.updates || 0) + ' updates · ' + (counts.open || 0) + ' open · '
+        + (counts.acknowledged || 0) + ' acknowledged · ' + (counts.closed || 0) + ' closed'
+      : '';
+  } catch (err) { el('care-team-status').textContent = err.message; }
+}
 function clearCaseViews(denied) {
   for (const id of ['assertion-list', 'question-list', 'snapshot-list', 'source-list',
       'source-change-list', 'asset-list', 'event-list', 'option-list',
@@ -223,7 +713,38 @@ function clearCaseViews(denied) {
       // D2: the exchange views render case data; they must clear under
       // denial like every other view. Display-only: no text inputs, so
       // no picker-guard entry is needed for them.
-      'exchange-bundle', 'exchange-terminology', 'exchange-dicom']) {
+      'exchange-bundle', 'exchange-terminology', 'exchange-dicom',
+      // D4: the analytics views render case data; they must clear under
+      // denial like every other view. Display-only: no text inputs, so
+      // no picker-guard entry is needed for them.
+      'analytics-trends', 'analytics-symptoms', 'analytics-completeness',
+      'analytics-outcomes',
+      // D5: the hypothesis report renders case data; it must clear
+      // under denial like every other view. Display-only: no text
+      // inputs, so no picker-guard entry is needed for it.
+      'hypothesis-claims', 'hypothesis-text', 'hypothesis-literature',
+      'hypothesis-trials',
+      // D6: the appointments list renders case data; it must clear
+      // under denial like every other view. The create/change forms
+      // hold text inputs, so their fields have picker-guard entries
+      // and clear-loop entries of their own (see the picker handler).
+      'appointments-list',
+      // D7: the notifications list renders case data; it must clear
+      // under denial like every other view. Display-only with one
+      // Clear button per item and no text inputs, so no picker-guard
+      // entry is needed for it.
+      'notifications-list',
+      // D8: the referrals list renders case data; it must clear under
+      // denial like every other view. The create/acknowledge/outcome
+      // forms hold text inputs, so their fields have picker-guard
+      // entries and clear-loop entries of their own (see the picker
+      // handler).
+      'referrals-list',
+      // D9: the care-team list renders case data; it must clear under
+      // denial like every other view. The update/handoff forms hold
+      // text inputs, so their fields have picker-guard entries and
+      // clear-loop entries of their own (see the picker handler).
+      'care-team-list']) {
     clear(id);
     empty(el(id), denied);
   }
@@ -272,6 +793,12 @@ async function initialize() {
     el('exchange-bundle-apply').addEventListener('click', loadExchangeBundle);
     el('exchange-terminology-apply').addEventListener('click', loadExchangeTerminology);
     el('exchange-dicom-apply').addEventListener('click', loadExchangeDicom);
+    el('analytics-apply').addEventListener('click', loadAnalytics);
+    el('hypothesis-report-apply').addEventListener('click', loadHypothesisReport);
+    el('appointments-apply').addEventListener('click', loadAppointments);
+    el('notifications-apply').addEventListener('click', loadNotifications);
+    el('referrals-apply').addEventListener('click', loadReferrals);
+    el('care-team-apply').addEventListener('click', loadCareTeam);
     const picker = el('case-picker');
     picker.addEventListener('keydown', focusOverviewFromCasePicker);
     picker.addEventListener('change', () => {
@@ -298,6 +825,29 @@ async function initialize() {
             'visit-amend-date', 'visit-amend-type', 'visit-amend-notes', 'visit-amend-anchor',
             'option-label', 'dependency-anchor', 'task-label', 'task-owner',
             'threat-description', 'threat-anchor', 'reviewer-label', 'review-scope',
+            // D6: appointment form inputs are case-scoped narrative
+            // text (and the date/time they belong to), so an unfinished
+            // appointment must block a case switch like every other
+            // draft. They sit before the eight test-asserted fields,
+            // which stay at the end of this array.
+            'appt-title', 'appt-purpose', 'appt-date', 'appt-time', 'appt-location',
+            'appt-actor', 'appt-reason',
+            'appt-new-date', 'appt-new-time', 'appt-change-actor', 'appt-change-reason',
+            // D8: referral form inputs are case-scoped narrative text,
+            // so an unfinished referral must block a case switch like
+            // every other draft. They sit before the eight
+            // test-asserted fields, which stay at the end of this array.
+            'ref-specialty', 'ref-reason', 'ref-actor',
+            'ref-ack-actor', 'ref-ack-reason',
+            'ref-outcome-text', 'ref-outcome-actor', 'ref-outcome-reason',
+            // D9: care-team form inputs are case-scoped narrative text,
+            // so an unfinished update or handoff must block a case
+            // switch like every other draft. They sit before the eight
+            // test-asserted fields, which stay at the end of this array.
+            'team-update-text', 'team-update-author',
+            'ho-from', 'ho-to', 'ho-reason', 'ho-actor',
+            'ho-ack-actor', 'ho-ack-reason',
+            'ho-close-actor', 'ho-close-reason',
             'counterevidence-reason', 'safety-detail',
             'flag-reason', 'dimension-note',
             'synthesis-note-text', 'synthesis-note-author',
@@ -332,7 +882,33 @@ async function initialize() {
         'workspace-question-text', 'workspace-status-reason',
         'workspace-status-answer', 'visit-date', 'visit-type', 'visit-notes',
         'visit-anchor', 'visit-amend-date', 'visit-amend-type', 'visit-amend-notes',
-        'visit-amend-anchor']) el(id).value = '';
+        'visit-amend-anchor',
+        // D6: appointment form inputs clear on an allowed switch, like
+        // every other draft. They sit at the end of this list so the
+        // eight test-asserted fields stay early in it.
+        'appt-title', 'appt-purpose', 'appt-date', 'appt-time', 'appt-location',
+        'appt-actor', 'appt-reason', 'appt-new-date', 'appt-new-time',
+        'appt-change-actor', 'appt-change-reason',
+        // D8: referral form inputs clear on an allowed switch, like
+        // every other draft. They sit at the end of this list, after
+        // the appointment fields, so the eight test-asserted fields
+        // stay early in it.
+        'ref-specialty', 'ref-reason', 'ref-actor',
+        'ref-ack-actor', 'ref-ack-reason',
+        'ref-outcome-text', 'ref-outcome-actor', 'ref-outcome-reason',
+        // D9: care-team form inputs clear on an allowed switch, like
+        // every other draft. They sit at the end of this list, after
+        // the referral fields, so the eight test-asserted fields
+        // stay early in it.
+        'team-update-text', 'team-update-author',
+        'ho-from', 'ho-to', 'ho-reason', 'ho-actor',
+        'ho-ack-actor', 'ho-ack-reason',
+        'ho-close-actor', 'ho-close-reason']) el(id).value = '';
+      // D8: the shared-materials checkboxes are case-scoped too — a
+      // switch must not leave the previous case's sources checked.
+      clear('ref-source-choice');
+      // D9: the handoff materials checkboxes are case-scoped too.
+      clear('ho-source-choice');
       clearFieldError('draft-observations');
       closeSourceViewsWithoutFocusReturn();
       refresh();
@@ -1901,6 +2477,150 @@ el('followthrough-update-form').addEventListener('submit', async event => {
     el('ft-clear-due').checked = false;
     el('ft-update-actor').value = ''; el('ft-update-reason').value = '';
     notice('Task #' + outcome.task_id + ' is now ' + outcome.result + '. History preserved.'); await refresh();
+  } catch (err) { notice(err.message, true); }
+});
+
+el('appointments-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/appointments', {
+      title: el('appt-title').value,
+      purpose: el('appt-purpose').value || null,
+      scheduled_date: el('appt-date').value,
+      scheduled_time: el('appt-time').value || null,
+      location: el('appt-location').value || null,
+      actor_label: el('appt-actor').value, reason: el('appt-reason').value || null,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['appt-title', 'appt-purpose', 'appt-date', 'appt-time', 'appt-location', 'appt-actor', 'appt-reason']) el(id).value = '';
+    notice('Fictional appointment #' + created.appointment_id + ' recorded. Nothing was booked or sent.'); await loadAppointments();
+  } catch (err) { notice(err.message, true); }
+});
+el('appointments-change-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const payload = {
+      action: el('appt-action').value, actor_label: el('appt-change-actor').value,
+      reason: el('appt-change-reason').value,
+    };
+    if (el('appt-action').value === 'reschedule') {
+      payload.scheduled_date = el('appt-new-date').value;
+      if (el('appt-new-time').value) payload.scheduled_time = el('appt-new-time').value;
+    }
+    const outcome = await api('/api/cases/' + requestedCase + '/appointments/' +
+      Number(el('appt-choice').value) + '/change', payload);
+    if (requestedCase !== caseId) return;
+    for (const id of ['appt-new-date', 'appt-new-time', 'appt-change-actor', 'appt-change-reason']) el(id).value = '';
+    notice('Appointment #' + outcome.appointment_id + ' is now ' + outcome.result + '. History preserved.'); await loadAppointments();
+  } catch (err) { notice(err.message, true); }
+});
+
+el('referrals-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/referrals', {
+      question_id: Number(el('ref-question-choice').value),
+      specialty_label: el('ref-specialty').value,
+      reason_text: el('ref-reason').value,
+      source_version_ids: [...el('ref-source-choice').querySelectorAll('input:checked')].map(x => Number(x.value)),
+      actor_label: el('ref-actor').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ref-specialty', 'ref-reason', 'ref-actor']) el(id).value = '';
+    notice('Fictional referral #' + created.referral_id + ' recorded with pinned source versions. Nothing was sent.'); await loadReferrals();
+  } catch (err) { notice(err.message, true); }
+});
+el('referrals-acknowledge-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/referrals/' +
+      Number(el('ref-ack-choice').value) + '/acknowledge', {
+      actor_label: el('ref-ack-actor').value,
+      reason: el('ref-ack-reason').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ref-ack-actor', 'ref-ack-reason']) el(id).value = '';
+    notice('Referral #' + outcome.referral_id + ' is now ' + outcome.result + '. History preserved.'); await loadReferrals();
+  } catch (err) { notice(err.message, true); }
+});
+el('referrals-outcome-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/referrals/' +
+      Number(el('ref-outcome-choice').value) + '/outcome', {
+      outcome_kind: el('ref-outcome-kind').value,
+      outcome_text: el('ref-outcome-text').value,
+      anchor_source_version_id: Number(el('ref-outcome-anchor-choice').value),
+      actor_label: el('ref-outcome-actor').value,
+      reason: el('ref-outcome-reason').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ref-outcome-text', 'ref-outcome-actor', 'ref-outcome-reason']) el(id).value = '';
+    notice('Referral outcome #' + created.outcome_id + ' recorded as a separate record. The request is unchanged.'); await loadReferrals();
+  } catch (err) { notice(err.message, true); }
+});
+
+el('care-team-update-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/care-team/updates', {
+      update_text: el('team-update-text').value,
+      author_label: el('team-update-author').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['team-update-text', 'team-update-author']) el(id).value = '';
+    notice('Fictional team update #' + created.update_id + ' posted for the patient and team. Nothing was sent.'); await loadCareTeam();
+  } catch (err) { notice(err.message, true); }
+});
+el('care-team-handoff-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const created = await api('/api/cases/' + requestedCase + '/care-team/handoffs', {
+      question_id: Number(el('ho-question-choice').value),
+      from_actor: el('ho-from').value,
+      to_actor: el('ho-to').value,
+      reason_text: el('ho-reason').value,
+      source_version_ids: [...el('ho-source-choice').querySelectorAll('input:checked')].map(x => Number(x.value)),
+      actor_label: el('ho-actor').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ho-from', 'ho-to', 'ho-reason', 'ho-actor']) el(id).value = '';
+    notice('Fictional handoff #' + created.handoff_id + ' recorded with pinned source versions. Nothing was sent.'); await loadCareTeam();
+  } catch (err) { notice(err.message, true); }
+});
+el('care-team-handoff-acknowledge-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/care-team/handoffs/' +
+      Number(el('ho-ack-choice').value) + '/acknowledge', {
+      actor_label: el('ho-ack-actor').value,
+      reason: el('ho-ack-reason').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ho-ack-actor', 'ho-ack-reason']) el(id).value = '';
+    notice('Handoff #' + outcome.handoff_id + ' is now ' + outcome.result + '. History preserved.'); await loadCareTeam();
+  } catch (err) { notice(err.message, true); }
+});
+el('care-team-handoff-close-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const requestedCase = readyCase();
+    const outcome = await api('/api/cases/' + requestedCase + '/care-team/handoffs/' +
+      Number(el('ho-close-choice').value) + '/close', {
+      actor_label: el('ho-close-actor').value,
+      reason: el('ho-close-reason').value,
+    });
+    if (requestedCase !== caseId) return;
+    for (const id of ['ho-close-actor', 'ho-close-reason']) el(id).value = '';
+    notice('Handoff #' + outcome.handoff_id + ' is now ' + outcome.result + '. History preserved.'); await loadCareTeam();
   } catch (err) { notice(err.message, true); }
 });
 
