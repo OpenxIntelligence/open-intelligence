@@ -19,7 +19,7 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from .case_bindings import _case_id
-from .question_origin import classify_question_origin
+from .question_origin import classify_stored_question_origin
 from .composer_preflight import PostgresSourceComposerPreflight, SHA256, SOURCE_SNAPSHOT_CONTRACT
 from .sources import PostgresSourceVersions, _source_id
 from .source_world_model import project_source_world_model
@@ -259,12 +259,14 @@ class PostgresSourceQuestions:
             raise PatientRegistryDenied("Question source context unavailable")
         world = project_source_world_model(source_index)
         rows = self.registry._fetchall(
-            "SELECT question_id,patient_id,case_id,question,source_id,"
-            "source_line,source_sha256,source_version,source_snapshot_sha256,"
-            "preflight_sha256,created_at,source_snapshot_contract "
-            "FROM investigation.source_questions "
-            "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND source_line IS NOT NULL "
-            "ORDER BY created_at,question_id LIMIT 251",
+            "SELECT q.question_id,q.patient_id,q.case_id,q.question,q.source_id,"
+            "q.source_line,q.source_sha256,q.source_version,q.source_snapshot_sha256,"
+            "q.preflight_sha256,q.created_at,q.source_snapshot_contract,"
+            "a.source_id,a.observation_reference "
+            "FROM investigation.source_questions q "
+            "LEFT JOIN investigation.laboratory_question_anchors a ON a.question_id=q.question_id "
+            "WHERE q.patient_id=%s AND q.case_id=%s AND q.origin_org=%s AND q.source_line IS NOT NULL "
+            "ORDER BY q.created_at,q.question_id LIMIT 251",
             (patient_id, case_id, organization),
         )
         if len(rows) > 250:
@@ -274,10 +276,11 @@ class PostgresSourceQuestions:
                    for item in world["observations"]}
         results = []
         for (qid, pid, cid, question, sid, line, digest, version,
-             old_fingerprint, preflight_sha, created_at, snapshot_contract) in rows:
+             old_fingerprint, preflight_sha, created_at, snapshot_contract, anchor_sid, anchor_ref) in rows:
             try:
-                origin = classify_question_origin(question_id=qid, source_id=sid,
-                                                  source_line=line, observation_reference=None)
+                origin = classify_stored_question_origin(question_id=qid, source_id=sid,
+                                                         source_line=line, observation_reference=anchor_ref,
+                                                         anchor_source_id=anchor_sid)
             except ValueError as exc:
                 raise PatientRegistryError("Stored source-line question origin is invalid") from exc
             if origin.kind != "source_line":
