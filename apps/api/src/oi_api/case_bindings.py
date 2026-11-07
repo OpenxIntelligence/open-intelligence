@@ -230,10 +230,21 @@ class CanonicalCaseBindings:
                         "duplicate": True, "source_identity_verified": False}
             if self._identity_table():
                 self._identity_lock(source_organization, source_system, source_subject_ref)
-                if self.registry._fetchone(
-                    "SELECT identity_id FROM coordination.case_source_identities WHERE source_organization=%s "
+                linked = self.registry._fetchone(
+                    "SELECT case_id FROM coordination.case_source_identities WHERE source_organization=%s "
                     "AND source_system=%s AND source_subject_ref=%s AND status='linked'",
-                    (source_organization,source_system,source_subject_ref)) is not None:
+                    (source_organization,source_system,source_subject_ref))
+                if linked is not None:
+                    # Another identical primary command may have committed
+                    # while this transaction waited for the qualified lock.
+                    if linked[0] == case_id:
+                        concurrent = self.registry._fetchone(
+                            "SELECT patient_id,origin_org,source_organization,source_system,"
+                            "source_subject_ref,review_ref,created_by,purpose,status "
+                            "FROM coordination.patient_case_bindings WHERE case_id=%s", (case_id,))
+                        if concurrent is not None and tuple(concurrent[:8]) == intent and concurrent[8] == "active":
+                            return {"case_id":case_id,"patient_id":patient_id,
+                                    "duplicate":True,"source_identity_verified":False}
                     raise PatientRegistryConflict("External source identity already linked")
             # The unique qualified external subject prevents silent many-to-many
             # reuse. Do not infer identity from subject text; this is a fixture.

@@ -105,7 +105,7 @@ The existing uncertain import preserves the selected identity and request on exa
 
 Local checks at the initial implementation: 826 client tests, production build,
 17 parser/graph/config checks, strict new wire test, architecture and synthetic-data
-boundary pass. Nine new PostgreSQL tests are skipped locally because no PostgreSQL16
+boundary pass. Ten new PostgreSQL tests are skipped locally because no PostgreSQL16
 server or Docker executable is installed. Hosted acceptance remains pending until its
 exact source, jobs and counts are recorded in the draft PR. The tests cover three
 institutions, explicit amendments, original bytes, collision quarantine, wrong scope,
@@ -116,3 +116,14 @@ Remaining: first-party identity review/disposition UI, ambiguous-original quaran
 intake and release, namespaced institutional report identifiers, #560 convergence and
 full MRT-01 scientific/clinical-review acceptance. This source identity foundation is
 synthetic engineering work; no merge, deployment, real patient data or clinical effects.
+
+
+Follow-up self-review retained concurrent legacy primary-create recovery after the
+qualified-identity lock and updated explicit migration fixture cleanup for the owned
+child table/functions. Local reference regression passed 1,036 tests on an exported
+source tree, and the 31 architecture tests passed. The full initial local API run
+attempted 1,055 tests with 75 AF_UNIX permission errors and 638 database skips, without
+assertion failures; it is not database acceptance. The initial local npm install
+included an optional binary lacking its LICENSE/NOTICE and failed the rights gate.
+Reinstalling with the existing CI `--omit=optional --ignore-scripts` flags passed all
+13 controls and the inventory (18 installed, two optional entries uninspected).

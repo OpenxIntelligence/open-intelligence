@@ -146,6 +146,17 @@ class SourceIdentityTests(unittest.TestCase):
             with self.engine.connect() as c:
                 self.assertEqual(c.execute(text("SELECT count(*) FROM identity.identity_domain_events WHERE event_type='identity.source_identity_recorded'")).scalar_one(),1)
 
+    def test_concurrent_legacy_primary_creation_still_recovers_one_binding(self):
+        with running_server(self.app) as base:
+            pid=self.make_patient(base)
+            body=dict(synthetic=True,case_id='CASE-CONCURRENT',source_organization='ORG-CONCURRENT',
+                source_system='SYS-CONCURRENT',source_subject_ref='SUBJECT-CONCURRENT',review_ref='REVIEW-CONCURRENT')
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                replies=list(pool.map(lambda _:request(base,f'/v1/patients/{pid}/case-bindings',token=TOKEN_A,body=body),range(2)))
+            self.assertEqual(sorted(r[0] for r in replies),[200,201],replies)
+            with self.engine.connect() as c:
+                self.assertEqual(c.execute(text("SELECT count(*) FROM coordination.case_source_identities WHERE case_id='CASE-CONCURRENT'")).scalar_one(),1)
+
     def test_response_failure_and_late_authority_loss_rollback(self):
         from oi_api.patients import SourceIdentityReceipt
         from open_intelligence.postgres_registry import PostgresPatientRegistry

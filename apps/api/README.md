@@ -1,3 +1,5 @@
+Current institutional intake continuation requires `0030_case_source_identities`, extending `0029_patient_access`. See [institutional source construction](../../docs/engineering/H1_CANONICAL_RECORD_SOURCE_RECEIPT.md#institutional-source-identities--connected-construction-continuation) for explicit associations, quarantine, UI selection, migration and remaining acceptance.
+
 # Open Intelligence H1 patient registry API
 
 Current permission continuation requires `0029_patient_access`, extending the preserved `0028_connected_product` join. The API and both workers support explicit persisted-grant enforcement; Overview provides permission history, grant/revoke and exact retry recovery. See [patient permissions](../../docs/engineering/PERSISTED_PATIENT_PERMISSIONS.md). Synthetic declarations do not verify legal consent or identity.
@@ -45,7 +47,7 @@ Compose outcomes must be recorded against the dependent PR's exact source.
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integration. This candidate requires
-`0029_patient_access`. Run `python -m oi_api.migrate upgrade head` from the
+`0030_case_source_identities`. Run `python -m oi_api.migrate upgrade head` from the
 published histories before startup. The join retains `0022_encounter_sources`
 and `0027_source_event_purpose`. The latter has single parent `0026_integrated_core`,
 whose existing no-DDL join retains the three parents
