@@ -15,7 +15,8 @@ from open_intelligence.patient_registry import (
 )
 
 from .access import Authentication, DenyAuthentication, SyntheticFileAuthentication, authenticate_token
-from .composer_runs import ACTIONS, PostgresComposerRuns, RunLeaseLost
+from .composer_capabilities import COMPOSER_CAPABILITIES
+from .composer_runs import ACTIONS, KIND, PostgresComposerRuns, RunLeaseLost
 from .config import Settings
 from .database import Database
 from .registry_context import registry_for_principal
@@ -30,6 +31,10 @@ def run_once(settings: Settings, token_provider: Callable[[], str], patient_id: 
     """
     if type(lease_seconds) is not int or not 1 <= lease_seconds <= 300:
         raise ValueError("Lease duration must be between 1 and 300 seconds")
+    try:
+        COMPOSER_CAPABILITIES.require(KIND)
+    except ValueError:
+        return {"status": "blocked"}
     provider = authentication if authentication is not None else (
         SyntheticFileAuthentication(settings.access_file) if settings.access_file else DenyAuthentication())
 
@@ -102,11 +107,22 @@ def _token_reader(path: str):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Run one independently fictional source-question brief.")
-    parser.add_argument("--once", action="store_true", required=True)
-    parser.add_argument("--patient", required=True)
-    parser.add_argument("--case", required=True)
-    parser.add_argument("--lease-seconds", type=int, default=30, choices=range(1, 301), metavar="1..300")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--once", action="store_true")
+    mode.add_argument("--capabilities", action="store_true", help="Describe code registrations without executing work")
+    parser.add_argument("--patient")
+    parser.add_argument("--case")
+    parser.add_argument("--lease-seconds", type=int, choices=range(1, 301), metavar="1..300")
     args = parser.parse_args(argv)
+    if args.capabilities:
+        if args.patient is not None or args.case is not None or args.lease_seconds is not None:
+            parser.error("Capability inspection cannot include execution arguments")
+        print(json.dumps(COMPOSER_CAPABILITIES.describe(), sort_keys=True))
+        return 0
+    if not args.patient or not args.case:
+        parser.error("Execution requires --patient and --case")
+    if args.lease_seconds is None:
+        args.lease_seconds = 30
     path = os.environ.get("OI_API_WORKER_TOKEN_FILE")
     try:
         if not path:

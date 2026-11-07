@@ -76,6 +76,7 @@ jobs:
           import sys, unittest
           suite = unittest.TestSuite([
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_composer_run*.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_execution_capabilities.py'),
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_event*.py'),
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_evidence_run_review.py'),
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_encounter*.py'),
