@@ -1,5 +1,5 @@
-"""First contract regressions: no clinical inference or permission elevation."""
-import pytest
+"""Semantic contract regressions, compatible with repository unittest discovery."""
+import unittest
 
 from open_intelligence.semantic_contract import (
     Concept, Relationship, SemanticContractError, SemanticReference, SemanticRegistry,
@@ -22,70 +22,66 @@ def reference(concept="oi:observation", **overrides):
     return SemanticReference(**fields)
 
 
-def test_valid_source_to_calculation():
-    r = registry()
-    r.validate_edge("oi:input-to", 1, reference(),
-                    reference("oi:calculation", owner="calculation", knowledge_kind="calculated"))
+class SemanticContractTests(unittest.TestCase):
+    def assert_rejected(self, reason, callback):
+        with self.assertRaises(SemanticContractError) as error:
+            callback()
+        self.assertEqual(error.exception.code, reason)
 
+    def test_valid_source_to_calculation(self):
+        registry().validate_edge(
+            "oi:input-to", 1, reference(),
+            reference("oi:calculation", owner="calculation", knowledge_kind="calculated"),
+        )
 
-@pytest.mark.parametrize("field,value,reason", [
-    ("concept_version", 2, "unknown_concept_version"),
-    ("source_version_id", "", "missing_provenance"),
-    ("knowledge_kind", "reviewed", "invalid_knowledge_kind"),
-    ("evidence_status", "normal", "invalid_evidence_status"),
-])
-def test_invalid_reference_fails_closed(field, value, reason):
-    with pytest.raises(SemanticContractError) as error:
-        registry().validate_reference(reference(**{field: value}))
-    assert error.value.code == reason
+    def test_invalid_reference_fails_closed(self):
+        for field, value, reason in (
+            ("concept_version", 2, "unknown_concept_version"),
+            ("source_version_id", "", "missing_provenance"),
+            ("knowledge_kind", "reviewed", "invalid_knowledge_kind"),
+            ("evidence_status", "normal", "invalid_evidence_status"),
+        ):
+            with self.subTest(field=field, value=value):
+                self.assert_rejected(reason, lambda: registry().validate_reference(reference(**{field: value})))
 
+    def test_invalid_relationship_direction(self):
+        self.assert_rejected("relationship_domain_range_mismatch",
+                             lambda: registry().validate_edge("oi:input-to", 1,
+                                                              reference("oi:calculation"), reference()))
 
-def test_invalid_relationship_direction():
-    with pytest.raises(SemanticContractError) as error:
-        registry().validate_edge("oi:input-to", 1,
-                                 reference("oi:calculation"),
-                                 reference("oi:observation"))
-    assert error.value.code == "relationship_domain_range_mismatch"
+    def test_unknown_relationship_version(self):
+        self.assert_rejected("unknown_relationship_version",
+                             lambda: registry().validate_edge("oi:input-to", 2, reference(),
+                                                              reference("oi:calculation")))
 
+    def test_duplicate_concept_rejected(self):
+        c = Concept("oi:observation", 1, "Source-bound observation")
+        self.assert_rejected("duplicate_concept", lambda: SemanticRegistry((c, c), ()))
 
-def test_unknown_relationship_version():
-    with pytest.raises(SemanticContractError) as error:
-        registry().validate_edge("oi:input-to", 2, reference(), reference("oi:calculation"))
-    assert error.value.code == "unknown_relationship_version"
+    def test_invalid_concept_versions(self):
+        for bad in (0, -1, True, 1.0, "1"):
+            with self.subTest(version=bad):
+                self.assert_rejected("invalid_concept",
+                                     lambda: SemanticRegistry((Concept("oi:observation", bad, "Observation"),), ()))
 
+    def test_malformed_semantic_identifiers(self):
+        for bad in ("", ":observation", "oi:", " oi:observation", "oi:observation "):
+            with self.subTest(identifier=bad):
+                self.assert_rejected("invalid_semantic_id",
+                                     lambda: SemanticRegistry((Concept(bad, 1, "Observation"),), ()))
 
-def test_duplicate_concept_rejected():
-    c = Concept("oi:observation", 1, "Source-bound observation")
-    with pytest.raises(SemanticContractError) as error:
-        SemanticRegistry((c, c), ())
-    assert error.value.code == "duplicate_concept"
+    def test_whitespace_only_provenance(self):
+        for field in ("owner", "record_id", "source_version_id"):
+            with self.subTest(field=field):
+                self.assert_rejected("missing_provenance",
+                                     lambda: registry().validate_reference(reference(**{field: "  "})))
 
-
-@pytest.mark.parametrize("bad_version", [0, -1, True, 1.0, "1"])
-def test_reject_invalid_concept_versions(bad_version):
-    with pytest.raises(SemanticContractError) as error:
-        SemanticRegistry((Concept("oi:observation", bad_version, "Observation"),), ())
-    assert error.value.code == "invalid_concept"
-
-
-@pytest.mark.parametrize("bad_id", ["", ":observation", "oi:", " oi:observation", "oi:observation "])
-def test_reject_malformed_semantic_identifiers(bad_id):
-    with pytest.raises(SemanticContractError) as error:
-        SemanticRegistry((Concept(bad_id, 1, "Observation"),), ())
-    assert error.value.code == "invalid_semantic_id"
-
-
-@pytest.mark.parametrize("field", ["owner", "record_id", "source_version_id"])
-def test_reject_whitespace_only_provenance(field):
-    with pytest.raises(SemanticContractError) as error:
-        registry().validate_reference(reference(**{field: "  "}))
-    assert error.value.code == "missing_provenance"
-
-
-def test_reject_invalid_relationship_version():
-    with pytest.raises(SemanticContractError) as error:
-        SemanticRegistry(
+    def test_invalid_relationship_version(self):
+        self.assert_rejected("invalid_relationship", lambda: SemanticRegistry(
             (Concept("oi:observation", 1, "Observation"),),
             (Relationship("oi:self", True, "oi:observation", "oi:observation"),),
-        )
-    assert error.value.code == "invalid_relationship"
+        ))
+
+
+if __name__ == "__main__":
+    unittest.main()
