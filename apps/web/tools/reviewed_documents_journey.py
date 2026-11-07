@@ -224,6 +224,21 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
         cd.evaluate('window.__restoreCitationFetch()')
     click('Open saved passage citations')
     cd.wait("document.querySelector('[data-testid=passage-citations]')?.textContent.includes('FICT-RECORD-CONTINUITY@1 · available')",'saved citation reopened')
+    # Evidence access may be revoked while document access remains valid.
+    # A denied *new* search must invalidate older on-screen citation metadata.
+    # The source owner is unchanged; this is an information-display boundary.
+    credentials[0]['actions'].remove('evidence_read');write_grants()
+    click('Search evidence catalog')
+    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('Evidence search unavailable.')",
+            'denied citation search reported')
+    assert cd.evaluate("!document.querySelector('[data-testid=passage-citations]')"), (
+        'Evidence denial must hide earlier saved-citation metadata')
+    assert cd.evaluate("!document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('FICT-RECORD-CONTINUITY@1')"), (
+        'A denied metadata search must not retain an earlier citation in the visible panel')
+    credentials[0]['actions'].append('evidence_read');write_grants()
+    click('Open saved passage citations')
+    cd.wait("document.querySelector('[data-testid=passage-citations]')?.textContent.includes('FICT-RECORD-CONTINUITY@1 · available')",
+            'a fresh authorized read restores the original citation')
     original_question,=operator(prefix+'/'+first+'/questions')['questions']
     assert original_question['selection']['anchor']['annotation_revision_id']==initial_revision['revision_id']
 
