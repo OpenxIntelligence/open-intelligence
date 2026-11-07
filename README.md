@@ -198,6 +198,29 @@ baseline (947 tests) and zero new failures. Unproven: the live-model
 half of the metrics (M25/M26/M29 need live runs; the Skeptic's live
 proof is pending the same Meta billing fix).
 
+**Evaluation probes for D5–D9 (Wave slice W3, 7 November 2026):**
+the harness now also measures hypothesis composition/report assembly
+and the D6–D9 care loop, all offline and deterministic
+(`model_calls: 0`): D5 composition (11 probes — every
+`compose_hypothesis` rejection rule plus a valid composition) and
+report assembly (7 probes — fixed section order, trial label,
+literature metadata-only, counts, and the stored/invalidated
+hypothesis transition from W2); D6 appointment lifecycle (7);
+D7 notification derivation (8 — exactly-once, due-soon/overdue
+exclusivity, patient clear carve-out); D8 referral lifecycle (9 —
+exactly one outcome, pinned kinds, sends nothing); D9 shared
+updates/handoffs (7 — same record for patient and clinician,
+amendment reopens a handoff). 49 new probes, all passing. These
+are probe families, not M-metrics: the 8 measured metrics are
+unchanged, and a failing family fails the suite through a
+`failures` entry. A sensitivity test proves the harness can fail:
+a compose function that ignores the over-length rule fails the
+D5-composition family and the suite while all 8 metrics still
+pass. No dimension module's behavior changed — the probes measure
+only. Local suite on the slice branch: 1280 tests (1273 on the
+main baseline plus 7 new harness tests), with the same 17
+pre-existing `test_pdf_intake` failures and zero new failures.
+
 **Vertical interface (Slice V1, 5 November 2026):** the core holds no
 oncology knowledge — oncology lives behind a vertical interface
 (`src/open_intelligence/vertical.py`: a registry; a vertical
@@ -464,8 +487,8 @@ model-call path nor any other dimension module). Local suite at the
 slice branch: 1206 tests, with the same 17 pre-existing
 `test_pdf_intake` failures as the branch baseline (1182 tests) and
 zero new failures. Unproven: no external delivery of any kind; no
-reminder scheduling; no C5 evaluation-harness probes for
-notifications yet; no live model call exists in the slice (Meta
+reminder scheduling; C5 evaluation-harness probes for
+notifications landed in wave slice W3; no live model call exists in the slice (Meta
 billing fix still pending).
 
 **Care coordination dimension (Slice D8, 6 November 2026):**
@@ -492,8 +515,8 @@ suite at the slice branch: 1226 tests, with the same 17
 pre-existing `test_pdf_intake` failures as the branch baseline
 (1206 tests) and zero new failures. Unproven: no message or
 handoff leaves the product; no link to a follow-through task or an
-appointment; no per-referral snapshot link; no C5
-evaluation-harness probes for referrals yet; no live model call
+appointment; no per-referral snapshot link; C5
+evaluation-harness probes for referrals landed in wave slice W3; no live model call
 exists in the slice (Meta billing fix still pending).
 
 **Care coordination dimension (Slice D9, 6 November 2026):**
@@ -522,8 +545,8 @@ module). Local suite at the slice branch: 1249 tests, with the same
 17 pre-existing `test_pdf_intake` failures as the branch baseline
 (1226 tests) and zero new failures. Unproven: no message or
 handoff leaves the product; no link to a follow-through task or an
-appointment; no per-record snapshot link; no C5
-evaluation-harness probes for care-team collaboration yet; no live
+appointment; no per-record snapshot link; C5
+evaluation-harness probes for care-team collaboration landed in wave slice W3; no live
 model call exists in the slice (Meta billing fix still pending).
 
 **Second vertical (Slice V2, 6 November 2026):** the capstone —
