@@ -81,6 +81,25 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.remove_owned_fixtures()
 
+    def test_migration_statement_can_outlive_the_runtime_socket_budget(self):
+        from dataclasses import replace
+        from alembic.command import upgrade
+
+        settings = replace(self.settings, connect_timeout_seconds=0.2)
+
+        def delayed_upgrade(config, revision):
+            connection = config.attributes["connection"]
+            self.assertEqual(connection.exec_driver_sql("SHOW statement_timeout").scalar_one(), "30s")
+            self.assertEqual(connection.exec_driver_sql("SHOW lock_timeout").scalar_one(), "5s")
+            connection.exec_driver_sql("SELECT pg_sleep(0.6)")
+            return upgrade(config, revision)
+
+        with patch("oi_api.migrate.command.upgrade", side_effect=delayed_upgrade):
+            migrate(settings, "upgrade", "head")
+        with self.engine.connect() as connection:
+            self.assertEqual(connection.exec_driver_sql("SELECT version_num FROM public.alembic_version").scalar_one(),
+                             SCHEMA_REVISION)
+
     def remove_owned_fixtures(self):
         with self.engine.begin() as conn:
             # Release only the declared 0019 execution children and functions.
@@ -93,6 +112,7 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.execute(text('DROP TABLE IF EXISTS coordination.source_event_outbox'))
             conn.execute(text('DROP FUNCTION IF EXISTS coordination.capture_source_event()'))
             conn.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_outbox()'))
+            conn.execute(text('DROP FUNCTION IF EXISTS coordination.source_event_binding(bigint)'))
             conn.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_delivery()'))
             conn.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_delivery_event()'))
             conn.execute(text('DROP FUNCTION IF EXISTS coordination.require_source_delivery_consistency()'))

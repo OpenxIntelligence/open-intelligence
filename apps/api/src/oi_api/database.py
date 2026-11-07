@@ -10,13 +10,13 @@ from .config import Settings
 from .contracts import DatabaseStatus, POSTGRES_MAJOR, SCHEMA_REVISION
 
 
-def make_engine(settings: Settings):
+def make_engine(settings: Settings, *, transport_timeout: float | None = None):
     if settings.database_url is None:
         raise ValueError("Database configuration is required")
     return create_engine(
         settings.database_url,
         poolclass=NullPool,
-        connect_args={"timeout": settings.connect_timeout_seconds},
+        connect_args={"timeout": settings.connect_timeout_seconds if transport_timeout is None else transport_timeout},
         hide_parameters=True,
         echo=False,
     )

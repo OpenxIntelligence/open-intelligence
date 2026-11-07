@@ -26,15 +26,6 @@ from urllib.request import Request, urlopen as _plain_urlopen
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-# These synthetic journeys use loopback origins. Chrome's own model downloads
-# otherwise share the default download directory with the application artifacts.
-LOCAL_BROWSER_NETWORK_FLAGS = (
-    "--disable-background-networking",
-    "--disable-component-update",
-    "--disable-features=OptimizationGuideModelDownloading",
-    "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1, EXCLUDE [::1]",
-)
-
 # Transitional header: direct API calls in journeys still present the demo
 # actor; the browser itself signs in (see sign_in_demo) and sends no header.
 DEMO_ACTOR_HEADERS = {"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"}
@@ -299,7 +290,7 @@ def main() -> None:
             wait_for(lambda: urlopen(url, timeout=1).status == 200, "local synthetic server")
             browser = subprocess.Popen([
                 chrome, "--headless=new", "--disable-gpu", "--disable-dev-shm-usage",
-                *LOCAL_BROWSER_NETWORK_FLAGS, "--no-first-run",
+                "--disable-background-networking", "--no-first-run",
                 "--disable-extensions", "--no-default-browser-check",
                 "--remote-allow-origins=*", f"--remote-debugging-port={debug_port}",
                 f"--user-data-dir={directory}/chrome", "about:blank",

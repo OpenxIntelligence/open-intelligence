@@ -1,4 +1,4 @@
-"""Relay one authorized H1 encounter change page to a fictional activity counter."""
+"""Deliver and reconcile authorized H1 encounter changes for the local operations receiver."""
 from __future__ import annotations
 
 import argparse
@@ -6,7 +6,6 @@ from contextlib import closing, contextmanager
 from datetime import datetime
 import hashlib
 from http.client import HTTPConnection, HTTPException
-from itertools import zip_longest
 import json
 import os
 from pathlib import Path
@@ -15,7 +14,8 @@ import sqlite3
 import stat
 import tempfile
 
-from .encounter_event_contract import EncounterEvents
+from .encounter_event_contract import EncounterEvents, VisitEvents
+from .encounter_workload import VisitWorkload
 
 PAGE_SIZE = 25
 MAX_BODY = 32768
@@ -27,11 +27,13 @@ class FeedUnavailable(RuntimeError):
     """No authorized page is available for this attempt."""
 
 
-def read_page(port, patient, token, after_id):
+def read_page(port, patient, token, after_id, *, visit_workload=False):
     # Numeric loopback only. HTTPConnection neither follows redirects nor uses proxies.
     if not re.fullmatch(r"[A-Za-z0-9._~-]{32,256}", token):
         raise FeedUnavailable("Credential unavailable")
     path = f"/v1/patients/{patient}/encounters/events?limit={PAGE_SIZE}&after_id={after_id}"
+    if visit_workload:
+        path += "&include_visit_state=true"
     with closing(HTTPConnection("127.0.0.1", port, timeout=5)) as connection:
         connection.request("GET", path, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
         response = connection.getresponse()
@@ -45,8 +47,9 @@ def read_page(port, patient, token, after_id):
         return json.loads(raw)
 
 
-def checked_events(document, patient, cursor):
-    page = EncounterEvents.model_validate(document, strict=True)
+def checked_events(document, patient, cursor, *, visit_workload=False):
+    contract = VisitEvents if visit_workload else EncounterEvents
+    page = contract.model_validate(document, strict=True)
     if (page.patient_id != patient or not ACCESS_RECEIPT.fullmatch(page.access_receipt_id)
             or len(page.events) > PAGE_SIZE or (page.has_more and len(page.events) != PAGE_SIZE)):
         raise ValueError("Unexpected patient, authorization receipt or page size")
@@ -75,48 +78,44 @@ def checked_events(document, patient, cursor):
     return page
 
 
-LATEST_DRAFTS_SCHEMA = """CREATE TABLE latest_drafts (
-    encounter_id INTEGER NOT NULL, note_key_hash TEXT NOT NULL,
-    note_version INTEGER NOT NULL, event_id INTEGER NOT NULL UNIQUE REFERENCES activity_receipts(event_id),
-    PRIMARY KEY (encounter_id, note_key_hash))"""
-
-
-def create_activity(db, scope):
-    db.execute("CREATE TABLE activity_scope (scope_sha256 TEXT PRIMARY KEY)")
-    db.execute("INSERT INTO activity_scope VALUES (?)", (scope,))
-    db.execute("""CREATE TABLE activity_receipts (
-        event_id INTEGER PRIMARY KEY, event_sha256 TEXT NOT NULL,
-        event_type TEXT NOT NULL, access_receipt TEXT NOT NULL)""")
-    db.execute("""CREATE TABLE activity_totals (event_type TEXT PRIMARY KEY,
-               total INTEGER NOT NULL CHECK (total >= 1))""")
-    db.execute("PRAGMA user_version=1")
-
-
-def create_draft_inbox(db):
-    # Old receipts omit note identity. Backfill from the governed feed.
-    db.execute("CREATE TABLE draft_checkpoint (through_id INTEGER NOT NULL)")
-    db.execute("INSERT INTO draft_checkpoint VALUES (0)")
-    db.execute(LATEST_DRAFTS_SCHEMA)
-    db.execute("""CREATE TABLE draft_acknowledgements (
-        event_id INTEGER PRIMARY KEY REFERENCES activity_receipts(event_id), access_receipt TEXT NOT NULL)""")
-    db.execute("PRAGMA user_version=2")
-
-
-def receiver_version(db, scope):
+def bind_store(db, scope, *, initialize=True, target_version=2):
+    # Caller holds BEGIN IMMEDIATE, including while initializing a fresh receiver.
     version = db.execute("PRAGMA user_version").fetchone()[0]
-    if version not in (1, 2) or db.execute("SELECT scope_sha256 FROM activity_scope").fetchall() != [(scope,)]:
-        raise ValueError("Receiver schema or source scope differs")
-    return version
-
-
-def bind_store(db, scope):
-    # Caller holds BEGIN IMMEDIATE, including during initialization and upgrade.
-    if db.execute("PRAGMA user_version").fetchone()[0] == 0:
+    if version == 0 and initialize:
         if db.execute("SELECT 1 FROM sqlite_schema LIMIT 1").fetchone():
             raise ValueError("Use a dedicated receiver database")
-        create_activity(db, scope)
-    if receiver_version(db, scope) == 1:
-        create_draft_inbox(db)
+        db.execute("CREATE TABLE activity_scope (scope_sha256 TEXT PRIMARY KEY)")
+        db.execute("INSERT INTO activity_scope VALUES (?)", (scope,))
+        db.execute("""CREATE TABLE activity_receipts (
+            event_id INTEGER PRIMARY KEY, event_sha256 TEXT NOT NULL,
+            event_type TEXT NOT NULL, access_receipt TEXT NOT NULL)""")
+        db.execute("""CREATE TABLE activity_totals (event_type TEXT PRIMARY KEY,
+                   total INTEGER NOT NULL CHECK (total >= 1))""")
+        db.execute("PRAGMA user_version=1")
+        version = 1
+    elif version not in (1, 2) or db.execute("SELECT scope_sha256 FROM activity_scope").fetchall() != [(scope,)]:
+        raise ValueError("Receiver schema or source scope differs")
+
+    if version == 1 and db.execute(
+        "SELECT 1 FROM sqlite_schema WHERE lower(name) IN "
+        "('draft_checkpoint','latest_drafts','draft_acknowledgements') LIMIT 1"
+    ).fetchone():
+        raise ValueError("Inconsistent receiver version; refusing to discard draft state")
+
+    if version == 1 and initialize and target_version == 2:
+        # Old receipts omit note identity. Reconstruct the inbox only from
+        # freshly authorized pages that match their retained event hashes.
+        db.execute("CREATE TABLE draft_checkpoint (through_id INTEGER NOT NULL)")
+        db.execute("INSERT INTO draft_checkpoint VALUES (0)")
+        db.execute("""CREATE TABLE latest_drafts (
+            encounter_id INTEGER NOT NULL, note_key_hash TEXT NOT NULL,
+            note_version INTEGER NOT NULL, event_id INTEGER NOT NULL UNIQUE REFERENCES activity_receipts(event_id),
+            PRIMARY KEY (encounter_id, note_key_hash))""")
+        db.execute("""CREATE TABLE draft_acknowledgements (
+            event_id INTEGER PRIMARY KEY REFERENCES activity_receipts(event_id), access_receipt TEXT NOT NULL)""")
+        db.execute("PRAGMA user_version=2")
+        version = 2
+    return version
 
 
 def project_draft(db, event):
@@ -174,31 +173,36 @@ def open_receiver(path: Path, *, read_only=False):
         os.close(fd)
     uri = path.absolute().as_uri() + ("?mode=ro" if read_only else "?mode=rw")
     with closing(sqlite3.connect(uri, uri=True)) as db:
+        db.execute("PRAGMA foreign_keys=ON")
         yield db
 
 
 def event_digest(event):
-    canonical = json.dumps(event.model_dump(), sort_keys=True, separators=(",", ":")).encode("ascii")
+    canonical = json.dumps(event.model_dump(exclude={"from_status", "to_status"}),
+                           sort_keys=True, separators=(",", ":")).encode("ascii")
     return hashlib.sha256(canonical).hexdigest()
 
 
-def receive_once(path: Path, port, patient, token_provider, *, inbox_after=None, acknowledge=None):
+def receive_once(path: Path, port, patient, token_provider, *, inbox_after=None, acknowledge=None, visit_workload=False):
     if ((inbox_after is not None and (type(inbox_after) is not int or not 0 <= inbox_after <= MAX_ID))
             or (acknowledge is not None and (type(acknowledge) is not int or not 1 <= acknowledge <= MAX_ID))
             or (inbox_after is not None and acknowledge is not None)):
         raise ValueError("Invalid draft inbox operation")
     scope = source_scope(port, patient)
     with open_receiver(path) as db:
-        db.execute("PRAGMA foreign_keys=ON")
         with db:
             db.execute("BEGIN IMMEDIATE")
             bind_store(db, scope)
-            cursor = checkpoint(db)
-        document = read_page(port, patient, token_provider(), max(0, cursor - 1))
-        page = checked_events(document, patient, cursor)
+            workload = VisitWorkload(db) if visit_workload else None
+            draft_through = checkpoint(db)
+            cursor = min(workload.checkpoint(), draft_through) if workload else draft_through
+        options = {"visit_workload": True} if workload else {}
+        document = read_page(port, patient, token_provider(), max(0, cursor - 1), **options)
+        page = checked_events(document, patient, cursor, **options)
         with db:
             db.execute("BEGIN IMMEDIATE")
-            current = checkpoint(db)
+            draft_through = checkpoint(db)
+            current = min(workload.checkpoint(), draft_through) if workload else draft_through
             if current < cursor or current > page.resume_after_id:
                 raise ValueError("Checkpoint changed; retry from the current position")
             received = db.execute("SELECT COALESCE(MAX(event_id), 0) FROM activity_receipts").fetchone()[0]
@@ -224,85 +228,95 @@ def receive_once(path: Path, port, patient, token_provider, *, inbox_after=None,
                                   ON CONFLICT(event_type) DO UPDATE SET total=activity_totals.total+1""",
                                (event.event_type,))
                     applied += 1
-                if event.id > current:
+                if event.id > draft_through:
                     project_draft(db, event)
-            db.execute("UPDATE draft_checkpoint SET through_id=?", (page.resume_after_id,))
+                if workload:
+                    workload.apply(event, page.access_receipt_id)
+            if page.resume_after_id > draft_through:
+                db.execute("UPDATE draft_checkpoint SET through_id=?", (page.resume_after_id,))
             counts = dict(db.execute("SELECT event_type, total FROM activity_totals"))
             result = {"status": "ok", "applied": applied, "has_more": page.has_more, "counts": counts}
+            if workload:
+                result["visit_workload"] = None if page.has_more else workload.totals()
             if inbox_after is not None or acknowledge is not None:
                 result.update(inbox_result(db, page, inbox_after, acknowledge))
         return result
 
 
-def copy_receiver(path, destination, scope):
-    """Take one consistent snapshot of the receiver-owned columns, preserving its version."""
-    with open_receiver(path, read_only=True) as original, open_receiver(destination) as copied:
-        with original, copied:
-            original.execute("BEGIN")
-            version = receiver_version(original, scope)
-            copied.execute("PRAGMA foreign_keys=ON")
-            copied.execute("BEGIN IMMEDIATE")
-            create_activity(copied, scope)
-            tables = [
-                ("activity_receipts", "event_id,event_sha256,event_type,access_receipt"),
-                ("activity_totals", "event_type,total"),
-            ]
-            if version == 2:
-                create_draft_inbox(copied)
-                copied.execute("DELETE FROM draft_checkpoint")
-                tables.extend([
-                    ("draft_checkpoint", "through_id"),
-                    ("latest_drafts", "encounter_id,note_key_hash,note_version,event_id"),
-                    ("draft_acknowledgements", "event_id,access_receipt"),
-                ])
-            for table, columns in tables:
-                # Names come exclusively from the receiver schema above.
-                rows = original.execute(f"SELECT {columns} FROM {table}")
-                parameters = ",".join("?" for _ in rows.description)
-                copied.executemany(f"INSERT INTO {table} ({columns}) VALUES ({parameters})", rows)
+
+def draft_fingerprint(db):
+    # Stream in primary-key order; replay state may be larger than one feed page.
+    digest = hashlib.sha256()
+    for row in db.execute("""SELECT encounter_id,note_key_hash,note_version,event_id
+                             FROM latest_drafts ORDER BY encounter_id,note_key_hash"""):
+        digest.update(json.dumps(row, separators=(",", ":")).encode("ascii") + b"\n")
+    return digest.digest()
 
 
-def draft_replay_boundary(db, through):
-    checkpoints = db.execute("SELECT through_id FROM draft_checkpoint LIMIT 2").fetchall()
-    if len(checkpoints) != 1:
-        raise ValueError("Expected exactly one draft checkpoint")
-    boundary = checkpoints[0][0]
-    if (type(boundary) is not int or not 0 <= boundary <= through or
-            (boundary and not db.execute("SELECT 1 FROM activity_receipts WHERE event_id=?", (boundary,)).fetchone())):
-        raise ValueError("Invalid draft checkpoint")
-    return boundary
+def local_acknowledgements(db, draft_through):
+    """Identify receiver-owned actions separately from replayable EHR events."""
+    digest = hashlib.sha256()
+    count = 0
+    rows = db.execute("""SELECT a.event_id,a.access_receipt,r.event_type
+        FROM draft_acknowledgements a LEFT JOIN activity_receipts r ON r.event_id=a.event_id
+        ORDER BY a.event_id""")
+    for event_id, receipt, category in rows:
+        if (category != "clinical_note_draft_saved" or not 0 < event_id <= draft_through
+                or not isinstance(receipt, str) or not ACCESS_RECEIPT.fullmatch(receipt)):
+            raise ValueError("Local acknowledgement has an invalid note or access reference")
+        digest.update(json.dumps([event_id, receipt], separators=(",", ":")).encode("ascii") + b"\n")
+        count += 1
+    return {"count": count, "sha256": digest.hexdigest(), "source": "local_operations_receiver"}
 
 
-def check_draft_effects(db, replay, boundary):
-    ordered = "SELECT encounter_id,note_key_hash,note_version,event_id FROM latest_drafts ORDER BY encounter_id,note_key_hash"
-    if any(a != b for a, b in zip_longest(db.execute(ordered), replay.execute(ordered))):
-        raise ValueError("Receiver draft inbox differs from replay")
-    # Acknowledgements are local operator actions. Historical note revisions can
-    # stay acknowledged after a newer draft becomes pending.
-    for event_id, receipt, kind in db.execute("""
-        SELECT a.event_id,a.access_receipt,r.event_type FROM draft_acknowledgements a
-        LEFT JOIN activity_receipts r ON r.event_id=a.event_id"""):
-        if (kind != "clinical_note_draft_saved" or event_id > boundary or
-                not isinstance(receipt, str) or not ACCESS_RECEIPT.fullmatch(receipt)):
-            raise ValueError("Invalid draft acknowledgement reference")
-
-
-def verify_snapshot(path, port, patient, token_provider):
-    """Replay the delivered prefix against a private, stationary receiver snapshot."""
+def verify_history(path: Path, port, patient, token_provider, *, expected_ack_sha256=None):
+    """Reconcile all deliveries through a captured checkpoint without applying any events."""
+    scope = source_scope(port, patient)
     with open_receiver(path, read_only=True) as db, closing(sqlite3.connect("")) as replay:
-        version = receiver_version(db, source_scope(port, patient))
-        through = db.execute("SELECT COALESCE(MAX(event_id), 0) FROM activity_receipts").fetchone()[0]
-        if db.execute("SELECT 1 FROM activity_receipts WHERE event_id <= 0 LIMIT 1").fetchone():
-            raise ValueError("Invalid receiver event identity")
-        totals = dict(db.execute("SELECT event_type, total FROM activity_totals"))
-        boundary = draft_replay_boundary(db, through) if version == 2 else 0
-        replay.execute(LATEST_DRAFTS_SCHEMA)
+        # Capture the receiver's checkpoint and effects together. Leave no SQLite
+        # transaction open across network I/O: normal delivery may append later IDs.
+        with db:
+            db.execute("BEGIN")
+            version = bind_store(db, scope, initialize=False)
+            through = db.execute("SELECT COALESCE(MAX(event_id),0) FROM activity_receipts").fetchone()[0]
+            if expected_ack_sha256 is not None and (
+                version != 2 or not re.fullmatch(r"[0-9a-f]{64}", expected_ack_sha256)
+            ):
+                raise ValueError("Expected a v2 receiver and its saved acknowledgement digest")
+            if version == 2:
+                checkpoints = db.execute("SELECT through_id FROM draft_checkpoint").fetchmany(2)
+                if len(checkpoints) != 1 or not 0 <= checkpoints[0][0] <= through:
+                    raise ValueError("Invalid draft inbox checkpoint")
+                draft_through = checkpoints[0][0]
+                if draft_through and not db.execute("SELECT 1 FROM activity_receipts WHERE event_id=?",
+                                                    (draft_through,)).fetchone():
+                    raise ValueError("Missing draft inbox checkpoint receipt")
+                drafts = draft_fingerprint(db)
+                acknowledgements = local_acknowledgements(db, draft_through)
+                if expected_ack_sha256 is not None and expected_ack_sha256 != acknowledgements["sha256"]:
+                    raise ValueError("Local acknowledgements differ from the saved backup receipt")
+                # The scratch database contains derived references only. No writes to the running receiver.
+                bind_store(replay, scope)
+            if db.execute("SELECT 1 FROM activity_receipts WHERE event_id <= 0 LIMIT 1").fetchone():
+                raise ValueError("Invalid receiver event identity")
+            totals = dict(db.execute("SELECT event_type, total FROM activity_totals"))
+            workload = None
+            if VisitWorkload.exists(db):
+                workload = VisitWorkload(replay)
+                workload_through = db.execute("SELECT COALESCE(MAX(event_id), 0) FROM workload_receipts").fetchone()[0]
+                if workload_through > through or db.execute(
+                    "SELECT 1 FROM workload_receipts WHERE event_id <= 0 LIMIT 1"
+                ).fetchone():
+                    raise ValueError("Invalid workload checkpoint")
+                saved_visits = VisitWorkload.state(db)
+        options = {"visit_workload": True} if workload else {}
         cursor = 0
         verified = {}
         while True:
-            document = read_page(port, patient, token_provider(), max(0, cursor - 1))
-            page = checked_events(document, patient, cursor)
+            document = read_page(port, patient, token_provider(), max(0, cursor - 1), **options)
+            page = checked_events(document, patient, cursor, **options)
             end = min(page.resume_after_id, through)
+            # Repeat the page boundary to verify continuity across HTTP reads.
             events = [e for e in page.events if e.id <= through]
             received = db.execute("""SELECT event_id, event_sha256, event_type, access_receipt FROM activity_receipts
                 WHERE event_id BETWEEN ? AND ? ORDER BY event_id LIMIT ?""",
@@ -311,30 +325,42 @@ def verify_snapshot(path, port, patient, token_provider):
             if (any(not isinstance(r[3], str) or not ACCESS_RECEIPT.fullmatch(r[3]) for r in received)
                     or [row[:3] for row in received] != expected):
                 raise ValueError("Producer history and receiver receipts differ")
+            if workload:
+                projected = [e for e in events if e.id <= workload_through]
+                receipts = db.execute("""SELECT event_id, from_status, to_status, access_receipt FROM workload_receipts
+                    WHERE event_id BETWEEN ? AND ? ORDER BY event_id LIMIT ?""",
+                    (cursor, min(end, workload_through), PAGE_SIZE + 1)).fetchall()
+                if ([r[:3] for r in receipts] != [(e.id, e.from_status, e.to_status) for e in projected]
+                        or any(not isinstance(r[3], str) or not ACCESS_RECEIPT.fullmatch(r[3]) for r in receipts)):
+                    raise ValueError("Visit workload receipts differ from the authorized history")
+                for event in projected:
+                    workload.apply(event, page.access_receipt_id)
             for event in events:
                 if event.id > cursor:
-                    verified[event.event_type] = verified.get(event.event_type, 0) + 1
-                    if event.id <= boundary:
+                    if version == 2 and event.id <= draft_through:
                         project_draft(replay, event)
+                    verified[event.event_type] = verified.get(event.event_type, 0) + 1
             if end == through:
                 if verified != totals:
                     raise ValueError("Receiver activity totals differ from replay")
                 if version == 2:
-                    check_draft_effects(db, replay, boundary)
-                return {"status": "verified", "through_event_id": through,
-                        "verified_events": sum(verified.values())}
+                    if draft_fingerprint(replay) != drafts:
+                        raise ValueError("Receiver draft inbox differs from authorized replay")
+                result = {"status": "verified", "through_event_id": through,
+                          "verified_events": sum(verified.values())}
+                if version == 2:
+                    if draft_through != through:
+                        result["draft_through_event_id"] = draft_through
+                    if acknowledgements["count"]:
+                        result["local_acknowledgements"] = acknowledgements
+                if workload:
+                    if VisitWorkload.state(replay) != saved_visits:
+                        raise ValueError("Visit workload state differs from authorized history")
+                    result["workload_through_event_id"] = workload_through
+                return result
             if not page.has_more or end <= cursor:
                 raise ValueError("Producer history ends before the receiver checkpoint")
             cursor = end
-
-
-def verify_history(path: Path, port, patient, token_provider):
-    # Release the live store before contacting the producer. Both acknowledgements
-    # and the current draft projection can change while a long replay is in progress.
-    with tempfile.TemporaryDirectory(prefix="oi-receiver-verify-") as directory:
-        snapshot = Path(directory) / "activity.sqlite"
-        copy_receiver(path, snapshot, source_scope(port, patient))
-        return verify_snapshot(snapshot, port, patient, token_provider)
 
 
 def backup_receiver(path: Path, destination: Path, port, patient, token_provider):
@@ -346,12 +372,36 @@ def backup_receiver(path: Path, destination: Path, port, patient, token_provider
         raise ValueError("Use an operator-private backup directory")
     if os.path.lexists(destination):
         raise FileExistsError("Choose an unused backup path")
-    # Require current feed access before staging, then reauthorize every replay page.
-    checked_events(read_page(port, patient, token_provider(), 0), patient, 0)
+    # Copy only receiver-owned columns, from one read transaction. Do
+    # not export unused pages, triggers or unrelated objects from the source.
     with tempfile.TemporaryDirectory(prefix=".encounter-backup-", dir=directory) as working:
         temporary = Path(working) / "activity.sqlite"
-        copy_receiver(path, temporary, scope)
-        verified = verify_snapshot(temporary, port, patient, token_provider)
+        with open_receiver(path, read_only=True) as original, open_receiver(temporary) as copied:
+            with original, copied:
+                original.execute("BEGIN")
+                copied.execute("BEGIN IMMEDIATE")
+                version = bind_store(original, scope, initialize=False)
+                bind_store(copied, scope, target_version=version)
+                copied.executemany("INSERT INTO activity_receipts VALUES (?,?,?,?)",
+                    original.execute("SELECT event_id,event_sha256,event_type,access_receipt FROM activity_receipts"))
+                copied.executemany("INSERT INTO activity_totals VALUES (?,?)",
+                    original.execute("SELECT event_type,total FROM activity_totals"))
+                if version == 2:
+                    copied.execute("DELETE FROM draft_checkpoint")
+                    copied.executemany("INSERT INTO draft_checkpoint VALUES (?)",
+                        original.execute("SELECT through_id FROM draft_checkpoint"))
+                    copied.executemany("INSERT INTO latest_drafts VALUES (?,?,?,?)",
+                        original.execute("SELECT encounter_id,note_key_hash,note_version,event_id FROM latest_drafts"))
+                    copied.executemany("INSERT INTO draft_acknowledgements VALUES (?,?)",
+                        original.execute("SELECT event_id,access_receipt FROM draft_acknowledgements"))
+                    original_actions = local_acknowledgements(original, checkpoint(original))
+                    if local_acknowledgements(copied, checkpoint(copied)) != original_actions:
+                        raise ValueError("Backup changed locally recorded acknowledgements")
+                if VisitWorkload.exists(original):
+                    VisitWorkload.copy(original, copied)
+        verified = verify_history(temporary, port, patient, token_provider)
+        if verified["verified_events"] == 0:
+            raise ValueError("Refusing to publish an empty receiver backup")
         # A same-filesystem hard link exposes the checked bytes atomically and
         # fails if another process published to this name in the meantime.
         os.link(temporary, destination)
@@ -370,13 +420,17 @@ def main(argv=None):
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--token-file", type=Path, required=True)
     action = parser.add_mutually_exclusive_group()
+    action.add_argument("--visit-workload", action="store_true", help="Project the current visit workload")
     action.add_argument("--pending-drafts-after", type=int, metavar="EVENT_ID",
                         help="List pending local intake items; start at 0")
     action.add_argument("--acknowledge-draft-event", type=int, metavar="EVENT_ID",
                         help="Record local operations intake of the exact draft event")
-    action.add_argument("--backup-to", type=Path, help="Publish a verified copy at a new private path")
-    action.add_argument("--verify-history", action="store_true", help="Verify delivery and draft intake at a captured checkpoint")
+    action.add_argument("--backup-to", type=Path, help="Publish a verified receiver copy at a new private path")
+    action.add_argument("--verify-history", action="store_true", help="Reconcile the restored receiver with the feed")
+    parser.add_argument("--expect-ack-sha256", help="Compare restored local actions with the digest on the backup receipt")
     args = parser.parse_args(argv)
+    if args.expect_ack_sha256 is not None and not args.verify_history:
+        parser.error("--expect-ack-sha256 requires --verify-history")
 
     def token():
         with args.token_file.open("rb") as handle:
@@ -389,10 +443,11 @@ def main(argv=None):
         if args.backup_to is not None:
             result = backup_receiver(args.database, args.backup_to, args.port, args.patient, token)
         elif args.verify_history:
-            result = verify_history(args.database, args.port, args.patient, token)
+            result = verify_history(args.database, args.port, args.patient, token, expected_ack_sha256=args.expect_ack_sha256)
         else:
             result = receive_once(args.database, args.port, args.patient, token,
-                                  inbox_after=args.pending_drafts_after, acknowledge=args.acknowledge_draft_event)
+                                  inbox_after=args.pending_drafts_after, acknowledge=args.acknowledge_draft_event,
+                                  visit_workload=args.visit_workload)
     except (OSError, sqlite3.Error, HTTPException, FeedUnavailable, ValueError, RecursionError):
         print(json.dumps({"status": "unavailable"}))
         return 2

@@ -172,15 +172,29 @@ class DraftInboxTests(unittest.TestCase):
         self.sync(acknowledge=2)
         backup = self.database.with_suffix(".backup")
 
-        def pages():
-            yield self.fetch(8000, PATIENT, "token", 0)  # Authorization before the snapshot.
+        def fetch_while_live_receiver_advances(*args):
             self.events.append(note(7, 2))
             self.sync(acknowledge=3)
-            yield self.fetch(8000, PATIENT, "token", 0)
+            return self.fetch(*args)
 
-        with patch.object(relay, "read_page", side_effect=pages()):
+        with patch.object(relay, "read_page", side_effect=fetch_while_live_receiver_advances):
             result = relay.backup_receiver(self.database, backup, 8000, PATIENT, lambda: "token")
         self.assertEqual(result["through_event_id"], 3)
+        self.assertEqual(result["local_acknowledgements"]["count"], 1)
         self.assertEqual([i["event_id"] for i in self.sync(inbox_after=0)["pending_drafts"]], [7])
         self.database = backup
         self.assertEqual([i["event_id"] for i in self.sync(inbox_after=0)["pending_drafts"]], [3, 7])
+
+    def test_withdrawal_on_later_replay_page_discards_staged_backup(self):
+        self.events = [note(i, 1, encounter=i) for i in range(1, 31)]
+        self.sync()
+        self.sync(acknowledge=1)
+        before = self.database.read_bytes()
+        backup = self.database.with_suffix(".backup")
+        first = self.fetch(8000, PATIENT, "token", 0)
+        with patch.object(relay, "read_page", side_effect=[first, relay.FeedUnavailable()]) as reads:
+            with self.assertRaises(relay.FeedUnavailable):
+                relay.backup_receiver(self.database, backup, 8000, PATIENT, lambda: "token")
+        self.assertEqual(reads.call_count, 2)
+        self.assertEqual(self.database.read_bytes(), before)
+        self.assertEqual(list(self.database.parent.iterdir()), [self.database])

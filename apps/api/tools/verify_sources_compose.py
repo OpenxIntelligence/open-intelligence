@@ -648,13 +648,129 @@ def main():
                 "restored_exact_selection_references": sum(len(item["selections"]) for item in documents),
                 "restored_independent_grants": True, "restored_api_database_restart": True,
                 "restored_revoked_binding_denial": True, "original_database_unchanged": True}
+
+            # Exercise research custody independently of the operations binding
+            # above. A valid research journal event must not enter its outbox.
+            credential["purpose"] = "research"
+            save_access()
+            status, research_created = request("/v1/patients", {
+                "synthetic": True, "request_key": "CREATE-RESEARCH-SOURCE-COMPOSE-PROOF"})
+            assert status == 201 and research_created["duplicate"] is False
+            research_patient = research_created["patient_id"]
+            assert re.fullmatch(r"PAT-[0-9A-F]{32}", research_patient)
+            assert research_patient != patient
+            credential["patient_ids"].append(research_patient)
+            save_access()
+            research_case = "CASE-RESEARCH-COMPOSE"
+            research_patient_path = "/v1/patients/" + research_patient
+            status, research_binding = request(research_patient_path + "/case-bindings", {
+                "synthetic": True, "case_id": research_case,
+                "source_organization": "ORG-SYNTHETIC-RESEARCH",
+                "source_system": "SYS-SYNTHETIC-RESEARCH",
+                "source_subject_ref": "SUBJECT-RESEARCH-COMPOSE",
+                "review_ref": "REVIEW-SYNTHETIC-RESEARCH-COMPOSE"})
+            assert status == 201 and research_binding["patient_id"] == research_patient
+            research_path = research_patient_path + "/cases/" + research_case + "/sources"
+            research_original = ORIGINAL.replace(CASE, research_case).replace(
+                "DOC-COMPOSE", "DOC-RESEARCH-COMPOSE").replace(
+                "SPECIMEN-COMPOSE", "SPECIMEN-RESEARCH-COMPOSE").replace(
+                "fictional café marker", "fictional research café marker")
+            research_raw = research_original.encode("utf-8")
+            research_sha256 = hashlib.sha256(research_raw).hexdigest()
+            research_intake = {"synthetic": True, "original_text": research_original}
+            status, research_saved = request(research_path, research_intake)
+            assert status == 201 and research_saved["result"] == "imported"
+            research_source = research_saved["source_id"]
+            assert re.fullmatch(r"SRC-[0-9A-F]{32}", research_source)
+            assert research_saved == {"result": "imported", "duplicate": False,
+                                      "source_id": research_source, "version": 1}
+            research_original_path = research_path + "/" + research_source
+
+            def research_original_read():
+                status, value = request(research_original_path)
+                assert status == 200, "Research exact original unavailable"
+                assert value["original_text"].encode("utf-8") == research_raw, \
+                    "Research original UTF-8 bytes changed"
+                assert value["sha256"] == research_sha256
+                assert (value["source_id"], value["case_id"], value["document_id"],
+                        value["version"], value["state"]) == (
+                    research_source, research_case, "DOC-RESEARCH-COMPOSE", 1, "current")
+                assert value["synthetic"] is True
+                assert value["clinical_review_state"] == "not_established"
+                access_receipt = value["access_receipt_id"]
+                assert re.fullmatch(r"ACCESS-[0-9A-F]{32}", access_receipt)
+                return {"patient_id": research_patient,
+                    "event_type": "source.original_read_authorized", "metadata_json": {
+                        "receipt_id": access_receipt, "case_id": research_case,
+                        "actor": credential["actor"], "purpose": "research", "binding_revision": 1,
+                        "source_id": research_source, "sha256": research_sha256,
+                        "source_version": 1, "source_state": "current"}}
+
+            research_original_read()
+            research_before = snapshot(revoked_database)
+            research_bound, = [row for row in research_before["tables"][
+                "coordination.patient_case_bindings"] if row["patient_id"] == research_patient]
+            assert (research_bound["case_id"], research_bound["origin_org"],
+                    research_bound["purpose"], research_bound["status"]) == (
+                research_case, credential["organization"], "research", "active")
+            research_version, = [row for row in research_before["tables"][
+                "clinical_source.source_versions"] if row["source_id"] == research_source]
+            assert (research_version["case_id"], research_version["version"],
+                    research_version["sha256"], research_version["raw"]) == (
+                research_case, 1, research_sha256, "\\x" + research_raw.hex())
+            research_event, = [row for row in research_before["tables"][
+                "identity.identity_domain_events"] if row["patient_id"] == research_patient
+                and row["event_type"] == "source.original.imported"]
+            assert research_event["metadata_json"] == {"case_id": research_case,
+                "source_id": research_source, "version": 1, "actor": credential["actor"]}
+            assert datetime.fromisoformat(research_event["occurred_at"]).tzinfo is not None
+            assert not any(row["patient_id"] == research_patient for row in research_before[
+                "tables"]["coordination.source_event_outbox"]), "Research entered operations outbox"
+
+            research_database = "oi_api_test_research_custody_restore"
+            assert restore(revoked_database, research_database) == research_before
+            status, research_retry = request(research_path, research_intake)
+            assert status == 200 and research_retry == {
+                **research_saved, "result": "duplicate", "duplicate": True}
+            assert snapshot(research_database) == research_before, "Research retry changed recovered history"
+            research_reads = [research_original_read()]
+
+            research_credential = dict(credential)
+            credential["purpose"] = "operations"
+            save_access()
+            assert {key: value for key, value in credential.items() if key != "purpose"} == {
+                key: value for key, value in research_credential.items() if key != "purpose"}
+            for path, body in ((research_path, None), (research_original_path, None),
+                               (research_path, research_intake)):
+                denied_before = snapshot(research_database)
+                status, value = request(path, body)
+                assert status == 404 and value == {"detail": "Source unavailable"}, \
+                    "Operations purpose disclosed research source data"
+                assert snapshot(research_database) == denied_before, \
+                    "Purpose-denied research request caused durable effects"
+            credential["purpose"] = "research"
+            save_access()
+            research_reads.append(research_original_read())
+            research_after = snapshot(research_database)
+            assert_read_only_recovery(research_before, research_after, research_reads)
+            assert not any(row["patient_id"] == research_patient for row in research_after[
+                "tables"]["coordination.source_event_outbox"]), "Restored research entered operations outbox"
+            assert snapshot(revoked_database) == research_before, "Restored research HTTP changed its source database"
+            assert snapshot(restored_database) == revoked_before, "Research recovery changed operations source copy"
+            assert snapshot(original_database) == readable_before, "Research recovery changed original database"
+            receipt.update({"research_source_id": research_source, "research_sha256": research_sha256,
+                "research_restored_exact_original": True, "research_restored_exact_retry": True,
+                "research_restored_purpose_denial": True, "research_journal_preserved": True,
+                "research_operations_outbox_absent": True, "research_source_database_unchanged": True,
+                "research_restored_access_receipts": len(research_reads)})
             output = os.environ.get("OI_SOURCE_ACCEPTANCE_FILE")
             if output:
                 Path(output).parent.mkdir(parents=True, exist_ok=True)
                 Path(output).write_text(json.dumps(receipt, indent=2) + "\n")
             print("PASS: scoped source HTTP, exact UTF-8 originals, amendment history, denial, "
                   "API/DB restart, durable access receipts and complete dump/restore; actual restored "
-                  "text/PDF/history/selection/retry HTTP, independent permissions and restored revoked binding")
+                  "text/PDF/history/selection/retry HTTP, independent permissions, restored revoked binding "
+                  "and research custody without operations outbox delivery")
 
         except Exception:
             command(["logs", "--no-color", "--tail", "80"], check=False)

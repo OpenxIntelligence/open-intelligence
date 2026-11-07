@@ -1,4 +1,5 @@
 """Only a complete, reauthorized receiver snapshot can become a recovery file."""
+from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import sqlite3
@@ -43,13 +44,6 @@ class BackupTests(unittest.TestCase):
                 relay.backup_receiver(self.source, self.backup, 8000, PATIENT, self.token)
             self.assertEqual(list(self.source.parent.iterdir()), [self.source])
 
-    def test_withdrawal_after_staging_cannot_publish(self):
-        with patch.object(relay, "read_page", side_effect=[self.events, relay.FeedUnavailable()]) as reads:
-            with self.assertRaises(relay.FeedUnavailable):
-                relay.backup_receiver(self.source, self.backup, 8000, PATIENT, self.token)
-        self.assertEqual(reads.call_count, 2)
-        self.assertEqual(list(self.source.parent.iterdir()), [self.source])
-
     def test_concurrent_publication_never_overwrites_winner(self):
         def feed(*_):
             self.backup.write_bytes(b"earlier backup")
@@ -57,3 +51,67 @@ class BackupTests(unittest.TestCase):
         with patch.object(relay, "read_page", side_effect=feed), self.assertRaises(FileExistsError):
             relay.backup_receiver(self.source, self.backup, 8000, PATIENT, self.token)
         self.assertEqual(self.backup.read_bytes(), b"earlier backup")
+
+    def test_restore_pending_draft_and_compare_retained_local_acknowledgement(self):
+        with patch.object(relay, "read_page", side_effect=relay.FeedUnavailable), self.assertRaises(relay.FeedUnavailable):
+            relay.backup_receiver(self.source, self.backup, 8000, PATIENT, self.token)
+        self.assertFalse(self.backup.exists())
+        with patch.object(relay, "read_page", return_value=self.events):
+            self.assertEqual(relay.backup_receiver(self.source, self.backup, 8000, PATIENT, self.token)["verified_events"], 2)
+        with patch.object(relay, "read_page", return_value=page(event(5, NOTE))):
+            pending = relay.receive_once(self.backup, 8000, PATIENT, self.token, inbox_after=0)
+            self.assertEqual((pending["applied"], pending["pending_drafts"][0]["event_id"]), (0, 5))
+            self.assertEqual(relay.receive_once(self.backup, 8000, PATIENT, self.token, acknowledge=5)["acknowledged_event"], 5)
+        other = self.source.with_name("second.sqlite")
+        with patch.object(relay, "read_page", return_value=self.events):
+            saved = relay.backup_receiver(self.backup, other, 8000, PATIENT, self.token)
+            receipt = saved["local_acknowledgements"]
+            self.assertEqual((receipt["count"], receipt["source"]), (1, "local_operations_receiver"))
+            digest = receipt["sha256"]
+            self.assertEqual(relay.verify_history(other, 8000, PATIENT, self.token,
+                             expected_ack_sha256=digest)["local_acknowledgements"], receipt)
+            with closing(sqlite3.connect(other)) as db, db:
+                db.execute("DELETE FROM draft_acknowledgements")
+            with self.assertRaisesRegex(ValueError, "saved backup receipt"):
+                relay.verify_history(other, 8000, PATIENT, self.token, expected_ack_sha256=digest)
+
+    def test_cannot_publish_altered_receipt_projection_or_empty_snapshot(self):
+        for statement in ("UPDATE activity_receipts SET event_sha256='changed' WHERE event_id=2",
+                          "UPDATE activity_receipts SET access_receipt='changed' WHERE event_id=2",
+                          "INSERT INTO draft_acknowledgements VALUES (2, 'ACCESS-00000000000000000000000000000000')",
+                          "INSERT INTO draft_acknowledgements VALUES (5, 'invalid')",
+                          "UPDATE latest_drafts SET note_version=9",
+                          "DELETE FROM latest_drafts",
+                          "UPDATE draft_checkpoint SET through_id=2",
+                          "PRAGMA user_version=1"):
+            with self.subTest(statement=statement):
+                altered = self.source.with_name("altered.sqlite")
+                altered.touch(mode=0o600)
+                try:
+                    with closing(sqlite3.connect(self.source)) as src, closing(sqlite3.connect(altered)) as dst, dst:
+                        src.backup(dst)
+                        dst.execute(statement)
+                    with patch.object(relay, "read_page", return_value=self.events), self.assertRaises(ValueError):
+                        relay.backup_receiver(altered, self.backup, 8000, PATIENT, self.token)
+                    self.assertFalse(self.backup.exists())
+                finally:
+                    altered.unlink()
+        empty = self.source.with_name("empty.sqlite")
+        with patch.object(relay, "read_page", return_value=page()):
+            relay.receive_once(empty, 8000, PATIENT, self.token)
+            with self.assertRaisesRegex(ValueError, "empty"):
+                relay.backup_receiver(empty, self.backup, 8000, PATIENT, self.token)
+        self.assertFalse(self.backup.exists())
+
+    def test_v1_backup_remains_readable_and_upgrades_with_authorized_history(self):
+        with closing(sqlite3.connect(self.source)) as db, db:
+            for name in ("draft_acknowledgements", "latest_drafts", "draft_checkpoint"):
+                db.execute("DROP TABLE " + name)
+            db.execute("PRAGMA user_version=1")
+        with patch.object(relay, "read_page", return_value=self.events):
+            relay.backup_receiver(self.source, self.backup, 8000, PATIENT, self.token)
+            with closing(sqlite3.connect(self.backup)) as db:
+                self.assertEqual(db.execute("PRAGMA user_version").fetchone(), (1,))
+            result = relay.receive_once(self.backup, 8000, PATIENT, self.token, inbox_after=0)
+            self.assertEqual((result["applied"], result["pending_drafts"][0]["event_id"]), (0, 5))
+            self.assertEqual(relay.verify_history(self.backup, 8000, PATIENT, self.token)["verified_events"], 2)

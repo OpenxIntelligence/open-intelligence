@@ -68,9 +68,12 @@ jobs:
           git rev-parse HEAD > verification-execution/commit.txt
           python - <<'PY' 2>&1 | tee verification-execution/tests.txt
           import sys, unittest
-          suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_composer_run*.py')
-          suite.addTests(unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_evidence_run_review.py'))
-          suite.addTests(unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_event*.py'))
+          suite = unittest.TestSuite([
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_composer_run*.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_event*.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_evidence_run_review.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_encounter*.py'),
+          ])
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           if result.skipped:
               print('Execution acceptance must not skip:', result.skipped, file=sys.stderr)

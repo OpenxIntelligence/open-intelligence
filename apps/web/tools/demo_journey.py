@@ -17,7 +17,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT / 'tools'), str(ROOT / 'tests')]
 import h1_demo as demo
-from browser_journey import LOCAL_BROWSER_NETWORK_FLAGS, ChromeSession, free_port, wait_for, wait_for_browser
+from browser_journey import ChromeSession, free_port, wait_for, wait_for_browser
 
 
 def main():
@@ -45,7 +45,7 @@ def main():
                 wait_for(lambda: urlopen('http://127.0.0.1:4173', timeout=2).status == 200, 'built demo UI', 30)
                 port = free_port()
                 browser = subprocess.Popen([chrome, '--headless=new', '--disable-gpu', '--disable-dev-shm-usage',
-                    *LOCAL_BROWSER_NETWORK_FLAGS, '--no-first-run', '--disable-extensions',
+                    '--disable-background-networking', '--no-first-run', '--disable-extensions',
                     '--no-default-browser-check', '--remote-allow-origins=*', f'--remote-debugging-port={port}',
                     f'--user-data-dir={temporary}/chrome', 'about:blank'], stdout=subprocess.DEVNULL,
                     stderr=chrome_log, start_new_session=True)

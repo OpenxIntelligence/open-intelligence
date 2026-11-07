@@ -410,6 +410,12 @@ class ComposerRunMigrationTests(SourceVersionFixture):
         with self.engine.connect() as conn:
             self.assertEqual(conn.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), REVISION)
         self.upgrade_preserving(before)
+        after = self.snapshot()
+        with self.assertRaisesRegex(CommandError, "Stored source delivery history"):
+            migrate(self.admin, "downgrade", PARENT)
+        self.assertEqual(self.snapshot(), after)
+        with self.engine.connect() as conn:
+            self.assertEqual(conn.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), SCHEMA_REVISION)
 
     def test_published_execution_queue_survives_join_and_runs_with_fresh_authority(self):
         from http_support import running_server

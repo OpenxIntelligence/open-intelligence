@@ -130,7 +130,8 @@ class PostgresClinicalEncounters(ClinicalEncounters):
             # Narrow the revocation window; this is not a distributed policy lock.
             self._allow(actor, patient_id, action, purpose)
 
-    def changes(self, patient_id: str, *, actor: str, purpose: str, after_id: int, limit: int):
+    def changes(self, patient_id: str, *, actor: str, purpose: str, after_id: int, limit: int,
+                include_visit_state: bool = False):
         """Read reference-only changes from the existing transaction journal.
 
         Encounter writers lock the same patient before inserting event IDs. For
@@ -143,7 +144,8 @@ class PostgresClinicalEncounters(ClinicalEncounters):
                 self._allow(actor, patient_id, grant, purpose)
             rows = self.host._fetchall("""
                 SELECT ev.id,ev.event_type,ev.occurred_at,c.id,n.note_key,v.version,
-                       (ev.metadata_json->>'revision')::bigint
+                       (ev.metadata_json->>'revision')::bigint,
+                       ev.metadata_json->>'from_status', ev.metadata_json->>'to_status'
                 FROM identity.identity_domain_events ev
                 LEFT JOIN ehr.clinical_encounters c ON c.patient_id=ev.patient_id
                      AND c.id=(ev.metadata_json->>'encounter_id')::bigint
@@ -155,7 +157,7 @@ class PostgresClinicalEncounters(ClinicalEncounters):
                     ('clinical_encounter_scheduled','clinical_encounter_state_changed','clinical_note_draft_saved')
                 ORDER BY ev.id LIMIT %s""", (patient_id, after_id, limit))
             events = []
-            for event_id, kind, at, encounter_id, note_key, version, revision in rows:
+            for event_id, kind, at, encounter_id, note_key, version, revision, prior, target in rows:
                 if encounter_id is None or (kind == "clinical_note_draft_saved" and version is None):
                     raise RuntimeError("Encounter event lost its patient-owned reference")
                 if kind != "clinical_note_draft_saved" and (revision is None or revision < 1):
@@ -163,6 +165,11 @@ class PostgresClinicalEncounters(ClinicalEncounters):
                 events.append({"id": event_id, "event_type": kind, "occurred_at": at.isoformat(),
                                "encounter_id": encounter_id, "encounter_revision": revision,
                                "note_key": note_key, "note_version": version})
+                if include_visit_state:
+                    # Read the transition recorded at commit, even after later revisions.
+                    events[-1].update(from_status=prior, to_status=(
+                        "scheduled" if kind == "clinical_encounter_scheduled" else target
+                    ))
             return events
 
     def list_encounters(self, patient_id: str, *, actor: str, purpose: str,

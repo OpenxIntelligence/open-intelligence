@@ -1,7 +1,7 @@
 # H1 Source Event Delivery
 
 **Implemented synthetic candidate; acceptance pending at this source-publication
-checkpoint.** [PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
+checkpoint.** [PR #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565)
 maintains the living exact-source test, hosted acceptance and landing ledger.
 Earlier verified worker results do not qualify this addition automatically.
 
@@ -10,7 +10,8 @@ Earlier verified worker results do not qualify this addition automatically.
 This is the next bounded PF-06 / WS-08 / CMP-11 increment under
 [#104](https://github.com/OpenxIntelligence/open-intelligence/issues/104) and
 [#81](https://github.com/OpenxIntelligence/open-intelligence/issues/81). It records
-an obligation when the canonical source journal accepts `source.original.imported`
+an obligation when the canonical source journal accepts an operations-purpose
+`source.original.imported` event
 and lets a currently authorized worker reconcile affected pending Composer runs.
 The source, question, Composer, review and human follow-through owners remain
 canonical. The entire PF-01–PF-10 and PD-01–PD-16 objective remains unfinished.
@@ -36,15 +37,23 @@ Apply the explicit additive migration through the normal migration command:
 PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade head
 ```
 
-The application requires `0025_clinical_source_events`, joining the clinical
-execution head with `0020_source_event_delivery`. That historical revision captures new source-import events and
+The application requires `0027_source_event_purpose` after the preserved
+`0026_integrated_core` join, which connects clinical execution and
+`0020_source_event_delivery`. The successor validates canonical source-event
+lineage before restricting outbox delivery to operations purpose. Valid research
+originals and journal events remain with their existing canonical owner.
+All published migrations remain unchanged. Fresh and published 0026 databases
+can adopt this repair; pre-0020 research history remains held with atomic rollback
+at the original backfill pending a separately reviewed legacy adoption path.
+
+The historical 0020 revision captures new source-import events and
 strictly backfills selected historical source-import events against their
 canonical source/patient/case bindings. Malformed selected history fails the
 upgrade rather than being silently omitted or repaired. Existing originals and
 run history are retained; populated delivery history cannot be discarded by
 downgrade.
 
-The construction baseline is
+The historical construction baseline is
 `cd10a828e499bf65dbbe8eb4ca77207710a5f2b7`, joining verified worker source
 `2312755dc52260c3632c5801b1b7b68041671833` and accepted main
 `aad241e5cce9a1bcff3e431d63cecd16e948d731`. The combined laboratory, encounter and execution migrations and verification results are tracked in [draft #564](https://github.com/OpenxIntelligence/open-intelligence/pull/564).
@@ -155,7 +164,7 @@ The existing full API/reference/web/browser/recovery gates remain required.
 
 At this source checkpoint those final receipts are pending. Record later exact
 source/tree, counts, failures/skips, workflow links, independent review and
-artifact checks in PR #529; do not rewrite earlier failed or source-specific
+artifact checks in PR #565; do not rewrite earlier failed or source-specific
 receipts as successful combined evidence.
 
 No scheduler, daemon, remote broker/consumer, general event catalog, new API,

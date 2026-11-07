@@ -195,3 +195,28 @@ class EvidenceRunReviewTests(EvidenceFixture):
                 self.assertEqual(conn.execute(text("SELECT count(*) FROM identity.identity_domain_events "
                     "WHERE event_type='investigation.review.returned_for_verification' "
                     "OR event_type LIKE 'investigation.evidence.passage%verified'")).scalar_one(), 0)
+
+    def test_restart_keeps_artifacts_bound_and_same_org_actor_cannot_return_another_actors_run(self):
+        with running_server(create_app(self.settings)) as base:
+            _, run_id, command, route, queue = self.inputs(base)
+            original_actor = self.creds[0]["actor"]
+            # The second operator has all the same patient, case, purpose and
+            # report grants. Durable runs remain owned by their originating actor.
+            self.creds[0]["actor"] = "ACTOR-SECOND-OPERATOR"
+            self.write()
+            self.assertEqual(request(base, route.split("/runs/")[0], token=TOKEN_A)[0], 200)
+            self.assert_denied(request(base, route, token=TOKEN_A, body=command))
+            self.assertEqual(request(base, queue, token=TOKEN_A)[1]["receipts"], [])
+            self.creds[0]["actor"] = original_actor
+            self.write()
+            code, receipt, _ = request(base, route, token=TOKEN_A, body=command)
+            self.assertEqual(code, 201, receipt)
+        with running_server(create_app(self.settings)) as base:
+            code, recovered, _ = request(base, route, token=TOKEN_A, body=command)
+            self.assertEqual((code, recovered), (200, {**receipt, "duplicate": True}))
+            visible = request(base, queue, token=TOKEN_A)[1]
+            self.assertEqual([r["receipt_id"] for r in visible["receipts"]], [receipt["receipt_id"]])
+            with self.engine.connect() as conn:
+                self.assertEqual(conn.execute(text("SELECT count(*) FROM identity.identity_domain_events "
+                    "WHERE event_type='investigation.review.returned_for_verification' "
+                    "AND metadata_json->>'run_id'=:run"), {"run": run_id}).scalar_one(), 1)

@@ -195,12 +195,13 @@ class ReceiverTests(unittest.TestCase):
                 relay.verify_history(self.db, 8000, PATIENT, lambda: "test")
 
 
-def interrupt_receiver(database, patient, port, token_file):
+def interrupt_receiver(database, patient, port, token_file, *, visit_workload=False):
     """Kill the real command before its second new receipt, inside the page transaction."""
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
     return subprocess.run(
         [sys.executable, __file__, "--patient", patient, "--port", str(port),
-         "--database", str(database), "--token-file", str(token_file)],
+         "--database", str(database), "--token-file", str(token_file),
+         *(["--visit-workload"] if visit_workload else [])],
         env=env, timeout=15, capture_output=True,
     )
 
@@ -269,7 +270,10 @@ class RelayHTTPTests(unittest.TestCase):
         backup = self.db.with_suffix(".backup")
         result = self.run_cli("--backup-to", str(backup))
         self.assertEqual((result.returncode, json.loads(result.stdout)["status"]), (0, "backup_verified"))
+        digest = json.loads(result.stdout)["local_acknowledgements"]["sha256"]
         self.db = backup
+        checked = self.run_cli("--verify-history", "--expect-ack-sha256", digest)
+        self.assertEqual((checked.returncode, json.loads(checked.stdout)["verified_events"]), (0, 1))
         self.assertEqual(json.loads(self.run_cli("--pending-drafts-after", "0").stdout)["pending_drafts"], [])
         self.document = page(event(5, NOTE), dict(event(9, NOTE), note_version=2))
         self.assertEqual(json.loads(self.run_cli("--pending-drafts-after", "0").stdout)["pending_drafts"],
@@ -286,6 +290,21 @@ class RelayHTTPTests(unittest.TestCase):
         recovered = json.loads(self.run_cli().stdout)
         self.assertEqual((recovered["applied"], sum(recovered["counts"].values())), (2, 3))
         self.assertTrue(self.requests[-1][0].endswith("after_id=4"))
+
+    def test_workload_kill_rolls_back_cursor_and_visit_state_together(self):
+        self.document = page()
+        self.assertEqual(self.run_cli("--visit-workload").returncode, 0)
+        self.document = page(dict(event(5), from_status=None, to_status="scheduled"),
+                             dict(event(8, CHANGED), from_status="scheduled", to_status="in_progress"))
+        killed = interrupt_receiver(self.db, PATIENT, self.port, self.token, visit_workload=True)
+        self.assertEqual(killed.returncode, -signal.SIGKILL, killed.stderr)
+        with closing(sqlite3.connect(self.db)) as db:
+            for table in ("workload_receipts", "workload_visits", "activity_receipts", "activity_totals"):
+                self.assertEqual(db.execute(f"SELECT count(*) FROM {table}").fetchone(), (0,))
+        self.assertEqual(json.loads(self.run_cli("--visit-workload").stdout)["visit_workload"], {"in_progress": 1})
+        self.status = 403
+        self.assertEqual(json.loads(self.run_cli("--visit-workload").stdout), {"status": "unavailable"})
+        self.assertTrue(all("include_visit_state=true" in path for path, _ in self.requests))
 
     def test_verify_cli_rechecks_live_access_even_for_empty_delivered_history(self):
         self.document = page()
@@ -330,7 +349,8 @@ if __name__ == "__main__":
             return 0
 
         db.create_function("interrupt_second_insert", 0, interrupt_second_insert)
-        db.execute("""CREATE TEMP TRIGGER interrupt BEFORE INSERT ON activity_receipts
+        table = "workload_receipts" if "--visit-workload" in sys.argv else "activity_receipts"
+        db.execute(f"""CREATE TEMP TRIGGER interrupt BEFORE INSERT ON {table}
                       BEGIN SELECT interrupt_second_insert(); END""")
         return db
 

@@ -17,11 +17,12 @@ from oi_api.contracts import SCHEMA_REVISION
 from oi_api.evidence_report import render_evidence_report
 from oi_api.migrate import migrate
 from test_authored_evidence_postgres import EvidenceFixture
+from test_evidence_convergence_migrations import PublishedEvidenceFixture
 
 HEAD = SCHEMA_REVISION
 
 
-class EvidenceOriginPostgresTests(EvidenceFixture):
+class EvidenceOriginPostgresTests(PublishedEvidenceFixture, EvidenceFixture):
     def corrupt_command_result(self, operation, key, result):
         # Deliberate administrator corruption probe, not an application write.
         with self.engine.begin() as db:
@@ -102,12 +103,13 @@ class EvidenceOriginPostgresTests(EvidenceFixture):
                         db.exec_driver_sql(statement)
                 self.assertEqual(self.persisted_state(), before)
 
-    def legacy_checkpoint(self, base):
-        state = self.support_report(base)
+    def legacy_checkpoint(self):
+        patient, question, prepared = self.start_at("0010_authored_evidence_origin")
+        state = self.seed_authored_report(patient, question, prepared)
         legacy_body = render_evidence_report(state["prepared"]["snapshot"], renderer="oi.h1-evidence-text/1")
         legacy_sha = hashlib.sha256(legacy_body.encode("utf-8")).hexdigest()
-        # Author a fixture with the exact published old renderer, then remove
-        # the empty sibling owners so the actual 0009->0010 upgrade is tested.
+        # Author a fixture with the exact published old renderer, at its published
+        # owner, before the source outbox existed.
         with self.engine.begin() as db:
             db.exec_driver_sql("ALTER TABLE investigation.question_evidence_reports DISABLE TRIGGER USER")
             db.execute(text("UPDATE investigation.question_evidence_reports SET body=:body,body_sha256=:sha "
@@ -117,13 +119,9 @@ class EvidenceOriginPostgresTests(EvidenceFixture):
             db.exec_driver_sql("DELETE FROM investigation.evidence_command_origins")
             db.exec_driver_sql("ALTER TABLE investigation.evidence_command_origins ENABLE TRIGGER USER")
         migrate(self.admin, "downgrade", "0009_question_evidence")
-        # Unmerging retains the unrelated metadata/follow-through head. Remove
-        # that empty fixture branch explicitly to reproduce the actual legacy
-        # single-head origin checkpoint; never stamp or rewrite its history.
-        migrate(self.admin, "downgrade", "0010_question_evidence@0008_review_convergence")
-        # The empty image sibling also remains after unmerging. Remove only
-        # that branch, retaining the populated authored/question ancestors.
-        migrate(self.admin, "downgrade", "0006_image_custody@0005_source_versions")
+        with self.engine.connect() as db:
+            self.assertEqual(db.execute(text("SELECT version_num FROM public.alembic_version"))
+                             .scalars().all(), ["0009_question_evidence"])
         state["prepared"] = {**state["prepared"], "body": legacy_body, "body_sha256": legacy_sha}
         return state
 
@@ -138,7 +136,7 @@ class EvidenceOriginPostgresTests(EvidenceFixture):
 
     def test_populated_0009_upgrade_preserves_legacy_report_and_exact_command_recovery(self):
         with running_server(create_app(self.settings)) as base:
-            state = self.legacy_checkpoint(base)
+            state = self.legacy_checkpoint()
             before = self.old_history()
             migrate(self.admin, "upgrade", "head")
             self.assertEqual(self.old_history(), before)
@@ -172,7 +170,7 @@ class EvidenceOriginPostgresTests(EvidenceFixture):
 
     def test_0009_backfill_refuses_missing_or_ambiguous_creating_commands_without_mutation(self):
         with running_server(create_app(self.settings)) as base:
-            state = self.legacy_checkpoint(base)
+            state = self.legacy_checkpoint()
             for mode in ("missing", "ambiguous"):
                 with self.subTest(mode=mode):
                     # Roll the deliberately corrupt setup back after the probe.
