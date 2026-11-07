@@ -148,6 +148,46 @@ class EncounterHTTPTests(SourceVersionFixture):
 
 
 class EncounterActivityDeliveryTests(SourceVersionFixture):
+    def test_bounded_catchup_recovers_after_between_page_grant_withdrawal(self):
+        from contextlib import closing
+        from pathlib import Path
+        import sqlite3
+        from urllib.parse import urlsplit
+        from oi_api.encounter_relay import FeedUnavailable, catch_up, verify_history
+
+        self.creds[0]["actions"].extend(["encounter.read", "encounter.schedule",
+                                        "note.read", "encounter.events.read"])
+        self.write()
+        receiver = Path(self.temp.name) / "catchup.sqlite"
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            for index in range(27):
+                body = dict(EncounterHTTPTests.schedule, request_key=f"CATCHUP-{index}",
+                            external_key=f"CATCHUP-VISIT-{index}")
+                status, result, _ = request(base, f"/v1/patients/{patient}/encounters", token=TOKEN_A, body=body)
+                self.assertEqual(status, 200, result)
+            calls = 0
+            def token():
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    self.creds[0]["actions"].remove("note.read")
+                    self.write()
+                return TOKEN_A
+            port = urlsplit(base).port
+            with self.assertRaises(FeedUnavailable):
+                catch_up(receiver, port, patient, token, max_pages=10, visit_workload=True)
+            self.assertEqual(calls, 2)
+            with closing(sqlite3.connect(receiver)) as db:
+                self.assertEqual(db.execute("SELECT count(*) FROM activity_receipts").fetchone(), (25,))
+                self.assertEqual(db.execute("SELECT count(*) FROM workload_visits").fetchone(), (25,))
+            self.creds[0]["actions"].append("note.read")
+            self.write()
+            result = catch_up(receiver, port, patient, lambda: TOKEN_A, max_pages=10, visit_workload=True)
+            self.assertEqual((result["applied"], result["pages"], result["stop_reason"]), (2, 1, "caught_up"))
+            self.assertEqual(result["visit_workload"], {"scheduled": 27})
+            self.assertEqual(verify_history(receiver, port, patient, lambda: TOKEN_A)["verified_events"], 27)
+
     def test_committed_encounter_to_independent_receiver_and_revoked_grant(self):
         from contextlib import closing
         from pathlib import Path
