@@ -181,6 +181,9 @@ def main():
             assert cd.evaluate("document.querySelector('[data-testid=world-no-approval]').textContent.includes('Composer execution: unavailable')")
             initial_world_fingerprint=cd.evaluate("document.querySelector('[data-testid=world-fingerprint]').textContent")
             assert len(initial_world_fingerprint)==64
+            from semantic_history_journey import inspect as inspect_semantics
+            inspect_semantics(cd, historical=False, status="missing", original_state="not-reported",
+                fingerprint=initial_world_fingerprint, source_id=original_id)
             from world_model_race_journey import exercise as exercise_world_model_races
             exercise_world_model_races(cd,patient_id=pid,case_id=case,source_id=original_id,
                 original=original,fingerprint=initial_world_fingerprint,
@@ -284,6 +287,20 @@ def main():
                 assert cd.evaluate("document.querySelector('[data-testid=history-result]').textContent.includes('<script>literal</script>')")
                 assert cd.evaluate("document.querySelectorAll('[data-testid=history-result] script').length===0")
                 assert cd.evaluate("document.querySelectorAll('[data-testid=history-result] [data-testid=choose-question-draft]').length===0")
+                inspect_semantics(cd, historical=True, status="missing", original_state="not-reported",
+                    fingerprint=initial_world_fingerprint, source_id=original_id)
+                inspect_semantics(cd, historical=False, status="negative", original_state="negative",
+                    fingerprint=cd.evaluate("document.querySelector('[data-testid=world-fingerprint]').textContent"),
+                    source_id=new_receipt['source_id'])
+                # Both time contexts remain distinct in the real built application.
+                assert cd.evaluate("document.querySelectorAll('[data-testid=source-semantics-result]').length===2")
+                cd.command('Emulation.setDeviceMetricsOverride',{'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
+                assert cd.evaluate("document.documentElement.scrollWidth<=innerWidth")
+                artifacts=Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence'))
+                artifacts.mkdir(parents=True,exist_ok=True)
+                (artifacts/'source-semantics-history-mobile.png').write_bytes(base64.b64decode(
+                    cd.command('Page.captureScreenshot',{'format':'png','captureBeyondViewport':True})['data']))
+                cd.command('Emulation.clearDeviceMetricsOverride')
                 assert cd.evaluate("document.querySelector('[data-testid=world-reported-state]').textContent==='negative'")
                 from source_history_journey import exercise as exercise_source_history
                 exercise_source_history(cd,original,amended,initial_world_fingerprint,
@@ -361,6 +378,7 @@ def main():
             cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
             cd.wait("document.querySelector('[data-testid=world-status]').textContent.includes('unavailable or revoked')",'World Model permission revocation')
             assert cd.evaluate("!document.querySelector('[data-testid=world-projection]')")
+            assert cd.evaluate("!document.querySelector('[data-testid=source-semantics-result]')")
             cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
             # Read rights must be checked afresh; a denied refresh discards earlier findings.
             # The World Model denial cleared the cached cases and originals. Recheck the

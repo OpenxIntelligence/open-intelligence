@@ -1,4 +1,5 @@
 import {PermissionConsole,PermissionHttpError} from './patient-permissions.js';
+import {parseHistoricalSourceSemantics,parseSourceSemantics} from './source-semantics.js';
 import {createEncounterChart, EncounterHttpError, type EncounterChart} from './encounter-client.js';
 import {readLaboratoryCitationReport} from './laboratory-citation-report.js';
 import {emptySuspension,readSuspensionReceipt,type SuspensionState} from './patient-suspension.js';
@@ -177,6 +178,37 @@ function created(value: unknown): CreatedPatient {
   return Object.freeze(value as CreatedPatient);
 }
 export class RegistrySession {
+  async readSourceSemantics(model:SourceWorldModel,history?:SourceHistory){
+    const scope=this.#scope,read=this.#read,currentWorld=this.#state.worldModel,
+      historyBasis=this.#state.historyBasis,index=this.#state.sourceIndex;
+    const currentWorldMatches=()=>this.#state.worldPhase==='ready'&&this.#state.worldModel===currentWorld;
+    const current=()=>scope===this.#scope&&read===this.#read&&this.#state.connected&&this.#state.phase==='ready'&&
+      this.#state.patient?.patient_id===model.patient_id&&
+      (history?this.#state.sourceHistory===history&&this.#state.historyPhase==='ready'&&history.world_model===model&&
+        this.#state.historyBasis===historyBasis&&(historyBasis==='records'?
+          index!==null&&this.#state.sourceIndex===index&&index.case_id===model.case_id:historyBasis==='world'&&currentWorldMatches())
+        :currentWorldMatches()&&currentWorld===model);
+    if(!this.#token||!current())throw Error('source-semantics-scope');
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    try{
+      const url='/v1/patients/'+encodeURIComponent(model.patient_id)+'/cases/'+encodeURIComponent(model.case_id)+'/world-model/'+
+        (history?'history/semantics?received_through='+encodeURIComponent(history.received_through):'semantics');
+      const response=await this.transport(url,this.#init(control));
+      if(!current()||control.signal.aborted){void response.body?.cancel().catch(()=>{});throw Error('source-semantics-scope');}
+      if(response.status===401){this.#httpError(401);throw Error('source-semantics-authority');}
+      if(response.status===403||response.status===404){
+        const message='Source scope unavailable or revoked. Reload case permissions.';
+        this.#publish({...this.#resetDeniedCaseSources(message),worldPhase:'error',worldMessage:message});
+      }
+      if(response.status!==200)throw Error('source-semantics-unavailable');
+      const raw=await json(response,4194304);
+      const packet=history?parseHistoricalSourceSemantics(raw,history):parseSourceSemantics(raw,model);
+      if(!current()||control.signal.aborted)throw Error('source-semantics-scope');
+      return packet;
+    }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
   // Exact reference-only commands survive a transient panel or evidence refresh.
   // Scope checks withhold recovery controls from another patient/case/question;
   // explicit disconnect clears this in-memory session just like other drafts.

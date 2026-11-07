@@ -1,6 +1,7 @@
 """One receipt-time contract in Journey and Records; real PostgreSQL HTTP."""
 import base64
 import json
+from semantic_history_journey import inspect as inspect_semantics
 
 
 def exercise(cd, original, amended, expected_fingerprint, out, credentials, write_grants):
@@ -29,6 +30,9 @@ def exercise(cd, original, amended, expected_fingerprint, out, credentials, writ
             if version == 1:
                 cd.wait("document.querySelector('[data-testid=records-status]').textContent.includes('Original unavailable')", 'history does not confer original permission')
                 assert not cd.evaluate("Boolean(document.querySelector('[data-testid=server-original]'))")
+                inspect_semantics(cd,historical=True,status='missing',original_state='not-reported',
+                    fingerprint=expected_fingerprint,
+                    source_id=cd.evaluate("document.querySelector('[data-testid=history-source] code').textContent"))
                 credentials[0]['actions'].append('source_original_read'); write_grants()
                 cd.evaluate("document.querySelector('[data-testid=history-open-original]').click()")
             cd.wait("document.querySelector('[data-testid=server-original]')?.textContent==="+json.dumps(raw), 'exact selected original bytes')

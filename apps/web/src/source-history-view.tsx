@@ -1,4 +1,5 @@
 import {useEffect,useState} from 'react';
+import {SourceSemanticsPanel} from './source-semantics-panel';
 import type {RegistrySession,ViewState} from './registry-client';
 import {receiptMicros} from './source-contracts';
 
@@ -43,6 +44,7 @@ export function SourceHistoryView({session,state,busy,basis='world',onOpenOrigin
           onClick={event=>onOpenOriginal(s.source_id,event.currentTarget)}>Open this exact original</button>}
       </li>)}</ul>
       <details><summary>Historical receipt and fingerprint</summary><p><code>{past.access_receipt_id}</code></p><p><code data-testid="history-fingerprint">{past.snapshot_fingerprint}</code></p></details>
+      <SourceSemanticsPanel key={'history:'+past.access_receipt_id} session={session} model={past} history={history} busy={busy}/>
       <button type="button" onClick={()=>session.dismissSourceHistory()}>Close historical context</button>
     </div>}
   </section>;

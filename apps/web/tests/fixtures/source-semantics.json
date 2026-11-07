@@ -1,0 +1,276 @@
+{
+  "world": {
+    "contract": "oi.pg-source-world-model/1",
+    "patient_id": "PAT-SYNTH",
+    "case_id": "CASE-ALPHA",
+    "access_receipt_id": "ACCESS-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "synthetic": true,
+    "authority": "source_report_only_unreviewed",
+    "clinical_interpretation": false,
+    "research_review_invalidation_integrated": false,
+    "composer_execution_authorized": false,
+    "snapshot_fingerprint": "4b874c043f118b1dc44af5f98321d9dad7a5db009be1ede0734eb0936a611891",
+    "as_of_received_at": "2026-01-02T00:00:00Z",
+    "summary": {
+      "current_sources": 1,
+      "historical_sources": 0,
+      "current_observations": 7,
+      "current_laboratory_observations": 0,
+      "unresolved_observations": 5,
+      "source_disagreements": 0
+    },
+    "current_sources": [
+      {
+        "source_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "document_id": "DOC-SYNTH",
+        "version": 1,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "kind": "pathology",
+        "event_date": "2026-01-01",
+        "issued_at": "2026-01-02",
+        "received_at": "2026-01-02T00:00:00Z",
+        "specimen_id": "SPECIMEN-SYNTH",
+        "state": "current",
+        "supersedes_id": null
+      }
+    ],
+    "history": [],
+    "observations": [
+      {
+        "source_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "document_id": "DOC-SYNTH",
+        "document_version": 1,
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_kind": "pathology",
+        "finding_key": "item-0",
+        "reported_state": "reported",
+        "source_statement": "Independently authored synthetic statement.",
+        "source_line": 8,
+        "specimen_id": "SPECIMEN-SYNTH",
+        "event_date": "2026-01-01",
+        "issued_at": "2026-01-02",
+        "review_state": "not_established",
+        "clinical_meaning": null
+      },
+      {
+        "source_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "document_id": "DOC-SYNTH",
+        "document_version": 1,
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_kind": "pathology",
+        "finding_key": "item-1",
+        "reported_state": "negative",
+        "source_statement": "Independently authored synthetic statement.",
+        "source_line": 9,
+        "specimen_id": "SPECIMEN-SYNTH",
+        "event_date": "2026-01-01",
+        "issued_at": "2026-01-02",
+        "review_state": "not_established",
+        "clinical_meaning": null
+      },
+      {
+        "source_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "document_id": "DOC-SYNTH",
+        "document_version": 1,
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_kind": "pathology",
+        "finding_key": "item-2",
+        "reported_state": "pending",
+        "source_statement": "Independently authored synthetic statement.",
+        "source_line": 10,
+        "specimen_id": "SPECIMEN-SYNTH",
+        "event_date": "2026-01-01",
+        "issued_at": "2026-01-02",
+        "review_state": "not_established",
+        "clinical_meaning": null
+      },
+      {
+        "source_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "document_id": "DOC-SYNTH",
+        "document_version": 1,
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_kind": "pathology",
+        "finding_key": "item-3",
+        "reported_state": "indeterminate",
+        "source_statement": "Independently authored synthetic statement.",
+        "source_line": 11,
+        "specimen_id": "SPECIMEN-SYNTH",
+        "event_date": "2026-01-01",
+        "issued_at": "2026-01-02",
+        "review_state": "not_established",
+        "clinical_meaning": null
+      },
+      {
+        "source_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "document_id": "DOC-SYNTH",
+        "document_version": 1,
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_kind": "pathology",
+        "finding_key": "item-4",
+        "reported_state": "not-reported",
+        "source_statement": "Independently authored synthetic statement.",
+        "source_line": 12,
+        "specimen_id": "SPECIMEN-SYNTH",
+        "event_date": "2026-01-01",
+        "issued_at": "2026-01-02",
+        "review_state": "not_established",
+        "clinical_meaning": null
+      },
+      {
+        "source_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "document_id": "DOC-SYNTH",
+        "document_version": 1,
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_kind": "pathology",
+        "finding_key": "item-5",
+        "reported_state": "not-assessed",
+        "source_statement": "Independently authored synthetic statement.",
+        "source_line": 13,
+        "specimen_id": "SPECIMEN-SYNTH",
+        "event_date": "2026-01-01",
+        "issued_at": "2026-01-02",
+        "review_state": "not_established",
+        "clinical_meaning": null
+      },
+      {
+        "source_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "document_id": "DOC-SYNTH",
+        "document_version": 1,
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_kind": "pathology",
+        "finding_key": "item-6",
+        "reported_state": "conflicting",
+        "source_statement": "Independently authored synthetic statement.",
+        "source_line": 14,
+        "specimen_id": "SPECIMEN-SYNTH",
+        "event_date": "2026-01-01",
+        "issued_at": "2026-01-02",
+        "review_state": "not_established",
+        "clinical_meaning": null
+      }
+    ],
+    "laboratory_observations": [],
+    "laboratory_timeline": [],
+    "unresolved_refs": [
+      {
+        "source_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "source_line": 10
+      },
+      {
+        "source_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "source_line": 11
+      },
+      {
+        "source_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "source_line": 12
+      },
+      {
+        "source_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "source_line": 13
+      },
+      {
+        "source_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "source_line": 14
+      }
+    ],
+    "conflicts": [],
+    "limitations": [
+      "Only independently fictional source-reported findings are represented.",
+      "Original bytes and source custody remain in the existing PostgreSQL owner.",
+      "No clinical identity proof, consent, professional review or real PHI support.",
+      "Absent specimens cannot be assumed to be identical; different dates are not conflicts.",
+      "No inferred diagnosis, staging, treatment response, trial eligibility or recommendations.",
+      "Typed FHIR laboratory rows remain source-reported and unreviewed; no reference-range or normal/abnormal inference.",
+      "No biomedical evidence, Composer execution, human-review queue or outcomes integrated.",
+      "Fingerprint is not signed, a permission grant or a safe execution authorization."
+    ]
+  },
+  "semantics": {
+    "contract": "oi.source-semantics/1",
+    "patient_id": "PAT-SYNTH",
+    "case_id": "CASE-ALPHA",
+    "access_receipt_id": "ACCESS-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "source_snapshot_sha256": "4b874c043f118b1dc44af5f98321d9dad7a5db009be1ede0734eb0936a611891",
+    "synthetic": true,
+    "clinical_interpretation": false,
+    "records": [
+      {
+        "owner": "clinical_source",
+        "record_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/line/8",
+        "concept_id": "oi:source-statement",
+        "concept_version": 1,
+        "source_version_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "knowledge_kind": "reported",
+        "evidence_status": "present",
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "original_state": "reported"
+      },
+      {
+        "owner": "clinical_source",
+        "record_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/line/9",
+        "concept_id": "oi:source-statement",
+        "concept_version": 1,
+        "source_version_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "knowledge_kind": "reported",
+        "evidence_status": "negative",
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "original_state": "negative"
+      },
+      {
+        "owner": "clinical_source",
+        "record_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/line/10",
+        "concept_id": "oi:source-statement",
+        "concept_version": 1,
+        "source_version_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "knowledge_kind": "reported",
+        "evidence_status": "pending",
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "original_state": "pending"
+      },
+      {
+        "owner": "clinical_source",
+        "record_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/line/11",
+        "concept_id": "oi:source-statement",
+        "concept_version": 1,
+        "source_version_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "knowledge_kind": "reported",
+        "evidence_status": "indeterminate",
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "original_state": "indeterminate"
+      },
+      {
+        "owner": "clinical_source",
+        "record_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/line/12",
+        "concept_id": "oi:source-statement",
+        "concept_version": 1,
+        "source_version_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "knowledge_kind": "reported",
+        "evidence_status": "missing",
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "original_state": "not-reported"
+      },
+      {
+        "owner": "clinical_source",
+        "record_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/line/13",
+        "concept_id": "oi:source-statement",
+        "concept_version": 1,
+        "source_version_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "knowledge_kind": "reported",
+        "evidence_status": "missing",
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "original_state": "not-assessed"
+      },
+      {
+        "owner": "clinical_source",
+        "record_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/line/14",
+        "concept_id": "oi:source-statement",
+        "concept_version": 1,
+        "source_version_id": "SRC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "knowledge_kind": "reported",
+        "evidence_status": "conflicting",
+        "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "original_state": "conflicting"
+      }
+    ]
+  }
+}
