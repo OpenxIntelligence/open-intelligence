@@ -1980,3 +1980,16 @@ changed. Parent #609 remains required and unmerged; assignment enforcement is
 still explicitly deferred by that owner. Hosted acceptance and broader
 PostgreSQL/product integration remain unverified. Next: verify the exact child
 on CI and reconcile the existing W4/W8 assignment work before extending writes.
+
+### W2 hypothesis envelope consistency continuation
+
+The publication boundary also rejects empty sentence lists, mismatched
+sentence/top-level citation sets, text differing from joined sentences and
+incorrect character counts. These checks preserve the composer's existing
+representation contract; semantic composition rules remain in hypothesis.py.
+Four adversarial variants were accepted before the repair and are rejected
+afterwards, with neither hypothesis rows nor new audit events. The same four
+focused suites now pass 150 tests with zero skips; diff checks pass. Valid
+composition round trips and the amendment race regression remain covered.
+Hosted acceptance is pending for this new source; earlier CI does not certify
+it. Continue with exact-head verification before integrating the parent owner.

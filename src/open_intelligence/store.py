@@ -7284,8 +7284,8 @@ class CaseStore:
                 or not all(isinstance(c, str) and c for c in claim_ids)):
             raise InvalidInput("Composed hypothesis claim_ids must be a non-empty list of strings")
         sentences = composed.get("sentences")
-        if not isinstance(sentences, list):
-            raise InvalidInput("Composed hypothesis sentences must be a list")
+        if not isinstance(sentences, list) or not sentences:
+            raise InvalidInput("Composed hypothesis sentences must be a non-empty list")
         for sentence in sentences:
             if not isinstance(sentence, dict):
                 raise InvalidInput("Each hypothesis sentence must be an object")
@@ -7296,6 +7296,16 @@ class CaseStore:
             if (not isinstance(s_claims, list) or not s_claims
                     or not all(isinstance(c, str) and c for c in s_claims)):
                 raise InvalidInput("Each hypothesis sentence needs a non-empty list of claim ids")
+        # Validate the redundant envelope without duplicating composition
+        # policy: sentence citations must be precisely the cited claim set,
+        # and stored text/count must describe those same sentences.
+        sentence_claims = {c for sentence in sentences for c in sentence["claim_ids"]}
+        if set(claim_ids) != sentence_claims:
+            raise InvalidInput("Hypothesis claim ids do not match sentence citations")
+        if text != " ".join(sentence["text"] for sentence in sentences):
+            raise InvalidInput("Hypothesis text does not match its sentences")
+        if type(composed.get("char_count")) is not int or composed["char_count"] != len(text):
+            raise InvalidInput("Hypothesis character count does not match its text")
         if write_contract is None:
             raise WriteContractRejected("missing_write_contract")
         contract = validate_write_contract(write_contract)

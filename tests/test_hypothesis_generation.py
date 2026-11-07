@@ -749,6 +749,30 @@ class ComposedHypothesisPersistenceTests(unittest.TestCase):
                 self.store.db.set_trace_callback(None)
                 peer.close()
 
+    def test_inconsistent_composition_envelope_is_rejected(self):
+        import copy
+        composed = self.compose(self.run_once())
+        variants = []
+        for mutation in ("empty", "citation", "text", "count"):
+            changed = copy.deepcopy(composed)
+            if mutation == "empty":
+                changed["sentences"] = []
+            elif mutation == "citation":
+                changed["sentences"][0]["claim_ids"] = ["inv999:c1"]
+            elif mutation == "text":
+                changed["text"] = "Different unsupported text."
+            else:
+                changed["char_count"] = 0
+            variants.append((mutation, changed))
+        for mutation, changed in variants:
+            with self.subTest(mutation=mutation):
+                before = self.store.db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+                with self.assertRaises(InvalidInput):
+                    self.store_hypothesis(changed)
+                self.assertEqual(self.store.list_composed_hypotheses("CASE-ALPHA"), [])
+                self.assertEqual(self.store.db.execute(
+                    "SELECT COUNT(*) FROM events").fetchone()[0], before)
+
     def test_latest_stored_hypothesis_is_current(self):
         inv_id = self.run_once()
         second_text = "The sources report a finding again."
