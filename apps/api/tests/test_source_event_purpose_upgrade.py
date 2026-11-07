@@ -253,8 +253,9 @@ class SourceEventPurposeUpgradeTests(SourceVersionFixture):
         with self.engine.connect() as connection:
             self.assertIsNone(connection.execute(text(
                 "SELECT to_regprocedure('coordination.source_event_binding(bigint)')")).scalar_one())
-            self.assertEqual(connection.execute(text(
-                "SELECT version_num FROM public.alembic_version")).scalar_one(), OLD_CORE)
+            self.assertEqual(set(connection.execute(text(
+                "SELECT version_num FROM public.alembic_version")).scalars()),
+                {OLD_CORE, "0022_encounter_sources"})
         with self.owner(research=True) as (registry, common):
             # This owner uses the raw pg8000 DB-API connection, whereas the
             # forged-event probes above use SQLAlchemy's wrapped exceptions.
