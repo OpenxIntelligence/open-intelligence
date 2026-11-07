@@ -86,3 +86,16 @@ test('data-use write authentication loss clears recovery and credentials',async(
  assert.equal(s.snapshot().connected,false);assert.equal(s.snapshot().patient,null);
  assert.equal(s.snapshot().dataUseTarget,null);assert.equal(s.snapshot().dataUseReceipt,null);
 });
+test('late case read cannot restore clinical context after a restriction decision',async()=>{
+ let resolve;const delayed=new Promise(r=>resolve=r);
+ const s=new RegistrySession(async(url,init)=>{
+  if(url.endsWith('/case-bindings'))return delayed;
+  return response(init.method==='POST'?receipt:identity);
+ });
+ s.connect('a'.repeat(40));await s.read('PAT-ONE');const reading=s.loadCases();
+ await s.decideDataUse(snapshot,'restricted',true);
+ resolve(response({patient_id:'PAT-ONE',mappings:[],synthetic:true,source_identity_verified:false,clinical_sources_linked:false}));
+ await reading;
+ assert.equal(s.snapshot().dataUsePhase,'confirmed');assert.equal(s.snapshot().cases,null);
+ assert.equal(s.snapshot().patient,null);assert.equal(s.snapshot().sourceIndex,null);
+});

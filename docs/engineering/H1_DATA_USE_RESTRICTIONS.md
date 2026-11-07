@@ -43,7 +43,7 @@ Previously displayed data in other sessions is not remotely erased.
 
 ## Verification checkpoint
 
-Local: 14 authority-port/OpenAPI/typed-contract tests passed, 725 client tests
+Local: 14 authority-port/OpenAPI/typed-contract tests passed, 728 client tests
 passed, including delayed-response/strict-decoder and authentication-loss checks; TypeScript/Vite build,
 61-module architecture check, Python compilation and synthetic boundary check
 passed. Database methods are implemented but were skipped locally because no
@@ -73,6 +73,20 @@ Client regressions cover explicit confirmation, wrong-patient rejection, exact
 command shape, duplicate submission, suspension conflicts, initial stale-revision
 refusal, lost responses, later denial while uncertain, malformed receipts,
 authentication loss, late responses after credential replacement and leaving
-recovery. All 725 client tests pass; final TypeScript/Vite build status is recorded
+recovery. All 728 client tests pass; final TypeScript/Vite build status is recorded
 in PR #629. Browser journey execution remains pending on hosted runners. The
 backend is unchanged from the restriction/recovery candidate.
+
+
+## Recovery-preservation gate
+
+Three additional client regressions pass: unresolved same-patient manual passages
+block a restriction decision without losing their exact retry command; unrelated
+patient recovery survives a decision and clears only on disconnect; late case
+reads cannot restore context after a decision. The full client suite is 728/728.
+
+The early hosted restriction gate now requires exactly 11 tests and zero skips.
+Locally its rejection path was exercised: four tests passed and seven PostgreSQL
+methods skipped; acceptance was correctly refused. This does not qualify the
+unexecuted database behavior. Hosted PostgreSQL/browser/restore jobs remain
+queued/pending. Runtime code is unchanged from published 2153944817931b95f09a1255ae027a7b72c1773a.
