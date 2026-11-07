@@ -30,11 +30,16 @@ def plan_h1_question_reassessment(
         raise ImpactContractError("invalid_question_snapshot")
     nodes: dict[tuple[str, str, str], VersionedNode] = {}
     edges: set[Dependency] = set()
+    question_versions: dict[str, str] = {}
     for bound in bound_questions:
         if not isinstance(bound, BoundQuestion):
             raise ImpactContractError("invalid_question_snapshot")
         source = bound.source
         question = bound.question
+        previous_version = question_versions.get(question.record_id)
+        if previous_version is not None:
+            raise ImpactContractError("duplicate_or_ambiguous_question")
+        question_versions[question.record_id] = question.source_version_id
         if source.source_version_id != question.source_version_id:
             raise ImpactContractError("source_version_mismatch")
         if source.owner != "h1.source_versions" or question.owner != "h1.source_questions":
