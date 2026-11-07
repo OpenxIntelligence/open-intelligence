@@ -32,6 +32,7 @@ class VersionManifest(Contract):
     api_version: Literal["v1"] = "v1"
     stage: Literal["synthetic_patient_registry"] = "synthetic_patient_registry"
     authentication: Literal["deny_all", "synthetic_fixture", "trusted_provider"] = "deny_all"
+    consent_policy: Literal["recorded_decisions_only", "required"] = "recorded_decisions_only"
     patient_access_policy: Literal["synthetic_fixture", "persisted_grants"] = "synthetic_fixture"
     patient_data_enabled: Literal[False] = False
     synthetic_registry_enabled: Literal[True] = True

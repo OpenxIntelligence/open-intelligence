@@ -14,6 +14,7 @@ x-api-common: &api-common
   environment:
     OI_API_ENVIRONMENT: synthetic
     OI_API_REQUIRE_PERSISTED_GRANTS: ${OI_API_REQUIRE_PERSISTED_GRANTS:-0}
+    OI_API_REQUIRE_CONSENT_DECISIONS: ${OI_API_REQUIRE_CONSENT_DECISIONS:-0}
     OI_API_DATABASE_URL: postgresql+pg8000://oi_api:oi_h1_synthetic_only@db:5432/oi_api_synthetic
     OI_API_CONNECT_TIMEOUT_SECONDS: "2"
   read_only: true

@@ -67,6 +67,20 @@ class SuspendedPatient(Contract):
     status: Literal["suspended"]
 
 
+class DataUseDecision(CreatePatient):
+    target_purpose: Literal["operations", "research"]
+    state: Literal["restricted", "unrestricted"]
+    expected_revision: int = Field(strict=True, ge=0, le=9_223_372_036_854_775_806)
+
+
+class DataUseState(Contract):
+    patient_id: str
+    target_purpose: Literal["operations", "research"]
+    state: Literal["unrecorded", "restricted", "unrestricted"]
+    revision: int = Field(strict=True, ge=0)
+    consent_established: Literal[False] = False
+
+
 class Patient(Contract):
     patient_id: str
     origin_org: str
@@ -858,6 +872,42 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         # Both patient grant and operation grant are independently enforced.
         records_authorized(patients, current, patient_id, action)
 
+    @router.get("/{patient_id}/data-use/{target_purpose}", response_model=DataUseState,
+                responses=errors, operation_id="read_patient_data_use_v1")
+    def read_data_use(patient_id: str, target_purpose: Literal["operations", "research"],
+                      request: Request, context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "data_use_read")
+                with patients.transaction():
+                    value = patients.data_use_state(patient_id, target_purpose)
+                    response = JSONResponse(DataUseState(**value).model_dump(mode="json"))
+                    refresh_source_authority(request, context, patients, patient_id, "data_use_read")
+                    return response
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Patient unavailable") from None
+
+    @router.post("/{patient_id}/data-use", response_model=DataUseState,
+                 responses=errors, operation_id="decide_patient_data_use_v1")
+    def decide_data_use(patient_id: str, payload: DataUseDecision, request: Request,
+                        context: Principal = Depends(principal)):
+        if context.purpose != "operations":
+            raise HTTPException(404, "Patient unavailable")
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "data_use_manage")
+                return patients.decide_data_use(
+                    patient_id, actor=context.actor, purpose=context.purpose,
+                    target_purpose=payload.target_purpose, state=payload.state,
+                    expected_revision=payload.expected_revision, request_key=payload.request_key,
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "data_use_manage"),
+                    prepare_response=lambda value: JSONResponse(
+                        DataUseState(**value).model_dump(mode="json")),
+                )
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Patient unavailable") from None
+
     @router.post("/{patient_id}/suspensions", response_model=SuspendedPatient,
                  responses=errors, operation_id="suspend_patient_access_v1")
     def suspend_patient(patient_id: str, payload: SuspendPatient, request: Request,
@@ -1202,6 +1252,8 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
 
+    from .patient_consent_routes import register_consent_routes
+    register_consent_routes(router, principal=principal, registry=registry, authentication=authentication, errors=errors)
     from .patient_permission_routes import register_permission_routes
     register_permission_routes(router, principal=principal, registry=registry, authentication=authentication, errors=errors)
 

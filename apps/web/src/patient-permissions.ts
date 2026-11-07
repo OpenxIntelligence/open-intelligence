@@ -14,7 +14,7 @@ export function readPermissionPage(value:unknown,patient:string):PermissionPage{
   if(!object(value)||value.patient_id!==patient||!['persisted_grants','synthetic_fixture'].includes(String(value.enforcement))||
     !Array.isArray(value.grants)||value.grants.length>25||!(value.next_after===null||grantId(value.next_after))||
     !Array.isArray(value.available_actions)||value.available_actions.length>64||!value.available_actions.every(permissionKey)||
-    value.available_actions.some(a=>['patient_create','patient_permissions_manage','patient_permissions_read'].includes(a))||
+    value.available_actions.some(a=>['patient_create','patient_permissions_manage','patient_permissions_read','data_use_read','data_use_manage','consent_read','consent_manage'].includes(a))||
     !instant(value.operator_expires_at))throw Error('Invalid permission page');
   const ids=new Set<string>();
   for(const row of value.grants){

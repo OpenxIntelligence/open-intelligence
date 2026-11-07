@@ -1,5 +1,7 @@
 # Open Intelligence
 
+Current consent construction composes the connected diagnostic/history workspace with purpose restrictions. It adds versioned consent decisions, withdrawals and a connected console through the existing patient journal and API/worker authority adapter. See [connected consent](docs/engineering/CONNECTED_CONSENT_DECISIONS.md) for mode selection, acceptance and remaining identity/consent qualification.
+
 Current permission continuation requires `0029_patient_access`, extending the preserved `0028_connected_product` join. The API and both workers support explicit persisted-grant enforcement; Overview provides permission history, grant/revoke and exact retry recovery. See [patient permissions](docs/engineering/PERSISTED_PATIENT_PERMISSIONS.md). Synthetic declarations do not verify legal consent or identity.
 
 Open Intelligence is building a patient-centered healthcare intelligence platform,
