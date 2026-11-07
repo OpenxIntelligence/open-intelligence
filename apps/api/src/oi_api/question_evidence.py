@@ -15,6 +15,7 @@ from open_intelligence.postgres_registry import PostgresPatientRegistry
 from .case_bindings import _case_id
 from .composer_preflight import SOURCE_SNAPSHOT_CONTRACT, SHA256
 from .evidence_catalog import RECORD_FIELDS, _visible, materialize_locked, public_metadata
+from .laboratory_questions import PostgresLaboratoryQuestions
 from .source_questions import PostgresSourceQuestions
 from .sources import PostgresSourceVersions
 
@@ -22,13 +23,16 @@ from .sources import PostgresSourceVersions
 class PostgresQuestionEvidence:
     """No second question or patient store; reuse the source owner's transaction."""
 
+    question_owner = PostgresSourceQuestions
+    laboratory = False
+
     def __init__(self, registry):
         if not isinstance(registry, PostgresPatientRegistry):
             raise TypeError("Canonical PostgreSQL patient registry required")
         self.registry = registry
 
     def _run(self, patient_id, case_id, question_id, *, organization, actor, purpose,
-             operation, recheck_authority, prepare_response, write=False):
+             operation, recheck_authority, prepare_response, write=False, discovery=False):
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization, "organization")
@@ -55,7 +59,7 @@ class PostgresQuestionEvidence:
                     raise PatientRegistryDenied("Evidence rights changed")
 
         def prepare(index):
-            items = PostgresSourceQuestions(self.registry).project_locked(
+            items = self.question_owner(self.registry).project_locked(
                 patient_id, case_id, organization=organization, source_index=index,
             )
             question = next((item for item in items if item["question_id"] == question_id), None)
@@ -68,6 +72,13 @@ class PostgresQuestionEvidence:
                 "synthetic": True, "model_executed": False,
                 "content_appraised": False, "clinical_approval": False,
             }
+            if self.laboratory:
+                if discovery and question["source_context_state"] != "current_unreviewed_question":
+                    raise PatientRegistryConflict("Laboratory question requires source reassessment")
+                scope["question_anchor"] = {key: question[key] for key in (
+                    "source_id", "source_version", "source_sha256", "observation_reference",
+                    "source_snapshot_sha256", "preflight_sha256",
+                )}
             result = operation(question, scope, rights_versions)
             return prepare_response(result) if prepare_response is not None else result
 
@@ -134,10 +145,11 @@ class PostgresQuestionEvidence:
 
         return self._run(patient_id, case_id, question_id, organization=organization,
                          actor=actor, purpose=purpose, operation=operation,
-                         recheck_authority=recheck_authority, prepare_response=prepare_response)
+                         recheck_authority=recheck_authority, prepare_response=prepare_response, discovery=True)
 
     def links(self, patient_id, case_id, question_id, *, organization, actor, purpose,
-              recheck_authority, prepare_response=None):
+              recheck_authority, prepare_response=None, project_links=None):
+        """Project authorized links and optionally render a report inside the same transaction."""
         def operation(question, scope, rights_versions):
             rows = self.registry._fetchall(
                 "SELECT link_id,record_id,version,metadata_sha256,created_at,actor "
@@ -149,6 +161,8 @@ class PostgresQuestionEvidence:
                 raise PatientRegistryError("Evidence history exceeds bounded read limit")
             links = []
             for link_id, record_id, version, expected, created, author in rows:
+                if self.laboratory:
+                    self._verify_lab_anchor(link_id, question, record_id, version)
                 record, digest = self._record(record_id, version, rights_versions)
                 citation = f"{record_id}@{version}"
                 visible = None
@@ -168,7 +182,8 @@ class PostgresQuestionEvidence:
             self.registry.append_event(patient_id, "evidence.links.read_authorized",
                                        question_id=question_id, case_id=case_id, actor=actor,
                                        link_count=len(links))
-            return {**scope, "contract": "oi.pg-question-evidence-links/1", "links": links}
+            result = {**scope, "contract": "oi.pg-question-evidence-links/1", "links": links}
+            return project_links(question, result) if project_links is not None else result
 
         return self._run(patient_id, case_id, question_id, organization=organization,
                          actor=actor, purpose=purpose, operation=operation,
@@ -202,6 +217,15 @@ class PostgresQuestionEvidence:
             "preflight_sha256": expected_preflight_sha256,
         })
 
+        def permitted_digest(rights_versions):
+            record, digest = self._record(record_id, version, rights_versions)
+            verified = verify_record(record, citation, case_id=case_id, organization=organization)
+            if not verified.ok or public_metadata(record, digest, case_id=case_id, organization=organization) is None:
+                raise PatientRegistryDenied("Evidence unavailable")
+            if not hmac.compare_digest(digest, expected_metadata_sha256):
+                raise PatientRegistryConflict("Evidence version differs from the selected result")
+            return digest
+
         def operation(question, scope, rights_versions):
             old = self.registry._fetchone(
                 "SELECT link_id,intent_sha256,record_id,version,metadata_sha256 "
@@ -211,6 +235,9 @@ class PostgresQuestionEvidence:
             if old is not None:
                 if not hmac.compare_digest(old[1], intent):
                     raise PatientRegistryConflict("Evidence request key reused with changed intent")
+                if self.laboratory:
+                    self._verify_lab_anchor(old[0], question, record_id, version)
+                    permitted_digest(rights_versions)
                 # An exact retry recovers the original identity receipt only;
                 # it releases no cached metadata or new effect after revocation.
                 return {"link_id": old[0], "citation": f"{old[2]}@{old[3]}",
@@ -219,18 +246,24 @@ class PostgresQuestionEvidence:
                     or not hmac.compare_digest(question["source_snapshot_sha256"], expected_source_snapshot_sha256)
                     or not hmac.compare_digest(question["preflight_sha256"], expected_preflight_sha256)):
                 raise PatientRegistryConflict("Question source context changed")
-            record, digest = self._record(record_id, version, rights_versions)
-            verified = verify_record(record, citation, case_id=case_id, organization=organization)
-            if not verified.ok or public_metadata(record, digest, case_id=case_id, organization=organization) is None:
-                raise PatientRegistryDenied("Evidence unavailable")
-            if not hmac.compare_digest(digest, expected_metadata_sha256):
-                raise PatientRegistryConflict("Evidence version differs from the selected result")
+            digest = permitted_digest(rights_versions)
             count = self.registry._fetchone(
                 "SELECT count(*) FROM investigation.question_evidence_links WHERE question_id=%s", (question_id,),
             )[0]
             if count >= 100:
                 raise PatientRegistryError("Question evidence link limit reached")
             link_id = "EVIDENCE-LINK-" + uuid.uuid4().hex.upper()
+            if self.laboratory:
+                # Child first: a deferred composite FK requires this exact
+                # question and link to exist together at commit. An ordinary
+                # text link can never accidentally persist a typed association.
+                self.registry._execute(
+                    "INSERT INTO investigation.laboratory_citation_anchors "
+                    "(link_id,question_id,source_id,observation_reference,rights_decision_id) "
+                    "VALUES (%s,%s,%s,%s,%s)",
+                    (link_id, question_id, question["source_id"], question["observation_reference"],
+                     rights_versions[(record_id, version)]),
+                )
             inserted = self.registry._fetchone(
                 "INSERT INTO investigation.question_evidence_links "
                 "(link_id,patient_id,case_id,question_id,origin_org,actor,purpose,request_key,"
@@ -243,6 +276,11 @@ class PostgresQuestionEvidence:
                  expected_source_snapshot_sha256, expected_preflight_sha256),
             )
             if inserted is None:
+                if self.laboratory:
+                    # Same-case writers serialize on the source binding. A
+                    # raced patient-wide key from a different case conflicts.
+                    # Roll back the prepared child with the whole transaction.
+                    raise PatientRegistryConflict("Evidence request key reused with changed intent")
                 # Different case bindings can race for one patient-wide key.
                 # Never turn that defined conflict into a generic SQL failure.
                 prior = self.registry._fetchone(
@@ -265,3 +303,33 @@ class PostgresQuestionEvidence:
         return self._run(patient_id, case_id, question_id, organization=organization,
                          actor=actor, purpose=purpose, operation=operation,
                          recheck_authority=recheck_authority, prepare_response=prepare_response, write=True)
+
+
+class PostgresLaboratoryQuestionEvidence(PostgresQuestionEvidence):
+    """Use the same catalog, rights, link and source owners for a typed question."""
+
+    question_owner = PostgresLaboratoryQuestions
+    laboratory = True
+
+    def _verify_lab_anchor(self, link_id, question, record_id, version):
+        # Validate the immutable write-time decision separately from current
+        # display rights, which are evaluated on every read and retry.
+        valid = self.registry._fetchone(
+            "SELECT 1 FROM investigation.laboratory_citation_anchors a "
+            "JOIN investigation.question_evidence_links l ON l.link_id=a.link_id AND l.question_id=a.question_id "
+            "JOIN investigation.source_questions q ON q.question_id=l.question_id AND q.source_id=a.source_id "
+            "AND q.patient_id=l.patient_id AND q.case_id=l.case_id AND q.origin_org=l.origin_org AND q.purpose=l.purpose "
+            "JOIN investigation.evidence_catalog_records e ON e.record_id=l.record_id AND e.version=l.version "
+            "AND e.metadata_sha256=l.metadata_sha256 "
+            "JOIN investigation.evidence_rights_decisions r ON r.decision_id=a.rights_decision_id "
+            "WHERE a.link_id=%s AND a.question_id=%s AND a.source_id=%s AND a.observation_reference=%s "
+            "AND l.source_snapshot_contract=%s AND l.source_snapshot_sha256=%s AND l.preflight_sha256=%s "
+            "AND r.record_id=l.record_id AND r.version=l.version AND r.record_id=%s AND r.version=%s "
+            "AND NOT r.revoked AND NOT r.superseded AND r.permissions #>> '{metadata,store}'='allowed' "
+            "AND r.permissions #>> '{metadata,display}'='allowed'",
+            (link_id, question["question_id"], question["source_id"], question["observation_reference"],
+             SOURCE_SNAPSHOT_CONTRACT, question["source_snapshot_sha256"], question["preflight_sha256"],
+             record_id, version),
+        )
+        if valid is None:
+            raise PatientRegistryError("Stored laboratory citation provenance is inconsistent")

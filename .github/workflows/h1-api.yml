@@ -7,6 +7,7 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'tools/audit_ci_data_boundaries.py'
+      - 'tools/verify_checkout.py'
       - '.github/workflows/h1-api.yml'
   workflow_dispatch:
 
@@ -59,17 +60,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
           fetch-depth: 1
-      - name: Verify checkout identity
+      - name: Verify proposed source revision
         env:
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          python - <<'PY'
-          import os
-          import subprocess
-          actual = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-          assert actual == os.environ['EXPECTED_HEAD'], (actual, os.environ['EXPECTED_HEAD'])
-          print('Verified proposed source head:', actual)
-          PY
+        run: python tools/verify_checkout.py --expected-head "$EXPECTED_HEAD"
       - name: Set up Python 3.12
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
@@ -87,6 +81,18 @@ jobs:
           python --version
       - name: Apply the explicit migration to the disposable database
         run: python -m oi_api.migrate upgrade head
+      - name: Verify joined EHR and laboratory freshness against populated data
+        run: |
+          python - <<'PYTEST'
+          import unittest
+          suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_ehr_laboratory_convergence.py')
+          # These RESTRICT fixtures must release every declared function after
+          # testing populated/current heads, without hiding unknown dependencies.
+          suite.addTests(unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_image_evidence_migration.py'))
+          suite.addTests(unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_registry_migrations.py'))
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(0 if result.wasSuccessful() and result.testsRun and not result.skipped else 1)
+          PYTEST
       - name: Verify both populated laboratory and manual-task upgrade paths first
         run: |
           python - <<'PYTEST'

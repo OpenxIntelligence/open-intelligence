@@ -72,10 +72,10 @@ test('uncertain import retains exact command across same-case metadata refresh a
  assert.equal(posts.length,2);assert.equal(posts[1][1].body,first);assert.equal(session.snapshot().laboratoryReceipt.duplicate,true);
  assert.ok(!JSON.stringify(session.snapshot()).includes(TOKEN));
 });
-test('concurrent imports submit only once and malformed/failed success remains uncertain',async()=>{
+test('concurrent imports submit only once and malformed/failed success remains uncertain',{timeout:5000},async()=>{
  for(const response of [reply({},201),reply({},503),reply({...RECEIPT,original_sha256:'0'.repeat(64)},201)]){
-  const hold=deferred();const{session,calls}=await ready(()=>hold.promise);
-  const first=session.importLaboratory(CID,RAW,true);await new Promise(r=>setTimeout(r,10));
+  const hold=deferred(),started=deferred();const{session,calls}=await ready(()=>{started.resolve();return hold.promise;});
+  const first=session.importLaboratory(CID,RAW,true);await started.promise;
   await session.importLaboratory(CID,RAW,true);assert.equal(calls.filter(x=>x[1].method==='POST').length,1);
   hold.resolve(response);await first;assert.equal(session.snapshot().laboratoryPhase,'unknown');
  }

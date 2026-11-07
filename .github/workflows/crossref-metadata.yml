@@ -13,6 +13,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify proposed source revision
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python tools/verify_checkout.py --expected-head "$EXPECTED_HEAD"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'

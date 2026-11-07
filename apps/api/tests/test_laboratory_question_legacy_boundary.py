@@ -181,7 +181,9 @@ class LaboratoryQuestionDependentStorageTests(EvidenceFixture):
                         'preflight_sha256',q.preflight_sha256)
                         FROM investigation.source_questions q WHERE q.question_id=:lab_qid)"""
                 identity = "OVERRIDING SYSTEM VALUE" if table == "question_evidence_assessments" else ""
-                with self.subTest(table=table), self.assertRaisesRegex(DBAPIError, "OI-TEXT-QUESTION-TARGET-REQUIRED"):
+                marker = ("OI-LAB-CITATION-ANCHOR-REQUIRED" if table == "question_evidence_links"
+                          else "OI-TEXT-QUESTION-TARGET-REQUIRED")
+                with self.subTest(table=table), self.assertRaisesRegex(DBAPIError, marker):
                     with self.engine.begin() as db:
                         db.execute(text(f"""
                             INSERT INTO investigation.{table} {identity}

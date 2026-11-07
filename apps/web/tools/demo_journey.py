@@ -104,6 +104,12 @@ def main():
                 cd.wait("document.querySelectorAll('[data-testid=followthrough-task]').length===1", 'recorded follow-up')
                 root = '/v1/patients/' + state['patient_id'] + '/cases/' + demo.CASE
                 scope = root + '/questions/' + qid
+                matches = demo.request(scope + '/evidence-search', state['token'],
+                                       {'synthetic': True, 'query': 'continuity'})['records']
+                assert any(hit['citation'] == 'FICT-RECORD-CONTINUITY@1'
+                           and hit['availability'] == 'metadata_only' for hit in matches), \
+                    'The normal fictional demo must provide the governed catalog used in Journey'
+
                 packet = demo.request(scope + '/evidence', state['token'])
                 report_id = packet['reports'][0]['report_id']
                 report = demo.request(scope + '/evidence-reports/' + report_id, state['token'])
