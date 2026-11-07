@@ -4,7 +4,7 @@ import {readLaboratoryCitationReport} from './laboratory-citation-report.js';
 import {emptySuspension,readSuspensionReceipt,type SuspensionState} from './patient-suspension.js';
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 export {patientContinuity} from './patient-continuity.js';
-import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
+import {parseCaseBindingList, parseSourceIndex, parseSourceHistory, receiptMicros} from './source-contracts.js';
 import {decodeQuestionSourcePacket} from './source-quote-review-packet.js';
 import type {QuestionSourceReviewPacket} from './source-quote-review-packet.js';
 import type {CaseBinding, SourceIndex} from './source-contracts.js';
@@ -294,6 +294,33 @@ export class RegistrySession {
     }
     const suffix='/'+id+'/cases/'+encodeURIComponent(caseId)+'/source-links'+(after===null?'':'?after_id='+after+'&limit=25');
     return this.#encounterRequest(patientId,suffix,current,body,65536,x=>x,body!==undefined);
+  }
+  async sourceHistory(index:SourceIndex,cutoff:string,signal:AbortSignal):Promise<import('./source-contracts.js').SourceHistory>{
+    const patientCurrent=this.#encounterScope(index.patient_id),records=this.#records;
+    const current=()=>patientCurrent()&&records===this.#records&&this.#state.sourceIndex===index&&this.#state.recordsPhase==='ready';
+    receiptMicros(cutoff);
+    if(!current()||signal.aborted)throw Error('Recheck patient and case access');
+    const control=new AbortController(),stop=()=>control.abort();
+    signal.addEventListener('abort',stop,{once:true});this.#controllers.add(control);
+    const timer=setTimeout(stop,10000),live=()=>current()&&!control.signal.aborted;
+    try{
+      const path='/v1/patients/'+encodeURIComponent(index.patient_id)+'/cases/'+encodeURIComponent(index.case_id)+
+        '/source-history?received_through='+encodeURIComponent(cutoff);
+      const response=await this.transport(path,this.#init(control));
+      if(!live()){void response.body?.cancel().catch(()=>{});throw Error();}
+      if(response.status!==200){
+        void response.body?.cancel().catch(()=>{});
+        if(response.status===401)this.#httpError(401);
+        else if(response.status===403||response.status===404){
+          this.#clearPatientSessionData();
+          this.#publish({connected:true,phase:'error',message:'Source history access is unavailable. Reopen the patient to check current access.'});
+        }
+        throw Error();
+      }
+      const value=await json(response,512000);if(!live())throw Error();
+      return parseSourceHistory(value,index,cutoff);
+    }catch{throw Error('Source history could not be verified. Refresh records and check current access.');}
+    finally{clearTimeout(timer);signal.removeEventListener('abort',stop);this.#controllers.delete(control);}
   }
   async #encounterRequest<T>(patientId:string,suffix:string,current:()=>boolean,body:string|undefined,limit:number,
       decode:(data:unknown)=>T|Promise<T>,allowCreated=false):Promise<T>{

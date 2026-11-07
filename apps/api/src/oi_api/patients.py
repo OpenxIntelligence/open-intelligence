@@ -244,7 +244,7 @@ class OriginalSourceReceipt(Contract):
     version: int | None
 
 
-class SourceVersion(Contract):
+class HistoricalSourceVersion(Contract):
     source_id: str
     document_id: str
     version: int
@@ -254,8 +254,24 @@ class SourceVersion(Contract):
     issued_at: str
     received_at: datetime
     specimen_id: str | None
-    state: Literal["current", "superseded"]
     supersedes_id: str | None
+
+
+class SourceVersion(HistoricalSourceVersion):
+    state: Literal["current", "superseded"]
+
+
+class SourceMembershipHistory(Contract):
+    contract: Literal["oi.synthetic-source-history/1"]
+    patient_id: str
+    case_id: str
+    access_receipt_id: str
+    received_through: datetime
+    cutoff_basis: Literal["platform_received_at"]
+    selection: Literal["latest_version_per_document"]
+    sources: list[HistoricalSourceVersion]
+    synthetic: Literal[True]
+    clinical_interpretation: Literal[False]
 
 
 class SourceFinding(SourceOncologyFields):
@@ -1109,6 +1125,26 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                         request, context, patients, patient_id, "source_read"))
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
+
+    @router.get("/{patient_id}/cases/{case_id}/source-history", response_model=SourceMembershipHistory,
+                responses=errors, operation_id="read_source_membership_history_v1")
+    def source_membership_history(request: Request, patient_id: str, case_id: str, received_through: str,
+                       context: Principal = Depends(principal)):
+        try:
+            # Reject ambiguous cutoffs before opening a database transaction.
+            PostgresSourceVersions.receipt_cutoff(received_through)
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "source_read")
+                return PostgresSourceVersions(patients).list(
+                    patient_id, case_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose, received_through=received_through,
+                    prepare_response=lambda index: JSONResponse(SourceMembershipHistory(**index).model_dump(mode="json")),
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "source_read"))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source history unavailable") from None
+        except PatientRegistryError:
+            raise HTTPException(422, "Invalid receipt cutoff") from None
 
     @router.get("/{patient_id}/cases/{case_id}/world-model",
                 response_model=SourceWorldModel, responses=errors,
