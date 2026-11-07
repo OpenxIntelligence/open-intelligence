@@ -247,7 +247,16 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
         cd.wait('!' + record + '.disabled', 'authored comparison reason')
         cd.evaluate(record + '.click()')
         cd.wait('Boolean(' + element('[data-testid=review-return-result]') + ')', 'paired receipt returned')
+        cd.evaluate(element('[data-testid=inspect-attribution]') + '.click()')
+        recheck = element('[data-testid=recheck-attribution]')
+        cd.wait('Boolean(' + recheck + ')', 'recorded comparison identity available')
+        cd.evaluate(recheck + '.click()')
+        cd.wait('Boolean(' + recheck + ')', 'same comparison successfully rechecked')
         operator(source_path, {'synthetic': True, 'original_text': (FIXTURES / 'episode-origin-consult-v2.txt').read_text()})
+        cd.evaluate(recheck + '.click()')
+        cd.wait(element('[data-testid=review-workspace]') + '.textContent.includes("The recorded comparison has changed")',
+                'amendment refuses the previously inspected comparison')
+        assert not cd.evaluate('Boolean(' + element('[data-testid=attribution-passages]') + ')')
         select_case('Journey', 'world-load-cases', '.world-cases li', 'world-load')
         reviews = element('section[aria-label="Episode attribution reviews"]')
         cd.wait('Boolean(' + reviews + ')', 'amended source model')
@@ -284,7 +293,7 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
             'historical_drafts_rechecked_original_read': True,
             'compared_consult_versions': [1, 2], 'latest_consult_line': 9,
             'paired_review_reassessment': True, 'consult_original_reopened': True,
-            'comparison_current_original_verified': True,
+            'comparison_current_original_verified': True, 'stale_comparison_recheck_refused': True,
             'primary_episodes': ['EP-A', 'EP-B'], 'nodule_episode_history': [None, 'EP-B'],
             'nodule_reported_state': 'indeterminate', 'source_only_preflights': 2,
             'historical_original_verified': True, 'denied_read_cleared_records': True,

@@ -577,7 +577,7 @@ function reassessmentFixture(){
  }
  const first=version(q,'DOC-ALPHA','EP-A'), second=version(consultRef,'DOC-CONSULT','EP-B');
  const latest=version({...consultRef,source_id:'SRC-'+'F'.repeat(32),source_version:2,source_line:9,source_sha256:'4'.repeat(64)},'DOC-CONSULT',null);
- return {q,r,packet:{contract:'oi.synthetic-attribution-reassessment/1',synthetic:true,clinical_approval:false,
+ return {q,r,packet:{contract:'oi.synthetic-attribution-reassessment/2',comparison_sha256:'9'.repeat(64),synthetic:true,clinical_approval:false,
   patient_id:patientId,case_id:caseId,question_id:questionId,receipt_id:receiptId,access_receipt_id:'ACCESS-'+'D'.repeat(32),
   first:{recorded:first,latest:structuredClone(first)},second:{recorded:second,latest}}};
 }
@@ -666,4 +666,24 @@ for(const mode of ['allowed','dismissed','wrong-document'])test('current compari
  assert.equal(calls.length,mode==='allowed'?2:mode==='dismissed'?0:1);
  if(mode==='allowed')assert.ok(calls[1].includes(target.source_id));
  assert.equal(s.snapshot().original,null,'No bytes survive a denied grant or inconsistent lineage');
+});
+
+for(const result of ['same','stale','substituted'])test('exact comparison recheck: '+result,async()=>{
+ const {q,r,packet}=reassessmentFixture();let calls=0;
+ const s=session(async url=>{
+  if(url===queuePath)return response(queue([q],[r]));
+  calls++;
+  if(calls===1)return response(packet);
+  assert.ok(url.endsWith('?expected_comparison_sha256='+packet.comparison_sha256));
+  return result==='stale'?response({detail:'Requires reassessment'},409):
+   response({...packet,comparison_sha256:result==='substituted'?'8'.repeat(64):packet.comparison_sha256});
+ });
+ await opened(s);await s.inspectAttribution(receiptId);
+ await s.inspectAttribution(receiptId,'7'.repeat(64));assert.equal(calls,1);
+ await s.inspectAttribution(receiptId,packet.comparison_sha256);
+ assert.equal(calls,2);
+ assert.equal(s.snapshot().attributionInspection?.comparison_sha256??null,result==='same'?packet.comparison_sha256:null);
+ if(result==='stale')assert.match(s.snapshot().attributionMessage,/has changed/);
+ s.dismissAttributionInspection();await s.inspectAttribution(receiptId,packet.comparison_sha256);
+ assert.equal(calls,2,'Dismissed comparison cannot be rechecked without inspection');
 });

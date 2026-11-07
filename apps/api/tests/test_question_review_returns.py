@@ -188,8 +188,9 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
             pair = self.returning(base, patient, qid, fp, request_key="RETURN-TWO",
                                   comparison_source={"source_id":original, "source_line":8})[1]["receipt_id"]
 
-            def read(receipt=pair, pid=patient, case="CASE-ALPHA"):
-                return request(base, f"/v1/patients/{pid}/cases/{case}/review-returns/{receipt}/attribution-reassessment",
+            def read(receipt=pair, pid=patient, case="CASE-ALPHA", digest=None):
+                query = "" if digest is None else "?expected_comparison_sha256=" + digest
+                return request(base, f"/v1/patients/{pid}/cases/{case}/review-returns/{receipt}/attribution-reassessment" + query,
                                token=TOKEN_A)
 
             for result in (read(single), read(case="CASE-OTHER"), read(pid="PAT-"+"0"*32), read("REVIEW-"+"F"*32)):
@@ -200,10 +201,18 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
             self.assertEqual(packet["first"]["recorded"], packet["first"]["latest"])
             self.assertEqual(packet["second"]["recorded"], packet["second"]["latest"])
             self.assertFalse(packet["clinical_approval"])
+            digest = packet["comparison_sha256"]
+            self.assertEqual(read(digest=digest)[1]["comparison_sha256"], digest)
+            before_unknown = self.persisted_state()
+            self.assert_withheld(read(digest="0"*64), 404, before_unknown)
+            self.assertEqual(read(digest="not-a-digest")[0], 422)
             amendment = report("episode-origin-consult-v2.txt")
             new_id = self.ingest(base, patient, amendment)[1]["source_id"]
+            before_stale = self.persisted_state()
+            self.assert_withheld(read(digest=digest), 409, before_stale)
             status, after, _ = read()
             self.assertEqual(status, 200, after)
+            self.assertNotEqual(after["comparison_sha256"], digest)
             self.assertEqual(after["second"]["recorded"], packet["second"]["recorded"])
             latest = after["second"]["latest"]
             self.assertEqual((latest["source_id"], latest["source_version"]), (new_id, 2))
@@ -243,8 +252,8 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
                     self.creds[0]["actions"].remove("source_original_read")
                     self.write()
             with patch.object(PostgresPatientRegistry, "append_event", revoke):
-                self.assert_withheld(read(), 404, before)
-            self.assert_withheld(read(), 404, before)
+                self.assert_withheld(read(digest=missing["comparison_sha256"]), 404, before)
+            self.assert_withheld(read(digest=missing["comparison_sha256"]), 404, before)
 
     def test_return_is_nonterminal_atomic_idempotent_and_derived_from_question(self):
         with running_server(create_app(self.settings)) as base:

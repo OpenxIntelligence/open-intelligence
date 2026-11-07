@@ -773,7 +773,9 @@ export class RegistrySession {
     if(this.#state.attributionTarget)this.#publish(emptyAttribution());
   }
 
-  async inspectAttribution(receiptId:string):Promise<void>{
+  async inspectAttribution(receiptId:string,expectedDigest?:string):Promise<void>{
+    if(expectedDigest!==undefined&&(this.#state.attributionInspection?.receipt_id!==receiptId||
+       this.#state.attributionInspection.comparison_sha256!==expectedDigest))return;
     const queue=this.#state.reviewQueue, generation=++this.#attributionRead;
     const receipt=queue?.receipts.find(row=>row.receipt_id===receiptId);
     const question=queue?.items.find(row=>row.question_id===receipt?.question_id);
@@ -788,7 +790,8 @@ export class RegistrySession {
     this.#publish({attributionInspection:null,attributionTarget:receiptId,attributionMessage:'Checking both originals and their current versions…'});
     try{
       const url='/v1/patients/'+encodeURIComponent(queue.patient_id)+'/cases/'+encodeURIComponent(queue.case_id)+
-        '/review-returns/'+encodeURIComponent(receiptId)+'/attribution-reassessment';
+        '/review-returns/'+encodeURIComponent(receiptId)+'/attribution-reassessment'+
+        (expectedDigest?'?expected_comparison_sha256='+encodeURIComponent(expectedDigest):'');
       const response=await this.transport(url,this.#init(controller));
       if(!current())return;
       if(response.status===401){this.#httpError(401);return;}
@@ -796,8 +799,10 @@ export class RegistrySession {
         const message='Access to the review or its original passages has changed. Refresh the inbox before continuing.';
         this.#publish({...this.#resetDeniedCaseSources(message),reviewPhase:'error',reviewMessage:message});return;
       }
+      if(response.status===409){this.#publish({attributionInspection:null,attributionMessage:'The recorded comparison has changed. Compare the current passages before continuing.'});return;}
       if(response.status!==200)throw Error('unavailable');
       const packet=decodeAttributionReassessment(await json(response),question,receipt);
+      if(expectedDigest&&packet.comparison_sha256!==expectedDigest)throw Error('comparison changed');
       if(current())this.#publish({attributionInspection:packet,attributionMessage:''});
     }catch{
       if(current())this.#publish({attributionInspection:null,attributionMessage:'The comparison could not be verified. Recheck the passages.'});

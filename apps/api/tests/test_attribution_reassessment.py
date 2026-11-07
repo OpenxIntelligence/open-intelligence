@@ -54,6 +54,28 @@ class ReassessmentTests(unittest.TestCase):
         self.assertEqual(metadata["comparison_contract"], expected["content"]["contract"])
         self.assertNotIn("comparison_snapshot", metadata)
         registry._execute.assert_called_once()
+        # Replay through the same service and real journal validator. A saved
+        # digest is scoped by the journal query and is not permission to use new content.
+        from open_intelligence.patient_registry import PatientRegistryConflict, PatientRegistryDenied
+        registry._fetchone = Mock(return_value=(metadata,))
+        with patch.object(owner, "_read_locked", return_value=([question], [receipt])), \
+             patch("oi_api.question_review_returns.PostgresSourceVersions") as source_class:
+            sources = source_class.return_value
+            sources.list_locked.side_effect = lambda *args, **kwargs: kwargs["prepare_response"](index)
+            sources.original_locked.return_value = dict(self.original, access_receipt_id="ACCESS-B")
+            def recheck():
+                return owner.compare_attributions("PAT-A", "CASE-A", "REVIEW-A", organization="ORG-A",
+                    actor="ACTOR-A", purpose="operations", recheck_authority=lambda: None,
+                    expected_comparison_sha256=expected["sha256"])
+            self.assertEqual(recheck()["comparison_sha256"], expected["sha256"])
+            self.assertEqual(registry._fetchone.call_args.args[1],
+                ("PAT-A", "CASE-A", "QUESTION-A", "REVIEW-A", expected["sha256"]))
+            index["source_reported_assertions"] = [dict(self.finding, source_statement="Fictional changed statement")]
+            with self.assertRaises(PatientRegistryConflict):
+                recheck()
+            registry._fetchone.return_value = None
+            with self.assertRaises(PatientRegistryDenied):
+                recheck()
 
     def setUp(self):
         directory = Path(__file__).resolve().parents[3] / "examples/synthetic"

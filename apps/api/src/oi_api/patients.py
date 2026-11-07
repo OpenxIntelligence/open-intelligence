@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import Field, StrictBool, field_validator
@@ -504,7 +504,8 @@ class AttributionComparison(Contract):
 
 
 class AttributionReassessment(Contract):
-    contract: Literal["oi.synthetic-attribution-reassessment/1"]
+    contract: Literal["oi.synthetic-attribution-reassessment/2"]
+    comparison_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     synthetic: Literal[True]
     clinical_approval: Literal[False]
     patient_id: str
@@ -967,6 +968,7 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                 response_model=AttributionReassessment, responses=errors,
                 operation_id="compare_recorded_and_current_attributions_v1")
     def compare_attributions(request: Request, patient_id: str, case_id: str, receipt_id: str,
+                             expected_comparison_sha256: str | None = Query(default=None, pattern=r"^[0-9a-f]{64}$"),
                              context: Principal = Depends(principal)):
         actions = ("question_read", "source_read", "source_original_read", "review_queue_read")
         try:
@@ -975,6 +977,7 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                     records_authorized(patients, context, patient_id, action)
                 return PostgresQuestionReviewReturns(patients).compare_attributions(
                     patient_id, case_id, receipt_id, organization=context.organization, actor=context.actor,
+                    expected_comparison_sha256=expected_comparison_sha256,
                     purpose=context.purpose, recheck_authority=lambda: final_question_authority(
                         request, context, patients, patient_id, actions),
                     prepare_response=lambda packet: JSONResponse(

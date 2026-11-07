@@ -256,7 +256,8 @@ class PostgresQuestionReviewReturns:
 
     def compare_attributions(self, patient_id: str, case_id: str, receipt_id: str, *, organization: str,
                              actor: str, purpose: str, recheck_authority: Callable[[], None],
-                             prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
+                             prepare_response: Callable[[dict], PreparedResponse] | None = None,
+                             expected_comparison_sha256: str | None = None) -> dict | PreparedResponse:
         if purpose != "operations":
             raise PatientRegistryDenied("Attribution review unavailable")
         sources = PostgresSourceVersions(self.registry)
@@ -268,6 +269,17 @@ class PostgresQuestionReviewReturns:
             if receipt is None or "comparison_source" not in receipt:
                 raise PatientRegistryDenied("Attribution review unavailable")
             question = next(q for q in questions if q["question_id"] == receipt["question_id"])
+            saved = None
+            if expected_comparison_sha256 is not None:
+                saved = self.registry._fetchone(
+                    "SELECT metadata_json FROM identity.identity_domain_events WHERE patient_id=%s "
+                    "AND event_type='investigation.review.attribution_compared' "
+                    "AND metadata_json->>'case_id'=%s AND metadata_json->>'question_id'=%s "
+                    "AND metadata_json->>'review_receipt_id'=%s AND metadata_json->>'comparison_sha256'=%s "
+                    "ORDER BY id DESC LIMIT 1",
+                    (patient_id, case_id, question["question_id"], receipt_id, expected_comparison_sha256))
+                if saved is None:
+                    raise PatientRegistryDenied("Recorded comparison unavailable")
             current = {s["document_id"]: s for s in index["sources"] if s["state"] == "current"}
 
             def side(anchor):
@@ -282,6 +294,13 @@ class PostgresQuestionReviewReturns:
             second, second_access = side(receipt["comparison_source"])
             inspected = comparison_snapshot(patient_id=patient_id, case_id=case_id,
                 question_id=question["question_id"], receipt_id=receipt_id, first=first, second=second)
+            if saved is not None:
+                event = saved[0]
+                if (event.get("comparison_contract") != inspected["content"]["contract"]
+                        or not hmac.compare_digest(inspected["sha256"], expected_comparison_sha256)
+                        or event.get("first_latest_source_id") != first["latest"]["source_id"]
+                        or event.get("second_latest_source_id") != second["latest"]["source_id"]):
+                    raise PatientRegistryConflict("Recorded comparison requires reassessment")
             self.registry.append_event(
                 patient_id, "investigation.review.attribution_compared", case_id=case_id,
                 question_id=question["question_id"], review_receipt_id=receipt_id, actor=actor,
@@ -290,7 +309,8 @@ class PostgresQuestionReviewReturns:
                 second_latest_source_id=second["latest"]["source_id"],
                 comparison_contract=inspected["content"]["contract"], comparison_sha256=inspected["sha256"],
             )
-            packet = {"contract": "oi.synthetic-attribution-reassessment/1", "synthetic": True,
+            packet = {"contract": "oi.synthetic-attribution-reassessment/2", "synthetic": True,
+                      "comparison_sha256": inspected["sha256"],
                       "clinical_approval": False, "patient_id": patient_id, "case_id": case_id,
                       "receipt_id": receipt_id, "question_id": question["question_id"],
                       "access_receipt_id": index["access_receipt_id"],

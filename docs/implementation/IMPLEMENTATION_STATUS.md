@@ -1,3 +1,25 @@
+## Exact comparison recheck — hosted acceptance pending
+
+The paired-review response contract is now `oi.synthetic-attribution-reassessment/2`
+and exposes its journaled comparison digest. The optional
+`expected_comparison_sha256` query retrieves a previously inspected comparison
+under the same patient, case, question and review receipt. The source owner
+reconstructs both passages under fresh permissions; a digest or source-identity
+mismatch returns conflict and rolls back access/event writes. Unknown and
+cross-scope identities remain unavailable. Historical comparisons are not silently
+replaced by newer content and are not promoted to reviewer decisions.
+
+Review now offers **Recheck this exact comparison**. Stale or substituted responses
+clear the displayed comparison. New inspection is explicit. Local validation:
+727 client tests, production build and 16 focused API/parser/contract tests passed.
+Hosted acceptance includes the real PostgreSQL stale/no-write and final-authority
+rollback cases, a browser amendment/recheck journey, and digest-bound retrieval
+from the restored database. These hosted results remain pending for this increment.
+
+Next construction: durable synthetic reviewer disposition bound to this verified
+comparison, with explicit intent, exact retry and immutable history. Full domain
+construction continues through the canonical backlog; no clinical release implied.
+
 ## Comparison fingerprint integration — acceptance pending
 
 The continuation after #622 adopts the comparison-snapshot helper from #621
