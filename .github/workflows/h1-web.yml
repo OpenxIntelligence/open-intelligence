@@ -90,6 +90,11 @@ jobs:
         if: always()
         with:
           name: h1-web-verification-${{ github.run_id }}-${{ github.run_attempt }}
-          path: verification-web/
+          # Failed runs retain logs and application evidence, not incomplete
+          # browser-owned component packages. No-file denial assertions remain.
+          path: |
+            verification-web/
+            !verification-web/**/*.crdownload
+            !verification-web/**/*.crx
           if-no-files-found: error
           retention-days: 7
