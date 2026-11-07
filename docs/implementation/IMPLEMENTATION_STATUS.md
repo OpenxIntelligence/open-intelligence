@@ -8,6 +8,12 @@ available, and the API requires the new revision before serving case requests.
 This prevents future truncation; it does not reconstruct previously lost records.
 
 Local validation: 17 migration-graph, API contract and comparison tests pass.
+The first hosted run reached the joined migration gate and exposed two legacy
+downgrade assertions that expected the older outbox guard to run before the new
+review guard. The repair checks both the published 0029 parent and current 0030
+head explicitly, including unchanged rows, schema, readiness and outbox. The
+browser repair refreshes authorized review history before inspecting the saved
+receipt. Local client tests pass 727/727 and the production build passes.
 Hosted PostgreSQL tests cover direct/CASCADE truncation, populated upgrade with
 exact row/event preservation, populated downgrade refusal and empty round trip.
 These database checks remain pending for this revision. No clinical disposition,
