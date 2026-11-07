@@ -5,6 +5,7 @@ import argparse
 from collections.abc import Callable
 import json
 import os
+from time import monotonic
 
 from fastapi import HTTPException
 
@@ -117,12 +118,15 @@ def run_once(settings: Settings, token_provider: Callable[[], str], patient_id: 
 
 def run_bounded(settings: Settings, token_provider: Callable[[], str], patient_id: str, case_id: str, *,
                 authentication: Authentication | None = None, lease_seconds: int = 30,
-                max_batches: int = 20) -> dict:
-    """Process a finite backlog without changing identity or retrying a failed batch."""
+                max_batches: int = 20, max_seconds: int | None = None) -> dict:
+    """Bound batch admissions without changing identity or interrupting transactions."""
     if type(max_batches) is not int or not 1 <= max_batches <= 100:
         raise ValueError("Batch budget must be between 1 and 100")
     if type(lease_seconds) is not int or not 1 <= lease_seconds <= 300:
         raise ValueError("Lease duration must be between 1 and 300 seconds")
+    if max_seconds is not None and (type(max_seconds) is not int or not 1 <= max_seconds <= 3600):
+        raise ValueError("Elapsed budget must be between 1 and 3600 seconds")
+    deadline = None if max_seconds is None else monotonic() + max_seconds
     provider = authentication if authentication is not None else (
         SyntheticFileAuthentication(settings.access_file) if settings.access_file else DenyAuthentication())
 
@@ -143,6 +147,10 @@ def run_bounded(settings: Settings, token_provider: Callable[[], str], patient_i
     pinned = PinnedAuthentication()
     progress = {"batches_attempted": 0, "delivered_batches": 0, "continued_batches": 0}
     for _ in range(max_batches):
+        # Admission control only: finish an admitted transaction and retain its
+        # actual result before considering another batch. Never kill a lease.
+        if deadline is not None and monotonic() >= deadline:
+            return {"status": "time_limit_reached", **progress}
         result = run_once(settings, token_provider, patient_id, case_id,
                           authentication=pinned, lease_seconds=lease_seconds)
         progress["batches_attempted"] += 1
@@ -184,6 +192,8 @@ def main(argv=None):
     mode.add_argument("--once", action="store_true")
     mode.add_argument("--drain", action="store_true", help="Process a bounded eligible backlog")
     parser.add_argument("--max-batches", type=int, default=None, choices=range(1, 101), metavar="1..100")
+    parser.add_argument("--max-seconds", type=int, default=None, choices=range(1, 3601),
+                        metavar="1..3600", help="Stop admitting drain batches after this time; active work may finish later")
     mode.add_argument("--status", action="store_true", help="Inspect this actor's backlog without claiming work")
     mode.add_argument("--dead-letters", action="store_true", help="Inspect scoped terminal failures")
     parser.add_argument("--limit", type=int, default=None, choices=range(1, 101), metavar="1..100")
@@ -199,8 +209,8 @@ def main(argv=None):
             PostgresSourceEventDelivery.validate_retry(args.retry_delivery, args.expected_revision)
         except ValueError as error:
             parser.error(str(error))
-    if not args.drain and args.max_batches is not None:
-        parser.error("Batch budget requires --drain")
+    if not args.drain and (args.max_batches is not None or args.max_seconds is not None):
+        parser.error("Batch and elapsed budgets require --drain")
     if not args.dead_letters and (args.limit is not None or args.after_event is not None):
         parser.error("Pagination options require --dead-letters")
     limit = args.limit if args.limit is not None else 20
@@ -219,7 +229,8 @@ def main(argv=None):
         elif args.drain:
             result = run_bounded(Settings.from_env(), _token_reader(path), args.patient, args.case,
                                  lease_seconds=args.lease_seconds,
-                                 max_batches=args.max_batches if args.max_batches is not None else 20)
+                                 max_batches=args.max_batches if args.max_batches is not None else 20,
+                                 max_seconds=args.max_seconds)
         elif args.dead_letters:
             result = read_dead_letters(Settings.from_env(), _token_reader(path), args.patient, args.case,
                                        limit=limit, after_event=after_event)
@@ -232,7 +243,7 @@ def main(argv=None):
         result = {"status": "unavailable"}
     print(json.dumps(result, sort_keys=True))
     if args.drain:
-        return 0 if result["status"] in {"idle", "limit_reached"} else 2
+        return 0 if result["status"] in {"idle", "limit_reached", "time_limit_reached"} else 2
     return 0 if result["status"] in {"idle", "delivered", "queued", "fenced", "observed", "retry_authorized"} else 2
 
 

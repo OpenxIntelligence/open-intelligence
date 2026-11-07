@@ -91,6 +91,14 @@ jobs:
           python -m pip install --force-reinstall --no-deps --require-hashes --no-index --find-links /tmp/oi-h1-wheels -r apps/api/requirements.lock
           python -m pip check
           python --version
+      - name: Verify primitive manual-context audit contracts before database suites
+        run: |
+          python - <<'PYTEST'
+          import unittest
+          suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_manual_context_contracts.py')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(0 if result.wasSuccessful() and result.testsRun and not result.skipped else 1)
+          PYTEST
       - name: Apply the explicit migration to the disposable database
         run: python -m oi_api.migrate upgrade head
       - name: Verify source purpose compatibility and published-history preservation first

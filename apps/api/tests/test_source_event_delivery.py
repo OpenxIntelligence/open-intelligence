@@ -284,6 +284,47 @@ class SourceEventDeliveryPostgresTests(source_fixture.SourceVersionFixture):
             self.assertEqual(row["attempt_count"], 1)
             self.assertEqual(len(self.receipts(row["delivery_id"])), 1)
 
+    def test_elapsed_drain_stop_preserves_committed_receipt_and_resumes_unclaimed_work(self):
+        import oi_api.event_worker as worker
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            self.assertEqual(self.ingest(base, patient)[0], 201)
+            self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
+        clock = [0.0]
+        original = worker.run_once
+        def complete_then_expire(*args, **kwargs):
+            result = original(*args, **kwargs)
+            self.assertEqual(result["status"], "delivered")
+            clock[0] = 2.0
+            return result
+        with patch.object(worker, "monotonic", side_effect=lambda: clock[0]), \
+             patch.object(worker, "run_once", side_effect=complete_then_expire) as execute:
+            result = worker.run_bounded(self.settings, lambda: TOKEN, patient, CASE,
+                                        max_batches=10, max_seconds=1)
+        self.assertEqual(result, {"status": "time_limit_reached", "batches_attempted": 1,
+                                  "delivered_batches": 1, "continued_batches": 0})
+        self.assertEqual(execute.call_count, 1)
+        first, = self.rows(DELIVERIES, "event_id")
+        first_receipts = self.receipts(first["delivery_id"])
+        self.assertEqual(len(first_receipts), 1)
+        self.assertEqual(self.event_status(patient)["unclaimed"], 1)
+        cli = subprocess.run([sys.executable, "-m", "oi_api.event_worker", "--drain",
+                              "--patient", patient, "--case", CASE,
+                              "--max-batches", "10", "--max-seconds", "10"],
+                             env=self.event_worker_env(), capture_output=True, text=True, timeout=30)
+        self.assertEqual(cli.returncode, 0, cli.stderr)
+        self.assertEqual(json.loads(cli.stdout), {"status": "idle", "batches_attempted": 2,
+                                                 "delivered_batches": 1, "continued_batches": 0})
+        self.assertEqual(cli.stderr, "")
+        self.assertEqual(self.receipts(first["delivery_id"]), first_receipts)
+        rows = self.rows(DELIVERIES, "event_id")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0], first)
+        for row in rows:
+            self.assertEqual(row["state"], "delivered")
+            self.assertEqual(row["attempt_count"], 1)
+            self.assertEqual(len(self.receipts(row["delivery_id"])), 1)
+
     def assert_bounded_drain_authority_change(self, change):
         import oi_api.event_worker as worker
         with running_server(create_app(self.settings)) as base:

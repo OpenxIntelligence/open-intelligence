@@ -1,5 +1,37 @@
 # Implementation slice 01 — source and investigation ledger
 
+## Source-relay elapsed admission budget — November 7, 2026
+
+Continuation of #626 at `a398f2401091b130fec0c38824b00511c7866abd`,
+under OI-013 / PF-06. The existing `--drain` command accepts optional
+`--max-seconds 1..3600` alongside its batch budget. A monotonic deadline stops
+new admissions; active transactions retain their normal completion, leases,
+receipts and authority checks. Failure results are preserved rather than hidden
+by a budget stop. No migration, grant, dependency or additional state owner.
+
+Tests first reproduced argparse's rejection of the new flag. After construction,
+21 worker/schema tests and 31 architecture tests pass locally, as do the ownership
+and independently fictional-data gates. The new real-PostgreSQL test exercises a
+committed delivery, expiry before another claim, and actual CLI resume with one
+receipt per delivery. PostgreSQL/Docker are unavailable locally; that test and
+the complete inherited PostgreSQL/browser/recovery workflows require exact-source
+hosted acceptance. Parent results are not substituted. Published source and
+workflow results belong to the dependent draft's receipt; no merge or deployment.
+
+The initial hosted source `020df48128c3122919ee3fcea205de3580faea63`
+passes 237 worker/database tests (including the new real stop/resume case),
+31 architecture tests, and the web/browser/demo workflow with 704 client and
+13 rights tests. Its full API run 42369046826 executes 1,024 methods and stops
+with one inherited fixture error: the empty manual-context test still expects
+the old `_execute` journal insertion, while the #626 canonical writer uses
+`_fetchone` with `RETURNING id`. No dedicated recovery stage runs after that
+failure. The fixture now routes and inspects the actual canonical insertion,
+requires exactly one audit event and no unrelated write, and retains the real
+primitive metadata validation. An early pure-contract gate catches this class
+of mismatch before long database suites; all existing gates remain required.
+This correction changes no production implementation. Repaired-head full
+acceptance remains separate from the initial worker/browser passes.
+
 **Current connected application:** use the [persistent fictional demo](H1_DEMO.md).
 This dependent draft's PR records its combined revision, verification receipts
 and landing status; [foundation #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565)
