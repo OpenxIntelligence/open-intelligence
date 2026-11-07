@@ -135,23 +135,39 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         before = len(observed())
         source_click(source_id, 'source-images-open', keyboard=keyboard)
         path = case_path + '/sources/' + source_id + '/images'
-        cd.wait('window.__oiImageContinuityChecks.responses.length>' + str(before)
-                + " && Boolean(document.querySelector('[data-testid=source-images-receipt]'))", 'actual image index in Records')
-        payload = latest(path)['payload']
+        cd.wait("window.__oiImageContinuityChecks.responses.slice(" + str(before) + ").some(row => "
+                + "row.path === " + json.dumps(path) + " && row.method === 'GET' && row.status === 200 "
+                + "&& row.payload?.access_receipt_id && row.payload.access_receipt_id === "
+                + "document.querySelector('[data-testid=source-images-receipt]')?.textContent)",
+                'fresh report-specific image index receipt rendered in Records')
+        rendered_receipt = cd.evaluate("document.querySelector('[data-testid=source-images-receipt]').textContent")
+        payload = next(row['payload'] for row in observed()[before:]
+                       if row['path'] == path and row['method'] == 'GET' and row['status'] == 200
+                       and row['payload']['access_receipt_id'] == rendered_receipt)
         assert (payload['patient_id'], payload['case_id'], payload['source_id']) == (patient_id, CASE, source_id)
         assert payload['synthetic'] is True and payload['source_identity_verified'] is False
         assert len(payload['images']) == expected_count
         assert cd.evaluate("document.querySelectorAll('[data-testid=source-image-row]').length") == expected_count
+        displayed = cd.evaluate("""Array.from(document.querySelectorAll('[data-testid=source-image-row]'), row => [
+            row.closest('[data-testid=source-image-study]').dataset.studyUid,
+            row.closest('[data-testid=source-image-series]').dataset.seriesUid,
+            row.closest('[data-testid=source-image-series]').querySelector('summary').textContent.split(' ')[0],
+            row.dataset.imageId])""")
+        assert sorted(displayed) == sorted([item['study_uid'], item['series_uid'], item['modality'], item['image_id']]
+                                           for item in payload['images'])
         return payload
 
-    def download_image(source_id, label, *, denied=False):
+    def download_image(source_id, label, *, denied=False, selected_id=None, expected_original=None):
+        selected_id = selected_id or image_id
+        expected_original = original if expected_original is None else expected_original
+        expected_sha = hashlib.sha256(expected_original).hexdigest()
         destination = artifacts / 'image-original-downloads' / label
         destination.mkdir(parents=True, exist_ok=True)
         cd.command('Browser.setDownloadBehavior', {'behavior': 'allow', 'downloadPath': str(destination.resolve())})
         before = len(observed())
         blobs = cd.evaluate('window.__oiImageContinuityChecks.blobs')
-        click(cd, '[data-testid=source-image-download]')
-        path = case_path + '/sources/' + source_id + '/images/' + image_id
+        click(cd, '[data-image-id="' + selected_id + '"] [data-testid=source-image-download]')
+        path = case_path + '/sources/' + source_id + '/images/' + selected_id
         cd.wait('window.__oiImageContinuityChecks.responses.length>' + str(before), 'fresh actual original image HTTP read')
         if denied:
             read = latest(path, 404)
@@ -163,13 +179,13 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         wait_for(lambda: len(list(destination.glob('*.dcm'))) == 1 and not list(destination.glob('*.crdownload')),
                  'actual original DICOM browser download')
         path_on_disk, = destination.glob('*.dcm')
-        assert path_on_disk.read_bytes() == original
+        assert path_on_disk.read_bytes() == expected_original
         read = latest(path)
-        assert read['sha256'] == original_sha and read['byte_count'] == len(original)
+        assert read['sha256'] == expected_sha and read['byte_count'] == len(expected_original)
         cd.wait("document.querySelector('[data-testid=source-image-download-receipt]')?.textContent.includes("
                 + json.dumps(read['access_receipt_id']) + ')', 'fresh image download receipt rendered')
-        downloads.append({'source_id': source_id, 'image_id': image_id, 'path': str(path_on_disk.relative_to(artifacts)),
-                          'sha256': original_sha, 'byte_count': len(original), 'access_receipt_id': read['access_receipt_id']})
+        downloads.append({'source_id': source_id, 'image_id': selected_id, 'path': str(path_on_disk.relative_to(artifacts)),
+                          'sha256': expected_sha, 'byte_count': len(expected_original), 'access_receipt_id': read['access_receipt_id']})
         return read
 
     def question_workspace(question_id):
@@ -345,13 +361,43 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         status, relinked = operator(case_path + '/sources/' + current_source + '/images', raw=original)
         assert status == 201 and relinked['result'] == 'linked' and relinked['image_id'] == image_id
         records(current_source);inspect_images(current_source);download_image(current_source, 'explicit-current-source-relink')
+        # The browser must nest a mixed-modality study and a separate study
+        # from the same authorized report without inferring an acquisition order.
+        for study, series, sop, modality in (('2.25.33001', '2.25.33004', '2.25.33005', 'MR'),
+                                             ('2.25.33006', '2.25.33007', '2.25.33008', 'CT')):
+            added = dicom_bytes(modality=modality, patient_id='SUBJECT-IMAGE', issuer='ORG-INSTITUTION/SYS-SYNTH',
+                             study_uid=study, series_uid=series, sop_uid=sop, study_date='20260210')
+            status, imported = operator(case_path + '/sources/' + current_source + '/images', raw=added)
+            assert status == 201
+            if modality == 'MR':
+                mr_id, mr_original = imported['image_id'], added
+        source_click(current_source, 'source-images-close')
+        mixed = inspect_images(current_source, expected_count=3)
+        assert len({row['study_uid'] for row in mixed['images']}) == 2
+        assert {row['modality'] for row in mixed['images'] if row['study_uid'] == '2.25.33001'} == {'CT', 'MR'}
+        assert cd.evaluate("document.querySelectorAll('[data-testid=source-image-study]').length") == 2
+        assert cd.evaluate("document.querySelectorAll('[data-testid=source-image-series]').length") == 3
+        mr_row = '[data-image-id="' + mr_id + '"]'
+        assert cd.evaluate("!document.querySelector(" + json.dumps(mr_row + ' [data-testid=source-image-preview-open]') + ")")
+        assert cd.evaluate("document.querySelector(" + json.dumps(mr_row + ' [data-testid=source-image-preview-unavailable]') + ").textContent.includes('MR preview is unavailable')")
+        download_image(current_source, 'mr-original', selected_id=mr_id, expected_original=mr_original)
+        before_toggle = len(observed())
+        summary = "document.querySelector(" + json.dumps(mr_row) + ").closest('details[data-testid=source-image-series]').querySelector('summary')"
+        cd.evaluate(summary + '.focus()')
+        cd.command('Input.dispatchKeyEvent', {'type':'keyDown','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
+        cd.command('Input.dispatchKeyEvent', {'type':'keyUp','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
+        cd.wait("!(" + summary + ").parentElement.open", 'keyboard collapses the exact MR series')
+        cd.command('Input.dispatchKeyEvent', {'type':'keyDown','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
+        cd.command('Input.dispatchKeyEvent', {'type':'keyUp','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
+        cd.wait("(" + summary + ").parentElement.open", 'keyboard reopens the exact MR series')
+        assert len(observed()) == before_toggle, 'Grouping disclosure must not fetch or write'
         cd.command('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
         cd.wait('document.documentElement.scrollWidth<=innerWidth+1', 'image inspector stays within narrow browser viewport')
         cd.evaluate("document.querySelector('[data-testid=source-images-inspection]').scrollIntoView({block:'start'})")
         (artifacts / 'image-original-narrow.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
 
         for download in downloads:
-            assert (artifacts / download['path']).read_bytes() == original
+            assert hashlib.sha256((artifacts / download['path']).read_bytes()).hexdigest() == download['sha256']
         assert len({entry['access_receipt_id'] for entry in downloads}) == len(downloads)
         for report in authored['reports']:
             retained = (artifacts / report['download_relative_path']).read_bytes()
@@ -369,7 +415,8 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
             'source_amendment_requires_explicit_image_relink_and_question_task_reassessment':True,
             'api_restart_preserves_original_image_and_report_history':True,
             'non_diagnostic_preview_rendered_from_fresh_authorized_original':True,
-            'diagnostic_windowing_applied':False,
+            'diagnostic_windowing_applied':False, 'mixed_ct_mr_study_series_verified':True,
+            'mr_original_downloaded_with_fresh_receipt':True, 'mr_preview_withheld':True,
             'retained_downloads_unchanged':True, 'synthetic':True, 'pixels_interpreted':False,
             'clinical_approval':False, 'model_executed':False}
         (artifacts / 'image-evidence-continuity.json').write_text(json.dumps(receipt, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')

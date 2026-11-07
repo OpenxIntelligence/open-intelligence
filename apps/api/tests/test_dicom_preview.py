@@ -46,6 +46,10 @@ class DicomPreviewTests(unittest.TestCase):
         decoded = dict(chunks(render_dicom_preview(raw)))
         self.assertEqual(zlib.decompress(decoded[b"IDAT"]), b"\x00\x7f\x7f\x00\x7f\x7f")
 
+    def test_mr_custody_does_not_expand_the_qualified_ct_preview(self):
+        with self.assertRaisesRegex(DicomIntegrityError, "CT profile"):
+            render_dicom_preview(dicom_bytes(modality="MR"))
+
     def test_unsupported_or_corrupt_originals_fail_closed(self):
         for raw in (b"", b"not a dicom", dicom_bytes()[:-2]):
             with self.subTest(size=len(raw)):

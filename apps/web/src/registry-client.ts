@@ -1883,6 +1883,9 @@ export class RegistrySession {
        this.#state.sourceImagesPhase!=='ready'||!this.#state.cases?.some(item=>item.case_id===index.case_id&&item.status==='active')){
       this.#publish({sourceImagePreviewPhase:'error',sourceImagePreviewMessage:'Inspect the exact current source image list before requesting a preview.'});return;
     }
+    if(image.modality!=='CT'){
+      this.#publish({sourceImagePreviewPhase:'error',sourceImagePreviewMessage:'MR preview is unavailable. Download the original DICOM instead.'});return;
+    }
     const scope=this.#scope,read=this.#read,imageRead=this.#imageRead,caseId=index.case_id;
     const current=()=>scope===this.#scope&&read===this.#read&&request===this.#imagePreview&&imageRead===this.#imageRead&&
       this.#state.patient?.patient_id===patientId&&this.#state.sourceIndex===index&&this.#state.sourceImages===images;

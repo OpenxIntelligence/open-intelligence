@@ -1,3 +1,4 @@
+import {SourceImageStudies} from './source-image-studies';
 import {SourceOncologyLabel} from './source-oncology-label';
 import {useEffect,useRef,useState} from 'react';
 import type {SourceIndex} from './source-contracts';
@@ -125,27 +126,15 @@ export function SourceReading({index, kind, view, filters, onFiltersChange, busy
               {sourceImagesPhase==='ready'&&sourceImages&&<>
                 <p className="small">Image metadata access receipt: <code data-testid="source-images-receipt">{sourceImages.access_receipt_id}</code></p>
                 {sourceImages.images.length===0?<p data-testid="source-images-empty">No originals are linked to this current report.</p>:
-                  <ul className="source-image-list">{sourceImages.images.map(image=><li key={image.image_id}
-                    data-testid="source-image-row" data-image-id={image.image_id}>
-                    <p><strong>{image.modality} original</strong> · <time dateTime={image.study_date}>{image.study_date}</time> · {image.byte_count.toLocaleString()} bytes</p>
-                    <details><summary>Original integrity and identifiers</summary><dl className="source-metadata">
-                      <div><dt>Image</dt><dd><code>{image.image_id}</code></dd></div>
-                      <div><dt>Source</dt><dd><code>{image.source_id}</code></dd></div>
-                      <div><dt>Original SHA-256</dt><dd><code>{image.sha256}</code></dd></div>
-                      <div><dt>Study / Series / SOP</dt><dd><code>{image.study_uid} / {image.series_uid} / {image.sop_uid}</code></dd></div>
-                    </dl></details>
-                    <div className="actions">
-                      <button type="button" data-testid="source-image-preview-open" disabled={busy||sourceImagePreviewPhase==='loading'}
-                        onClick={event=>{previewOpener.current=event.currentTarget;onPreviewImage?.(item.source_id,image.image_id);}}>View non-diagnostic preview</button>
-                      <button type="button" data-testid="source-image-download" disabled={busy||sourceImageDownloadPhase==='loading'}
-                        onClick={()=>onDownloadImage?.(item.source_id,image.image_id)}>Recheck and download original DICOM</button>
-                    </div>
-                    {sourceImagePreview?.image_id===image.image_id&&sourceImagePreview.source_id===item.source_id&&
+                  <SourceImageStudies images={sourceImages.images} disabled={busy||sourceImageDownloadPhase==='loading'}
+                    previewDisabled={busy||sourceImagePreviewPhase==='loading'}
+                    onDownload={image=>onDownloadImage?.(item.source_id,image.image_id)}
+                    onPreview={(image,trigger)=>{previewOpener.current=trigger;onPreviewImage?.(item.source_id,image.image_id);}}
+                    renderPreview={image=>sourceImagePreview?.image_id===image.image_id&&sourceImagePreview.source_id===item.source_id&&
                       <ImagePreview key={sourceImagePreview.access_receipt_id} preview={sourceImagePreview} onClose={()=>{
                         onDismissImagePreview?.();
                         if(previewOpener.current?.isConnected)previewOpener.current.focus();
-                      }}/>}
-                  </li>)}</ul>}
+                      }}/>}/>}
                 {sourceImagePreviewPhase!=='idle'&&<p role="status" aria-live="polite" data-testid="source-image-preview-status">{sourceImagePreviewMessage}</p>}
               </>}
               {sourceImageDownloadPhase!=='idle'&&<p role="status" aria-live="polite" data-testid="source-image-download-status">{sourceImageDownloadMessage}</p>}

@@ -269,3 +269,13 @@ footer a { color: #285b49; min-height: 44px; display: inline-flex; align-items: 
   .diagnostic-nav { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; gap: 2px; padding-top: 6px; }
   .diagnostic-nav > span { grid-column: 1 / -1; padding-inline: 8px; }
 }
+
+.source-image-studies > section { margin-block: 1rem; border-top: 1px solid #c6d8c9; }
+.source-image-studies h6 { font-size: 1rem; margin: .9rem 0 .35rem; }
+.source-image-studies summary { cursor: pointer; overflow-wrap: anywhere; }
+.source-image-studies details { margin-block: .5rem; }
+.source-image-studies .source-image-list { list-style: none; margin: .5rem 0; padding: 0; }
+.source-image-studies .actions > .small { flex-basis: 100%; margin: 0; }
+@media (max-width: 600px) {
+  .source-image-studies .source-image-list > li { padding: 10px; }
+}

@@ -1,4 +1,4 @@
-"""Independently authored, stdlib-only CT bytes for synthetic custody tests.
+"""Independently authored, stdlib-only CT and MR bytes for synthetic custody tests.
 
 No scans, package datasets, patient records or pydicom data/example helpers.
 This is a fixture encoder, not an image parser or an application authority.
@@ -8,6 +8,7 @@ import struct
 
 
 CT_CLASS = "1.2.840.10008.5.1.4.1.1.2"
+MR_CLASS = "1.2.840.10008.5.1.4.1.1.4"
 EXPLICIT_LE = "1.2.840.10008.1.2.1"
 LONG_VRS = {"OB", "OD", "OF", "OL", "OV", "OW", "SQ", "SV", "UC", "UN", "UR", "UT", "UV"}
 
@@ -32,24 +33,25 @@ def file_bytes(meta: list[tuple[int, str, bytes]], dataset: list[tuple[int, str,
 
 def fixture_elements(*, patient_id="SYNTHETIC-ALPHA", issuer="SYNTHETIC-PACS",
                      study_uid="2.25.11001", series_uid="2.25.11002", sop_uid="2.25.11003",
-                     study_date="20260517", rows=2, columns=2, pixels=None):
+                     study_date="20260517", modality="CT", rows=2, columns=2, pixels=None):
     """Return editable fixture elements; values originate entirely here."""
+    sop_class = {"CT": CT_CLASS, "MR": MR_CLASS}[modality].encode("ascii")
     if pixels is None:
         # A repeated four-value pattern remains 16-bit for larger authored frames.
         count = rows * columns
         pixels = (struct.pack("<4H", 0, 1, 2, 3) * ((count + 3) // 4))[:count * 2]
     meta = [
         (0x00020001, "OB", b"\0\1"),
-        (0x00020002, "UI", CT_CLASS.encode("ascii")),
+        (0x00020002, "UI", sop_class),
         (0x00020003, "UI", sop_uid.encode("ascii")),
         (0x00020010, "UI", EXPLICIT_LE.encode("ascii")),
         (0x00020012, "UI", b"2.25.110099"),
     ]
     dataset = [
-        (0x00080016, "UI", CT_CLASS.encode("ascii")),
+        (0x00080016, "UI", sop_class),
         (0x00080018, "UI", sop_uid.encode("ascii")),
         (0x00080020, "DA", study_date.encode("ascii")),
-        (0x00080060, "CS", b"CT"),
+        (0x00080060, "CS", modality.encode("ascii")),
         (0x00100010, "PN", b"FICTIONAL^INDEPENDENT"),
         (0x00100020, "LO", patient_id.encode("ascii")),
         (0x00100021, "LO", issuer.encode("ascii")),
@@ -71,8 +73,8 @@ def fixture_elements(*, patient_id="SYNTHETIC-ALPHA", issuer="SYNTHETIC-PACS",
 
 def dicom_bytes(*, patient_id="SYNTHETIC-ALPHA", issuer="SYNTHETIC-PACS",
                 study_uid="2.25.11001", series_uid="2.25.11002", sop_uid="2.25.11003",
-                study_date="20260517", rows=2, columns=2, pixels=None) -> bytes:
+                study_date="20260517", modality="CT", rows=2, columns=2, pixels=None) -> bytes:
     return file_bytes(*fixture_elements(
         patient_id=patient_id, issuer=issuer, study_uid=study_uid, series_uid=series_uid,
-        sop_uid=sop_uid, study_date=study_date, rows=rows, columns=columns, pixels=pixels,
+        sop_uid=sop_uid, study_date=study_date, modality=modality, rows=rows, columns=columns, pixels=pixels,
     ))

@@ -43,6 +43,8 @@ class TransactionTrace:
         return []
 
     def _fetchone(self, sql, parameters):
+        if "count(o.image_id)" in sql:
+            return 0, 0, 0
         if "coalesce(sum(byte_count)" in sql:
             return 0, 0
         if "JOIN clinical_source.source_image_links" in sql:

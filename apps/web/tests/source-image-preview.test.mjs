@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {deferred,digest} from './authored-evidence-fixtures.mjs';
 import {patientId,caseId,sourceId,imageId,original,previewPng,response,
- previewBinary,transportForImages,readyImages} from './source-images-fixtures.mjs';
+ images,previewBinary,transportForImages,readyImages} from './source-images-fixtures.mjs';
 
 test('non-diagnostic preview makes a fresh authorized PNG read without turning it into a download',async()=>{
  const calls=[];const fresh='ACCESS-'+'E'.repeat(32);
@@ -90,4 +90,18 @@ test('original access denial clears visible CT pixels and rejects a delayed prev
  waiting.resolve(previewBinary());await late;
  assert.equal(s.snapshot().sourceImagePreview,null);
  assert.equal(s.snapshot().sourceImageDownloadPhase,'error');
+});
+
+
+test('MR original custody does not initiate or accept a CT preview',async()=>{
+ const projection=images();projection.images[0].modality='MR';let previewRequests=0;
+ const s=new RegistrySession(transportForImages(url=>{
+  if(url.endsWith('/images'))return response(projection);
+  if(url.endsWith('/preview')){previewRequests++;return previewBinary();}
+ }));
+ await readyImages(s);await s.loadSourceImages(sourceId);await s.previewSourceImage(sourceId,imageId);
+ assert.equal(previewRequests,0);assert.equal(s.snapshot().sourceImagePreview,null);
+ assert.match(s.snapshot().sourceImagePreviewMessage,/MR preview is unavailable/);
+ const {readSourceImagePreview}=await import('../.test-dist/source-images.js');
+ await assert.rejects(()=>readSourceImagePreview(previewBinary(),projection.images[0]),/modality/);
 });

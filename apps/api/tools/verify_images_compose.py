@@ -39,8 +39,11 @@ SUBJECT = "SUBJECT-IMAGE-COMPOSE"
 SOURCE_SYSTEM = "SYS-IMAGE-COMPOSE"
 ISSUER = "ORG-IMAGE-SOURCE/" + SOURCE_SYSTEM
 STUDY = "2.25.112026110301"
-SERIES = "2.25.112026110302"
-SOPS = ("2.25.112026110303", "2.25.112026110304")
+# Two independent classic image classes in distinct series of one fictional study.
+INSTANCES = (
+    ("2.25.112026110302", "2.25.112026110303", "CT"),
+    ("2.25.112026110305", "2.25.112026110304", "MR"),
+)
 MAX_IMAGE_BYTES = 2_097_152
 EXPECTED_SCHEMA_REVISION = SCHEMA_REVISION
 QUEUE_CONTRACT = "oi.synthetic-question-review-return-queue/2"
@@ -138,11 +141,11 @@ def authored_originals():
     from dicom_integrity_fixture import dicom_bytes
 
     return tuple(dicom_bytes(patient_id=SUBJECT, issuer=ISSUER,
-                             study_uid=STUDY, series_uid=SERIES, sop_uid=sop,
+                             study_uid=STUDY, series_uid=series, sop_uid=sop, modality=modality,
                              study_date="20260517",
                              pixels=bytes((offset, 0, offset + 1, 0,
                                            offset + 2, 0, offset + 3, 0)))
-                 for sop, offset in zip(SOPS, (0, 10)))
+                 for (series, sop, modality), offset in zip(INSTANCES, (0, 10)))
 
 
 def main():
@@ -211,8 +214,8 @@ def main():
             rows = [json.loads(line) for line in raw.decode("utf-8").splitlines()]
             for row in rows:
                 assert set(row) == {"study_uid", "series_uid", "sop_uid"}
-                assert (row["study_uid"], row["series_uid"]) == (STUDY, SERIES)
-                assert row["sop_uid"] in SOPS, "Archive received noncanonical identifiers"
+                assert row["study_uid"] == STUDY
+                assert (row["series_uid"], row["sop_uid"]) in {(series, sop) for series, sop, _ in INSTANCES}
             return rows
 
         def use_archive_fixture():
@@ -220,12 +223,12 @@ def main():
             archive_directory.mkdir()
             archive_directory.chmod(0o755)
             entries = []
-            for index, (sop, raw) in enumerate(zip(SOPS, originals)):
+            for index, ((series, sop, _), raw) in enumerate(zip(INSTANCES, originals)):
                 filename = f"{index:02}.dcm"
                 path = archive_directory / filename
                 path.write_bytes(raw)
                 path.chmod(0o644)
-                entries.append({"study_uid": STUDY, "series_uid": SERIES,
+                entries.append({"study_uid": STUDY, "series_uid": series,
                                 "sop_uid": sop, "filename": filename})
             manifest = archive_directory / "manifest.json"
             manifest.write_text(json.dumps({"contract": "oi.synthetic-archive-acceptance/1",
@@ -885,9 +888,10 @@ finally:
             assert (value["source_id"], value["case_id"]) == (source_id, CASE)
             assert value["sha256"] == hashlib.sha256(originals[index]).hexdigest()
             assert type(value["byte_count"]) is int and value["byte_count"] == len(originals[index])
+            series, sop, modality = INSTANCES[index]
             assert (value["study_uid"], value["series_uid"], value["sop_uid"]) == (
-                STUDY, SERIES, SOPS[index])
-            assert (value["modality"], value["study_date"]) == ("CT", "2026-05-17")
+                STUDY, series, sop)
+            assert (value["modality"], value["study_date"]) == (modality, "2026-05-17")
 
         def ingest_image(source_id, index, result):
             status, value, _ = request(collection(source_id), originals[index], dicom=True)
@@ -931,6 +935,10 @@ finally:
                 receipts.append(("image.original_read_authorized", original_receipt))
 
                 status, preview, preview_headers = request(collection(source_id) + "/" + image_id + "/preview")
+                if INSTANCES[index][2] == "MR":
+                    assert status == 503 and preview_headers.get("X-OI-Access-Receipt") is None
+                    assert type(preview) is dict, "Unsupported MR preview must not disclose pixels"
+                    continue
                 assert status == 200 and preview_headers.get_content_type() == "image/png"
                 assert type(preview) is bytes and preview.startswith(b"\x89PNG\r\n\x1a\n")
                 assert len(preview) <= 1_200_000
@@ -939,9 +947,9 @@ finally:
                 preview_receipt = preview_headers.get("X-OI-Access-Receipt")
                 remember(preview_receipt, "image.preview_read_authorized")
                 receipts.append(("image.preview_read_authorized", preview_receipt))
-            expected = ([item for sop in SOPS for item in (
-                {"study_uid": STUDY, "series_uid": SERIES, "sop_uid": sop},
-                {"study_uid": STUDY, "series_uid": SERIES, "sop_uid": sop},
+            expected = ([item for series, sop, _ in INSTANCES for item in (
+                {"study_uid": STUDY, "series_uid": series, "sop_uid": sop},
+                {"study_uid": STUDY, "series_uid": series, "sop_uid": sop},
             )] if archive_enabled else [])
             assert archive_history() == before + expected, "Image original/preview HTTP bypassed the selected archive path"
             return receipts
@@ -981,7 +989,7 @@ finally:
                 assert headers.get("X-OI-Access-Receipt") is None
                 assert snapshot() == before, "Archive failure committed a receipt or changed durable custody"
                 assert archive_history() == calls_before + [
-                    {"study_uid": STUDY, "series_uid": SERIES, "sop_uid": SOPS[0]}]
+                    {"study_uid": STUDY, "series_uid": INSTANCES[0][0], "sop_uid": INSTANCES[0][1]}]
             finally:
                 path.write_bytes(originals[0])
                 path.chmod(0o644)

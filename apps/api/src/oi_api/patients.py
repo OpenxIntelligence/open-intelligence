@@ -508,7 +508,7 @@ class SourceImage(Contract):
     study_uid: str
     series_uid: str
     sop_uid: str
-    modality: Literal["CT"]
+    modality: Literal["CT", "MR"]
     study_date: str
 
 
