@@ -235,6 +235,74 @@ class LaboratoryExperimentTests(unittest.TestCase):
             worker({"technique": "exact_source_memory", "training": [{"source_sha256": case["source_sha256"]}],
                     "validation": [case]})
 
+    def test_cancel_before_execution_survives_reopen_and_launches_nothing(self):
+        self.service.plan(self.spec())
+        request = self.service.cancel("search", "Stop this experiment")
+        with LaboratoryEvaluationRegistry(self.path) as reopened:
+            service = LaboratoryExperiments(reopened)
+            self.assertEqual(service.inspect("search")["cancellation"], request)
+            with patch("oi_api.laboratory_experiments.run_worker", side_effect=AssertionError("No worker permitted")):
+                receipt = service.execute("search")
+                self.assertEqual(service.execute("search"), receipt)
+            self.assertEqual(receipt["status"], "cancelled")
+            self.assertIsNone(receipt["selected_recipe"])
+            self.assertEqual([t["status"] for t in receipt["trials"]], ["cancelled", "cancelled"])
+            self.assertEqual(service.cancel("search", "Stop this experiment"), request)
+        self.assertEqual(self.registry.db.execute(
+            "SELECT count(*) FROM records WHERE kind='experiment-trial-start'").fetchone()[0], 0)
+
+    def test_cancel_during_worker_preserves_trial_and_prevents_next_claim(self):
+        self.service.plan(self.spec())
+        calls = []
+        def stop_during_worker(payload, timeout):
+            calls.append(payload["technique"])
+            # A separate connection models a concurrent CLI stop request.
+            with LaboratoryEvaluationRegistry(self.path) as reopened:
+                LaboratoryExperiments(reopened).cancel("search", "Stop after current worker")
+            return run_worker(payload, timeout)
+        with patch("oi_api.laboratory_experiments.run_worker", side_effect=stop_during_worker):
+            receipt = self.service.execute("search")
+        self.assertEqual(calls, ["exact_source_memory"])
+        self.assertEqual([t["status"] for t in receipt["trials"]], ["completed", "cancelled"])
+        self.assertIsNone(receipt["selected_recipe"])
+        trial = receipt["trials"][0]
+        self.assertEqual(fingerprint(self.registry._get("checkpoint", trial["run_id"])), trial["checkpoint_sha256"])
+
+    def test_cancel_during_last_worker_suppresses_selection(self):
+        spec = self.spec()
+        spec["recipes"] = [self.keys[1]]
+        self.service.plan(spec)
+        def stop(payload, timeout):
+            result = run_worker(payload, timeout)
+            with LaboratoryEvaluationRegistry(self.path) as reopened:
+                LaboratoryExperiments(reopened).cancel("search", "Do not select")
+            return result
+        with patch("oi_api.laboratory_experiments.run_worker", side_effect=stop):
+            receipt = self.service.execute("search")
+        self.assertEqual(receipt["trials"][0]["status"], "completed")
+        self.assertEqual(receipt["status"], "cancelled")
+        self.assertIsNone(receipt["selected_recipe"])
+
+    def test_cancellation_validation_and_cli(self):
+        with self.assertRaises(ValueError):
+            self.service.cancel("missing", "Stop")
+        self.service.plan(self.spec())
+        for reason in (None, " ", "x" * 513):
+            with self.assertRaises(ValueError):
+                self.service.cancel("search", reason)
+        cmd = [sys.executable, "-m", "oi_api.laboratory_experiments", "--registry", str(self.path),
+               "cancel", "--experiment", "search", "--reason", "CLI stop"]
+        first = subprocess.run(cmd, capture_output=True, check=True)
+        second = subprocess.run(cmd, capture_output=True, check=True)
+        self.assertEqual(first.stdout, second.stdout)
+        with self.assertRaisesRegex(ValueError, "different immutable reason"):
+            self.service.cancel("search", "Changed reason")
+        self.service.plan(self.spec("finished"))
+        receipt = self.service.execute("finished")
+        with self.assertRaisesRegex(ValueError, "Finished experiment"):
+            self.service.cancel("finished", "Too late")
+        self.assertEqual(self.service.execute("finished"), receipt)
+
     def test_cli_executes_and_reopens_existing_plan(self):
         self.service.plan(self.spec())
         cmd = [sys.executable, "-m", "oi_api.laboratory_experiments", "--registry", str(self.path)]

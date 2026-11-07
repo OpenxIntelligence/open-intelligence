@@ -181,12 +181,34 @@ class LaboratoryExperiments:
             digest = self.registry._put("experiment-plan", spec["experiment_id"], plan)
         return {"experiment_id": spec["experiment_id"], "sha256": digest}
 
+    def _cancel_request(self, experiment_id):
+        exists = self.registry.db.execute(
+            "SELECT 1 FROM records WHERE kind='experiment-cancel' AND id=?", (experiment_id,)).fetchone()
+        return self.registry._get("experiment-cancel", experiment_id) if exists else None
+
+    def cancel(self, experiment_id, reason):
+        """Stop future trial claims; an already claimed worker retains its timeout."""
+        _require(type(reason) is str and 0 < len(reason.strip()) <= 512, "Cancellation reason required (1-512 characters)")
+        with self.registry._transaction():
+            plan = self.registry._get("experiment-plan", experiment_id)
+            request = {"experiment_id": experiment_id, "plan_sha256": fingerprint(plan), "reason": reason}
+            prior = self._cancel_request(experiment_id)
+            if prior is not None:
+                _require(prior == request, "Cancellation already has a different immutable reason")
+                return prior
+            _require(not self.registry.db.execute(
+                "SELECT 1 FROM records WHERE kind='experiment-finish' AND id=?", (experiment_id,)).fetchone(),
+                "Finished experiment cannot be cancelled")
+            self.registry._put("experiment-cancel", experiment_id, request)
+        return request
+
     def inspect(self, experiment_id):
         plan = self.registry._get("experiment-plan", experiment_id)
         for kind, status in (("experiment-finish", "finished"), ("experiment-start", "interrupted_or_running")):
             if self.registry.db.execute("SELECT 1 FROM records WHERE kind=? AND id=?", (kind, experiment_id)).fetchone():
-                return {"status": status, "plan": plan, "record": self.registry._get(kind, experiment_id)}
-        return {"status": "planned", "plan": plan}
+                return {"status": status, "plan": plan, "record": self.registry._get(kind, experiment_id),
+                        "cancellation": self._cancel_request(experiment_id)}
+        return {"status": "planned", "plan": plan, "cancellation": self._cancel_request(experiment_id)}
 
     def execute(self, experiment_id):
         state = self.inspect(experiment_id)
@@ -217,7 +239,16 @@ class LaboratoryExperiments:
                      "cpu_seconds": None, "peak_rss_kib": None, "wall_seconds": 0,
                      "external_charge_usd": 0, "total_cost_usd": None, "fit_performed": False,
                      "neural_training_performed": False, "failure_reason": None}
-            if remaining > 0:
+            # Serialize each launch claim against cancellation on other connections.
+            with registry._transaction():
+                cancelled = self._cancel_request(experiment_id) is not None
+                if not cancelled and remaining > 0:
+                    registry._put("experiment-trial-start", trial_key,
+                                  {"experiment_id": experiment_id, "recipe": key, "plan_sha256": fingerprint(plan)})
+            if cancelled:
+                trial["status"] = "cancelled"
+                trial["failure_reason"] = "experiment_cancel_requested"
+            if not cancelled and remaining > 0:
                 before = time.monotonic()
                 try:
                     recipe = registry._get("recipe", key)
@@ -262,6 +293,12 @@ class LaboratoryExperiments:
                    "promotion_authorized": False, "clinical_validation": False,
                    "neural_training_performed": False}
         with registry._transaction():
+            cancellation = self._cancel_request(experiment_id)
+            receipt["status"] = "cancelled" if cancellation else "completed"
+            receipt["cancellation"] = cancellation
+            if cancellation:
+                receipt["selected_recipe"] = None
+                receipt["selection_basis"] = "Selection suppressed by cancellation"
             registry._put("experiment-finish", experiment_id, receipt)
         return receipt
 
@@ -270,9 +307,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--registry", type=Path)
-    parser.add_argument("command", nargs="?", choices=("recipe", "plan", "execute", "inspect"))
+    parser.add_argument("command", nargs="?", choices=("recipe", "plan", "execute", "inspect", "cancel"))
     parser.add_argument("--input", type=Path)
     parser.add_argument("--experiment")
+    parser.add_argument("--reason", help="Required cancellation reason")
     args = parser.parse_args(argv)
     try:
         if args.worker:
@@ -288,7 +326,8 @@ def main(argv=None):
                     result = getattr(service, args.command)(read_json(args.input.read_bytes()))
                 else:
                     _require(args.experiment is not None, "Experiment ID required")
-                    result = getattr(service, args.command)(args.experiment)
+                    result = (service.cancel(args.experiment, args.reason) if args.command == "cancel"
+                              else getattr(service, args.command)(args.experiment))
         print(_json(result))
         return 0
     except (OSError, ValueError, TypeError, sqlite3.Error) as exc:

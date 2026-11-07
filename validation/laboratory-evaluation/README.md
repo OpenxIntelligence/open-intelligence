@@ -192,3 +192,23 @@ could not import the 13 inherited question-preflight tests without Pydantic.
 The workflow now prepares and verifies the existing hash-locked H1 runtime,
 including its reviewed code-only pydicom build, before running the same complete
 38-check selection. No assertion, test or dependency-rights check was removed.
+
+## Durable experiment cancellation
+
+Use `python -m oi_api.laboratory_experiments --registry /path/to/registry.sqlite cancel --experiment EXPERIMENT_ID --reason "Stop requested"`.
+The immutable request is tied to the frozen plan and is visible through `inspect`.
+Each trial launch claim and cancellation request serialize through the same SQLite
+transaction boundary. Once cancellation commits, no further trial can be claimed.
+A previously claimed worker may still start or finish and retains its existing
+wall/CPU limits; this is cooperative cancellation, not immediate process termination.
+Completed runs and checkpoints remain available. Final selection is suppressed,
+including when cancellation arrives during the last worker. Executing a cancelled
+plan records skipped trials and a terminal cancelled receipt; retries return that
+same receipt. Cancellation alone does not restart an interrupted parent process.
+Repeated cancellation with the same reason is idempotent; changing that reason or
+cancelling an already finished, uncancelled experiment is rejected.
+
+Cancellation verification: **56 focused local tests passed, zero skips**, including
+four new tests covering pre-launch/reopen, a separate-connection request during a
+worker, last-worker selection suppression, CLI retries and terminal-state rejection.
+Hosted checks must qualify the exact published head separately.
