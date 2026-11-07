@@ -76,7 +76,7 @@ only.
 
 | Path | What it is |
 |---|---|
-| `src/open_intelligence/__main__.py`, `store.py`, `__init__.py` | Local case-ledger server and SQLite store. Serves only on `127.0.0.1` by default. `store.py` owns all ledger tables (71 tables; see the surfaces table below). The B-01 fictional-actor gate lives in `__main__.py`: case routes require an `X-Fictional-Actor` header naming an actor with a live grant (`actor_grants`, deny-by-default), and every case access is written to `access_log`. The `access_log` table has no HTTP route or UI on `main`. |
+| `src/open_intelligence/__main__.py`, `store.py`, `__init__.py` | Local case-ledger server and SQLite store. Serves only on `127.0.0.1` by default. `store.py` owns all ledger tables (71 tables; see the surfaces table below). The B-01 fictional-actor gate lives in `__main__.py`: case routes require a live session, a live grant (`actor_grants`, deny-by-default), and role permission, and every case access is written to `access_log`, readable by operator/auditor. The `X-Fictional-Actor` header path was removed in auth slice 2 (W1). |
 | `src/open_intelligence/timeline.py` | Read-only timeline projection: ledger ordering, coverage gaps, and date conflicts. No writes, no model, no external fetch. |
 | `src/open_intelligence/mission.py` | Read-only Patient Mission projection over `CaseStore.state()`: workflow states only, never a second patient record. |
 | `src/open_intelligence/changes.py` | Read-only what-changed-since-review projection: new sources, amendments with a mechanical finding-key diff, stale investigations with cause, new questions. Reports ledger facts only. |
@@ -256,10 +256,12 @@ Routes are enumerated from `__main__.py`; tables from `store.py`.
 - No project distribution license is selected. Public repository visibility
   is not a license grant (per `README.md` and `AGENTS.md`). This packet
   does not choose a license.
-- No real accounts, roles, or sessions on `main`. The B-01
-  fictional-actor gate (header, deny-by-default, grants) is the only
-  access control on `main`; real accounts arrive with PR #515 (see
-  `README.md`).
+- Local demo accounts, roles, and 24-hour sessions exist on `main`
+  (operator-created accounts only). Case routes require a live
+  session, a live grant, and role permission; the `X-Fictional-Actor`
+  header path was removed in auth slice 2 (W1). There is still no
+  verified identity, consent, delegation, production access control,
+  or full security assessment (see `README.md`).
 
 ## External network use at runtime
 

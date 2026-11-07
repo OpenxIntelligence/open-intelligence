@@ -26,6 +26,7 @@ from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore, InvalidInput
 from open_intelligence.__main__ import Handler, seed
+from session_auth import signin_demo
 from open_intelligence.lab_series import lab_series
 from open_intelligence.patient_analytics import (
     lab_trends,
@@ -424,6 +425,7 @@ class AnalyticsHttpTests(unittest.TestCase):
         cls.thread = threading.Thread(target=cls.server.serve_forever,
                                       daemon=True)
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -433,7 +435,7 @@ class AnalyticsHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def request(self, path, headers=None):
-        values = {"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"}
+        values = {"Cookie": self._cookie}
         values.update(headers or {})
         req = Request(f"http://127.0.0.1:{self.port}{path}", headers=values)
         try:
@@ -458,9 +460,15 @@ class AnalyticsHttpTests(unittest.TestCase):
         self.assertEqual(sources["status"], "present")
 
     def test_analytics_route_requires_a_grant(self):
-        status, data = self.request(
-            "/api/cases/CASE-ALPHA/analytics",
+        # W1: the header is ignored — a header-only request is denied.
+        req = Request(
+            f"http://127.0.0.1:{self.port}/api/cases/CASE-ALPHA/analytics",
             headers={"X-Fictional-Actor": "FICTIONAL-NOBODY"})
+        try:
+            with urlopen(req, timeout=5) as resp:
+                status = resp.status
+        except HTTPError as err:
+            status = err.code
         self.assertEqual(status, 403)
 
 

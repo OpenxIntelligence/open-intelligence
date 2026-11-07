@@ -17,6 +17,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence.__main__ import Handler, seed
+from session_auth import signin_demo
 from open_intelligence.store import CaseStore, InvalidInput
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -277,6 +278,7 @@ class DiscoveryRightsHttpTests(unittest.TestCase):
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -286,8 +288,8 @@ class DiscoveryRightsHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def call(self, path, data=None):
-        # B-01: case routes require a fictional actor; seed() grants this one.
-        headers = {"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"}
+        # W1: case routes require a live session; signin_demo signs in as the seeded demo clinician.
+        headers = {"Cookie": self._cookie}
         if data is not None:
             headers["Content-Type"] = "application/json"
             headers["Origin"] = f"http://127.0.0.1:{self.port}"

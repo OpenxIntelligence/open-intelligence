@@ -8,7 +8,8 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
+from open_intelligence.__main__ import Handler, seed
+from session_auth import signin_demo
 from open_intelligence.provenance import case_provenance
 from open_intelligence.store import CaseStore, InvalidInput
 
@@ -306,6 +307,7 @@ class ProvenanceHttpTests(unittest.TestCase):
             target=cls.server.serve_forever, daemon=True
         )
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -315,7 +317,7 @@ class ProvenanceHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def request(self, path, data=None):
-        headers = {FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"}
+        headers = {"Cookie": self._cookie}
         if data is not None:
             headers["Content-Type"] = "application/json"
         body = None if data is None else json.dumps(data).encode()

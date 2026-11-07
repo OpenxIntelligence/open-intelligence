@@ -26,7 +26,6 @@ from urllib.request import Request, urlopen
 from open_intelligence import CaseStore, InvalidInput
 from open_intelligence.__main__ import (
     DEMO_ACTOR,
-    FICTIONAL_ACTOR_HEADER,
     FICTIONAL_ACTOR_PURPOSE,
     GRANT_DENIAL_MESSAGE,
     ROLE_DENIAL_MESSAGE,
@@ -344,6 +343,7 @@ class NotificationHttpTests(unittest.TestCase):
         cls.path = str(Path(cls.tmp.name) / "server.sqlite")
         seed(cls.path)
         cls.store = CaseStore(cls.path)
+        cls.store.set_account_password(DEMO_ACTOR, PASSWORD)
         cls.store.create_account(PATIENT, "Fictional patient", "patient", PASSWORD,
                                  own_case_id="CASE-ALPHA")
         cls.store.create_account(AUDITOR, "Fictional auditor", "auditor", PASSWORD)
@@ -383,17 +383,17 @@ class NotificationHttpTests(unittest.TestCase):
         self.assertEqual(status, 200, body)
         return cookie.split(";", 1)[0]
 
-    def request(self, path, data=None, cookie=None, actor=None):
+    def request(self, path, data=None, cookie=None):
         headers = {}
         if cookie is not None:
             headers["Cookie"] = cookie
-        if actor is not None:
-            headers[FICTIONAL_ACTOR_HEADER] = actor
         status, _, body = self.raw(path, data, headers)
         return status, body
 
     def header_request(self, path, data=None, actor=DEMO_ACTOR):
-        return self.request(path, data, actor=actor)
+        # Slice 2 (W1): the header path is gone; sign in as the actor
+        # instead. All call sites use the default demo clinician.
+        return self.request(path, data, cookie=self.signin(actor))
 
     def test_empty_case_returns_empty_notifications(self):
         # CASE-BETA is seeded but never written by this class, so its
@@ -494,7 +494,7 @@ class NotificationHttpTests(unittest.TestCase):
                  {"notification_key": "followthrough-overdue:1:2026-05-01"}),
         ):
             with self.subTest(path=path, data=data is not None):
-                status, body = self.request(path, data, actor=UNKNOWN_ACTOR)
+                status, body = self.request(path, data)
                 self.assertEqual(status, 403)
                 self.assertEqual(body, {"error": GRANT_DENIAL_MESSAGE})
         auditor = self.signin(AUDITOR)

@@ -1642,6 +1642,45 @@ muse-spark-1.3) — still blocked by the Meta billing fix; Haiku
 verdicts prove the design, not spec compliance or the Meta
 integration.
 
+## Auth slice 2: remove the transitional X-Fictional-Actor header path (wave slice W1) — 6 November 2026
+
+Auth slice 1 (PR #515) put operator-created accounts, roles, and
+24-hour server-side sessions on `main`, but kept the transitional
+`X-Fictional-Actor` header dual-path: a request could still name
+an actor by header instead of signing in. This slice removes it.
+`_fictional_actor` and the `FICTIONAL_ACTOR_HEADER` constant are
+deleted from `__main__.py`; `_current_actor` returns the session
+account or nothing; `_actor_label` returns the account id or
+`"missing"`. Case routes now require a live session, a live grant
+(`actor_grants`, deny-by-default), and role permission. `seed()`
+grants are unchanged — the grant store is not the header. Session
+and token machinery, role gates, the access-log route, `store.py`
+grant tables, and the D7 patient-clear carve-out are untouched.
+
+Test helpers migrate from header auth to session sign-in (new
+`tests/session_auth.py`: `signin_demo` sets the demo clinician
+password and returns the `oi_session` cookie; browser journeys
+sign in over HTTP and send the cookie). A new test proves a
+header-only request is denied (403 on case routes, 401 on
+`/api/auth/session`); three pre-existing no-grant tests now send
+the header alone to prove it is ignored. `grep X-Fictional-Actor
+src/` returns only the comment documenting the removal; no `web/`
+code sends the header. The safety packet (`docs/safety-packet/`)
+is refreshed for auth slices 1 and 2 in this slice.
+
+Local suite on the slice branch: 1258 tests, FAILED with 9
+failures and 8 errors — the same 17 `test_pdf_intake` failures as
+the baseline run on the same machine, verified by diffing the two
+failure-name sets; zero new failures. (The new header-denial test
+replaces the old transitional-header test one-for-one, so the
+total is unchanged from the 1258-test baseline.) Live smoke:
+sign-in works, header-only request denied. This is fictional-only
+engineering, draft and undeployed.
+
+Unproven: browser journeys need Chromium (not available locally)
+— hosted CI settles them; the Meta-only live proof remains blocked
+by the Meta billing fix.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)
@@ -1792,7 +1831,7 @@ These are integration candidates, not a verified combined product. Check each cu
 
 ## Important unproven areas
 
-- Local demo accounts, roles, and sessions now exist (operator / clinician / patient read-only on their own case / auditor; operator-created accounts only; 24-hour server-side sessions; case routes require a live grant plus role permission; access decisions are logged and readable by operator/auditor). These are local demo labels, not verified identities — there is still no authenticated identity, consent, delegation, production access control, auditing suitable for real patients, or full security assessment. The safety packet still needs a refresh for this change.
+- Local demo accounts, roles, and sessions now exist (operator / clinician / patient read-only on their own case / auditor; operator-created accounts only; 24-hour server-side sessions; case routes require a live grant plus role permission; access decisions are logged and readable by operator/auditor). These are local demo labels, not verified identities — there is still no authenticated identity, consent, delegation, production access control, auditing suitable for real patients, or full security assessment. The safety packet was refreshed for this change in W1 (auth slice 2).
 - No PDF/OCR, automated clinical assertion extraction, FHIR/mCODE exchange, biological or imaging analysis, medical literature appraisal, trial searching, model inference, or provider integration.
 - No independent professional review; demo acknowledgments are explicitly labeled and do not establish clinical correctness.
 - The Patient Mission panel is a workflow projection, not a patient summary, diagnostic assessment, treatment plan, safety monitor, trial matcher, care coordinator, or clinical decision-support system.
