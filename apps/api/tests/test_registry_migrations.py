@@ -59,6 +59,26 @@ class RegistryMigrationTests(unittest.TestCase):
         # Remove only known test-owned objects. RESTRICT is intentional: an
         # unexpected dependent object must stop cleanup rather than be erased.
         with self.engine.begin() as connection:
+            # Explicitly release only the declared 0020 source delivery objects.
+            connection.execute(text("DO $$ BEGIN IF to_regclass('identity.identity_domain_events') IS NOT NULL THEN EXECUTE 'DROP TRIGGER IF EXISTS oi_capture_source_event ON identity.identity_domain_events'; END IF; END $$"))
+            connection.execute(text('DROP TABLE IF EXISTS investigation.composer_source_event_receipts'))
+            connection.execute(text('DROP TABLE IF EXISTS coordination.source_event_delivery_events'))
+            connection.execute(text('DROP TABLE IF EXISTS coordination.source_event_deliveries'))
+            connection.execute(text('DROP TABLE IF EXISTS coordination.source_event_outbox'))
+            connection.execute(text('DROP FUNCTION IF EXISTS coordination.capture_source_event()'))
+            connection.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_outbox()'))
+            connection.execute(text('DROP FUNCTION IF EXISTS coordination.source_event_binding(bigint)'))
+            connection.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_delivery()'))
+            connection.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_delivery_event()'))
+            connection.execute(text('DROP FUNCTION IF EXISTS coordination.require_source_delivery_consistency()'))
+            connection.execute(text('DROP FUNCTION IF EXISTS investigation.guard_composer_source_receipt()'))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_run_results"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_run_events"))
+            connection.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_runs"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.require_composer_run_consistency()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run_result()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run_event()"))
+            connection.execute(text("DROP FUNCTION IF EXISTS investigation.guard_composer_run()"))
             connection.execute(text("DROP TABLE IF EXISTS public.oi_registry_external_reference"))
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_manual_dependencies"))
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_events"))

@@ -15,8 +15,18 @@ patient/case/source; repeated setup and stop/resume retain its saved work.
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. This revision requires `0018_laboratory_questions`
-for [saved laboratory questions](docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md).
+the retained contributions. This candidate requires `0020_source_event_delivery`,
+extending `0019_composer_runs` with atomic source-event publication and bounded,
+actor-scoped reconciliation. The [source-event guide](docs/engineering/H1_SOURCE_EVENT_DELIVERY.md)
+covers its separate worker credential, one-attempt CLI and pending acceptance.
+The earlier `0018_laboratory_questions` contract supports
+[saved laboratory questions](docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md).
+The [durable execution guide](docs/engineering/H1_DURABLE_EXECUTION.md) describes
+the actor-bound, synthetic source-brief worker and its enqueue/status/cancel/result
+controls. Source-publication checkpoints retain their original verification
+state; [PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
+maintains current exact-source test and hosted receipts. Existing source-freshness
+checks remain the correctness gate even when the event worker is idle.
 The Python/SQLite application is retained as a separate reference implementation.
 
 Use independently authored fictional data only. This application does not establish

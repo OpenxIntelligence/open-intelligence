@@ -4,8 +4,15 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. The current API requires `0018_laboratory_questions`,
-which adds a typed Observation reference to the existing question registry. See
+records the original integration. This candidate requires `0020_source_event_delivery`,
+which extends `0019_composer_runs` with atomic source-event publication and bounded
+actor-scoped reconciliation. The [source-event guide](../../docs/engineering/H1_SOURCE_EVENT_DELIVERY.md)
+covers its one-attempt CLI, separate event-worker credential and pending acceptance.
+The [execution guide](../../docs/engineering/H1_DURABLE_EXECUTION.md) covers the
+actor-bound worker, current authority, run controls and publication-time verification.
+[PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529) maintains
+current exact-source hosted acceptance.
+Revision `0018_laboratory_questions` adds a typed Observation reference to the existing question registry. See
 [the laboratory question contract](../../docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md)
 for save, retry and history behavior.
 The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)
