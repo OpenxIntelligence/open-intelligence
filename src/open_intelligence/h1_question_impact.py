@@ -94,7 +94,8 @@ def plan_h1_confirmed_supersessions(
                 or type(version) is not int or version < 1
                 or type(sha) is not str or SHA256.fullmatch(sha) is None
                 or type(document_id) is not str or not document_id
-                or state not in {"current", "superseded"}
+                or type(state) is not str or state not in {"current", "superseded"}
+                or "supersedes_id" not in source
                 or (previous is not None and
                     (type(previous) is not str or SOURCE_ID.fullmatch(previous) is None))):
             raise ImpactContractError("invalid_owner_source")
