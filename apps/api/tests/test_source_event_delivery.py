@@ -284,43 +284,46 @@ class SourceEventDeliveryPostgresTests(source_fixture.SourceVersionFixture):
             self.assertEqual(row["attempt_count"], 1)
             self.assertEqual(len(self.receipts(row["delivery_id"])), 1)
 
-    def test_bounded_drain_rechecks_revocation_and_pins_identity_between_batches(self):
+    def assert_bounded_drain_authority_change(self, change):
         import oi_api.event_worker as worker
-        for change in ("grant", "actor"):
-            with self.subTest(change=change):
-                # A new fixture per subcase preserves each immutable delivery history.
-                with running_server(create_app(self.settings)) as base:
-                    patient = self.setup_case(base, key="CREATE-DRAIN-" + change.upper(),
-                                              source_subject="SUBJECT-DRAIN-" + change.upper())
-                    self.assertEqual(self.ingest(base, patient)[0], 201)
-                    self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
-                original = worker.run_once
-                original_actor = self.creds[0]["actor"]
-                calls = []
-                def revoke_after_batch(*args, **kwargs):
-                    result = original(*args, **kwargs)
-                    calls.append(result)
-                    if len(calls) == 1:
-                        self.assertEqual(result["status"], "delivered")
-                        if change == "grant":
-                            self.creds[0]["actions"].remove("source_read")
-                        else:
-                            self.creds[0]["actor"] = "ACTOR-ROTATED"
-                        self.write()
-                    return result
-                try:
-                    with patch.object(worker, "run_once", revoke_after_batch):
-                        result = worker.run_bounded(self.settings, lambda: TOKEN, patient, CASE)
-                    self.assertEqual(result, {"status": "blocked", "batches_attempted": 2,
-                                              "delivered_batches": 1, "continued_batches": 0})
-                    scoped = [row for row in self.rows(DELIVERIES, "event_id") if row["patient_id"] == patient]
-                    self.assertEqual(len(scoped), 1)
-                    self.assertEqual(scoped[0]["state"], "delivered")
-                finally:
-                    self.creds[0]["actor"] = original_actor
-                    if "source_read" not in self.creds[0]["actions"]:
-                        self.creds[0]["actions"].append("source_read")
-                    self.write()
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base, key="CREATE-DRAIN-" + change.upper(),
+                                      source_subject="SUBJECT-DRAIN-" + change.upper())
+            self.assertEqual(self.ingest(base, patient)[0], 201)
+            self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
+        original = worker.run_once
+        original_actor = self.creds[0]["actor"]
+        calls = []
+        def revoke_after_batch(*args, **kwargs):
+            result = original(*args, **kwargs)
+            calls.append(result)
+            if len(calls) == 1:
+                self.assertEqual(result["status"], "delivered")
+                if change == "grant":
+                    self.creds[0]["actions"].remove("source_read")
+                else:
+                    self.creds[0]["actor"] = "ACTOR-ROTATED"
+                self.write()
+            return result
+        try:
+            with patch.object(worker, "run_once", revoke_after_batch):
+                result = worker.run_bounded(self.settings, lambda: TOKEN, patient, CASE)
+            self.assertEqual(result, {"status": "blocked", "batches_attempted": 2,
+                                      "delivered_batches": 1, "continued_batches": 0})
+            scoped = [row for row in self.rows(DELIVERIES, "event_id") if row["patient_id"] == patient]
+            self.assertEqual(len(scoped), 1)
+            self.assertEqual(scoped[0]["state"], "delivered")
+        finally:
+            self.creds[0]["actor"] = original_actor
+            if "source_read" not in self.creds[0]["actions"]:
+                self.creds[0]["actions"].append("source_read")
+            self.write()
+
+    def test_bounded_drain_rechecks_revocation_between_batches(self):
+        self.assert_bounded_drain_authority_change("grant")
+
+    def test_bounded_drain_pins_identity_between_batches(self):
+        self.assert_bounded_drain_authority_change("actor")
 
     def drain(self, patient, *, case=CASE, token=TOKEN):
         outcomes = []
