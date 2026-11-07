@@ -1,5 +1,5 @@
-"""Synthetic exact-version dependency impact regressions."""
-import pytest
+"""Synthetic dependency impact regressions using unittest discovery."""
+import unittest
 
 from open_intelligence.dependency_impact import (
     Dependency, ImpactContractError, VersionedNode, plan_amendment_impact,
@@ -26,44 +26,52 @@ def fixture():
     return nodes, edges
 
 
-def test_exact_version_selective_impact():
-    nodes, edges = fixture()
-    impact = plan_amendment_impact(nodes, edges, amended_source_key=nodes[0].key, case_id="case-a")
-    assert [n.record_id for n in impact.recompute] == ["score"]
-    assert [n.record_id for n in impact.review] == ["question", "task"]
-    assert plan_amendment_impact(nodes, edges, amended_source_key=nodes[1].key, case_id="case-a").recompute == ()
-    assert impact == plan_amendment_impact(nodes, edges, amended_source_key=nodes[0].key, case_id="case-a")
+class DependencyImpactTests(unittest.TestCase):
+    def assert_rejected(self, reason, callback):
+        with self.assertRaises(ImpactContractError) as error:
+            callback()
+        self.assertEqual(error.exception.reason, reason)
+
+    def test_exact_version_selective_impact(self):
+        nodes, edges = fixture()
+        impact = plan_amendment_impact(nodes, edges, amended_source_key=nodes[0].key, case_id="case-a")
+        self.assertEqual([n.record_id for n in impact.recompute], ["score"])
+        self.assertEqual([n.record_id for n in impact.review], ["question", "task"])
+        self.assertEqual(plan_amendment_impact(
+            nodes, edges, amended_source_key=nodes[1].key, case_id="case-a").recompute, ())
+        self.assertEqual(impact, plan_amendment_impact(
+            nodes, edges, amended_source_key=nodes[0].key, case_id="case-a"))
+
+    def test_reject_cross_case(self):
+        nodes, edges = fixture()
+        self.assert_rejected("cross_case_node", lambda: plan_amendment_impact(
+            nodes + (node("source", "foreign", case="case-b"),), edges,
+            amended_source_key=nodes[0].key, case_id="case-a"))
+
+    def test_reject_unknown_edge(self):
+        nodes, edges = fixture()
+        self.assert_rejected("unknown_dependency_node", lambda: plan_amendment_impact(
+            nodes, edges + (Dependency(("x", "y", "z"), nodes[3].key),),
+            amended_source_key=nodes[0].key, case_id="case-a"))
+
+    def test_reject_cycle_even_when_unreachable(self):
+        nodes, edges = fixture()
+        self.assert_rejected("cyclic_dependency", lambda: plan_amendment_impact(
+            nodes, edges + (Dependency(nodes[6].key, nodes[2].key),),
+            amended_source_key=nodes[0].key, case_id="case-a"))
+
+    def test_reject_derived_source(self):
+        nodes, edges = fixture()
+        self.assert_rejected("source_as_derived_output", lambda: plan_amendment_impact(
+            nodes, edges + (Dependency(nodes[3].key, nodes[1].key),),
+            amended_source_key=nodes[0].key, case_id="case-a"))
+
+    def test_reject_duplicate_node(self):
+        nodes, edges = fixture()
+        self.assert_rejected("duplicate_node", lambda: plan_amendment_impact(
+            nodes + (nodes[0],), edges,
+            amended_source_key=nodes[0].key, case_id="case-a"))
 
 
-def test_reject_cross_case():
-    nodes, edges = fixture()
-    with pytest.raises(ImpactContractError, match="cross_case_node"):
-        plan_amendment_impact(nodes + (node("source", "foreign", case="case-b"),), edges,
-                              amended_source_key=nodes[0].key, case_id="case-a")
-
-
-def test_reject_unknown_edge():
-    nodes, edges = fixture()
-    with pytest.raises(ImpactContractError, match="unknown_dependency_node"):
-        plan_amendment_impact(nodes, edges + (Dependency(("x", "y", "z"), nodes[3].key),),
-                              amended_source_key=nodes[0].key, case_id="case-a")
-
-
-def test_reject_cycle_even_when_unreachable():
-    nodes, edges = fixture()
-    with pytest.raises(ImpactContractError, match="cyclic_dependency"):
-        plan_amendment_impact(nodes, edges + (Dependency(nodes[6].key, nodes[2].key),),
-                              amended_source_key=nodes[0].key, case_id="case-a")
-
-
-def test_reject_derived_source():
-    nodes, edges = fixture()
-    with pytest.raises(ImpactContractError, match="source_as_derived_output"):
-        plan_amendment_impact(nodes, edges + (Dependency(nodes[3].key, nodes[1].key),),
-                              amended_source_key=nodes[0].key, case_id="case-a")
-
-
-def test_reject_duplicate_node():
-    nodes, edges = fixture()
-    with pytest.raises(ImpactContractError, match="duplicate_node"):
-        plan_amendment_impact(nodes + (nodes[0],), edges, amended_source_key=nodes[0].key, case_id="case-a")
+if __name__ == "__main__":
+    unittest.main()
