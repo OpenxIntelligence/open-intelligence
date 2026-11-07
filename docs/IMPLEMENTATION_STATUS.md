@@ -1007,9 +1007,9 @@ failures. This is fictional-only engineering, draft and undeployed.
 Unproven: the pinned literature and trial fixtures are not
 matched to the case; no live registry or literature lookup exists;
 no live model call was attempted and no substitute model was used
-(Meta billing fix still pending). The evaluation harness (C5) has
-no D5 probes yet — a follow-up could add hypothesis-composition
-probes to it. Composed-hypothesis persistence is implemented by
+(Meta billing fix still pending). The evaluation harness (C5)
+gained D5 probes in wave slice W3 (see the W3 section below).
+Composed-hypothesis persistence is implemented by
 wave slice W2 (see the next section): the report section now reads
 the stored hypothesis and reports `not_composed` only when none is
 stored.
@@ -1072,6 +1072,96 @@ as the baseline run on the same machine, verified by diffing the
 two failure-name sets; zero new failures. The C5 evaluation
 harness still passes all 8 measured metrics with `model_calls: 0`.
 This is fictional-only engineering, draft and undeployed.
+
+## Evaluation probes for D5–D9 (Wave slice W3) — 7 November 2026
+
+Branch `program/w3-c5-probes-d5-d9`, from main `01472ab7`
+(post-W2). Implements next-wave-plan W3: C5 evaluation probes for
+D5–D9. The harness measured the verification core but nothing
+proved D5 composition/report assembly or the D6–D9 care loop works,
+and W4 needs measurement before it changes the execution shape.
+
+New probe families in `src/open_intelligence/evaluation.py`, all
+offline and deterministic (`model_calls: 0`), each running against
+the real dimension code through real `CaseStore` instances — no
+dimension module's behavior changed; the probes measure only:
+
+- D5 `probe_hypothesis_composition` (18 probes): 11 composition
+  probes over `compose_hypothesis` — every rejection rule
+  (over-length, missing citation, unknown claim, unsupported
+  number/identifier/substance, scope language, malformed
+  identifier, missing limits phrase), a low-tier composition with
+  the limits phrase, and a valid composition — plus 7 report
+  probes over `assemble_hypothesis_report` — fixed section order,
+  trial label present on raw and rendered listings, literature
+  metadata-only, counts — and the stored-hypothesis transition
+  from W2: a stored hypothesis appears in the report, an
+  invalidated one does not, and no stored hypothesis reports
+  `not_composed`.
+- D6 `probe_appointments` (7 probes): record a plan, reschedule
+  changes date/time, no-op reschedule rejected, cancel/complete
+  terminal, history append-only and ordered, invalid date rejected.
+- D7 `probe_notifications` (8 probes): overdue derived exactly
+  once and visible to the patient, due-soon vs overdue exclusive
+  across the date transition, amendment derives recheck/re-review/
+  stale-snapshot notices for the team only, exactly one
+  appointment-due (past and scheduled only), patient clear is
+  idempotent and per-role and cannot touch team-only kinds, counts
+  agree with the derived list.
+- D8 `probe_referrals` (9 probes): lifecycle requested →
+  acknowledged → outcome_recorded with pinned material and an
+  anchored outcome, exactly one outcome, pinned outcome kinds,
+  outcome requires acknowledgement, acknowledgement requires
+  requested, anchor must be current, materials pinned (non-empty,
+  distinct, current), sends nothing (disclaimer + no destination
+  fields on the record), review acknowledges once.
+- D9 `probe_care_team` (7 probes): shared update is the same
+  record for every viewer (the view takes no role), author role
+  boundary (patient/auditor rejected), handoff lifecycle open →
+  acknowledged → closed with no skipped steps, amendment reopens
+  a handoff to `needs_review` and blocks review, update and
+  handoff review acknowledge once.
+
+Runner integration: `run_evaluation_suite` gains injectable
+`compose_fn`/`assemble_fn` (defaults are the real functions) and
+runs all five families. They are probe families, not M-metrics:
+the 8 measured metrics are unchanged (pinned by
+`test_report_carries_every_metric`), and a failing family fails
+the suite through a `failures` entry per family, mirroring the
+skeptic-wiring entry. `tests/test_evaluation_harness.py` gains 7
+tests: one per family (probe names + counts pinned), one proving
+no new metric was added, and a sensitivity test — a compose
+function that ignores the over-length rule fails the
+D5-composition family and the suite while all 8 metrics still
+pass.
+
+Corrections made while authoring (the plan's stated API shapes
+were verified against the tree, not assumed): `create_appointment`
+takes no question id and all fields after the title are
+keyword-only; `change_appointment` takes actions
+`reschedule`/`cancel`/`complete` and returns `{"result", ...}`,
+not the projected appointment; `appointments_view` takes no role;
+`clear_notification` returns `already_cleared`, not a status
+string; the appointment-due key carries the scheduled date
+(`appointment-due:{id}:{date}`); the referral outcome record
+carries `outcome_kind`, not `kind`. None of these changed any
+dimension's behavior — each was a probe-side fix.
+
+Deliberately not done: no new M-metric; no change to any
+dimension module (`hypothesis.py`, `appointments.py`,
+`notifications.py`, `referrals.py`, `team_collaboration.py`,
+`store.py` all untouched); no live model call exists anywhere in
+the slice.
+
+Local suite on the slice branch: 1280 tests (1273 on the main
+baseline plus 7 new harness tests), FAILED with 9 failures and 8
+errors — the same 17 `test_pdf_intake` failures as the baseline
+run on the same machine, verified by diffing the two
+failure-name sets (12 distinct names, identical); zero new
+failures. The C5 harness runner exits 0 with all 8 measured
+metrics at target and all 100 probes passing (51 pre-existing +
+49 new), `model_calls: 0`. This is fictional-only engineering,
+draft and undeployed.
 
 ## Care coordination dimension: appointments (Slice D6) — 6 November 2026
 

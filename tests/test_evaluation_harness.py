@@ -4,8 +4,8 @@ slice C5, Notion OI-09 section 9).
 No live model call is made here: every probe runs offline against
 the real K-checks, the Skeptic wiring (stub verdicts), T6 grouping,
 and the replay check. The sensitivity tests deliberately weaken a
-K-check and prove the harness fails — a harness that cannot fail
-measures nothing.
+K-check (or a D5 compose rule) and prove the harness fails — a
+harness that cannot fail measures nothing.
 """
 
 import unittest
@@ -13,9 +13,14 @@ import unittest
 from open_intelligence.evaluation import (
     check_prose_attribution,
     fixture_context,
+    probe_appointments,
+    probe_care_team,
     probe_contradiction,
     probe_hypothesis,
+    probe_hypothesis_composition,
+    probe_notifications,
     probe_prose_attribution,
+    probe_referrals,
     probe_route_replay,
     probe_scope,
     probe_skeptic_wiring,
@@ -24,6 +29,7 @@ from open_intelligence.evaluation import (
     record_spot_check_set,
     run_evaluation_suite,
 )
+from open_intelligence.hypothesis import compose_hypothesis
 from open_intelligence.investigation import validate_output
 
 
@@ -170,6 +176,112 @@ class SkepticWiringTests(unittest.TestCase):
             self.assertTrue(item["pass"], item)
 
 
+def _weakened_compose(sentences, kept_claims, *, tiers=None, substance_names=()):
+    """A compose_fn that ignores the over-length rule: an over-long
+    composition is kept instead of rejected."""
+    result = compose_hypothesis(
+        sentences, kept_claims, tiers=tiers, substance_names=substance_names)
+    if not any(v.get("reason") == "over_length"
+               for v in result.get("violations", [])):
+        return result
+    result = dict(result)
+    result["violations"] = [v for v in result["violations"]
+                            if v.get("reason") != "over_length"]
+    if not result["violations"]:
+        result["status"] = "composed"
+        result["text"] = " ".join(s["text"] for s in sentences)
+        result["claim_ids"] = sorted(
+            {claim for s in sentences for claim in s.get("claim_ids", [])})
+        result["char_count"] = len(result["text"])
+    return result
+
+
+class CompositionAndCareLoopTests(unittest.TestCase):
+    """Wave slice W3: the D5–D9 probe families. These are probe
+    families, not M-metrics: they measure composition/report assembly
+    and the care loop, and a failing family fails the suite."""
+
+    def test_d5_composition_probes_pass(self):
+        outcome = probe_hypothesis_composition()
+        by_family = {}
+        for item in outcome["probes"]:
+            by_family.setdefault(item["family"], []).append(item)
+        self.assertEqual(
+            {item["name"] for item in by_family["D5-composition"]},
+            {"over-length", "missing-citation", "unknown-claim",
+             "unsupported-number", "unsupported-identifier",
+             "unsupported-substance", "scope-language",
+             "malformed-identifier", "low-tier-without-phrase",
+             "low-tier-with-phrase", "valid-composition"})
+        self.assertEqual(
+            {item["name"] for item in by_family["D5-report"]},
+            {"fixed-section-order", "trial-label-present",
+             "literature-metadata-only", "counts-match",
+             "stored-hypothesis-in-report", "not-composed-without-stored",
+             "invalidated-hypothesis-not-in-report"})
+        self.assertEqual(len(outcome["probes"]), 18)
+        for item in outcome["probes"]:
+            self.assertTrue(item["pass"], item)
+
+    def test_d6_appointment_probes_pass(self):
+        outcome = probe_appointments()
+        self.assertEqual(
+            {item["name"] for item in outcome["probes"]},
+            {"record-plan", "reschedule-changes-date-time",
+             "reschedule-noop-rejected", "cancel-terminal",
+             "complete-terminal", "history-append-only",
+             "invalid-date-rejected"})
+        self.assertEqual(len(outcome["probes"]), 7)
+        for item in outcome["probes"]:
+            self.assertTrue(item["pass"], item)
+
+    def test_d7_notification_probes_pass(self):
+        outcome = probe_notifications()
+        self.assertEqual(
+            {item["name"] for item in outcome["probes"]},
+            {"overdue-exactly-once", "due-soon-not-overdue",
+             "exclusive-transition", "recheck-on-amendment",
+             "rereview-and-stale-on-amendment", "appointment-due",
+             "patient-clear-carve-out", "counts-match"})
+        self.assertEqual(len(outcome["probes"]), 8)
+        for item in outcome["probes"]:
+            self.assertTrue(item["pass"], item)
+
+    def test_d8_referral_probes_pass(self):
+        outcome = probe_referrals()
+        self.assertEqual(
+            {item["name"] for item in outcome["probes"]},
+            {"lifecycle", "exactly-one-outcome", "pinned-kinds",
+             "outcome-requires-acknowledgement",
+             "acknowledge-requires-requested", "anchor-must-be-current",
+             "materials-pinned", "sends-nothing", "review-acknowledges"})
+        self.assertEqual(len(outcome["probes"]), 9)
+        for item in outcome["probes"]:
+            self.assertTrue(item["pass"], item)
+
+    def test_d9_care_team_probes_pass(self):
+        outcome = probe_care_team()
+        self.assertEqual(
+            {item["name"] for item in outcome["probes"]},
+            {"shared-update-same-record", "author-role-boundary",
+             "handoff-lifecycle", "close-requires-acknowledged",
+             "amendment-reopens-handoff", "update-review",
+             "handoff-review"})
+        self.assertEqual(len(outcome["probes"]), 7)
+        for item in outcome["probes"]:
+            self.assertTrue(item["pass"], item)
+
+    def test_new_families_add_no_metric(self):
+        report = run_evaluation_suite()
+        self.assertEqual(
+            set(report["metrics"]),
+            {"M5", "M6", "M7", "M8", "M10", "M16", "M27", "M28"})
+        families = {item["family"] for item in report["probes"]}
+        for family in ("D5-composition", "D5-report", "D6-appointments",
+                       "D7-notifications", "D8-referrals", "D9-care-team"):
+            self.assertIn(family, families)
+
+
 class SensitivityTests(unittest.TestCase):
     def test_weakened_k3_fails_m5_and_the_suite(self):
         report = run_evaluation_suite(validate_fn=_weakened("K3"))
@@ -190,6 +302,20 @@ class SensitivityTests(unittest.TestCase):
         self.assertLess(report["metrics"]["M10"]["value"], 1.0)
         self.assertFalse(report["metrics"]["M10"]["pass"])
         self.assertFalse(report["passed"])
+
+    def test_weakened_compose_fails_d5_and_the_suite(self):
+        # The over-length rule is ignored, so the over-length probe
+        # fails; the K-check metrics are untouched, so the failure
+        # comes only from the D5-composition family entry.
+        report = run_evaluation_suite(compose_fn=_weakened_compose)
+        for metric in report["metrics"].values():
+            self.assertTrue(metric["pass"], metric)
+        self.assertFalse(report["passed"])
+        self.assertIn("D5-composition",
+                      [entry["metric"] for entry in report["failures"]])
+        failed = [item for item in report["probes"]
+                  if item["family"] == "D5-composition" and not item["pass"]]
+        self.assertEqual([item["name"] for item in failed], ["over-length"])
 
 
 class SpotCheckSetTests(unittest.TestCase):
