@@ -45,7 +45,7 @@ def main():
                 wait_for(lambda: urlopen('http://127.0.0.1:4173', timeout=2).status == 200, 'built demo UI', 30)
                 port = free_port()
                 browser = subprocess.Popen([chrome, '--headless=new', '--disable-gpu', '--disable-dev-shm-usage',
-                    '--disable-background-networking', '--no-first-run', '--disable-extensions',
+                    '--disable-background-networking','--disable-component-update','--disable-features=OptimizationHints', '--no-first-run', '--disable-extensions',
                     '--no-default-browser-check', '--remote-allow-origins=*', f'--remote-debugging-port={port}',
                     f'--user-data-dir={temporary}/chrome', 'about:blank'], stdout=subprocess.DEVNULL,
                     stderr=chrome_log, start_new_session=True)

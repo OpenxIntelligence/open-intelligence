@@ -65,7 +65,7 @@ def main():
             wait_for(lambda:urlopen('http://127.0.0.1:4173').status==200,'React permission UI',30)
             port=free_port()
             browser=subprocess.Popen([chrome,'--headless=new','--disable-gpu','--disable-dev-shm-usage',
-                '--disable-background-networking','--no-first-run','--disable-extensions','--no-default-browser-check',
+                '--disable-background-networking','--disable-component-update','--disable-features=OptimizationHints','--no-first-run','--disable-extensions','--no-default-browser-check',
                 '--remote-allow-origins=*',f'--remote-debugging-port={port}',f'--user-data-dir={directory}/chrome','about:blank'],
                 stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True);processes.append(browser)
             targets=wait_for(lambda:json.load(urlopen(f'http://127.0.0.1:{port}/json/list')),'permission browser',30)
