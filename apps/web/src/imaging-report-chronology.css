@@ -1,0 +1,14 @@
+.imaging-chronology{margin:20px 0 24px;padding:18px;border:1px solid #c6d8c9;border-radius:10px;background:#f8fbf8;min-width:0}
+.imaging-chronology-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.imaging-chronology-heading h3{font-size:18px;margin:6px 0 8px}
+.imaging-chronology-count{font-size:12px;color:#42594c}
+.imaging-chronology-dates{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:14px}
+.imaging-chronology-dates>li{border-left:3px solid #91b0a3;padding-left:14px;min-width:0}
+.imaging-chronology-dates h4{margin:0 0 9px;font-size:14px}
+.imaging-chronology-dates ul{list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,245px),1fr));gap:10px;padding:0;margin:0}
+.imaging-chronology-dates ul>li{min-width:0;padding:12px;border:1px solid #d5e1d9;border-radius:7px;background:white;overflow-wrap:anywhere}
+.imaging-chronology-dates ul>li p{margin:6px 0 10px}
+.imaging-chronology-dates button{max-width:100%;white-space:normal}
+.imaging-chronology-dates button[aria-pressed="true"]{background:#174b48;color:white}
+.imaging-chronology-state{font-size:12px;color:#52635d}
+@media(max-width:600px){.imaging-chronology{padding:12px}.imaging-chronology-dates>li{padding-left:9px}}
