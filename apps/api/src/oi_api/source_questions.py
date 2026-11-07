@@ -292,6 +292,64 @@ class PostgresSourceQuestions:
             })
         return results
 
+    def semantic_snapshot(self, patient_id: str, case_id: str, *, organization: str,
+                          actor: str, purpose: str,
+                          recheck_authority: Callable[[], None]) -> dict:
+        """Read-only semantic bindings through the canonical locked H1 owner.
+
+        This is an internal service method, not an HTTP route. The source owner
+        retains its patient/case locks, read receipt, grant checks and transaction.
+        No new persistence, clinical authority or original-source disclosure.
+        """
+        from open_intelligence.h1_semantic_bridge import bind_authorized_h1_question_list
+        from open_intelligence.semantic_contract import Concept, Relationship, SemanticRegistry
+
+        semantic_registry = SemanticRegistry(
+            (Concept("oi:observation", 1, "Source report"),
+             Concept("oi:investigation", 1, "Saved source question")),
+            (Relationship("oi:source-to-question", 1,
+                          "oi:observation", "oi:investigation"),),
+        )
+
+        def prepare(index):
+            questions = self.project_locked(
+                patient_id, case_id, organization=organization, source_index=index,
+            )
+            projection = {
+                "contract": QUESTION_LIST_CONTRACT,
+                "patient_id": patient_id, "case_id": case_id,
+                "access_receipt_id": index["access_receipt_id"],
+                "questions": questions, "synthetic": True,
+                "clinical_review_connected": False, "clinical_approval": False,
+            }
+            bindings = bind_authorized_h1_question_list(
+                registry=semantic_registry, question_list=projection,
+                source_index=index, authorized_patient_id=patient_id,
+                authorized_case_id=case_id,
+            )
+            return {
+                "contract": "oi.synthetic-h1-semantic-snapshot/1",
+                "patient_id": patient_id, "case_id": case_id,
+                "access_receipt_id": index["access_receipt_id"],
+                "bindings": [
+                    {"question_id": item.question.record_id,
+                     "source_id": item.source.record_id,
+                     "source_version_id": item.source.source_version_id,
+                     "requires_reassessment": item.requires_reassessment}
+                    for item in bindings
+                ],
+                "synthetic": True, "clinical_approval": False,
+            }
+
+        if purpose != "operations":
+            raise PatientRegistryDenied("Question semantic snapshot unavailable")
+        with self.registry.transaction():
+            return PostgresSourceVersions(self.registry).list_locked(
+                patient_id, case_id, organization=organization, actor=actor,
+                purpose=purpose, prepare_response=prepare,
+                recheck_authority=recheck_authority,
+            )
+
     def list(self, patient_id: str, case_id: str, *, organization: str,
              actor: str, purpose: str, recheck_authority: Callable[[], None],
              prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
