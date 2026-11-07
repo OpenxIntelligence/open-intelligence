@@ -712,6 +712,15 @@ class SourceEventDeliveryPostgresTests(source_fixture.SourceVersionFixture):
         self.assertEqual(self.receipts(claim["delivery_id"]), [])
         self.assertEqual(self.stored(run)[0]["state"], "queued")
 
+        self.creds[0]["actions"].append("source_delivery_retry")
+        self.write()
+        failed = self.delivery(claim["delivery_id"])
+        authorized = self.recover(patient, delivery_id=claim["delivery_id"], expected_revision=failed["revision"])
+        self.assertEqual(authorized["status"], "retry_authorized")
+        resumed = self.claim_event(patient)
+        self.assertEqual((resumed["attempt_count"], resumed["failure_count"]), (4, 0))
+        self.assertEqual(self.deliver_event(resumed)["status"], "delivered")
+
     def test_scope_revocation_before_delivery_rolls_back_all_effects(self):
         with running_server(create_app(self.settings)) as base:
             patient, _, _, run = self.seeded_run(base)
@@ -893,6 +902,44 @@ class SourceEventDeliveryPostgresTests(source_fixture.SourceVersionFixture):
         return {**os.environ, "OI_API_DATABASE_URL": settings.database_url,
                 "OI_API_ACCESS_FILE": str(self.access), "OI_API_EVENT_WORKER_TOKEN_FILE": str(token_path),
                 "OI_API_ENVIRONMENT": "synthetic"}
+
+    def test_killed_retry_transaction_leaves_failed_delivery_and_original_audit_intact(self):
+        patient, _, claim, command = self.failed_amendment("authority_unavailable")
+        self.creds[0]["actions"].append("source_delivery_retry")
+        self.write()
+        before = self.snapshot()
+        marker = Path(self.temp.name) / "retry-before-commit"
+        script = """
+import os, signal, sys
+from pathlib import Path
+from open_intelligence.postgres_registry import PostgresPatientRegistry
+from oi_api.event_worker import main
+original = PostgresPatientRegistry._execute
+def pause_after_history(registry, sql, params=()):
+    result = original(registry, sql, params)
+    if "INSERT INTO coordination.source_event_delivery_events" in sql and "operator_retry" in sql:
+        Path(sys.argv[1]).write_text("uncommitted")
+        os.kill(os.getpid(), signal.SIGSTOP)
+    return result
+PostgresPatientRegistry._execute = pause_after_history
+raise SystemExit(main(["--retry-delivery", sys.argv[2], "--expected-revision", sys.argv[3],
+                       "--patient", sys.argv[4], "--case", "CASE-ALPHA"]))
+"""
+        child = subprocess.Popen(
+            [sys.executable, "-c", script, str(marker), claim["delivery_id"],
+             str(command["expected_revision"]), patient], env=self.event_worker_env(),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            until = time.monotonic() + 10
+            while not marker.exists() and child.poll() is None and time.monotonic() < until:
+                time.sleep(0.05)
+            self.assertTrue(marker.exists(), "Retry did not reach its uncommitted history")
+        finally:
+            child.kill()
+            child.communicate(timeout=5)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.recover(patient, **command)["status"], "retry_authorized")
+        self.assertEqual(self.event_work(patient)["status"], "delivered")
 
     def test_killed_delivery_process_recovers_and_fences_its_original_claim(self):
         from oi_api.source_event_delivery import EventLeaseLost

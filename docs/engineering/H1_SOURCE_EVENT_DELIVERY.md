@@ -100,8 +100,8 @@ Apply the explicit additive migration through the normal migration command:
 PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade head
 ```
 
-The application requires `0028_source_delivery_retry`, the single successor of
-`0026_integrated_core`. The existing 0026 no-DDL join retains
+The application requires `0028_source_delivery_retry`, following
+`0027_source_event_purpose` and `0026_integrated_core`. The existing 0026 no-DDL join retains
 `0025_clinical_source_events`, `0023_composer_clinical_join` and
 `0023_ehr_lab_ownership_join` as its three published parents.
 
