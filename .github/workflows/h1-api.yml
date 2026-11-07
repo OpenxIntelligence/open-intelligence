@@ -93,6 +93,14 @@ jobs:
           python --version
       - name: Apply the explicit migration to the disposable database
         run: python -m oi_api.migrate upgrade head
+      - name: Verify source semantics with actual PostgreSQL
+        run: |
+          python - <<'PYTEST'
+          import unittest
+          suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_semantics.py')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(0 if result.wasSuccessful() and result.testsRun == 5 and not result.skipped else 1)
+          PYTEST
       - name: Verify source purpose compatibility and published-history preservation first
         run: |
           python - <<'PYTEST'

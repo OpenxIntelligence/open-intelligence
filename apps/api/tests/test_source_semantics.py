@@ -97,4 +97,4 @@ class SourceSemanticHTTPTests(SourceVersionFixture):
                 return packet
             with patch("oi_api.patients.project_source_semantics", side_effect=revoke_after_projection):
                 status, body, _ = request(base, path, token=TOKEN_A)
-            self.assertEqual((status, body), (404, {"detail":"Source unavailable"}))
+            self.assertEqual((status, body), (404, {"detail":"Patient unavailable"}))
