@@ -1,6 +1,8 @@
 /** Source-owned H1 review inbox + immutable nonterminal return receipts.
  * This is not clinical approval, verified clinician identity or notification.
  */
+import type {SourceVersion} from './source-contracts.js';
+import type {WorldRef} from './source-world-model.js';
 import {citationEvidenceTimestamp as time} from './evidence-timestamp.js';
 
 export const FICTIONAL_RETURN_REASON =
@@ -20,7 +22,11 @@ export type ReviewQueueItem=Readonly<{
  current_return_receipt_id:string|null;return_count:number;prior_return_count:number;
  clinical_approval:false;reviewer_identity_verified:false;
 }>;
+export type ComparisonSourceReceipt=WorldRef & Readonly<{
+ document_id:string;source_version:number;source_sha256:string;
+}>;
 export type ReviewHistoryReceipt=Readonly<{
+ comparison_source?:ComparisonSourceReceipt;
  receipt_id:string;question_id:string;queue_fingerprint:string;
  source_snapshot_sha256:string;source_snapshot_contract:SourceSnapshotContract;
  queue_fingerprint_contract:ReviewFingerprintContract;actor_label:string;action:'returned';
@@ -83,7 +89,8 @@ export function decodeReviewQueue(value:unknown,patient:string,caseId:string):Re
   !Array.isArray(value.receipts)||value.items.length>250||value.receipts.length>750)throw Error('contract');
  const questions=new Set<string>(),receipts=new Map<string,ReviewHistoryReceipt>();
  const history=value.receipts.map((r:unknown)=>{
-  if(!exact(r,receiptFields)||typeof r.receipt_id!=='string'||!RID.test(r.receipt_id)||
+  const paired=typeof r==='object'&&r!==null&&Object.hasOwn(r,'comparison_source');
+  if(!exact(r,paired?[...receiptFields,'comparison_source']:receiptFields)||typeof r.receipt_id!=='string'||!RID.test(r.receipt_id)||
     receipts.has(r.receipt_id)||typeof r.question_id!=='string'||!QID.test(r.question_id)||
     typeof r.queue_fingerprint!=='string'||!SHA.test(r.queue_fingerprint)||
     typeof r.source_snapshot_sha256!=='string'||!SHA.test(r.source_snapshot_sha256)||
@@ -93,6 +100,16 @@ export function decodeReviewQueue(value:unknown,patient:string,caseId:string):Re
     !visible(r.reason,10,600)||!time(r.created_at)||
     r.reviewer_identity_verified!==false||r.external_notification_sent!==false||
     r.clinical_approval!==false)throw Error('contract');
+  if(paired){
+   const peer=r.comparison_source;
+   if(!exact(peer,['source_id','source_line','source_sha256','document_id','source_version'])||
+     typeof peer.source_id!=='string'||!SID.test(peer.source_id)||!nonneg(peer.source_line)||
+     peer.source_line<1||peer.source_line>10000||!nonneg(peer.source_version)||peer.source_version<1||
+     typeof peer.source_sha256!=='string'||!SHA.test(peer.source_sha256)||
+     typeof peer.document_id!=='string'||!/^[A-Z][A-Z0-9-]{1,39}$/.test(peer.document_id)||
+     r.source_snapshot_contract!==CANONICAL)throw Error('contract');
+   Object.freeze(peer);
+  }
   const receipt=Object.freeze(r as ReviewHistoryReceipt);receipts.set(receipt.receipt_id,receipt);
   return receipt;
  });
@@ -118,6 +135,8 @@ export function decodeReviewQueue(value:unknown,patient:string,caseId:string):Re
    item.clinical_approval!==false||item.reviewer_identity_verified!==false)throw Error('contract');
   questions.add(item.question_id);
   const prior=history.filter(r=>r.question_id===item.question_id);
+  if(prior.some(r=>r.comparison_source && (r.comparison_source.source_id===item.source_id||
+      r.source_snapshot_sha256!==item.source_snapshot_sha256)))throw Error('contract');
   if(prior.length!==item.return_count+item.prior_return_count)throw Error('contract');
   const matching=prior.filter(r=>item.queue_fingerprint!==null&&
     item.source_snapshot_contract===CANONICAL&&r.source_snapshot_contract===CANONICAL&&
@@ -140,3 +159,10 @@ export function decodeReviewQueue(value:unknown,patient:string,caseId:string):Re
   receipts:Object.freeze(history)} as ReviewQueue);
 }
 
+
+export function attributionReviewStatus(question:ReviewQueueItem,peer:WorldRef,history:readonly SourceVersion[]):string{
+ const amended=history.filter(source=>source.source_id===question.source_id||source.source_id===peer.source_id);
+ if(amended.length)return amended.map(source=>source.document_id+' v'+source.version+' amended').join(', ')+' — reassessment required';
+ return question.review_state==='source_reassessment_required'?
+  'Case context changed — reassessment required':'Attribution remains unresolved';
+}

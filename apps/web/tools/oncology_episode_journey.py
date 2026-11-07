@@ -131,9 +131,58 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
                 + ' && !document.querySelector("[data-testid=world-projection]")', 'episode projection revoked')
         navigate('Records')
         assert not cd.evaluate('Boolean(document.querySelector("[data-testid=source-index], [data-testid=server-original]"))')
+        credentials[0]['actions'] = sorted(set(credentials[0]['actions']) | {
+            'source_read', 'question_create', 'question_read', 'review_queue_read', 'review_return'})
+        write_grants()
+        consult = (FIXTURES / 'episode-origin-consult-v1.txt').read_text()
+        second = operator(source_path, {'synthetic': True, 'original_text': consult})
+        select_case('Journey', 'world-load-cases', '.world-cases li', 'world-load')
+        cd.wait('document.querySelector("[data-testid=world-projection]")?.textContent.includes('
+                + json.dumps(second['source_id']) + ')', 'independent consultation in Journey')
+        primary = ('[...document.querySelectorAll("[data-testid=world-observation]")]'
+                   '.find(e=>e.querySelector("strong").textContent==="nodule" && e.textContent.includes('
+                   + json.dumps(selected_ids[-1]) + '))')
+        cd.evaluate(primary + '.querySelector("[data-testid=composer-preflight]").click()')
+        def element(selector):
+            return 'document.querySelector(' + json.dumps(selector) + ')'
+        save = element('[data-testid=save-source-question]')
+        cd.wait(save + ' && !' + save + '.disabled', 'first source question prepared')
+        cd.evaluate(save + '.click()')
+        cd.wait('Boolean(' + element('[data-testid=saved-source-question]') + ')', 'source question saved')
+        navigate('Review')
+        cd.wait('Boolean(' + element('[data-testid=load-review-queue]') + ')', 'review opened')
+        cd.evaluate(element('[data-testid=load-review-queue]') + '.click()')
+        form = element('[data-testid=attribution-review]')
+        cd.wait('Boolean(' + form + ')', 'eligible second report in Review')
+        cd.evaluate(form + '.open=true')
+        cd.evaluate('(()=>{const s=' + form + '.querySelector("select");s.selectedIndex=1;'
+                    's.dispatchEvent(new Event("change",{bubbles:true}));})()')
+        cd.wait(form + '.querySelectorAll("blockquote").length===2', 'two quoted original passages')
+        quotes = cd.evaluate('[...' + form + '.querySelectorAll("blockquote")].map(e=>e.textContent)')
+        assert all(quote in raw for quote, raw in zip(quotes, [originals[-1], consult])), quotes
+        reason = 'The fictional reports name different possible origins. Attribution remains unresolved.'
+        cd.evaluate(form + '.querySelector("textarea").focus()')
+        cd.command('Input.insertText', {'text': reason})
+        record = form + '.querySelector("button")'
+        cd.wait('!' + record + '.disabled', 'authored comparison reason')
+        cd.evaluate(record + '.click()')
+        cd.wait('Boolean(' + element('[data-testid=review-return-result]') + ')', 'paired receipt returned')
+        operator(source_path, {'synthetic': True, 'original_text': (FIXTURES / 'episode-origin-consult-v2.txt').read_text()})
+        select_case('Journey', 'world-load-cases', '.world-cases li', 'world-load')
+        reviews = element('section[aria-label="Episode attribution reviews"]')
+        cd.wait('Boolean(' + reviews + ')', 'amended source model')
+        cd.evaluate(reviews + '.querySelector("button").click()')
+        cd.wait(reviews + '.textContent.includes("DOC-CONSULT v1 amended — reassessment required")', 'Journey identifies the affected review')
+        cd.evaluate(reviews + '.querySelectorAll("button")[1].click()')
+        history = element('[data-testid=review-return-history]')
+        cd.wait(history + '?.textContent.includes(' + json.dumps(reason) + ')', 'original reason retained')
+        cd.evaluate(history + '.querySelectorAll("button")[1].click()')
+        cd.wait(element('[data-testid=server-original]') + '?.textContent===' + json.dumps(consult),
+                'history reopens exact pre-amendment consult under original-read authority')
         (artifacts / 'oncology-episodes.json').write_text(json.dumps({
             'synthetic': True, 'case_id': CASE, 'source_ids': selected_ids,
             'source_sha256': [hashlib.sha256(s.encode()).hexdigest() for s in originals],
+            'paired_review_reassessment': True, 'consult_original_reopened': True,
             'primary_episodes': ['EP-A', 'EP-B'], 'nodule_episode_history': [None, 'EP-B'],
             'nodule_reported_state': 'indeterminate', 'source_only_preflights': 2,
             'historical_original_verified': True, 'denied_read_cleared_records': True,

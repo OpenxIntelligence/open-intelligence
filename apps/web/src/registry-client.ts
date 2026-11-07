@@ -11,7 +11,7 @@ import type {LaboratoryImportState,LaboratoryIntent} from './laboratory-fhir.js'
 import {readLabPreparation,validLabQuestion,emptyLabQuestions,readLabQuestionList} from './laboratory-question.js';
 import type {LabPreparation,LabQuestionView} from './laboratory-question.js';
 import {parseSourceWorldModel} from './source-world-model.js';
-import type {SourceWorldModel} from './source-world-model.js';
+import type {SourceWorldModel,WorldRef} from './source-world-model.js';
 import {decodeComposerPreflight,DEFAULT_SOURCE_QUESTION} from './composer-preflight-view.js';
 import type {ComposerPreflight} from './composer-preflight-view.js';
 import {decodeSavedQuestion,decodeSourceQuestions,questionSaveBlocksSourceChange} from './source-questions-view.js';
@@ -39,6 +39,7 @@ export type Patient = Readonly<{
 }>;
 export type CreatedPatient = Readonly<{patient_id: string; duplicate: boolean}>;
 export type ReviewReturnIntent=Readonly<{
+  comparison_source?:WorldRef;
   patient_id:string;case_id:string;question_id:string;queue_fingerprint:string;reason:string;
 }>;
 export type QuestionDraft = Readonly<{case_id:string;source_id:string;source_line:number;
@@ -661,16 +662,17 @@ export class RegistrySession {
   async retryReviewReturn():Promise<void>{
     const intent=this.#state.reviewReturnIntent;
     if(this.#state.reviewReturnPhase!=='unknown'||!intent)return;
-    await this.returnReviewQuestion(intent.question_id,intent.queue_fingerprint,intent.reason);
+    await this.returnReviewQuestion(intent.question_id,intent.queue_fingerprint,intent.reason,intent.comparison_source);
   }
 
   async returnReviewQuestion(questionId:string,fingerprint:string,
-                             reason:string=FICTIONAL_RETURN_REASON):Promise<void>{
+                             reason:string=FICTIONAL_RETURN_REASON, comparisonSource?:WorldRef):Promise<void>{
     if(this.#savingReview)return;
     const patientId=this.#state.patient?.patient_id;
     const previous=this.#state.reviewReturnIntent;
     const recovering=this.#state.reviewReturnPhase==='unknown'&&previous!==null&&this.#reviewKey!=='';
-    if(recovering&&(previous.question_id!==questionId||previous.queue_fingerprint!==fingerprint||previous.reason!==reason)){
+    if(recovering&&(previous.question_id!==questionId||previous.queue_fingerprint!==fingerprint||previous.reason!==reason||
+       previous.comparison_source?.source_id!==comparisonSource?.source_id||previous.comparison_source?.source_line!==comparisonSource?.source_line)){
       this.#publish({reviewReturnMessage:'Resolve the earlier uncertain return with its exact reason and source context before starting a different return.'});
       return;
     }
@@ -690,10 +692,12 @@ export class RegistrySession {
         'Select a current source question and a visible 10–600 character verification reason.'});
       return;
     }
-    const intent=JSON.stringify([patientId,caseId,questionId,fingerprint,reason]);
+    const peer=comparisonSource?Object.freeze({source_id:comparisonSource.source_id,source_line:comparisonSource.source_line}):undefined;
+    const comparison=peer?{comparison_source:peer}:{};
+    const intent=JSON.stringify([patientId,caseId,questionId,fingerprint,reason,peer]);
     if(this.#reviewIntent!==intent||!this.#reviewKey){this.#reviewKey=crypto.randomUUID();this.#reviewIntent=intent;}
     const requestKey=this.#reviewKey,query=++this.#reviewWrite,scope=this.#scope,selection=this.#read;
-    const captured=Object.freeze({patient_id:patientId,case_id:caseId,question_id:questionId,queue_fingerprint:fingerprint,reason});
+    const captured=Object.freeze({patient_id:patientId,case_id:caseId,question_id:questionId,queue_fingerprint:fingerprint,reason,...comparison});
     const current=()=>query===this.#reviewWrite&&scope===this.#scope&&selection===this.#read&&
       this.#state.patient?.patient_id===patientId&&this.#reviewIntent===intent;
     const uncertain=()=>{
@@ -711,7 +715,7 @@ export class RegistrySession {
       const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+
         '/questions/'+encodeURIComponent(questionId)+'/return-for-verification';
       const res=await this.transport(url,this.#init(control,JSON.stringify({synthetic:true,
-        request_key:requestKey,expected_queue_fingerprint:fingerprint,reason})));
+        request_key:requestKey,expected_queue_fingerprint:fingerprint,reason,...comparison})));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status===408||res.status>=500){uncertain();return;}

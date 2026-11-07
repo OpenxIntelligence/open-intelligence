@@ -52,3 +52,17 @@ Inputs are strict UTF-8/LF, no BOM/NUL, 1–65536 original bytes; escaped JSON m
 `npm test` runs original registry/Records tests plus intake, response validation, ambiguous-write and stale-session tests. The existing hosted Chromium harness now invokes `tools/record_intake_journey.py` against actual FastAPI/PostgreSQL: disk-file selection without auto-upload, exact hashes and originals, duplicates, amendment history, foreign-case quarantine, independent original-read denial and metadata clearing. Unit mocks test client failure handling; the browser/database path is not mocked.
 
 No real patient data, external medical content, AI call, schema/API/dependency addition, commercial rights clearance, main merge or deployment is provided by this increment. Owner review and combined exact-head evidence are required; tests are not independent clinical validation.
+
+### Reviewing two reported origins
+
+In Journey, open a source-linked question from a metastasis statement and save the
+question in Investigations. Open Review and refresh the inbox. For that question,
+**Compare reported origins** lists passages from other current documents with the
+same specimen, event date and finding key and a different reported episode.
+Choose a passage, inspect both quotes, and write why the origin remains unresolved.
+The return binds both original source lines to the reason and leaves both reports intact.
+
+After an amendment, refresh Journey and choose **Check recorded attribution reviews**.
+A changed case snapshot requires reassessment. Open the review history to inspect
+the reason and reopen either exact original with fresh source permissions.
+This workflow uses fictional credentials and records a verification request.

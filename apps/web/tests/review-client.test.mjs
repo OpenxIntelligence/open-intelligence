@@ -530,3 +530,39 @@ test(operation+' '+outcome+' clears source previews with the correct uncertain-r
   assert.deepEqual(s.snapshot().reviewReturn,saved(true));
  }
 });
+
+test('a paired review retains its exact second original when a response is lost', async()=>{
+ const peer={source_id:'SRC-'+'E'.repeat(32),source_line:10};
+ const commands=[];
+ const s=session(async(url,init)=>{
+  if(url===queuePath)return response(queue());
+  commands.push(JSON.parse(init.body));
+  if(commands.length===1)throw Error('lost receipt');
+  return response(saved(true));
+ });
+ await opened(s);
+ await s.returnReviewQuestion(questionId,fingerprint,reason,peer);
+ assert.deepEqual(commands[0].comparison_source,peer);
+ await s.returnReviewQuestion(questionId,fingerprint,reason,{...peer,source_line:11});
+ assert.equal(commands.length,1);
+ await s.retryReviewReturn();
+ assert.deepEqual(commands[1],commands[0]);
+});
+
+test('a historical review exposes the captured secondary source only with a distinct valid reference',()=>{
+ const peer={source_id:'SRC-'+'E'.repeat(32),source_line:10,document_id:'DOC-SECOND',source_version:1,source_sha256:'b'.repeat(64)};
+ const packet=p=>queue([historyItem({prior_return_count:1})],[receipt({comparison_source:p})]);
+ assert.deepEqual(decodeReviewQueue(packet(peer),patientId,caseId).receipts[0].comparison_source,peer);
+ for(const invalid of [{...peer,source_id:item().source_id},{...peer,source_line:0},{...peer,source_sha256:'bad'}]){
+  assert.throws(()=>decodeReviewQueue(packet(invalid),patientId,caseId));
+ }
+});
+
+test('Journey names the changed original for each comparison on the same question',async()=>{
+ const {attributionReviewStatus}=await import('../.test-dist/review-queue-view.js');
+ const q=historyItem(), peer={source_id:'SRC-'+'E'.repeat(32)};
+ const historic=[{source_id:peer.source_id,document_id:'DOC-CONSULT',version:1}];
+ assert.match(attributionReviewStatus(q,peer,historic),/DOC-CONSULT v1 amended/);
+ assert.doesNotMatch(attributionReviewStatus(q,{source_id:'SRC-'+'F'.repeat(32)},historic),/amended/);
+ assert.match(attributionReviewStatus(q,peer,[]),/case context/i);
+});

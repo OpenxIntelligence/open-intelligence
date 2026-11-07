@@ -528,11 +528,30 @@ class SourceImageIndex(Contract):
     source_identity_verified: Literal[False]
 
 
+class ComparisonSourceLine(Contract):
+    source_id: str = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    source_line: int = Field(strict=True, ge=1, le=10000)
+
+
+class ComparisonSourceReceipt(ComparisonSourceLine):
+    document_id: str
+    source_version: int = Field(ge=1)
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class ReturnForVerification(Contract):
+    comparison_source: ComparisonSourceLine | None = None
     synthetic: StrictBool
     request_key: str = Field(min_length=3, max_length=128)
     expected_queue_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     reason: str = Field(min_length=10, max_length=600)
+
+    @field_validator("comparison_source", mode="before")
+    @classmethod
+    def require_selected_line_if_present(cls, value):
+        if value is None:
+            raise ValueError("Omit comparison_source for a single-source return")
+        return value
 
     @field_validator("synthetic")
     @classmethod
@@ -576,6 +595,7 @@ class QuestionReviewItem(Contract):
 
 
 class QuestionReturnHistory(Contract):
+    comparison_source: ComparisonSourceReceipt | None = Field(default=None, exclude_if=lambda value: value is None)
     receipt_id: str
     question_id: str
     queue_fingerprint: str
@@ -1051,6 +1071,7 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                     request_key=payload.request_key,
                     expected_queue_fingerprint=payload.expected_queue_fingerprint,
                     reason=payload.reason,
+                    comparison_source=payload.comparison_source.model_dump() if payload.comparison_source else None,
                     prepare_response=lambda result: JSONResponse(
                         ReturnForVerificationReceipt(**result).model_dump(mode="json"),
                         status_code=200 if result["duplicate"] else 201,

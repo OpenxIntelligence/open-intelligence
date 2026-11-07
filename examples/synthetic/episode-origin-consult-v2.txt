@@ -1,0 +1,9 @@
+OI-SYNTHETIC-REPORT/2
+Patient: CASE-WEB-EPISODES
+Document: DOC-CONSULT
+Type: pathology
+Event-Date: 2026-05-03
+Issued-At: 2026-05-08
+Specimen: BIOPSY-ALPHA
+Amends: DOC-CONSULT@1
+Oncology-Finding: nodule|metastasis|?|indeterminate|Fictional consultation amendment withdraws the proposed origin.
