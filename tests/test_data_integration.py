@@ -65,7 +65,7 @@ class DataIntegrationTestBase(unittest.TestCase):
 class ExtractionProposalTests(DataIntegrationTestBase):
     def test_valid_proposal_records_assertions(self):
         fields = [{"finding_key": "new-finding", "certainty": "reported",
-                   "quote": "A new fictional finding.", "source_line": 3}]
+                   "quote": "Fictional biopsy reports a malignant epithelial neoplasm;", "source_line": 8}]
         validation = record_extraction_proposal(
             self.store, 'CASE-ALPHA', self.alpha_v1, fields)
         self.assertEqual(validation.dropped, [])
@@ -78,11 +78,11 @@ class ExtractionProposalTests(DataIntegrationTestBase):
         self.assertEqual(
             (row['finding_key'], row['certainty'], row['quote'],
              row['source_line']),
-            ('new-finding', 'reported', 'A new fictional finding.', 3))
+            ('new-finding', 'reported', 'Fictional biopsy reports a malignant epithelial neoplasm;', 8))
 
     def test_unknown_source_version_drops_all_fields(self):
         fields = [{"finding_key": "new-finding", "certainty": "reported",
-                   "quote": "A new fictional finding.", "source_line": 3}]
+                   "quote": "Fictional biopsy reports a malignant epithelial neoplasm;", "source_line": 8}]
         validation = validate_extraction_proposal(
             self.store, 'CASE-ALPHA', 999999, fields)
         self.assertEqual(validation.kept, [])
@@ -96,7 +96,7 @@ class ExtractionProposalTests(DataIntegrationTestBase):
 
     def test_wrong_case_source_version_drops_all_fields(self):
         fields = [{"finding_key": "new-finding", "certainty": "reported",
-                   "quote": "A new fictional finding.", "source_line": 3}]
+                   "quote": "Fictional biopsy reports a malignant epithelial neoplasm;", "source_line": 8}]
         validation = validate_extraction_proposal(
             self.store, 'CASE-BETA', self.alpha_v1, fields)
         self.assertEqual(validation.kept, [])
@@ -108,7 +108,7 @@ class ExtractionProposalTests(DataIntegrationTestBase):
         self.store.import_report(
             'CASE-ALPHA', report('alpha-pathology-amended.txt'))
         fields = [{"finding_key": "new-finding", "certainty": "reported",
-                   "quote": "A new fictional finding.", "source_line": 3}]
+                   "quote": "Fictional biopsy reports a malignant epithelial neoplasm;", "source_line": 8}]
         validation = validate_extraction_proposal(
             self.store, 'CASE-ALPHA', self.alpha_v1, fields)
         self.assertEqual(validation.kept, [])
@@ -118,7 +118,7 @@ class ExtractionProposalTests(DataIntegrationTestBase):
 
     def test_invalid_source_version_id_drops_all_fields(self):
         fields = [{"finding_key": "new-finding", "certainty": "reported",
-                   "quote": "A new fictional finding.", "source_line": 3}]
+                   "quote": "Fictional biopsy reports a malignant epithelial neoplasm;", "source_line": 8}]
         for bad_id in (0, -1, 'x'):
             validation = validate_extraction_proposal(
                 self.store, 'CASE-ALPHA', bad_id, fields)
@@ -130,7 +130,7 @@ class ExtractionProposalTests(DataIntegrationTestBase):
     def test_field_level_rejections_are_typed(self):
         fields = [
             {"finding_key": "valid-key", "certainty": "reported",
-             "quote": "A valid fictional finding.", "source_line": 1},
+             "quote": "Fictional biopsy reports a malignant epithelial neoplasm;", "source_line": 8},
             {"finding_key": "Bad Key", "certainty": "reported",
              "quote": "Bad key.", "source_line": 1},
             {"finding_key": "bad-certainty", "certainty": "certain",
@@ -159,6 +159,39 @@ class ExtractionProposalTests(DataIntegrationTestBase):
                     'duplicate_finding_key', 'finding_already_asserted']))
         self.assertTrue(all(d['check'] == 'A1' for d in validation.dropped))
 
+    def test_quote_and_location_must_match_original(self):
+        fields = [
+            {"finding_key": "invented-quote", "certainty": "reported",
+             "quote": "A statement absent from the original.", "source_line": 8},
+            {"finding_key": "wrong-line", "certainty": "reported",
+             "quote": "Fictional biopsy reports a malignant epithelial neoplasm;", "source_line": 9},
+            {"finding_key": "past-end", "certainty": "reported",
+             "quote": "Fictional biopsy reports a malignant epithelial neoplasm;", "source_line": 9000},
+        ]
+        result = record_extraction_proposal(
+            self.store, "CASE-ALPHA", self.alpha_v1, fields)
+        self.assertEqual(result.kept, [])
+        self.assertEqual(result.inserted_assertion_ids, [])
+        self.assertEqual([d["reason"] for d in result.dropped], [
+            "source_quote_mismatch", "source_quote_mismatch",
+            "source_line_out_of_range"])
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM assertions WHERE source_version_id=? "
+            "AND finding_key IN ('invented-quote','wrong-line','past-end')",
+            (self.alpha_v1,)).fetchone()[0], 0)
+
+    def test_corrupted_original_is_not_usable_as_an_anchor(self):
+        self.store.db.execute(
+            "UPDATE source_versions SET raw=? WHERE id=?",
+            (b"rewritten original", self.alpha_v1))
+        result = record_extraction_proposal(
+            self.store, "CASE-ALPHA", self.alpha_v1,
+            [{"finding_key": "corrupt-source", "certainty": "reported",
+              "quote": "Fictional biopsy reports a malignant epithelial neoplasm;", "source_line": 8}])
+        self.assertEqual(result.kept, [])
+        self.assertEqual(result.dropped[0]["reason"],
+                         "source_integrity_mismatch")
+
     def test_import_path_still_creates_assertions(self):
         rows = self.store.db.execute(
             "SELECT finding_key FROM assertions WHERE source_version_id=? "
@@ -177,8 +210,8 @@ class ExtractionProposalTests(DataIntegrationTestBase):
 
     def test_record_inside_a_caller_transaction_stores_with_it(self):
         fields = [{"finding_key": "tx-finding", "certainty": "reported",
-                   "quote": "Stored inside the caller transaction.",
-                   "source_line": 2}]
+                   "quote": "Fictional biopsy reports a malignant epithelial neoplasm;",
+                   "source_line": 8}]
         with self.store.db:
             self.store.db.execute("BEGIN IMMEDIATE")
             validation = record_extraction_proposal(

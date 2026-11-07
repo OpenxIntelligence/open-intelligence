@@ -2018,11 +2018,25 @@ class CaseStore:
         # unreachable while it holds -- and fails the import loudly
         # instead of silently dropping a finding.
         from .extraction import validate_extraction_proposal
+        verified_source_anchors = None
+        if report.kind == "fhir-bundle":
+            # The FHIR ID line is different from the narrative text. Reparse
+            # the stored original instead of trusting an in-memory proposal:
+            # the bindings must agree on key, quote, and exact resource line.
+            from .fhir_exchange import fhir_bundle_to_report
+            from .terminology import validate_coding
+            source_report, _ = fhir_bundle_to_report(
+                raw, validate_coding=validate_coding)
+            verified_source_anchors = {
+                (finding.key, finding.quote, finding.line)
+                for finding in source_report.findings
+            }
         proposal = validate_extraction_proposal(
             self, case_id, source_id,
             [{"finding_key": finding.key, "certainty": finding.state,
               "quote": finding.quote, "source_line": finding.line}
-             for finding in report.findings])
+             for finding in report.findings],
+            verified_source_anchors=verified_source_anchors)
         if proposal.dropped:
             raise InvalidInput(
                 "Parsed findings failed the A1 anchor check: "

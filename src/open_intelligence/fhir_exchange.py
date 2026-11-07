@@ -321,14 +321,37 @@ def _dropped_fields(obj, spec_path: str, out: set[str]) -> None:
 def _resource_line(lines: list[str], resource_id: str, where: str) -> int:
     """1-based line number of the resource's own `"id"` line.
 
-    Keys are sorted in the canonical bytes, so the resource's `"id"`
-    precedes its `"text"`; the first match is the resource's own id
-    line, never a reference or a narrative mention.
+    IDs may repeat between resource types. A line belongs to this
+    specific entry.resource object only when its own resourceType also
+    matches. Do not take the first matching id in the entire bundle.
     """
     needle = f'"id": "{resource_id}"'
+    expected_type = where.split("/", 1)[0]
     for index, line in enumerate(lines, start=1):
-        if needle in line:
-            return index
+        if not line.strip().startswith(needle):
+            continue
+        indentation = len(line) - len(line.lstrip(" "))
+        # Locate the containing entry.resource object, not another resource
+        # type with the same id or an unrelated nested `id` field.
+        parent_index = None
+        for prior in range(index - 2, -1, -1):
+            candidate = lines[prior]
+            margin = len(candidate) - len(candidate.lstrip(" "))
+            if margin < indentation:
+                if candidate.strip() == '"resource": {':
+                    parent_index = prior
+                break
+        if parent_index is None:
+            continue
+        margin = len(lines[parent_index]) - len(lines[parent_index].lstrip(" "))
+        for candidate in lines[parent_index + 1:]:
+            depth = len(candidate) - len(candidate.lstrip(" "))
+            if depth <= margin:
+                break
+            if (depth == indentation and
+                    candidate.strip().startswith(
+                        f'"resourceType": "{expected_type}"')):
+                return index
     raise InvalidInput(f"fhir_unanchored_resource at {where}")
 
 

@@ -221,14 +221,19 @@ class CardiologyEndToEndTests(unittest.TestCase):
         store = self.store
         vertical = self.vertical
 
-        # D1 extraction: a new field on the ECG source validates clean.
+        # D1 extraction: only a quotation on the exact original ECG line
+        # validates. The same original must reject an invented rhythm note.
         validation = validate_extraction_proposal(
             store, "CASE-CARDIO", self.ecg, [
                 {"finding_key": "rhythm-note", "certainty": "reported",
-                 "quote": "A new fictional rhythm note.", "source_line": 3}])
+                 "quote": "Atrial fibrillation was identified.", "source_line": 8},
+                {"finding_key": "unsupported-rhythm", "certainty": "reported",
+                 "quote": "A new fictional rhythm note.", "source_line": 8}])
         self.assertEqual(
             [k["finding_key"] for k in validation.kept], ["rhythm-note"])
-        self.assertEqual(validation.dropped, [])
+        self.assertEqual([item["reason"] for item in validation.dropped],
+                         ["source_quote_mismatch"])
+        self.assertEqual(validation.inserted_assertion_ids, [])
 
         # T3 specimen chain: the cardiac biopsy chain is intact.
         chain = validate_specimen_chain(store, "CASE-CARDIO", self.wsi)
