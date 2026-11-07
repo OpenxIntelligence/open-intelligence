@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {RegistrySession} from '../.test-dist/registry-client.js';
-import {parseSourceWorldModel,parseSourceHistory} from '../.test-dist/source-world-model.js';
+import {parseSourceWorldModel,parseSourceHistory,compareSourceReceiptTimes} from '../.test-dist/source-world-model.js';
 
 const token='fictional_test_credential_000000000001';
 const patientId='PAT-EXAMPLE-001', caseId='CASE-ALPHA', sourceId='SRC-'+'A'.repeat(32);
@@ -342,4 +342,10 @@ test('invalid history clears earlier results and provides retry state',async()=>
  await session.loadSourceHistory(source().received_at);valid=false;
  await session.loadSourceHistory(source().received_at);
  assert.equal(session.snapshot().historyPhase,'error');assert.equal(session.snapshot().sourceHistory,null);
+});
+
+test('receipt ordering handles exact seconds, microseconds and equivalent offsets',()=>{
+ const values=['2026-11-02T10:00:00.000002Z','2026-11-02T10:00:00Z','2026-11-02T10:00:00.000001Z'];
+ assert.deepEqual(values.sort(compareSourceReceiptTimes),['2026-11-02T10:00:00Z','2026-11-02T10:00:00.000001Z','2026-11-02T10:00:00.000002Z']);
+ assert.equal(compareSourceReceiptTimes('2026-11-02T10:00:00.000001Z','2026-11-02T06:00:00.000001-04:00'),0);
 });

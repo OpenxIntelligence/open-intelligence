@@ -54,22 +54,27 @@ export type SourceHistory=Readonly<{
   world_model:SourceWorldModel;
 }>;
 
+// Preserve PostgreSQL microseconds, including an exact-second receipt beside
+// sub-millisecond receipts. Lexical order and JS Date alone lose this ordering.
+function receiptInstant(s:string):bigint{
+  stamp(s);
+  const fraction=s.match(/\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/)?.[1]??'';
+  if(fraction.length>6)return error();
+  return BigInt(Date.parse(s))*1000n+BigInt(fraction.padEnd(6,'0').slice(3));
+}
+export function compareSourceReceiptTimes(a:string,b:string):number{
+  const left=receiptInstant(a),right=receiptInstant(b);
+  return left<right?-1:left>right?1:0;
+}
+
 export function parseSourceHistory(raw:unknown,patient:string,caseId:string,cutoff:string):SourceHistory{
   const v=shape(raw,['contract','received_through','selection_basis','current_authority_required','historical_only','world_model']);
   const received=stamp(v.received_through);
-  // Preserve PostgreSQL microseconds: JS Date alone would accept a different
-  // cutoff in the same millisecond. The server emits ISO text, including Z.
-  const instant=(s:string)=>{
-    stamp(s);
-    const fraction=s.match(/\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/)?.[1]??'';
-    if(fraction.length>6)return error();
-    return BigInt(Date.parse(s))*1000n+BigInt(fraction.padEnd(6,'0').slice(3));
-  };
-  const boundary=instant(cutoff);
+  const boundary=receiptInstant(cutoff);
   if(v.contract!=='oi.pg-source-history/1'||v.selection_basis!=='received_at_inclusive'||
-     v.current_authority_required!==true||v.historical_only!==true||instant(received)!==boundary)return error();
+     v.current_authority_required!==true||v.historical_only!==true||receiptInstant(received)!==boundary)return error();
   const model=parseSourceWorldModel(v.world_model,patient,caseId);
-  if([...model.current_sources,...model.history].some(s=>instant(s.received_at)>boundary))return error();
+  if([...model.current_sources,...model.history].some(s=>receiptInstant(s.received_at)>boundary))return error();
   return Object.freeze({contract:'oi.pg-source-history/1',received_through:received,
     selection_basis:'received_at_inclusive',current_authority_required:true,historical_only:true,world_model:model});
 }

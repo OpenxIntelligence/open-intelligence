@@ -1,10 +1,11 @@
 import {useState} from 'react';
+import {compareSourceReceiptTimes} from './source-world-model';
 import type {RegistrySession,ViewState} from './registry-client';
 
 /** Read-only history never enters the current question/Composer context. */
 export function SourceHistoryView({session,state,busy}:{session:RegistrySession;state:ViewState;busy:boolean}){
   const model=state.worldModel!;
-  const sources=[...model.current_sources,...model.history].sort((a,b)=>a.received_at.localeCompare(b.received_at));
+  const sources=[...model.current_sources,...model.history].sort((a,b)=>compareSourceReceiptTimes(a.received_at,b.received_at));
   const cutoffs=[...new Set(sources.map(s=>s.received_at))];
   const [cutoff,setCutoff]=useState(cutoffs[0]??'');
   const history=state.sourceHistory;

@@ -71,9 +71,11 @@ revocation after response preparation, encoding-failure rollback, corrupt older
 originals, invalid timestamps, API restart and historical FHIR observations.
 The existing actual Chromium journey now reopens the first receipt after an
 amendment, compares its fingerprint with the earlier observed fingerprint,
-checks literal escaped text, and confirms the current finding remains amended.
+checks literal escaped text, confirms the current finding remains amended, and
+retains 390px/1280px screenshots with overflow checks. Receipt ordering compares
+exact instants, including microseconds and equivalent UTC offsets.
 
-Local: 780 client tests pass with zero failures/skips, production build passes,
+Local: 781 client tests pass with zero failures/skips, production build passes,
 10 HTTP/contract checks pass, and compilation/data-boundary/whitespace checks
 pass. Full local PostgreSQL acceptance cannot run: PostgreSQL is absent and the
 system installer cannot change identities in this environment. Hosted exact-head
