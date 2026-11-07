@@ -12,9 +12,13 @@ const MAX_GROUPS=12;
 const MAX_ROWS=20;
 
 type Lab=WorldLaboratoryObservation;
+export type ReportedContextDifference=
+  'specimen_descriptions'|'result_kinds'|'numeric_units'|'absence_reasons'|
+  'coded_system_versions'|'coded_answer_codes';
 export type SameTestReportGroup=Readonly<{
   loinc_code:string;source_count:number;result_count:number;
   rows:readonly Lab[];hidden_result_count:number;
+  context_differences:readonly ReportedContextDifference[];
 }>;
 export type SameTestReportView=Readonly<{
   groups:readonly SameTestReportGroup[];
@@ -31,6 +35,29 @@ function sameOriginal(current:ReadonlyMap<string,SourceWorldModel['current_sourc
     OBSERVATION.test(item.observation_reference)&&
     source.specimen_id&&item.specimen_reference==='Specimen/'+source.specimen_id&&
     item.report_reference==='DiagnosticReport/'+source.document_id);
+}
+
+/** Literal differences over the *whole* eligible group, including undisplayed rows.
+ * An empty list is never evidence of medical or analytical comparability.
+ */
+function reportedContextDifferences(rows:readonly Lab[]):readonly ReportedContextDifference[]{
+  const differences:ReportedContextDifference[]=[];
+  const differs=(values:readonly string[])=>new Set(values).size>1;
+  if(differs(rows.map(r=>r.specimen_type_text)))differences.push('specimen_descriptions');
+  if(differs(rows.map(r=>r.status)))differences.push('result_kinds');
+  const numeric=rows.filter(r=>r.status==='reported_value');
+  if(differs(numeric.map(r=>r.status==='reported_value'?r.unit_code:'')))
+    differences.push('numeric_units');
+  const absent=rows.filter(r=>r.status==='reported_absent');
+  if(differs(absent.map(r=>r.status==='reported_absent'?r.absent_reason:'')))
+    differences.push('absence_reasons');
+  const coded=rows.filter(r=>r.status==='reported_coded');
+  if(differs(coded.map(r=>r.status==='reported_coded'?JSON.stringify([
+    r.coded_result.system,r.coded_result.version??null]):'')))
+    differences.push('coded_system_versions');
+  if(differs(coded.map(r=>r.status==='reported_coded'?r.coded_result.code:'')))
+    differences.push('coded_answer_codes');
+  return Object.freeze(differences);
 }
 
 export function sameTestReportGroups(model:SourceWorldModel):SameTestReportView{
@@ -55,6 +82,7 @@ export function sameTestReportGroups(model:SourceWorldModel):SameTestReportView{
   const groups=Array.from(eligible,([loinc_code,{rows,sources}])=>({
     loinc_code,source_count:sources.size,result_count:rows.length,
     rows:Object.freeze(rows.slice(0,MAX_ROWS)),hidden_result_count:Math.max(0,rows.length-MAX_ROWS),
+    context_differences:reportedContextDifferences(rows),
   })).filter(g=>g.source_count>=2).sort((a,b)=>a.loinc_code.localeCompare(b.loinc_code));
   return Object.freeze({groups:Object.freeze(groups.slice(0,MAX_GROUPS)),
     group_count:groups.length,hidden_group_count:Math.max(0,groups.length-MAX_GROUPS),

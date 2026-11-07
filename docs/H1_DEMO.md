@@ -61,6 +61,15 @@ result and original identity, including different specimens, units and code-syst
 versions. Use **Inspect exact report versions in Records** to check the originals.
 This grouping performs no writes and does not establish clinical comparability.
 
+Below each same-code group, **Source context differences** names changes in the
+literal specimen descriptions, numeric units, result kinds, absence reasons,
+source coded-answer codes, and coded system versions. The checks cover **all**
+source-owned entries in that group, including results beyond the 20-row display
+limit. If no listed differences are detected, that is **not** proof the assays,
+specimens or results are medically comparable. No numerical delta, reference
+interval comparison, inferred trend or clinical interpretation is computed.
+Expand the exact original identity and open Records for independent inspection.
+
 In Records, open the source versions for `CASE-DEMO`. Select
 [the fictional FHIR bundle](../examples/synthetic/fictional-fhir-r4-lab-bundle.json),
 confirm the file, and import it as a new report. In Journey, inspect that case and

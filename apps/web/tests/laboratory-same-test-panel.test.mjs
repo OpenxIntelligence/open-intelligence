@@ -72,3 +72,27 @@ test('legacy source labels remain visible in full results but are not silently t
  assert.match(html,/1 result entries use legacy or non-local source references/);
  assert.ok(!html.includes('data-testid="laboratory-same-test-row"'));
 });
+
+test('grouped reader makes unit, specimen and result-kind differences visible without promising a trend',()=>{
+ const html=panel(twoReports());
+ assert.match(html,/data-testid="laboratory-same-test-context"/);
+ assert.match(html,/reported numeric units differ/i);
+ assert.match(html,/source-reported specimen descriptions differ/i);
+ assert.match(html,/numbered, coded or absent results differ/i);
+ assert.match(html,/not a numeric or clinical trend/i);
+});
+
+test('matching source labels still state that clinical comparability is unverified',()=>{
+ const raw=twoReports();
+ const specimen=raw.laboratory_observations[0].specimen_type_text;
+ for(const row of raw.laboratory_observations){
+   row.specimen_type_text=specimen;
+   row.status='reported_value';row.value_text='1.00';row.unit_code='10*9/L';row.absent_reason=null;
+   raw.laboratory_timeline.find(x=>x.source_id===row.source_id&&
+     x.observation_reference===row.observation_reference).status='reported_value';
+ }
+ raw.summary.unresolved_observations=0; // The one prior absent entry is now numeric.
+ const html=panel(raw);
+ assert.match(html,/No difference detected in these listed source fields/);
+ assert.match(html,/clinical comparability remains unverified/i);
+});
