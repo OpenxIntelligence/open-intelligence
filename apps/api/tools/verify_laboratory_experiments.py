@@ -56,8 +56,10 @@ def main():
             assert fingerprint(registry._get("checkpoint", trial["run_id"])) == trial["checkpoint_sha256"]
     with LaboratoryEvaluationRegistry(args.registry) as registry:
         assert LaboratoryExperiments(registry).execute("practice-search") == receipt
+        lineage = LaboratoryExperiments(registry).lineage("practice-search")
+        assert lineage["integrity_checked"] is True
     print(json.dumps({"software_commit": commit, "restart_and_exact_retry_verified": True,
-                      "human_review_performed": False, "receipt": receipt}, indent=2, sort_keys=True))
+                      "human_review_performed": False, "receipt": receipt, "lineage": lineage}, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

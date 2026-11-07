@@ -212,3 +212,25 @@ Cancellation verification: **56 focused local tests passed, zero skips**, includ
 four new tests covering pre-launch/reopen, a separate-connection request during a
 worker, last-worker selection suppression, CLI retries and terminal-state rejection.
 Hosted checks must qualify the exact published head separately.
+
+## Inspect experiment lineage
+
+`python -m oi_api.laboratory_experiments --registry /path/to/registry.sqlite lineage --experiment EXPERIMENT_ID`
+returns a JSON graph of existing records and typed links: frozen plan, dataset,
+reference run, eligible training and validation reviews, recipes, launch claims,
+trials, candidate runs, scores, checkpoints, cancellation and final receipt.
+Source version/hash descriptors are included; raw sources, labels, checkpoint
+contents and outputs are not embedded in this view. Test source identities are
+visible but test reviews are not loaded or scored.
+
+The reader uses one consistent SQLite snapshot, verifies stored content hashes
+and referenced recipe/input/checkpoint/score digests, and rejects missing or
+inconsistent completed-trial links. It does not execute workers, recompute scores,
+change records, or require historical code to equal the currently installed code.
+Planned, interrupted and cancelled experiments remain inspectable. This is an
+artifact provenance view, not an adversarial tamper-proof audit or clinical review.
+
+Local verification: **59 focused tests passed, zero skips**. Three added tests
+cover complete graph/reopen/CLI and byte-preserving reads, planned/cancelled state,
+and missing or inconsistent artifacts. The executable practice now exports its
+lineage graph in the CI artifact alongside the actual execution receipt.

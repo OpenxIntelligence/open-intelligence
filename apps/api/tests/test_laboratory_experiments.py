@@ -303,6 +303,57 @@ class LaboratoryExperimentTests(unittest.TestCase):
             self.service.cancel("finished", "Too late")
         self.assertEqual(self.service.execute("finished"), receipt)
 
+    def test_lineage_is_read_only_complete_and_reopenable(self):
+        self.service.plan(self.spec())
+        receipt = self.service.execute("search")
+        before = self.path.read_bytes()
+        with patch("oi_api.laboratory_experiments.run_worker", side_effect=AssertionError("No execution")), \
+                patch.object(self.registry, "score", side_effect=AssertionError("No rescoring")):
+            graph = self.service.lineage("search")
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertTrue(graph["integrity_checked"])
+        nodes = {(n["kind"], n["id"]) for n in graph["nodes"]}
+        for trial in receipt["trials"]:
+            self.assertIn(("checkpoint", trial["run_id"]), nodes)
+            self.assertIn(("score", trial["score_sha256"]), nodes)
+        self.assertEqual(len([n for n in graph["nodes"] if n["kind"] == "review" ]), 2)
+        self.assertEqual(len(graph["sources"]), len(self.manifest["cases"]))
+        self.assertNotIn("bundle_json", json.dumps(graph))
+        cmd = [sys.executable, "-m", "oi_api.laboratory_experiments", "--registry", str(self.path),
+               "lineage", "--experiment", "search"]
+        result = subprocess.run(cmd, capture_output=True, check=True)
+        self.assertEqual(json.loads(result.stdout), graph)
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_lineage_supports_planned_and_cancelled_experiments(self):
+        self.service.plan(self.spec())
+        self.assertEqual(self.service.lineage("search")["status"], "planned")
+        self.service.cancel("search", "Stop")
+        self.service.execute("search")
+        graph = self.service.lineage("search")
+        kinds = [n["kind"] for n in graph["nodes"]]
+        self.assertIn("experiment-cancel", kinds)
+        self.assertNotIn("checkpoint", kinds)
+        self.assertEqual(kinds.count("experiment-trial"), 2)
+
+    def test_lineage_rejects_missing_and_inconsistent_artifacts(self):
+        self.service.plan(self.spec())
+        self.service.execute("search")
+        original = self.registry._get
+        for defect in ("missing-score", "changed-checkpoint", "changed-trial"):
+            def damaged(kind, key):
+                result = original(kind, key)
+                if defect == "missing-score" and kind == "score":
+                    raise ValueError("Unknown evaluation record")
+                if defect == "changed-checkpoint" and kind == "checkpoint":
+                    result["training_sha256"] = "0" * 64
+                if defect == "changed-trial" and kind == "experiment-trial":
+                    result["recipe_sha256"] = "0" * 64
+                return result
+            with self.subTest(defect=defect), patch.object(self.registry, "_get", side_effect=damaged):
+                with self.assertRaises(ValueError):
+                    self.service.lineage("search")
+
     def test_cli_executes_and_reopens_existing_plan(self):
         self.service.plan(self.spec())
         cmd = [sys.executable, "-m", "oi_api.laboratory_experiments", "--registry", str(self.path)]

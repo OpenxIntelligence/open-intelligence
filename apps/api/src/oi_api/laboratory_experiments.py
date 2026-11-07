@@ -210,6 +210,97 @@ class LaboratoryExperiments:
                         "cancellation": self._cancel_request(experiment_id)}
         return {"status": "planned", "plan": plan, "cancellation": self._cancel_request(experiment_id)}
 
+    def lineage(self, experiment_id):
+        """Read one consistent artifact graph without rerunning workers or scoring."""
+        registry = self.registry
+        nodes, edges = {}, []
+
+        def node(kind, key, expected=None):
+            value = registry._get(kind, key)
+            digest = fingerprint(value)
+            _require(expected is None or digest == expected, "Lineage digest mismatch: " + kind)
+            identity = kind + "/" + key
+            nodes[identity] = {"kind": kind, "id": key, "sha256": digest}
+            return identity, value
+
+        def link(parent, child, relation):
+            edges.append({"from": parent, "to": child, "relation": relation})
+
+        def optional(kind, key, parent):
+            if registry.db.execute("SELECT 1 FROM records WHERE kind=? AND id=?", (kind, key)).fetchone():
+                identity, value = node(kind, key)
+                link(parent, identity, kind)
+                return identity, value
+            return None, None
+
+        # A single SQLite snapshot prevents mixed pre/post-completion graphs.
+        with registry._transaction():
+            root, plan = node("experiment-plan", experiment_id)
+            spec = plan["spec"]
+            dataset_node, manifest = node("dataset", spec["dataset"], plan["dataset_sha256"])
+            reference_node, reference = node("run", spec["reference_run"], plan["reference_sha256"])
+            link(root, dataset_node, "dataset")
+            link(root, reference_node, "reference")
+            _, _, _, training, reviews = self._inputs(spec["dataset"], spec["reference_run"])
+            _require(fingerprint(training) == plan["training_sha256"] and reviews == plan["validation_reviews"],
+                     "Lineage frozen inputs changed")
+            for case_id, digest in sorted(reviews.items()):
+                review_node, _ = node("review", spec["reference_run"] + ":" + case_id, digest)
+                link(reference_node, review_node, "validation-review")
+            for example in training:
+                review_node, _ = node("review", spec["reference_run"] + ":" + example["case_id"], example["review_sha256"])
+                link(reference_node, review_node, "training-review")
+            sources = [{"case_id": c["case_id"], "split": c["split"],
+                        "source_version": c["source_version"], "source_sha256": c["source_sha256"]}
+                       for c in manifest["cases"]]
+            _, start = optional("experiment-start", experiment_id, root)
+            _, cancellation = optional("experiment-cancel", experiment_id, root)
+            _, finish = optional("experiment-finish", experiment_id, root)
+            for record in (start, cancellation, finish):
+                if record is not None:
+                    _require(record["plan_sha256"] == fingerprint(plan), "Lineage plan mismatch")
+            trials = []
+            for index, key in enumerate(spec["recipes"]):
+                recipe_node, _ = node("recipe", key, plan["recipes"][key])
+                link(root, recipe_node, "candidate")
+                trial_key = "trial-" + fingerprint([experiment_id, index])[:48]
+                _, launch = optional("experiment-trial-start", trial_key, recipe_node)
+                if launch is not None:
+                    _require(launch == {"experiment_id": experiment_id, "recipe": key,
+                                        "plan_sha256": fingerprint(plan)}, "Lineage launch mismatch")
+                trial_node, trial = optional("experiment-trial", trial_key, recipe_node)
+                if trial is None:
+                    _require(finish is None, "Finished experiment is missing a trial")
+                    continue
+                trials.append(trial)
+                _require(trial["recipe"] == key and trial["recipe_sha256"] == plan["recipes"][key],
+                         "Lineage recipe mismatch")
+                if trial["status"] != "completed":
+                    continue
+                _require(trial["run_id"] == trial_key, "Lineage run identity mismatch")
+                run_node, run = node("run", trial_key)
+                checkpoint_node, checkpoint = node("checkpoint", trial_key, trial["checkpoint_sha256"])
+                score_node, score = node("score", trial["score_sha256"], trial["score_sha256"])
+                _require(run["dataset_sha256"] == plan["dataset_sha256"]
+                         and score["candidate_sha256"] == fingerprint(run)
+                         and score["reference_sha256"] == fingerprint(reference)
+                         and score["candidate_run"] == trial_key and score["reference_run"] == spec["reference_run"]
+                         and score["by_split"]["validation"] == trial["validation"], "Lineage score mismatch")
+                _require(checkpoint["recipe_sha256"] == plan["recipes"][key]
+                         and checkpoint["training_sha256"] == plan["training_sha256"]
+                         and checkpoint["source_identity"] == plan["source_identity"], "Lineage checkpoint mismatch")
+                link(trial_node, run_node, "output")
+                link(trial_node, checkpoint_node, "checkpoint")
+                link(run_node, score_node, "evaluation")
+                link(score_node, reference_node, "reference")
+            if finish is not None:
+                _require(finish["trials"] == trials, "Lineage receipt/trial mismatch")
+            return {"experiment_id": experiment_id, "integrity_checked": True,
+                    "status": "finished" if finish else "interrupted_or_running" if start else "planned",
+                    "nodes": [nodes[key] for key in sorted(nodes)], "edges": edges, "sources": sources,
+                    "source_identity": plan["source_identity"], "clinical_validation": False,
+                    "promotion_authorized": False}
+
     def execute(self, experiment_id):
         state = self.inspect(experiment_id)
         if state["status"] == "finished":
@@ -307,7 +398,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--registry", type=Path)
-    parser.add_argument("command", nargs="?", choices=("recipe", "plan", "execute", "inspect", "cancel"))
+    parser.add_argument("command", nargs="?", choices=("recipe", "plan", "execute", "inspect", "cancel", "lineage"))
     parser.add_argument("--input", type=Path)
     parser.add_argument("--experiment")
     parser.add_argument("--reason", help="Required cancellation reason")
