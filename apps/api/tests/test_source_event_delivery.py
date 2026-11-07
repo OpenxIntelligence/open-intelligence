@@ -115,6 +115,151 @@ class SourceEventDeliveryPostgresTests(source_fixture.SourceVersionFixture):
         self.assertNotIn(token, json.dumps(result))
         return result
 
+    def event_status(self, patient, *, case=CASE, token=TOKEN):
+        from oi_api.event_worker import read_status
+        return read_status(self.settings, lambda: token, patient, case)
+
+    def test_status_observes_backlog_without_claiming_and_separates_actor_history(self):
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            empty = self.event_status(patient)
+            fields = ("unclaimed", "queued_ready", "queued_waiting", "running_active",
+                      "running_expired", "delivered", "dead_letter")
+            self.assertEqual(empty["status"], "observed")
+            self.assertEqual([empty[key] for key in fields], [0] * len(fields))
+            self.assertEqual(self.ingest(base, patient)[0], 201)
+        self.add_other_actor(patient)
+        before = self.snapshot()
+        observed = self.event_status(patient)
+        self.assertEqual(observed["unclaimed"], 1)
+        after = self.snapshot()
+        journal = "identity.identity_domain_events"
+        self.assertEqual({k: v for k, v in before.items() if k != journal},
+                         {k: v for k, v in after.items() if k != journal})
+        self.assertEqual(after[journal][:-1], before[journal])
+        self.assertEqual(after[journal][-1]["event_type"], "source.delivery.status_read_authorized")
+        claim = self.claim_event(patient)
+        self.assertEqual(self.event_status(patient)["running_active"], 1)
+        self.assertEqual(self.event_status(patient, token=OTHER_TOKEN)["unclaimed"], 1)
+        self.deliver_event(claim)
+        self.assertEqual(self.event_status(patient)["delivered"], 1)
+        self.assertEqual(self.event_status(patient, token=OTHER_TOKEN)["delivered"], 0)
+        cli = subprocess.run([sys.executable, "-m", "oi_api.event_worker", "--status",
+                              "--patient", patient, "--case", CASE], env=self.event_worker_env(),
+                             capture_output=True, text=True, timeout=15)
+        self.assertEqual(cli.returncode, 0, cli.stderr)
+        self.assertEqual(json.loads(cli.stdout)["delivered"], 1)
+        self.assertEqual(cli.stderr, "")
+        self.assertEqual(self.event_status(patient, case="CASE-OTHER"), {"status": "blocked"})
+        self.assertEqual(self.event_status("PATIENT-OTHER"), {"status": "blocked"})
+        for private in (TOKEN, claim["lease_token"], claim["delivery_id"], patient):
+            self.assertNotIn(private, json.dumps(observed))
+
+    def test_status_reports_retry_delay_expired_lease_and_dead_letter_without_recovery(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, _, _, run = self.seeded_run(base)
+        claim = self.claim_event(patient, lease=1)
+        time.sleep(1.1)
+        before = self.delivery(claim["delivery_id"])
+        self.assertEqual(self.event_status(patient)["running_expired"], 1)
+        self.assertEqual(self.delivery(claim["delivery_id"]), before)
+        retry = self.claim_event(patient)
+        self.assertEqual(self.fail_event(retry), "queued")
+        self.assertEqual(self.event_status(patient)["queued_waiting"], 1)
+        # Database clock controls eligibility; observe rather than rewriting a lease.
+        deadline = time.monotonic() + 10
+        while self.event_status(patient)["queued_ready"] != 1 and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertEqual(self.event_status(patient)["queued_ready"], 1)
+        final = self.claim_event(patient)
+        self.assertEqual(self.fail_event(final, "invalid_event"), "dead_letter")
+        self.assertEqual(self.event_work(patient), {"status": "idle"})
+        self.assertEqual(self.event_status(patient)["dead_letter"], 1)
+        self.assertEqual(self.stored(run)[0]["state"], "queued")
+
+    def test_status_revocation_at_audit_tail_rolls_back_read_receipt(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, _, _, _ = self.seeded_run(base)
+        before = self.snapshot()
+        original = PostgresPatientRegistry.append_event
+        def revoke(registry, patient_id, event_type, **metadata):
+            result = original(registry, patient_id, event_type, **metadata)
+            if event_type == "source.delivery.status_read_authorized":
+                self.creds[0]["actions"].remove("source_read")
+                self.write()
+            return result
+        with patch.object(PostgresPatientRegistry, "append_event", revoke):
+            self.assertEqual(self.event_status(patient), {"status": "blocked"})
+        self.assertEqual(self.snapshot(), before)
+
+    def event_dead_letters(self, patient, *, case=CASE, token=TOKEN, **page):
+        from oi_api.event_worker import read_dead_letters
+        return read_dead_letters(self.settings, lambda: token, patient, case, **page)
+
+    def test_dead_letters_paginate_exact_failures_without_mutating_or_leaking_actor_scope(self):
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            self.assertEqual(self.event_dead_letters(patient),
+                             {"status": "observed", "items": [], "next_after_event_id": None})
+            self.assertEqual(self.ingest(base, patient)[0], 201)
+            self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
+        self.add_other_actor(patient)
+        claims = []
+        for reason in ("invalid_event", "authority_unavailable"):
+            claim = self.claim_event(patient)
+            self.assertEqual(self.fail_event(claim, reason), "dead_letter")
+            claims.append(claim)
+        before = self.snapshot()
+        first = self.event_dead_letters(patient, limit=1)
+        after = self.snapshot()
+        journal = "identity.identity_domain_events"
+        self.assertEqual({k: v for k, v in before.items() if k != journal},
+                         {k: v for k, v in after.items() if k != journal})
+        self.assertEqual(after[journal][:-1], before[journal])
+        self.assertEqual(after[journal][-1]["event_type"], "source.delivery.dead_letters_read_authorized")
+        self.assertEqual(first["next_after_event_id"], claims[0]["event_id"])
+        second = self.event_dead_letters(patient, limit=1, after_event=first["next_after_event_id"])
+        self.assertIsNone(second["next_after_event_id"])
+        for page, claim, reason in zip((first, second), claims, ("invalid_event", "authority_unavailable")):
+            self.assertEqual(len(page["items"]), 1)
+            item = page["items"][0]
+            self.assertEqual(set(item), {"delivery_id", "event_id", "revision", "attempt_count",
+                                        "failure_count", "reason_code", "failed_at"})
+            current = self.delivery(claim["delivery_id"])
+            for key in ("delivery_id", "event_id", "revision", "attempt_count", "failure_count"):
+                self.assertEqual(item[key], current[key])
+            self.assertEqual(item["reason_code"], reason)
+            self.assertEqual(item["failed_at"], current["updated_at"].isoformat())
+            for secret in (TOKEN, claim["lease_token"], source_fixture.ORIGINAL, patient):
+                self.assertNotIn(secret, json.dumps(page))
+        self.assertEqual(self.event_dead_letters(patient, token=OTHER_TOKEN)["items"], [])
+        self.assertEqual(self.event_dead_letters(patient, case="CASE-OTHER"), {"status": "blocked"})
+        self.assertEqual(self.event_dead_letters("PATIENT-OTHER"), {"status": "blocked"})
+        self.assertEqual(self.event_dead_letters(patient, after_event=claims[-1]["event_id"])["items"], [])
+        cli = subprocess.run([sys.executable, "-m", "oi_api.event_worker", "--dead-letters",
+                              "--patient", patient, "--case", CASE, "--limit", "1", "--after-event",
+                              str(first["next_after_event_id"])], env=self.event_worker_env(),
+                             capture_output=True, text=True, timeout=15)
+        self.assertEqual(cli.returncode, 0, cli.stderr)
+        self.assertEqual(json.loads(cli.stdout), second)
+        self.assertEqual(cli.stderr, "")
+
+    def test_dead_letter_read_revocation_rolls_back_audit_and_withholds_identifiers(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, _, _, _ = self.seeded_run(base)
+        self.assertEqual(self.fail_event(self.claim_event(patient), "invalid_event"), "dead_letter")
+        before = self.snapshot()
+        original = PostgresPatientRegistry.append_event
+        def revoke(registry, patient_id, event_type, **metadata):
+            result = original(registry, patient_id, event_type, **metadata)
+            if event_type == "source.delivery.dead_letters_read_authorized":
+                self.creds[0]["actions"].remove("source_read")
+                self.write()
+            return result
+        with patch.object(PostgresPatientRegistry, "append_event", revoke):
+            self.assertEqual(self.event_dead_letters(patient), {"status": "blocked"})
+        self.assertEqual(self.snapshot(), before)
+
     def drain(self, patient, *, case=CASE, token=TOKEN):
         outcomes = []
         for _ in range(20):
