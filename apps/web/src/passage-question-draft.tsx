@@ -20,7 +20,7 @@ function PassageEvidenceSearch({patient,caseId,source,id,anchor,question,current
  useEffect(()=>()=>{generation.current++;},[patient,caseId,source,id,session]);
  async function search(){
   const request=++generation.current;
-  setResult(null);setStatus('Searching…');
+  setResult(null);setLinks(null);setStatus('Searching…');
   try{
    const reply=await session.documentRequest(caseId,'/'+source+'/questions/'+id+'/evidence-search',
     JSON.stringify({synthetic:true,query}));
