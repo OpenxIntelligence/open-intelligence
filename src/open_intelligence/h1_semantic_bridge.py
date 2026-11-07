@@ -78,3 +78,64 @@ def bind_authorized_h1_question(
         source=source_ref, question=question_ref, source_sha256=digest,
         source_line=line, requires_reassessment=state == "source_reassessment_required",
     )
+
+
+def bind_authorized_h1_question_list(
+    *,
+    registry: SemanticRegistry,
+    question_list: dict,
+    source_index: dict,
+    authorized_patient_id: str,
+    authorized_case_id: str,
+) -> tuple[BoundQuestion, ...]:
+    """Validate a complete owner-projected question list against source versions.
+
+    Input must come from the existing source-owner transaction and its question
+    projection, with current grants checked by the owner. This adapter neither
+    queries the database nor creates a new read/authorization path. Historical
+    superseded versions are retained for stale-question review.
+    """
+    if not isinstance(question_list, dict) or not isinstance(source_index, dict):
+        raise SemanticContractError("invalid_owner_projection")
+    if any(
+        projection.get("patient_id") != authorized_patient_id
+        or projection.get("case_id") != authorized_case_id
+        for projection in (question_list, source_index)
+    ):
+        raise SemanticContractError("scope_mismatch")
+    if question_list.get("contract") != "oi.synthetic-source-questions/2":
+        raise SemanticContractError("unknown_question_contract")
+    if source_index.get("contract") != "oi.synthetic-original-sources/1":
+        raise SemanticContractError("unknown_source_contract")
+    questions = question_list.get("questions")
+    sources = source_index.get("sources")
+    if not isinstance(questions, list) or not isinstance(sources, list):
+        raise SemanticContractError("invalid_owner_projection")
+    if len(questions) > 250:
+        raise SemanticContractError("question_limit_exceeded")
+    if not all(isinstance(source, dict) for source in sources):
+        raise SemanticContractError("invalid_owner_projection")
+    by_id: dict[str, dict] = {}
+    for source in sources:
+        sid = source.get("source_id")
+        if type(sid) is not str or SOURCE_ID.fullmatch(sid) is None or sid in by_id:
+            raise SemanticContractError("duplicate_or_invalid_source")
+        by_id[sid] = source
+    bound = []
+    seen: set[str] = set()
+    for question in questions:
+        if not isinstance(question, dict):
+            raise SemanticContractError("invalid_owner_projection")
+        qid = question.get("question_id")
+        if type(qid) is not str or qid in seen:
+            raise SemanticContractError("duplicate_question")
+        seen.add(qid)
+        source = by_id.get(question.get("source_id"))
+        if source is None:
+            raise SemanticContractError("unknown_question_source")
+        bound.append(bind_authorized_h1_question(
+            registry=registry, question=question, source=source,
+            authorized_patient_id=authorized_patient_id,
+            authorized_case_id=authorized_case_id,
+        ))
+    return tuple(bound)
