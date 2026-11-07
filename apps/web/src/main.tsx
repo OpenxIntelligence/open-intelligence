@@ -52,7 +52,6 @@ function App(){
  const [requestKey,setRequestKey]=useState(()=>crypto.randomUUID());
  const [readiness,setReadiness]=useState<'checking'|'ready'|'unavailable'>('checking');
  const [section,setSection]=useState('Overview');
- const navigationId=useRef(0);
  const [view,setView]=useState<ReadingView>('patient');
  const [sourceFilters,setSourceFilters]=useState({scope:state.sourceIndex,...emptySourceFilters});
  const filters=sourceFilters.scope===state.sourceIndex?sourceFilters:emptySourceFilters;
@@ -119,10 +118,10 @@ function App(){
  useEffect(()=>{if(!state.connected){setPatientId('');setConfirmed(false)}},[state.connected]);
  useEffect(()=>{const clear=()=>session.disconnect();window.addEventListener('pagehide',clear);return()=>window.removeEventListener('pagehide',clear)},[]);
   const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||state.evidenceWritePhase==='saving';
- function navigate(nextSection:string){navigationId.current++;session.dismissAttributionInspection();
+ function navigate(nextSection:string){session.dismissAttributionInspection();
   if(taskOriginal.current){taskOriginal.current=null;session.dismissOriginal();}
   passageResume.current=null;sourceEntry.current=null;originalReturn.current=null;session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();session.dismissSourceImages();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
- function disconnect(){navigationId.current++;taskOriginal.current=null;passageResume.current=null;sourceEntry.current=null;session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
+ function disconnect(){taskOriginal.current=null;passageResume.current=null;sourceEntry.current=null;session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
  return <div className="app" onFocusCapture={()=>{if(sourceEntry.current&&document.activeElement!==sourceEntry.current.trigger)sourceEntry.current=null;}}>
   <a className="skip" href="#main">Skip to workspace</a>
   <aside className="rail" aria-label="Workspace navigation">
@@ -137,12 +136,7 @@ function App(){
     <div className="boundary" role="note"><strong>Development workspace, not a clinical service.</strong> Use operator-issued synthetic credentials and fictional identities only. These are not patient accounts, verified consent or professional sign-off.</div>
     {section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onOriginal={(world,sourceId)=>{navigate('Records');taskOriginal.current=sourceId;void session.loadWorldOriginal(world,sourceId);}} onRecords={(caseId,task)=>{navigate('Records');taskOriginal.current=task?.source_id??null;void session.loadSources(caseId,task);}} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} onOriginal={(caseId,sourceId,version,digest)=>{
      navigate('Records');
-     const opened=navigationId.current;
-     void session.loadSources(caseId).then(()=>{
-      const fresh=session.snapshot();
-      if(navigationId.current===opened&&fresh.patient?.patient_id===state.patient?.patient_id&&fresh.sourceIndex?.case_id===caseId&&
-        fresh.sourceIndex.sources.some(row=>row.source_id===sourceId&&row.version===version&&row.sha256===digest))void session.loadOriginal(sourceId);
-     });
+     taskOriginal.current=sourceId;void session.loadReviewOriginal(caseId,sourceId,version,digest);
     }} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
      <span className="step">CANONICAL SOURCE OWNER / ORIGINALS</span>
      <h2 id="records-heading">{view==='patient'?'Records available to you':'Original source records'}</h2>

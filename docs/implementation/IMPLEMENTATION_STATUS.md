@@ -4,7 +4,7 @@
 
 The current continuation integrates the existing paired-attribution review owner from #548 and amendment comparison from #566 into the verified episode/worker chart (#601 and #607). A reviewer can preserve two conflicting source-reported episode attributions with a reason, then compare each recorded original with its latest document version. Moved lines follow their original finding key; removed, untyped and unassigned findings stay distinct. Comparison does not resolve the attribution or approve a clinical conclusion.
 
-The integration preserves worker/evidence return receipts alongside paired-source receipts. Their command digests include the appropriate original provenance. No new schema, source registry, model, external service or clinical action is added. Local checks pass 719 client tests, production build and 14 focused API/parser/contract tests. Hosted PostgreSQL, Chromium and restore checks must qualify this combined head; donor checks alone do not.
+The integration preserves worker/evidence return receipts alongside paired-source receipts. Their command digests include the appropriate original provenance. No new schema, source registry, model, external service or clinical action is added. Local checks pass 721 client tests, production build and 14 focused API/parser/contract tests. Hosted PostgreSQL, Chromium and restore checks must qualify this combined head; donor checks alone do not.
 
 ## Source-linked oncology episode drafts — verified synthetic integration
 

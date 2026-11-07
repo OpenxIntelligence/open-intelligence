@@ -620,3 +620,29 @@ test('leaving Review while the passage comparison is loading discards its late r
  assert.equal(s.snapshot().attributionInspection,null);
  assert.equal(s.snapshot().attributionTarget,null);
 });
+
+test('review original requires a source reference captured by the loaded queue',async()=>{
+ let calls=0;const s=session(async url=>{if(url===queuePath)return response(queue());calls++;return response({},404);});
+ await opened(s);
+ await s.loadReviewOriginal(caseId,sourceId,2,'e'.repeat(64));
+ await s.loadReviewOriginal(caseId,'SRC-'+'F'.repeat(32),1,'e'.repeat(64));
+ assert.equal(calls,0);
+});
+
+test('a delayed review-original lookup cannot override a newer Records selection',async()=>{
+ const held=deferred(),started=deferred();let reads=0;
+ const index={contract:'oi.synthetic-original-sources/1',patient_id:patientId,case_id:caseId,access_receipt_id:'ACCESS-'+'E'.repeat(32),
+  synthetic:true,clinical_interpretation:false,research_review_invalidation_integrated:false,
+  sources:[{source_id:sourceId,document_id:'DOC-ONE',version:1,sha256:'e'.repeat(64),kind:'pathology',
+   event_date:'2026-01-10',issued_at:'2026-01-11',received_at:'2026-11-03T10:00:00Z',
+   specimen_id:'SPECIMEN-ONE',state:'current',supersedes_id:null}],source_reported_assertions:[]};
+ const s=session(async url=>{
+  if(url===queuePath)return response(queue());
+  assert.ok(url.endsWith('/sources'),'A superseded request must not fetch original bytes');
+  if(++reads===1){started.resolve();return held.promise;}return response(index);
+ });
+ await opened(s);const pending=s.loadReviewOriginal(caseId,sourceId,1,'e'.repeat(64));await started.promise;
+ await s.loadSources(caseId);assert.equal(s.snapshot().recordsPhase,'ready');
+ held.resolve(response(index));await pending;
+ assert.equal(reads,2);assert.equal(s.snapshot().original,null);
+});

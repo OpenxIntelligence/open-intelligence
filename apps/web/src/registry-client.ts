@@ -636,14 +636,27 @@ export class RegistrySession {
        this.#state.patient?.patient_id!==world.patient_id)return;
     const target=[...world.current_sources,...world.history].find(s=>s.source_id===sourceId);
     if(!target)return;
+    await this.#loadAnchoredOriginal(world.case_id,target.source_id,target.version,target.sha256,target.document_id);
+  }
+
+  async loadReviewOriginal(caseId:string,sourceId:string,version:number,digest:string):Promise<void>{
+    const queue=this.#state.reviewQueue;
+    if(this.#state.reviewPhase!=='ready'||!queue||queue.case_id!==caseId||
+       queue.patient_id!==this.#state.patient?.patient_id)return;
+    const anchors=[...queue.items,...queue.receipts.flatMap(r=>r.comparison_source?[r.comparison_source]:[])];
+    if(!anchors.some(a=>a.source_id===sourceId&&a.source_version===version&&a.source_sha256===digest))return;
+    await this.#loadAnchoredOriginal(caseId,sourceId,version,digest);
+  }
+
+  async #loadAnchoredOriginal(caseId:string,sourceId:string,version:number,digest:string,documentId?:string):Promise<void>{
     const scope=this.#scope,read=this.#read,request=this.#records+1;
-    await this.loadSources(world.case_id);
+    await this.loadSources(caseId);
     if(scope!==this.#scope||read!==this.#read||request!==this.#records||
-       this.#state.recordsPhase!=='ready'||this.#state.sourceIndex?.case_id!==world.case_id)return;
+       this.#state.recordsPhase!=='ready'||this.#state.sourceIndex?.case_id!==caseId)return;
     const fresh=this.#state.sourceIndex.sources.find(s=>s.source_id===sourceId);
-    if(!fresh||fresh.version!==target.version||fresh.sha256!==target.sha256||fresh.document_id!==target.document_id){
+    if(!fresh||fresh.version!==version||fresh.sha256!==digest||(documentId!==undefined&&fresh.document_id!==documentId)){
       this.#publish({original:null,recordsPhase:'error',
-        recordMessage:'The original no longer matches the selected episode source. Refresh Journey before trying again.'});
+        recordMessage:'The original no longer matches the selected source. Refresh its originating view before trying again.'});
       return;
     }
     await this.loadOriginal(sourceId);
