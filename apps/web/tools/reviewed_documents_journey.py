@@ -338,6 +338,28 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     assert current_selection['anchor']['quote']=='Second selected passage.'
     assert (current_selection['anchor']['line'],current_selection['anchor']['page'])==(3,2)
     assert current_selection['selection_state']=='current_unreviewed_selection'
+    # Reopening an amended selection must not promote its saved history to
+    # current, enable new citation writes, or replace the original quotation.
+    citation_path=prefix+'/'+first+'/questions/'+original_question['question_id']+'/evidence-links'
+    citations_before=operator(citation_path)['links']
+    click('Open saved passage questions')
+    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('Source or selection changed')",
+            'historical passage state after annotation correction')
+    value('[data-testid=passage-evidence-query]','continuity')
+    click('Search evidence catalog')
+    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('FICT-RECORD-CONTINUITY@1')",
+            'historical question retains permitted metadata inspection')
+    assert cd.evaluate("""(() => {
+      const button=[...document.querySelectorAll('[data-testid=saved-passage-questions] button')]
+        .find(item=>item.textContent==='Save citation FICT-RECORD-CONTINUITY@1');
+      return Boolean(button?.disabled);
+    })()"""), 'A historical passage must not enable a new citation save'
+    click('Prepare independent verification')
+    cd.wait("document.querySelector('[data-testid=passage-review-preparation]')?.textContent.includes('Historical context only; reassessment required.')",
+            'historical original reaches review preparation without promotion')
+    assert cd.evaluate("document.querySelector('[data-testid=passage-review-preparation] blockquote')?.textContent")=='Marker pending.'
+    assert operator(citation_path)['links']==citations_before, (
+        'Inspecting historical context must not create or change citation records')
     destination=artifacts/'reviewed-document-downloads';destination.mkdir(parents=True,exist_ok=True)
     cd.command('Browser.setDownloadBehavior',{'behavior':'allow','downloadPath':str(destination)})
     cd.evaluate("document.querySelector('[data-testid=download-reviewed]').click()")
