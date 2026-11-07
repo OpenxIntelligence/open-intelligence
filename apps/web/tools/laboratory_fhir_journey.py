@@ -183,6 +183,8 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     observations = []
     def key(name, code):
         cd.command('Input.dispatchKeyEvent', {'type':'rawKeyDown','key':name,'code':name,'windowsVirtualKeyCode':code})
+        if name == 'Enter':
+            cd.command('Input.dispatchKeyEvent', {'type':'char','text':'\r','key':name,'windowsVirtualKeyCode':code})
         cd.command('Input.dispatchKeyEvent', {'type':'keyUp','key':name,'code':name,'windowsVirtualKeyCode':code})
     for width, height in ((390, 844), (320, 256)):
         cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':height,'deviceScaleFactor':1,'mobile':False})
