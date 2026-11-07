@@ -21,6 +21,8 @@ Open **http://127.0.0.1:4173**. In Overview, paste the synthetic fixture token i
 
 The first start downloads/builds the pinned backend. Package rights checks must pass; do not install optional packages as a workaround. The two omitted optional packages remain uninspected. The application's distribution license and release-wide rights are still separate decisions.
 
+Use **On this page** to jump to sections available in the current workspace. The menu updates when sections appear or close.
+
 ## Complete one journey
 
 | Step | Action | What should be visible |
@@ -35,7 +37,19 @@ The first start downloads/builds the pinned backend. Package rights checks must 
 
 Overview shows up to three record-preparation prompts for the checked case. Under “Review unresolved source statements”, choose “Inspect source statements” to see the pending assay in Journey. The saved-question agenda links back to the report and follow-up task.
 
-The supplied laboratory file `examples/synthetic/fictional-fhir-r4-lab-bundle.json` can also be deliberately imported in Records for this case. Its patient reference matches the fictional case binding. Original JSON and typed values stay source-reported; no reference-range interpretation or laboratory-to-question creation is added.
+The supplied laboratory file `examples/synthetic/fictional-fhir-r4-lab-bundle.json` can also be deliberately imported in Records for this case. Its patient reference matches the fictional case binding. Original JSON and typed values stay source-reported. Importing does not interpret reference ranges or automatically create questions.
+Use the saved-laboratory-question steps below for the subsequent explicit question
+workflow; importing a report does not itself create a question.
+
+## Record a visit and its supporting records
+
+1. Open the fictional patient and go to **Visits** (also accessible from **Records**). Check visits and choose **Schedule a visit**. Pick an outpatient visit and a service date. The form can generate the visit reference. Save the visit, then start it.
+2. Open the visit and create a draft note. Enter fictional text. The note reference can be generated at save. Optional department, facility and note kind identify the origin of that version.
+3. Reopen the note, revise the text and save. Read the version history to compare the two drafts. If another user edited it first, inspect the latest version before choosing how to apply your edits.
+4. From the selected visit, choose **Inspect linked records**. In Records, check the authorized cases and inspect source versions for `CASE-DEMO`. Under **Visit records**, choose **Check records for selected visit**, select a current source version, then choose **Link this version to the visit**.
+5. Choose **Check linked records** and **Inspect linked original**. An amendment leaves the visit pointing to the version you chose. To associate the replacement, explicitly link its new version.
+
+The source link records which original was used for this visit. Its read operation checks both the encounter and the case. Opening the original requires its own permission. Clinical notes remain drafts. The demo accepts independently authored structured reports and the supported synthetic laboratory bundle for visit linkage.
 
 ## Stop, resume and inspect
 
@@ -55,7 +69,10 @@ If startup fails, inspect the Docker output and retry the same command/state dir
 
 In Records, open the source versions for `CASE-DEMO`. Select
 [the fictional FHIR bundle](../examples/synthetic/fictional-fhir-r4-lab-bundle.json),
-confirm the file, and import it as a new report. In Journey, inspect that case and
+then choose **Preview results without importing**. Check the specimen and the reported
+value of `4.20 10*9/L`. The preview sends the original to the case service for a
+patient-mapping check. Saving requires a separate confirmation. Confirm the file
+and import it as a new report. In Journey, inspect that case and
 select `Observation/FICTIONAL-OBS-A`. Write a question, check it against the
 report, then explicitly save it. Reopen the saved laboratory questions to see
 the original question, report version, file digest and Observation reference.
@@ -66,8 +83,51 @@ Reopen the history after an amendment to see which questions need reassessment.
 Question history requires an active patient/case binding and current source and
 question read grants. Text-based investigations use their existing source-line history.
 
+After reopening saved laboratory questions, return to Overview. Laboratory and
+text-source counts have separate permission checks. An unchecked laboratory
+history remains unavailable instead of showing zero. Use “Reopen laboratory
+questions in Journey” to return to the same case and inspect its saved questions.
+After a report amendment, reopen the laboratory history to see the preserved
+original question counted as needing reassessment. An earlier read is not reused
+as a current count.
+
+## Inspect citations for a laboratory question
+
+Reopen saved laboratory questions in Journey and select the question you want
+to investigate. Enter a search term for the seeded fictional catalog (for
+example, `continuity`). Inspect a result and explicitly attach its citation.
+Reopen the citation list to see the exact original Observation and linked
+metadata. If the original report has been amended, the list identifies the
+earlier question as needing reassessment. Open the result and citation report
+to inspect the original measured value or absence reason, specimen, dates and
+currently permitted citation metadata together. The catalog supplies independently
+authored fictional metadata for this workflow.
+
+## Record follow-up work for the same laboratory question
+
+In Journey, reopen the saved laboratory question. Select **Record follow-up work
+for this question**. Enter a title, a reason, and a revisit date or review
+trigger. For example, record a task to request the amended fictional report
+before the next visit. Saving records an operational task with the question,
+original source version and exact Observation reference.
+
+Open Investigations and refresh **Follow-up work**. Assign or acknowledge the
+task to record responsibility. After importing an amended report in Records,
+reopen the case and refresh the tasks. The task retains its earlier Observation
+and history. Choose **Inspect original laboratory report** to reopen those exact
+bytes in Records, including when a newer report is available. The application flags it for reassessment and prevents completion
+against that stale basis. A newly prepared question can anchor work on the
+amended report.
+
 ## Verification boundary
 
 `apps/web/tools/demo_journey.py` exercises these exact fixtures through a real built browser and a separately owned Docker/PostgreSQL application, then checks repeated setup and persistence after stopping and resuming. It deletes only its own newly created disposable test project. The ordinary launcher never deletes volumes.
 
 The full integration workflow separately exercises wrong-scope and revoked access, text/PDF passages, immutable reports, uncertain saves, images, laboratory sources, keyboard/mobile flows, migration history, and seven backup/recovery stages. Final acceptance belongs to the exact candidate revision and its CI receipts in the PR; this guide alone is not a passing test or a deployment claim.
+
+
+### Check laboratory follow-up when preparing for a second opinion
+
+Open the fictional case's source view, then go to second-opinion preparation on Overview. Select **Check laboratory questions** and choose the saved question by its wording, report, version and Observation. **Inspect result and citations together** reopens the original result. **Check follow-up** reads the recorded tasks under their separate permission. For each open task, the screen shows its recorded action, owner, status, revisit date when supplied, and review trigger. Completed and deferred work is available under its own disclosure.
+
+In the synthetic browser scenario, two questions have identical wording. Only the earlier result has an acknowledged task. When its report is amended, the original question and assignment remain inspectable with a reassessment notice. Withdrawing task access hides the assignment on refresh while the independently permitted result remains available. Use Investigations to change a task's recorded status.

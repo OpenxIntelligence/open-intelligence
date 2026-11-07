@@ -238,3 +238,34 @@ h1:focus{outline:2px solid #174b48;outline-offset:5px}
 .continuity-preparation-list h4{font-size:15px;margin:0 0 8px}
 .continuity-preparation-list p{font-size:13px;margin:8px 0}
 @media(max-width:600px){.continuity-preparation-list{grid-template-columns:minmax(0,1fr)}.continuity-preparation-list button{width:100%}}
+
+.page-contents:has(details){margin:0 0 18px}
+.page-contents summary{width:fit-content;color:#285644;padding:10px 0;min-height:44px}
+.page-contents nav{display:flex;flex-wrap:wrap;gap:4px 18px;padding:4px 14px;border-inline-start:2px solid #abc1b0}
+.page-contents a{display:inline-flex;align-items:center;min-height:44px;color:#245341;text-underline-offset:3px}
+[data-workspace-anchor]{scroll-margin-block-start:var(--workspace-offset,24px)}
+[data-workspace-anchor]:focus-visible{outline:3px solid #936b25;outline-offset:3px}
+
+/* Keep section names visible as the workspace narrows. */
+.rail nav button[aria-current="page"] { box-shadow: inset 3px 0 #b3d8bd; font-weight: 650; }
+.boundary strong { display: inline; }
+footer a { color: #285b49; min-height: 44px; display: inline-flex; align-items: center; }
+@media (max-width: 600px) {
+  .rail nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .rail nav button { justify-content: center; font-size: 13px; overflow-wrap: anywhere; }
+}
+
+.review-case-entry .case-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.review-case-entry .case-row span { min-width: 0; overflow-wrap: anywhere; }
+/* Bounded synthetic CT preview; never presented as a diagnostic viewer. */
+.source-image-preview{margin:14px 0 0;padding:14px;border:1px solid #d8c7a5;border-radius:8px;background:#fffaf0;min-width:0}
+.source-image-preview h6{font-size:1rem;margin:0}.source-image-preview .warning-note{margin:10px 0;padding:10px;border-left:3px solid #b28b52;background:#f8f3e9;color:#5e4728}
+.source-image-preview img{display:block;max-width:100%;height:auto;margin:12px auto;border:1px solid #c8c8c8;background:#111;image-rendering:auto}
+.source-image-preview figcaption{overflow-wrap:anywhere}.source-image-preview code{word-break:break-all}
+
+.diagnostic-nav { display: grid; gap: 4px; margin-top: 12px; padding-top: 14px; border-top: 1px solid #43655a; }
+.diagnostic-nav > span { font-size: 12px; font-weight: 650; color: #c4d7cf; padding-inline: 12px; }
+@media (max-width: 600px) {
+  .diagnostic-nav { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; gap: 2px; padding-top: 6px; }
+  .diagnostic-nav > span { grid-column: 1 / -1; padding-inline: 8px; }
+}

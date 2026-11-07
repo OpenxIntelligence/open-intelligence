@@ -168,6 +168,37 @@ test('session-owned exact intent survives an in-flight panel disposal and eviden
  await recovered.retry();assert.deepEqual(sent,[exact,exact]);assert.equal(store.read(),null);
 });
 
+test('suspension preserves an unresolved manual-passage command and its patient context',async()=>{
+ const session=await sessionFor(()=>response(context(true)));
+ const store=session.manualPassageIntentStore(scope),exact=JSON.stringify({request_key:'FICTIONAL-MANUAL-RETRY'});
+ store.write(exact);const before=session.snapshot().patient;
+ await session.suspendPatient(true);
+ assert.equal(session.snapshot().suspensionPhase,'rejected');
+ assert.equal(session.snapshot().patient,before);
+ assert.equal(store.read(),exact);
+ assert.match(session.snapshot().suspensionMessage,/pending patient write/);
+});
+
+test('suspending another patient preserves unrelated manual-passage recovery until explicitly disconnected',async()=>{
+ const fallback=transportFor(()=>response(packet()));
+ const other='PAT-SUSPEND-CONTROL';
+ const session=new RegistrySession((url,init)=>{
+  if(url==='/v1/patients/'+other)return response({patient_id:other,origin_org:'ORG-FICTIONAL',
+    status:'active',revision:1,created_at:'2026-11-05T12:00:00Z'});
+  if(url.endsWith('/suspensions'))return response({patient_id:other,status:'suspended',revision:2});
+  return fallback(url,init);
+ });
+ await ready(session);const exact='{"request_key":"FICTIONAL-MANUAL-RETRY"}';
+ session.manualPassageIntentStore(scope).write(exact);
+ await session.read(other);await session.suspendPatient(true);
+ assert.equal(session.snapshot().suspensionPhase,'confirmed');
+ await session.read(patientId);await session.loadCases();
+ await session.loadWorldModel(caseId);await session.loadSavedQuestions(caseId);
+ assert.equal(session.manualPassageIntentStore(scope).read(),exact);
+ session.disconnect();await ready(session);
+ assert.equal(session.manualPassageIntentStore(scope).read(),null);
+});
+
 test('unsaved additions and removals block report binding until explicit save or discard',()=>{
  assert.equal(typeof manualModule.manualReportBinding,'function');
  const packet=context(),saved=packet.passages;

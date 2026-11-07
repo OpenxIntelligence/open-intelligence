@@ -151,7 +151,7 @@ test('patient, case, question and credential changes reject late evidence reads'
  }
 });
 
-test('lost save keeps byte-identical recovery after a same-case amendment',async()=>{
+test('lost save keeps its exact request after rechecking the same patient and an amended case',async()=>{
  const posts=[];let changed=false;
  const s=session(async(url,init)=>{if(url.endsWith('/evidence-search'))return response(search());
   if(url.endsWith('/evidence-links')&&init.method==='POST'){posts.push([url,init.body]);if(posts.length===1)throw Error('response lost after commit');return response(receipt(true));}
@@ -160,7 +160,7 @@ test('lost save keeps byte-identical recovery after a same-case amendment',async
   return response(links(undefined,changed?{source_context_state:'source_reassessment_required'}:{}));});
  await ready(s);await s.searchQuestionEvidence(qid,'fictional');await s.saveQuestionEvidence(qid,record().citation);
  assert.equal(s.snapshot().evidenceLinkPhase,'unknown');const intent=s.snapshot().evidenceLinkIntent;
- changed=true;await s.loadWorldModel(cid);await s.loadSavedQuestions(cid);
+ changed=true;await s.read(pid);await s.loadCases();await s.loadWorldModel(cid);await s.loadSavedQuestions(cid);
  assert.equal(s.snapshot().evidenceLinkIntent,intent);await s.retryQuestionEvidenceLink();
  assert.deepEqual(posts[1],posts[0]);assert.equal(s.snapshot().evidenceLinkReceipt.duplicate,true);
  assert.equal(s.snapshot().evidenceLinks.source_context_state,'source_reassessment_required');

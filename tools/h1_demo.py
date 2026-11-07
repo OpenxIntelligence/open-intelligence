@@ -27,7 +27,9 @@ ACTIONS = ['patient_create', 'patient_read', 'case_binding_create', 'case_bindin
            'source_brief_export', 'review_packet_read', 'followthrough_read',
            'followthrough_create', 'followthrough_update', 'evidence_read', 'evidence_link',
            'authored_evidence_read', 'authored_evidence_import', 'authored_evidence_assess',
-           'authored_evidence_original_read', 'evidence_report_export']
+           'authored_evidence_original_read', 'evidence_report_export',
+           'encounter.read', 'encounter.schedule', 'encounter.transition',
+           'note.read', 'note.write', 'encounter.source.link']
 
 
 def write_json(path, value, mode=0o600):
@@ -148,6 +150,10 @@ def up(directory, state):
     index = request(sources, state['token'])
     if not any(row['source_id'] == state['source_id'] for row in index['sources']):
         raise ValueError('Saved demo original is missing; refusing a silent reset')
+    # Populate the authored metadata used by Journey searches in this owned demo.
+    # The catalog seeder preserves the current rights decision for existing versions.
+    subprocess.run(command + ['exec', '-T', 'api', 'python', '-m', 'oi_api.evidence_catalog'],
+                   cwd=ROOT, env=env, check=True)
     print('Fictional demo ready; database and patient identity retained.')
     print('Patient ID:', patient)
     print('Obtain the local fixture token with: python tools/h1_demo.py credentials --state-dir', directory)

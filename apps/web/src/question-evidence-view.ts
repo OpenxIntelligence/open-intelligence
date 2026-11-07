@@ -1,4 +1,5 @@
 /** Fictional metadata projections. A citation link is not a claim assessment. */
+import type {SavedLabQuestion} from './laboratory-question.js';
 import {citationEvidenceTimestamp as instant} from './evidence-timestamp.js';
 
 export type EvidenceSourceState='current_unreviewed_question'|'source_reassessment_required';
@@ -24,10 +25,30 @@ export type QuestionEvidenceReceipt=Readonly<{
  link_id:string;citation:string;metadata_sha256:string;duplicate:boolean;
 }>;
 export type QuestionEvidenceIntent=Readonly<{
- patient_id:string;case_id:string;question_id:string;
+ patient_id:string;case_id:string;question_id:string;laboratoryAnchor?:LaboratoryEvidenceAnchor;
  body:Readonly<{synthetic:true;request_key:string;citation:string;expected_metadata_sha256:string;
   source_snapshot_contract:'oi.pg-source-world-model/1';expected_source_snapshot_sha256:string;expected_preflight_sha256:string}>;
 }>;
+const labAnchorFields=['source_id','source_version','source_sha256','observation_reference','source_snapshot_sha256','preflight_sha256'] as const;
+type LaboratoryEvidenceAnchor=Pick<SavedLabQuestion,typeof labAnchorFields[number]>;
+export function laboratoryEvidenceAnchor(row:SavedLabQuestion):LaboratoryEvidenceAnchor{
+ return Object.freeze({source_id:row.source_id,source_version:row.source_version,source_sha256:row.source_sha256,
+  observation_reference:row.observation_reference,source_snapshot_sha256:row.source_snapshot_sha256,preflight_sha256:row.preflight_sha256});
+}
+export function matchesLaboratoryEvidenceAnchor(value:unknown,expected:LaboratoryEvidenceAnchor):boolean{
+ return exact(value,labAnchorFields)&&labAnchorFields.every(field=>value[field]===expected[field]);
+}
+/** Both modalities use the same catalog projection; only a laboratory response
+ * must also identify the exact selected Observation and preserved question context. */
+export function unwrapLaboratoryEvidence(raw:unknown,question:SavedLabQuestion,search:boolean):unknown{
+ if(raw===null||typeof raw!=='object'||Array.isArray(raw))throw Error('laboratory evidence');
+ const {question_anchor,...metadata}=raw as Record<string,unknown>;
+ if(!matchesLaboratoryEvidenceAnchor(question_anchor,question)||
+  (search&&metadata.source_context_state!=='current_unreviewed_question')||
+  (question.source_context_state==='source_reassessment_required'&&metadata.source_context_state!==question.source_context_state))
+  throw Error('laboratory evidence scope');
+ return metadata;
+}
 const scopeFields=['contract','patient_id','case_id','question_id','source_context_state','source_access_receipt_id',
  'synthetic','model_executed','content_appraised','clinical_approval'];
 const recordFields=['citation','id','version','source_kind','title','licence','link','metadata_sha256','availability','rights_status'];

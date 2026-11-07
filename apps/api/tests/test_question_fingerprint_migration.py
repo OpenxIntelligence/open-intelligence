@@ -10,29 +10,20 @@ from oi_api.contracts import SCHEMA_REVISION
 from oi_api.migrate import migrate
 from http_support import running_server
 from test_patients import TOKEN_A, request
+from test_evidence_convergence_migrations import PublishedEvidenceFixture
 from test_source_versions import ORIGINAL, SourceVersionFixture
 
 
-class QuestionFingerprintMigrationTests(SourceVersionFixture):
+class QuestionFingerprintMigrationTests(PublishedEvidenceFixture, SourceVersionFixture):
     def test_legacy_upgrade_preserves_history_even_when_hash_matches_canonical(self):
-        # The current API requires the head schema. Create its source fixture
-        # first, then recreate the actual old question schema before insertion.
-        with running_server(create_app(self.settings)) as base:
-            patient = self.setup_case(base)
-            status, imported, _ = self.ingest(base, patient)
-            self.assertEqual(status, 201, imported)
-            source_id = imported["source_id"]
-            prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA"
-            status, world, _ = request(base, prefix + "/world-model", token=TOKEN_A)
-            self.assertEqual(status, 200, world)
-            self.assertEqual(world["contract"], "oi.pg-source-world-model/1")
-            fingerprint = world["snapshot_fingerprint"]
-
-        migrate(self.admin, "downgrade", "0006_source_questions")
+        # Install the published question and image heads explicitly. Later
+        # source-delivery history cannot exist at this migration checkpoint.
+        patient, source_id, fingerprint = self.start_with_source("0006_source_questions")
+        migrate(self.admin, "upgrade", "0006_image_custody")
+        prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA"
         legacy_id = "QUESTION-" + "A" * 32
         with self.engine.begin() as connection:
-            # Downgrading the question branch retains the independent image
-            # branch. Neither this split state nor either parent is app-ready.
+            # Both published sibling heads are present. Neither this split state nor either parent is app-ready.
             self.assertEqual(set(connection.execute(text(
                 "SELECT version_num FROM public.alembic_version"
             )).scalars()), {"0006_source_questions", "0006_image_custody"})

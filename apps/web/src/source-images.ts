@@ -13,15 +13,22 @@ export type SourceImageDownload=Readonly<{
  patient_id:string;case_id:string;source_id:string;image_id:string;sha256:string;
  byte_count:number;access_receipt_id:string;
 }>;
+export type SourceImagePreview=Readonly<{
+ patient_id:string;case_id:string;source_id:string;image_id:string;original_sha256:string;
+ access_receipt_id:string;png_bytes:Uint8Array<ArrayBuffer>;
+}>;
 export type SourceImagesState=Readonly<{
  sourceImages:SourceImageIndex|null;sourceImagesSourceId:string|null;
  sourceImagesPhase:'idle'|'loading'|'ready'|'error';sourceImagesMessage:string;
  sourceImageDownload:SourceImageDownload|null;
  sourceImageDownloadPhase:'idle'|'loading'|'ready'|'error';sourceImageDownloadMessage:string;
+ sourceImagePreview:SourceImagePreview|null;
+ sourceImagePreviewPhase:'idle'|'loading'|'ready'|'error';sourceImagePreviewMessage:string;
 }>;
 export const emptySourceImages=():SourceImagesState=>({sourceImages:null,sourceImagesSourceId:null,
  sourceImagesPhase:'idle',sourceImagesMessage:'Inspect linked original images for a current imaging report.',
- sourceImageDownload:null,sourceImageDownloadPhase:'idle',sourceImageDownloadMessage:''});
+ sourceImageDownload:null,sourceImageDownloadPhase:'idle',sourceImageDownloadMessage:'',
+ sourceImagePreview:null,sourceImagePreviewPhase:'idle',sourceImagePreviewMessage:''});
 const IMAGE=/^IMG-[0-9A-F]{32}$/,RECEIPT=/^ACCESS-[0-9A-F]{32}$/,SHA=/^[0-9a-f]{64}$/;
 const MAX_BYTES=2_097_152;
 function exact(value:unknown,keys:readonly string[]):value is Record<string,unknown>{
@@ -76,4 +83,44 @@ export async function readSourceImageOriginal(response:Response,expected:SourceI
  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),byte=>byte.toString(16).padStart(2,'0')).join('');
  if(digest!==expected.sha256)throw Error('image digest');
  return {bytes,accessReceiptId};
+}
+
+
+const MAX_PREVIEW_BYTES=1_200_000;
+const PNG_SIGNATURE=[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a];
+function uint32(bytes:Uint8Array,offset:number):number{
+ return ((bytes[offset]*0x1000000)+(bytes[offset+1]<<16)+(bytes[offset+2]<<8)+bytes[offset+3])>>>0;
+}
+
+/** Bounded derivative of the same fresh original read; not a diagnostic image contract. */
+export async function readSourceImagePreview(response:Response,expected:SourceImage):Promise<{
+ bytes:Uint8Array<ArrayBuffer>;accessReceiptId:string;
+}>{
+ if(!/^image\/png$/i.test(response.headers.get('Content-Type')??''))throw Error('preview type');
+ const accessReceiptId=response.headers.get('X-OI-Access-Receipt');
+ if(!accessReceiptId||!RECEIPT.test(accessReceiptId))throw Error('preview receipt');
+ if(response.headers.get('X-OI-Original-SHA256')!==expected.sha256)throw Error('preview source');
+ if(response.headers.get('X-OI-Preview-Mode')!=='synthetic-ct-minmax-8bit-nondiagnostic')throw Error('preview mode');
+ const declared=response.headers.get('Content-Length');
+ if(declared!==null&&(!/^\d+$/.test(declared)||Number(declared)<33||Number(declared)>MAX_PREVIEW_BYTES))throw Error('preview bound');
+ const reader=response.body?.getReader();if(!reader)throw Error('preview body');
+ const parts:Uint8Array[]=[];let size=0;
+ try{
+  while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;
+   if(size>MAX_PREVIEW_BYTES){await reader.cancel();throw Error('preview bound');}parts.push(value);}
+ }finally{reader.releaseLock();}
+ if(size<58||(declared!==null&&Number(declared)!==size))throw Error('preview size');
+ const bytes=new Uint8Array(size);let offset=0;for(const part of parts){bytes.set(part,offset);offset+=part.length;}
+ if(!PNG_SIGNATURE.every((value,index)=>bytes[index]===value)||
+    uint32(bytes,8)!==13||String.fromCharCode(...bytes.slice(12,16))!=='IHDR')throw Error('preview png');
+ const width=uint32(bytes,16),height=uint32(bytes,20);
+ if(width<1||height<1||width>1024||height>1024||width*height>1_048_576||
+    bytes[24]!==8||bytes[25]!==0||bytes[26]!==0||bytes[27]!==0||bytes[28]!==0)throw Error('preview png');
+ // The first-party renderer emits one IDAT followed by an empty IEND.
+ const imageDataLength=uint32(bytes,33);
+ const endOffset=45+imageDataLength;
+ if(imageDataLength===0||endOffset+12!==size||
+    String.fromCharCode(...bytes.subarray(37,41))!=='IDAT'||
+    uint32(bytes,endOffset)!==0||String.fromCharCode(...bytes.subarray(endOffset+4,endOffset+8))!=='IEND')throw Error('preview png');
+ return{bytes,accessReceiptId};
 }

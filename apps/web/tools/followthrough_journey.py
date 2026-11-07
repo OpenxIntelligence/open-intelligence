@@ -52,7 +52,7 @@ _OBSERVE = r"""() => {
         const original=target[field];target[field]=value;
         state.timestampFaults.push({field,original,injected:value,task_id:task.task_id,
           access_receipt_id:payload.access_receipt_id,original_status:response.status});
-        return new Response(JSON.stringify(changed),{status:response.status,headers:{'Content-Type':'application/json'}});
+        return new Response(JSON.stringify(changed),{status:response.status,headers:{'Content-Type':response.headers.get('Content-Type')}});
       }
       if(state.holdNextRead){
         state.holdNextRead=false;state.held=true;
@@ -70,7 +70,7 @@ _OBSERVE = r"""() => {
 def navigate(cd, section):
     cd.evaluate("[...document.querySelectorAll('nav button')].find(e=>e.textContent.startsWith("
                 + json.dumps(section) + ")).click()")
-    selectors = {'Investigations': '[data-view=investigations]',
+    selectors = {'Imaging':'[data-testid=records-workspace]', 'Investigations': '[data-view=investigations]',
                  'Journey': '[data-view=journey]', 'Records': '[data-testid=records-workspace]',
                  'Overview': '[data-testid=patient-card]', 'Review': '[data-testid=review-workspace]'}
     cd.wait('Boolean(document.querySelector(' + json.dumps(selectors[section]) + '))',
@@ -149,7 +149,7 @@ class FollowthroughChecks:
         value = self.cd.evaluate('window.__oiFollowthroughChecks.reads.at(-1)')
         assert value['status'] == 200
         payload = value['payload']
-        assert payload['contract'] == 'oi.pg-question-followthrough/1'
+        assert payload['contract'] == 'oi.pg-question-followthrough/2'
         assert (payload['patient_id'], payload['case_id']) == (self.patient_id, self.case_id)
         assert payload['synthetic'] is True
         assert payload['clinical_approval'] is False

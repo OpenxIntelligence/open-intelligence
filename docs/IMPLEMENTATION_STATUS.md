@@ -1,13 +1,187 @@
 # Implementation slice 01 — source and investigation ledger
 
-**Current connected application:** use the [persistent fictional demo](H1_DEMO.md)
-and [consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-for the current revision, verification receipts and landing status. The
+**Current connected application:** use the [persistent fictional demo](H1_DEMO.md).
+This dependent draft's PR records its combined revision, verification receipts
+and landing status; [foundation #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565)
+remains the upstream owner.
+[Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
+records the original accepted application; the
 [convergence record](engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) maps retained
 contributions. The dated slices below are historical checkpoints; their old
 draft labels, schema heads and test counts are not current acceptance claims.
 
 **Stage:** local experimental synthetic-only code. **Not released for clinical use.**
+
+## Current integrated H1 checkpoint
+
+This dependent draft composes the published #565 foundation frozen at
+`462e6c25f805089fadcb290567045447e6d627b7`, the documentation-only successor of
+`14a189a949510c67903eaf354250223a2c587a8f`, and preserves its 42 migration files,
+including the original `0020_source_event_delivery` and the published
+`0027_source_event_purpose`. It introduces no 0028 migration. The canonical
+clinical, laboratory, source, question, Composer, evidence, review and
+follow-through owners remain intact.
+
+| Input | Pinned source | Retained contribution |
+| --- | --- | --- |
+| Upstream #565 | `462e6c25f805089fadcb290567045447e6d627b7` | Clinical/laboratory convergence, encounter receiver and backup, evidence review, published 0027 purpose repair and owner receipts |
+| #529 | `79960c49f356e7a4259484f5d1523f9bda365887` | Verified execution/event contribution and purpose-validation semantics; its edited historical 0020 file is not adopted |
+| #559 | `adca9b8cacdbd2fe8b7ad82813d3e32a142841e8` | Latest-run recovery after amendment and the interrupted-relay browser journey |
+| #569 | `d28f8dcb4124ccb52b42be28f996cc9e99a29c92` | Read-only assigned follow-up beside the exact selected laboratory result |
+| Accepted main | `16fa42781aa40e3899e36b5b441de8d920fced8e` | Reference Skeptic/reconciliation, evaluation harness, vertical interface and data-integration modules |
+
+The application requires `0027_source_event_purpose`, whose single parent is
+`0026_integrated_core`. The existing no-DDL 0026 join retains
+`0025_clinical_source_events`, `0023_composer_clinical_join`, and
+`0023_ehr_lab_ownership_join`. The published 0027 installs a binding resolver
+and replaces capture/outbox guard functions: new operations and research events
+undergo canonical lineage validation, then only operations creates a Composer
+obligation. It rewrites no historical rows and performs no historical rescan or
+backfill. Downgrade restores the earlier functions and removes the helper;
+existing custody remains, while later research imports can fail until re-upgrade.
+
+Compatibility is bounded to fresh databases and published 0026 installations.
+Pre-0020 research journal history remains held by the original backfill, with
+atomic rollback and preserved rows/sequence state. A separate legacy adoption
+path remains open. The clinical receiver retains its separate event contract;
+no service or dependency is added. The preserved published-owner checkpoint
+below and [construction contract](implementation/SOURCE_EVENT_PURPOSE_REPAIR.md)
+record that boundary.
+
+**Evidence is source-specific.** The pinned #529 source passed
+[878 API tests and all seven recovery gates](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42112478756)
+and [155 focused execution/event tests](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42112478630),
+with zero failures or skips. The focused suite is part of the full API suite;
+these counts are not additive. Its populated delivery restore coverage is in
+that focused suite, distinct from the complete recovery fixture's restored
+outbox and empty delivery tables. The earlier #565 source `acf736082467ef5416f47951e3469090919be045`
+ran [989 API tests with one research-import error](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42108825811);
+the subsequent reference/browser/recovery stages within that full API run did
+not execute. The separate tests-first purpose-repair failure below also remains
+preserved. Neither donor nor earlier failed results qualify this composition.
+
+Before adopting the concurrent published repair, local assembly `02f40eb84b3aedbcf25719fce55e06d8e0a2db38`
+passed 1,036 reference tests, 704 client tests, 13 dependency-rights tests,
+the client production build and 31 architecture tests. The ownership gate
+reported 61 H1 modules, 10 owners and 86 declared legacy imports. Final checks
+had no failures or skips; the initial optional-package notice failure was
+resolved by matching CI's existing `--omit=optional` acquisition setting without
+changing dependencies, lockfiles or rights controls. These are pre-reconciliation
+receipts, not PostgreSQL or hosted acceptance of the current combined tree.
+
+Combined migration/authority/execution, historical upgrade/rollback,
+research-custody restore, built-browser journeys and all seven recovery gates
+remain pending at this source-publication checkpoint. The isolated branch is
+`integration/h1-workspace-event-continuation-20261106`; this dependent draft's PR
+is the living ledger for its exact source/tree and artifacts. #565 retains the
+upstream foundation and its separate acceptance history. Review, merge and
+deployment remain separate. The entire PF-01–PF-10 / PD-01–PD-16 scope,
+including #104's further workflow and mission-state contracts, remains open.
+
+**Reference-only audit.** An exact archive of accepted main `16fa42781aa40e3899e36b5b441de8d920fced8e`
+passed 1,006 local reference tests with zero failures, errors or skips. A separate
+probe nevertheless confirmed that `record_extraction_proposal` can store a quote
+absent from its original and a line beyond the original's length: its new checker
+validates presence/shape, not exact text/location binding. The normal reference
+report import obtains findings from `parse_report`; H1 uses unchanged
+`open_intelligence.store` parsing helpers and does not call the proposal writer.
+This is a scoped reference finding for its existing owner, not an H1 extraction
+capability or resolved acceptance item. The live-model and full-vertical limits
+in the preserved slice records below remain applicable.
+
+## Shared foundation purpose repair — 6 November 2026
+
+The current construction lane is [#565](https://github.com/OpenxIntelligence/open-intelligence/pull/565),
+preserving its existing event, execution, laboratory, encounter and evidence
+owners and accepted main `16fa42781aa40e3899e36b5b441de8d920fced8e`.
+Its prior full API run failed one of 989 methods and skipped all seven recovery
+stages: valid research source custody attempted an operations-only outbox write.
+
+The tests-first source `dbb0bbb7f0a88b3d4f9b6ae283b8acb63cfca30b`
+reproduces that exact failure on actual PostgreSQL 16 in
+[run 42136266769](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42136266769):
+five focused tests, one assertion failure and three lineage errors. The
+pre-capture research-history upgrade hold passes with all owner rows and exact
+sequence state preserved. This failed run establishes the regression; it does
+not qualify the candidate for landing.
+
+Repaired source `14a189a949510c67903eaf354250223a2c587a8f` passes all five
+focused PostgreSQL methods in
+[run 42136932694](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42136932694),
+including the original research HTTP regression and populated upgrade/downgrade.
+The earlier repaired run 42136728853 stopped at an incorrectly wrapped exception
+assertion in the new downgrade test; the assertion now requires the raw pg8000
+exception and exact lineage marker. Production function semantics are unchanged.
+Full exact-head acceptance is recorded in #565 as it completes; the focused pass
+alone does not establish full API or seven-stage recovery acceptance.
+
+The repair uses a new `0027_source_event_purpose` successor to the published
+`0026_integrated_core`. It validates every selected journal event before
+filtering delivery to operations purpose. All published migrations remain
+unchanged. The source recovery probe adds research original-byte custody,
+dump/restore, exact retry and purpose-only denials through the existing HTTP API.
+Exact repaired-head PostgreSQL, full API, browser and seven-stage recovery
+acceptance must execute before this lane is qualified.
+
+Compatibility is bounded to fresh databases and published 0026 databases.
+Pre-0020 research history remains held at the historical backfill with atomic
+rollback; a separate legacy adoption path is still required. See the
+[active construction contract](implementation/SOURCE_EVENT_PURPOSE_REPAIR.md).
+The PF-01–PF-10 / PD-01–PD-16 construction scope remains open. The next domain
+increment extends the existing episode draft owner in #570 after the foundation
+dependency is qualified.
+
+## H1 source-event delivery — source-publication checkpoint, 5 November 2026
+
+The existing [PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
+continues PF-06 / WS-08 / CMP-11 construction under
+[#104](https://github.com/OpenxIntelligence/open-intelligence/issues/104). The
+implemented candidate adds `0020_source_event_delivery` after `0019_composer_runs`:
+canonical source-import journal events publish immutable reference obligations
+atomically, and a separately invoked current-authority worker asks the existing
+Composer owner to stale outdated queued/running work in batches of at most 100.
+Transport owns no domain effects; current/terminal runs and human tasks retain
+their owners. The existing source-freshness guards remain authoritative while
+event delivery is idle, delayed or dead-lettered.
+
+The construction baseline joins verified worker source
+`2312755dc52260c3632c5801b1b7b68041671833` with accepted main
+`aad241e5cce9a1bcff3e431d63cecd16e948d731` at
+`cd10a828e499bf65dbbe8eb4ca77207710a5f2b7`. That lineage does not establish a
+passing event-delivery candidate. Exact combined PostgreSQL, process-kill,
+populated-restore and hosted regression acceptance remains pending at this
+source-publication checkpoint; PR #529 records subsequent exact-source receipts.
+See [the operating guide](engineering/H1_SOURCE_EVENT_DELIVERY.md) and
+[implementation plan](superpowers/plans/2026-11-05-source-event-delivery.md).
+
+This is foundation progress toward the entire PF-01–PF-10 / PD-01–PD-16 scope.
+It adds no scheduler, broker, service-delegated authority, production database
+roles, clinical effect or deployment. The dated execution and provenance
+receipts below remain unchanged historical evidence.
+
+## H1 execution foundation — accepted-main reconciliation, 5 November 2026
+
+[PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
+continues foundation construction toward the entire Open Intelligence core.
+It implements independent source/question contracts and one durable PostgreSQL
+source-brief worker with current actor authority, exact source pins, bounded
+leases/retries and immutable execution history. This is concrete foundation
+progress, not completion of the PF/PD portfolio or the specialist engines.
+See [the execution guide](engineering/H1_DURABLE_EXECUTION.md) for scope.
+
+The candidate cleanly incorporates accepted main
+`f188aecc70f3415741dac0e7dd5bf3f2d9fd02a9` and accepted
+[#527](https://github.com/OpenxIntelligence/open-intelligence/pull/527), preserving
+its 13-file contribution and SQLite reference per-agent provenance writer.
+The join introduces no migration and retains the existing H1 owners.
+
+Pre-join source `24ebf806befa1f10ac0a4e78a13f7cd1a8e28a2f` passed
+[43/43 focused PostgreSQL tests with zero skips](https://github.com/OpenxIntelligence/open-intelligence/actions/runs/42090201333),
+including process-kill recovery, populated restore and security edge cases.
+The merged candidate needs its own exact-source CI; this earlier result is not
+a combined pass. This is a source-publication checkpoint. PR #529 maintains
+current source/test receipts and landing status; no deployment or clinical
+qualification follows from this increment.
 
 ## Provenance write contract (Slice 1) — 5 November 2026
 

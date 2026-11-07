@@ -1,5 +1,5 @@
 import {SourceOncologyLabel} from './source-oncology-label';
-import {useRef} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import type {SourceIndex} from './source-contracts';
 import type {SourceImagesState} from './source-images';
 
@@ -7,12 +7,36 @@ export type ReadingView = 'patient' | 'clinical';
 export type SourceFilters = {query: string; versionState: string};
 export const emptySourceFilters: SourceFilters = {query: '', versionState: 'all'};
 
+function ImagePreview({preview,onClose}:{preview:NonNullable<SourceImagesState['sourceImagePreview']>;onClose?:()=>void}) {
+  const [url,setUrl]=useState<string|null>(null);
+  const [failed,setFailed]=useState(false);
+  useEffect(()=>{
+    let active=true;const reader=new FileReader();setUrl(null);setFailed(false);
+    reader.onerror=()=>{if(active)setFailed(true);};
+    reader.onload=()=>{if(active&&typeof reader.result==='string')setUrl(reader.result);};
+    reader.readAsDataURL(new Blob([preview.png_bytes],{type:'image/png'}));
+    return()=>{active=false;if(reader.readyState===FileReader.LOADING)reader.abort();};
+  },[preview]);
+  return <figure className="source-image-preview" data-testid="source-image-preview-panel">
+    <div className="source-heading"><h6>Non-diagnostic preview</h6>
+      <button type="button" data-testid="source-image-preview-close" onClick={onClose}>Close preview</button></div>
+    <p className="warning-note"><strong>Not for diagnosis.</strong> This 8-bit grayscale view is a bounded engineering preview of the authorized synthetic CT original. It applies per-frame min/max scaling only and does not apply diagnostic windowing, calibration or interpretation.</p>
+    {failed&&<p role="status">The CT preview could not be displayed. Close it and request a fresh preview.</p>}
+    {url&&!failed&&<img data-testid="source-image-preview" src={url} onError={()=>setFailed(true)}
+      alt="Non-diagnostic grayscale preview of the authorized synthetic CT original"/>}
+    <figcaption className="small">Original SHA-256 <code>{preview.original_sha256}</code><br/>
+      Preview read receipt <code data-testid="source-image-preview-receipt">{preview.access_receipt_id}</code></figcaption>
+  </figure>;
+}
+
 /** Presentation of the existing response only; no retrieval or clinical state. */
-export function SourceReading({index, view, filters, onFiltersChange, busy, questionBusy, onOpenOriginal, onAskQuestion,
+export function SourceReading({index, kind, view, filters, onFiltersChange, busy, questionBusy, onOpenOriginal, onAskQuestion,
  sourceImages=null,sourceImagesSourceId=null,sourceImagesPhase='idle',sourceImagesMessage='',
  sourceImageDownload=null,sourceImageDownloadPhase='idle',sourceImageDownloadMessage='',
- onInspectImages,onDownloadImage,onDismissImages}: {
+ sourceImagePreview=null,sourceImagePreviewPhase='idle',sourceImagePreviewMessage='',
+ onInspectImages,onDownloadImage,onPreviewImage,onDismissImagePreview,onDismissImages}: {
   index: SourceIndex;
+  kind?: string;
   view: ReadingView;
   filters: SourceFilters;
   onFiltersChange: (filters: SourceFilters) => void;
@@ -22,12 +46,16 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
   onOpenOriginal: (sourceId: string, trigger: HTMLButtonElement) => void;
   onInspectImages?: (sourceId: string) => void;
   onDownloadImage?: (sourceId: string, imageId: string) => void;
+  onPreviewImage?: (sourceId: string, imageId: string) => void;
+  onDismissImagePreview?: () => void;
   onDismissImages?: () => void;
 }&Partial<SourceImagesState>) {
   const input = useRef<HTMLInputElement>(null);
+  const previewOpener = useRef<HTMLButtonElement>(null);
   const imageOpeners = useRef(new Map<string,HTMLButtonElement>());
   const search = filters.query.trim().toLowerCase();
-  const sources = index.sources.filter(source =>
+  const reports = kind ? index.sources.filter(source => source.kind === kind) : index.sources;
+  const sources = reports.filter(source =>
     (filters.versionState === 'all' || source.state === filters.versionState) &&
     (!search || [source.document_id, source.kind, source.event_date, source.issued_at,
       source.source_id, source.specimen_id ?? ''].join(' ').toLowerCase().includes(search)))
@@ -36,6 +64,7 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
     onFiltersChange(emptySourceFilters);
     input.current?.focus();
   }
+  if (kind && reports.length === 0) return <p role="status" data-testid="diagnostic-reports-empty">No structured {kind} reports were returned for this case.</p>;
   if (index.sources.length === 0) return <p>No structured report sources for this case. Text and PDF originals are available in their section above.</p>;
   return <div className={'source-reading ' + view}>
     <div className="source-filters" role="search" aria-label="Filter loaded source versions">
@@ -48,7 +77,7 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
       </select></div>
     </div>
     <div className="filter-summary"><p id="source-filter-help">Only filters sources already loaded for this case.</p>
-      <p role="status" aria-live="polite">{sources.length} of {index.sources.length} versions shown</p>
+      <p role="status" aria-live="polite">{sources.length} of {reports.length} versions shown</p>
       {(filters.query || filters.versionState !== 'all') && <button type="button" data-testid="clear-source-filters" onClick={clear}>Clear filters</button>}
     </div>
     {sources.length === 0 ? <div className="source-empty" data-testid="source-no-match"><h4>No sources match these filters</h4><p>The loaded records have not changed. Clear the filters to see all versions.</p></div> :
@@ -92,7 +121,7 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
               <div className="source-heading"><h5>Linked originals · v{item.version}</h5>
                 <button type="button" data-testid="source-images-close" onClick={()=>{onDismissImages?.();imageOpeners.current.get(item.source_id)?.focus();}}>Close image inspection</button></div>
               <p role="status" aria-live="polite" data-testid="source-images-status">{sourceImagesMessage}</p>
-              <p className="muted small">Original custody only. No image viewing, clinical interpretation or verified patient identity is supplied by this screen.</p>
+              <p className="muted small">Original custody plus a bounded non-diagnostic preview only. No diagnostic viewer, clinical interpretation or verified patient identity is supplied by this screen.</p>
               {sourceImagesPhase==='ready'&&sourceImages&&<>
                 <p className="small">Image metadata access receipt: <code data-testid="source-images-receipt">{sourceImages.access_receipt_id}</code></p>
                 {sourceImages.images.length===0?<p data-testid="source-images-empty">No originals are linked to this current report.</p>:
@@ -105,9 +134,19 @@ export function SourceReading({index, view, filters, onFiltersChange, busy, ques
                       <div><dt>Original SHA-256</dt><dd><code>{image.sha256}</code></dd></div>
                       <div><dt>Study / Series / SOP</dt><dd><code>{image.study_uid} / {image.series_uid} / {image.sop_uid}</code></dd></div>
                     </dl></details>
-                    <button type="button" data-testid="source-image-download" disabled={busy||sourceImageDownloadPhase==='loading'}
-                      onClick={()=>onDownloadImage?.(item.source_id,image.image_id)}>Recheck and download original DICOM</button>
+                    <div className="actions">
+                      <button type="button" data-testid="source-image-preview-open" disabled={busy||sourceImagePreviewPhase==='loading'}
+                        onClick={event=>{previewOpener.current=event.currentTarget;onPreviewImage?.(item.source_id,image.image_id);}}>View non-diagnostic preview</button>
+                      <button type="button" data-testid="source-image-download" disabled={busy||sourceImageDownloadPhase==='loading'}
+                        onClick={()=>onDownloadImage?.(item.source_id,image.image_id)}>Recheck and download original DICOM</button>
+                    </div>
+                    {sourceImagePreview?.image_id===image.image_id&&sourceImagePreview.source_id===item.source_id&&
+                      <ImagePreview key={sourceImagePreview.access_receipt_id} preview={sourceImagePreview} onClose={()=>{
+                        onDismissImagePreview?.();
+                        if(previewOpener.current?.isConnected)previewOpener.current.focus();
+                      }}/>}
                   </li>)}</ul>}
+                {sourceImagePreviewPhase!=='idle'&&<p role="status" aria-live="polite" data-testid="source-image-preview-status">{sourceImagePreviewMessage}</p>}
               </>}
               {sourceImageDownloadPhase!=='idle'&&<p role="status" aria-live="polite" data-testid="source-image-download-status">{sourceImageDownloadMessage}</p>}
               {sourceImageDownload&&<p className="small" data-testid="source-image-download-receipt">Original read receipt: <code>{sourceImageDownload.access_receipt_id}</code></p>}

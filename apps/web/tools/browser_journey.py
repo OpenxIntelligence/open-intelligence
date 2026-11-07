@@ -69,7 +69,43 @@ def main():
             cd.wait("document.querySelector('[data-testid=created-id]').textContent.includes('Existing identity recovered')",'same-key idempotent create')
             read();cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'creation confers no read grant')
             assert cd.evaluate("!document.querySelector('[data-testid=patient-card]')")
-            credentials[0]['patient_ids']=[pid];write_grants();read()
+            def select_section(name):
+                cd.evaluate("Array.from(document.querySelectorAll('#workspace-navigation button'))"
+                            ".find(b=>b.textContent===" + json.dumps(name) + ").click()")
+                cd.wait("document.querySelector('#workspace-navigation [aria-current=page]').textContent===" + json.dumps(name),
+                        name + ' is the selected section')
+
+            out=Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence'));out.mkdir(parents=True,exist_ok=True)
+            for name in ('Journey', 'Investigations', 'Review', 'Visits', 'Labs', 'Imaging', 'Pathology', 'Molecular', 'Records'):
+                select_section(name)
+                cd.wait("document.querySelectorAll('#patient-id').length===1 && !document.querySelector('#patient-id').disabled",
+                        name + ' exposes one patient lookup without returning to Overview')
+            value('#patient-id', pid)
+            read()
+            cd.wait("document.querySelector('[data-testid=status]')?.textContent.includes('Patient unavailable')", 'inline lookup refuses a missing grant')
+            assert cd.evaluate("!document.querySelector('[data-testid=records-patient]')")
+
+            # Clear and reconnect from the selected section, then retry with a fresh grant.
+            cd.evaluate("Array.from(document.querySelectorAll('.patient-access button')).find(b=>b.textContent==='Disconnect and clear').click()")
+            cd.wait("document.activeElement===document.querySelector('#credential') && document.querySelector('#patient-id').value===''",
+                    'disconnect clears the input and focuses the credential on Records')
+            for width, height in ((390, 844), (1440, 960)):
+                cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':height,'deviceScaleFactor':1,'mobile':False})
+                assert cd.evaluate("document.documentElement.scrollWidth<=innerWidth"), 'patient entry reflows'
+                cd.evaluate("scrollTo(0,0)")
+                png=cd.command('Page.captureScreenshot',{'format':'png'})
+                (out/f'patient-entry-records-{width}.png').write_bytes(base64.b64decode(png['data']))
+            cd.command('Emulation.clearDeviceMetricsOverride')
+            connect()
+            cd.wait("document.activeElement===document.querySelector('#patient-id')", 'credential submission focuses patient lookup')
+            credentials[0]['patient_ids']=[pid];write_grants()
+            value('#patient-id',pid);read()
+            cd.wait("document.querySelector('[data-testid=records-patient]')?.textContent.includes(" + json.dumps(pid) + ")",
+                    'fresh grant opens the requested patient on Records')
+            cd.wait("document.activeElement===document.querySelector('h1') && document.querySelector('h1').textContent==='Records'",
+                    'successful inline lookup focuses the current workflow')
+            assert cd.evaluate("!document.querySelector('.patient-access') && !document.querySelector('[data-testid=source-index]')")
+            select_section('Overview')
             cd.wait("Boolean(document.querySelector('[data-testid=patient-card]'))",'separate grant permits canonical patient read')
             assert cd.evaluate("document.querySelector('[data-testid=patient-card]').textContent").count(pid)==1
             assert cd.evaluate('localStorage.length===0 && sessionStorage.length===0')
@@ -77,11 +113,11 @@ def main():
             # Add only operator-controlled fictional grants; no UI self-authorization.
             credentials[0]['actions'].extend(['case_binding_create','case_binding_read','source_import','source_read'])
             write_grants()
-            def add_synthetic(path,payload):
+            def add_synthetic(path,payload=None):
                 url='http://127.0.0.1:8000'+path
-                operation=Request(url,data=json.dumps(payload).encode('utf-8'),
+                operation=Request(url,data=json.dumps(payload).encode('utf-8') if payload is not None else None,
                     headers={'Authorization':'Bearer '+tokens[0],'Content-Type':'application/json',
-                             'Accept':'application/json'},method='POST')
+                             'Accept':'application/json'},method='POST' if payload is not None else 'GET')
                 with urlopen(operation,timeout=10) as response:
                     return response.status,json.load(response)
             root='/v1/patients/'+pid
@@ -90,6 +126,24 @@ def main():
                 'synthetic':True,'case_id':case,'source_organization':'ORG-INSTITUTION',
                 'source_system':'SYS-SYNTH','source_subject_ref':'SUBJECT-ALPHA','review_ref':'REVIEW-SYNTH'})
             assert status==201 and mapping['case_id']==case and not mapping['source_identity_verified']
+            select_section('Review')
+            cd.evaluate("document.querySelector('[data-testid=review-check-cases]').click()")
+            cd.wait("document.querySelector('[data-testid=review-open-case]')?.getAttribute('aria-label')==='Open review inbox for CASE-ALPHA'",
+                    'Review offers the active mapped case')
+            png=cd.command('Page.captureScreenshot',{'format':'png'})
+            (out/'review-case-selection.png').write_bytes(base64.b64decode(png['data']))
+            cd.evaluate("document.querySelector('[data-testid=review-open-case]').click()")
+            cd.wait("document.querySelector('[data-testid=review-status]').textContent.includes('unavailable')",
+                    'a visible case mapping grants no inbox access')
+            assert cd.evaluate("!document.querySelector('[data-testid=review-queue-result]')")
+            credentials[0]['actions'].extend(['review_queue_read','question_read']);write_grants()
+            cd.evaluate("const openInbox=document.querySelector('[data-testid=review-open-case]');openInbox.focus();openInbox.click()")
+            cd.wait("document.querySelector('[data-testid=review-case-id]')?.textContent==='CASE-ALPHA' && !!document.querySelector('[data-testid=review-queue-result]')",
+                    'explicit case choice opens the independently authorized review inbox')
+            cd.wait("document.activeElement.id==='verification-questions'", 'case selection focuses the saved questions heading')
+            assert cd.evaluate("document.querySelector('h1').textContent==='Review' && !document.querySelector('[data-testid=world-projection]')")
+            credentials[0]['actions'].remove('review_queue_read');credentials[0]['actions'].remove('question_read');write_grants()
+            select_section('Overview')
             original=(
                 'OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\n'
                 'Type: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-11\n'
@@ -100,6 +154,8 @@ def main():
                 'synthetic':True,'original_text':original})
             assert status==201 and receipt['result']=='imported'
             original_id=receipt['source_id']
+            from encounter_chart_journey import exercise as exercise_encounter_chart
+            exercise_encounter_chart(cd,pid,tokens[0],credentials,write_grants,case,original_id,original,out)
             cd.evaluate("Array.from(document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')).find(b=>b.textContent.includes('Records')).click()")
             cd.wait("Boolean(document.querySelector('[data-testid=records-workspace]'))",'actual read-only Records screen')
             assert pid in cd.evaluate("document.querySelector('[data-testid=records-patient]').textContent")
@@ -134,7 +190,22 @@ def main():
             from followthrough_journey import exercise as exercise_followthrough, exercise_case_switch
             from question_metadata_journey import exercise as exercise_question_evidence
             from connected_question_review_journey import exercise as exercise_connected_question_review
-            with exercise_source_questions(cd,original_id,credentials,write_grants) as questions, \
+            def run_brief_worker():
+                # Same original fictional actor, supplied independently to the worker process.
+                token_file = directory / 'brief-worker-token'
+                with token_file.open('x', encoding='ascii') as stream:
+                    os.chmod(token_file, 0o600)
+                    stream.write(tokens[0])
+                try:
+                    process = subprocess.run(
+                        [sys.executable, '-m', 'oi_api.worker', '--once', '--patient', pid, '--case', case],
+                        cwd=ROOT, env={**env, 'OI_API_WORKER_TOKEN_FILE': str(token_file)},
+                        capture_output=True, text=True, timeout=30, check=True)
+                    assert json.loads(process.stdout) == {'status': 'completed', 'attempt_count': 1}
+                finally:
+                    token_file.unlink(missing_ok=True)
+
+            with exercise_source_questions(cd,original_id,credentials,write_grants,run_brief_worker) as questions, \
                  exercise_question_review(cd,pid,case,questions.original_question_id,original_id,
                      credentials,write_grants) as reviews, \
                  exercise_followthrough(cd,pid,case,questions.original_question_id,original_id,
@@ -148,10 +219,16 @@ def main():
                     'Specimen: SPECIMEN-ONE\nAmends: DOC-ONE@1\n'
                     'Finding: marker|negative|Amended fictional marker is reported negative.\n'
                 )
-                status,new_receipt=add_synthetic(root+'/cases/'+case+'/sources',{
-                    'synthetic':True,'original_text':amended})
-                assert status==201 and new_receipt['version']==2
-                questions.after_amendment(new_receipt['source_id'])
+                from background_brief_relay_journey import recover_amendment
+                with tempfile.NamedTemporaryFile(mode='w', dir=directory, encoding='ascii') as worker_token:
+                    worker_token.write(tokens[0])
+                    worker_token.flush()
+                    worker_env = {**env, 'OI_API_EVENT_WORKER_TOKEN_FILE': worker_token.name,
+                                  'OI_API_WORKER_TOKEN_FILE': worker_token.name}
+                    new_receipt, stale_run = recover_amendment(
+                        add_synthetic, pid, case, questions.original_question_id, original, amended,
+                        credentials[0], write_grants, worker_env)
+                questions.after_amendment(new_receipt['source_id'], stale_run)
                 reviews.after_amendment()
                 followthrough.after_amendment(new_receipt['source_id'])
                 cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
@@ -288,7 +365,6 @@ def main():
             cd.command('Accessibility.enable');tree=cd.command('Accessibility.getFullAXTree')['nodes']
             assert any(n.get('role',{}).get('value')=='main' for n in tree)
             assert any(n.get('role',{}).get('value')=='navigation' for n in tree)
-            out=Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence'));out.mkdir(parents=True,exist_ok=True)
             cd.command('Emulation.setDeviceMetricsOverride',{'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
             cd.evaluate("document.querySelector('.create-panel').open=false")
             image=cd.command('Page.captureScreenshot',{'format':'png'});(out/'h1-desktop.png').write_bytes(base64.b64decode(image['data']))
@@ -317,6 +393,34 @@ def main():
             exercise_laboratory(cd,pid,directory,tokens[0],credentials,write_grants,out)
             from oncology_episode_journey import exercise as exercise_episodes
             exercise_episodes(cd,pid,tokens[0],credentials,write_grants,out)
+            select_section('Pathology')
+            cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
+            alpha_row="[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.querySelector('code').textContent==='CASE-ALPHA')"
+            cd.wait(f"Boolean({alpha_row})",'pathology case mapping')
+            cd.evaluate(f"{alpha_row}.querySelector('[data-testid=load-sources]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=source-version]').length>=2",'pathology report and amendment')
+            cd.evaluate("document.querySelector('[data-testid=open-original]').click()")
+            cd.wait("document.querySelector('[data-testid=server-original]')?.textContent.includes('Type: pathology')", 'exact pathology original')
+            select_section('Molecular')
+            cd.wait("!!document.querySelector('[data-testid=diagnostic-reports-empty]') && !document.querySelector('[data-testid=server-original]')",
+                    'pathology original stays out of the empty molecular category')
+            diagnostic_case='CASE-DIAGNOSTIC-REPORTS'
+            status,_=add_synthetic(root+'/case-bindings',{
+                'synthetic':True,'case_id':diagnostic_case,'source_organization':'ORG-INSTITUTION',
+                'source_system':'SYS-SYNTH','source_subject_ref':'SUBJECT-DIAGNOSTIC','review_ref':'REVIEW-DIAGNOSTIC'})
+            assert status==201
+            molecular=original.replace(case,diagnostic_case).replace('DOC-ONE','DOC-PATHOLOGY-LABEL').replace('Type: pathology','Type: molecular')
+            status,_=add_synthetic(root+'/cases/'+diagnostic_case+'/sources',{'synthetic':True,'original_text':molecular})
+            assert status==201
+            cd.evaluate("document.querySelector('[data-testid=load-cases]').click()")
+            diagnostic_row="[...document.querySelectorAll('[data-testid=case-row]')].find(e=>e.querySelector('code').textContent==='CASE-DIAGNOSTIC-REPORTS')"
+            cd.wait(f"Boolean({diagnostic_row})", 'separate molecular case mapping')
+            cd.evaluate(f"{diagnostic_row}.querySelector('[data-testid=load-sources]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=source-version]').length===1 && document.querySelector('[data-testid=source-version] h4').textContent.includes('DOC-PATHOLOGY-LABEL')",
+                    'molecular report follows its recorded type even with a misleading document name')
+            cd.evaluate("document.querySelector('[data-testid=open-original]').click()")
+            cd.wait("document.querySelector('[data-testid=server-original]')?.textContent==="+json.dumps(molecular),'molecular original round-trip')
+            select_section('Overview')
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
             credentials[0]['expires_at']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat();write_grants();read()
@@ -327,6 +431,8 @@ def main():
             assert cd.evaluate("document.querySelector('#credential').value==='' && document.querySelector('#patient-id').value==='' && localStorage.length===0 && sessionStorage.length===0")
             from reading_convergence_journey import exercise_session_reset
             exercise_session_reset(cd,pid,case,tokens[0],credentials,write_grants)
+            from patient_suspension_journey import exercise as exercise_patient_suspension
+            exercise_patient_suspension(cd,tokens[0],credentials,write_grants,add_synthetic,restart_api,out)
             print('PASS: React/Vite -> actual FastAPI/PostgreSQL 16; identity/create/retry; exact case/source read, immutable amendment history, unreviewed quoted text and rights revocation; cross-organization isolation, credential expiry/reload, keyboard landmarks and mobile layout. Independently fictional records only; no clinical workflow or production identity claim.')
         finally:
             if cd:cd.close()

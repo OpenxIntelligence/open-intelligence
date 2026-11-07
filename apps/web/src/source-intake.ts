@@ -40,24 +40,24 @@ export function parseImportReceipt(v:unknown):ImportReceipt{
  * Full FHIR validation and authorization remain with the canonical server owner.
  * JSON is never reserialized; the exact original bytes must match the source hash.
  */
-function verifyLaboratoryOriginal(text:string,source:SourceVersion,expectedSubject:string|undefined):void{
+function verifyLaboratoryOriginal(text:string,source:SourceVersion,expectedSubject:string|undefined,expectedObservation?:string):void{
   if(source.kind!=='laboratory'||typeof expectedSubject!=='string'||
      !/^Patient\/[A-Za-z0-9.-]{1,64}$/.test(expectedSubject))throw Error('contract');
   const bundle:unknown=JSON.parse(text);
   if(!exact(bundle,['resourceType','type','entry'])||bundle.resourceType!=='Bundle'||
      bundle.type!=='collection'||!Array.isArray(bundle.entry)||
      bundle.entry.length<4||bundle.entry.length>19)throw Error('contract');
-  const resources=new Map<string,Record<string,unknown>>(),urls=new Set<string>();
+  const resources=new Map<string,Record<string,unknown>>(),bundleIds=new Map<string,string>();
   for(const entry of bundle.entry){
     if(!exact(entry,['fullUrl','resource'])||typeof entry.fullUrl!=='string'||
        !/^urn:uuid:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(entry.fullUrl)||
-       urls.has(entry.fullUrl)||entry.resource===null||typeof entry.resource!=='object'||Array.isArray(entry.resource))throw Error('contract');
+       bundleIds.has(entry.fullUrl)||entry.resource===null||typeof entry.resource!=='object'||Array.isArray(entry.resource))throw Error('contract');
     const item=entry.resource as Record<string,unknown>;
-    if(!['Patient','Specimen','Observation','DiagnosticReport'].includes(String(item.resourceType))||
+    if(typeof item.resourceType!=='string'||!['Patient','Specimen','Observation','DiagnosticReport'].includes(item.resourceType)||
        typeof item.id!=='string'||! /^[A-Za-z0-9.-]{1,64}$/.test(item.id))throw Error('contract');
-    const ref=String(item.resourceType)+'/'+item.id;
+    const ref=item.resourceType+'/'+item.id;
     if(resources.has(ref))throw Error('contract');
-    resources.set(ref,item);urls.add(entry.fullUrl);
+    resources.set(ref,item);bundleIds.set(entry.fullUrl,ref);
   }
   const ofKind=(kind:string)=>[...resources].filter(([ref])=>ref.startsWith(kind+'/'));
   const patients=ofKind('Patient'),specimens=ofKind('Specimen'),reports=ofKind('DiagnosticReport'),observations=ofKind('Observation');
@@ -65,26 +65,30 @@ function verifyLaboratoryOriginal(text:string,source:SourceVersion,expectedSubje
      specimens.length!==1||specimens[0][0]!=='Specimen/'+source.specimen_id||
      reports.length!==1||reports[0][0]!=='DiagnosticReport/'+source.document_id||
      observations.length<1||observations.length>16)throw Error('contract');
-  const refIs=(value:unknown,ref:string)=>exact(value,['reference'])&&value.reference===ref;
+  const resolveReference = (value: unknown): string => {
+    if (!exact(value, ['reference']) || typeof value.reference !== 'string') throw Error('contract');
+    return bundleIds.get(value.reference) ?? value.reference;
+  };
   const report=reports[0][1],specimen=specimens[0][1],specimenRef=specimens[0][0];
-  if(!refIs(specimen.subject,expectedSubject)||!refIs(report.subject,expectedSubject)||
+  if(resolveReference(specimen.subject)!==expectedSubject||resolveReference(report.subject)!==expectedSubject||
      report.status!=='final'||typeof report.effectiveDateTime!=='string'||
      report.effectiveDateTime.slice(0,10)!==source.event_date||typeof report.issued!=='string'||
      report.issued.slice(0,10)!==source.issued_at||!Array.isArray(report.specimen)||
-     report.specimen.length!==1||!refIs(report.specimen[0],specimenRef)||
+     report.specimen.length!==1||resolveReference(report.specimen[0])!==specimenRef||
      !Array.isArray(report.result)||report.result.length!==observations.length)throw Error('contract');
   const resultRefs=new Set<string>();
   for(const result of report.result){
-    if(!exact(result,['reference'])||typeof result.reference!=='string'||
-       !resources.has(result.reference)||!result.reference.startsWith('Observation/')||resultRefs.has(result.reference))throw Error('contract');
-    resultRefs.add(result.reference);
+    const ref = resolveReference(result);
+    if(!resources.has(ref)||!ref.startsWith('Observation/')||resultRefs.has(ref))throw Error('contract');
+    resultRefs.add(ref);
   }
+  if(expectedObservation!==undefined&&!resultRefs.has(expectedObservation))throw Error('Original laboratory result missing');
   for(const [,observation] of observations){
-    if(observation.status!=='final'||!refIs(observation.subject,expectedSubject)||
-       !refIs(observation.specimen,specimenRef))throw Error('contract');
+    if(observation.status!=='final'||resolveReference(observation.subject)!==expectedSubject||
+       resolveReference(observation.specimen)!==specimenRef)throw Error('contract');
   }
 }
-export async function verifyOriginal(v:unknown,caseId:string,source:SourceVersion,expectedSubject?:string):Promise<OriginalSource>{
+export async function verifyOriginal(v:unknown,caseId:string,source:SourceVersion,expectedSubject?:string,expectedObservation?:string):Promise<OriginalSource>{
   if(!exact(v,['source_id','case_id','access_receipt_id','document_id','version','state','sha256','original_text','synthetic','clinical_review_state'])||
      v.source_id!==source.source_id||v.case_id!==caseId||v.document_id!==source.document_id||
      v.version!==source.version||v.state!==source.state||v.sha256!==source.sha256||
@@ -93,10 +97,11 @@ export async function verifyOriginal(v:unknown,caseId:string,source:SourceVersio
   const bytes=new TextEncoder().encode(v.original_text);
   if(bytes.length<1||bytes.length>65536)throw Error('contract');
   if(/^OI-SYNTHETIC-REPORT\/[12]\n/.test(v.original_text)){
+    if(expectedObservation!==undefined)throw Error('Original laboratory bundle required');
     const prepared=prepareSource(bytes,'original.txt');
     if(prepared.declaredCase!==caseId||prepared.text!==v.original_text)throw Error('contract');
   }else{
-    verifyLaboratoryOriginal(v.original_text,source,expectedSubject);
+    verifyLaboratoryOriginal(v.original_text,source,expectedSubject,expectedObservation);
   }
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
   if(hash!==source.sha256)throw Error('contract');

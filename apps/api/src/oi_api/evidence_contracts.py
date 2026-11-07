@@ -161,3 +161,22 @@ class EvidenceLinkReceipt(Contract):
     citation: str = Field(strict=True, pattern=CITATION_PATTERN, max_length=193)
     metadata_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     duplicate: StrictBool
+
+
+class LaboratoryEvidenceAnchor(Contract):
+    """The immutable original result selected when this question was saved."""
+
+    source_id: str = Field(strict=True, pattern=r"^SRC-[0-9A-F]{32}$")
+    source_version: int = Field(strict=True, ge=1)
+    source_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+    observation_reference: str = Field(strict=True, pattern=r"^Observation/[A-Za-z0-9.-]{1,64}$")
+    source_snapshot_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+    preflight_sha256: str = Field(strict=True, pattern=r"^[0-9a-f]{64}$")
+
+
+class LaboratoryEvidenceSearchResult(EvidenceSearchResult):
+    question_anchor: LaboratoryEvidenceAnchor
+
+
+class LaboratoryEvidenceLinks(EvidenceLinks):
+    question_anchor: LaboratoryEvidenceAnchor

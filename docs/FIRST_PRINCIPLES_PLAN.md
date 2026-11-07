@@ -12,7 +12,7 @@ Keep the full ambition: an accessible, AI-native operating environment for under
 
 **Next decisive demonstration:** a second time point. An amended report must immediately mark affected conclusions as needing review, preserve the previous reviewed version, reopen the relevant question, and present a proposed change that a reviewer can inspect. Receipt of a source and acceptance of a clinical interpretation are distinct events.
 
-This document preserves the existing architecture. The explicit founder mandate fixes the complete first-party healthcare destination and the patient-centered clinical/scientific intelligence priority. Technical proposals below remain proposals unless separately accepted. Main now contains a functioning synthetic Python/SQLite application; domain extensions in draft PRs are not merged capabilities. The bounded H1 target is Python/FastAPI/PostgreSQL and React/Vite/TypeScript, with Next.js excluded; migration and production qualification remain work to prove. Partner, jurisdiction, cohort, commercial model, deployment and distribution license are not established by this decision. See the [H1 engineering decision register](https://docs.google.com/document/d/1YrORrdNxzT6MN-WuKVdk2vWVtVXVw9OSo0z5ARvMypg/edit).
+This document preserves the existing architecture. The explicit founder mandate fixes the complete first-party healthcare destination and the patient-centered clinical/scientific intelligence priority. Technical proposals below remain proposals unless separately accepted. At verified main `086f31e78240f8c70118c467406e89fdd89a92a2` on 5 November 2026, the connected H1 application uses Python/FastAPI/PostgreSQL and React/Vite/TypeScript, with Next.js excluded. The Python/SQLite application remains a separate reference implementation. Main includes the connected fictional demo, durable laboratory questions and source-reported cancer episodes; additional domain work in draft PRs is not a merged capability. The [existing consolidation record](engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) distinguishes accepted and proposed combinations. Complete-platform migration and production qualification remain work to prove. Partner, jurisdiction, cohort, commercial model, deployment and distribution license are not established by this decision. See the [H1 engineering decision register](https://docs.google.com/document/d/1YrORrdNxzT6MN-WuKVdk2vWVtVXVw9OSo0z5ARvMypg/edit).
 
 ### Founder clarification: learn workflows without using personal medical data
 
@@ -147,6 +147,26 @@ FHIR already provides useful concepts for clinically relevant versus issued obse
 ## 6. Architecture: own the clinical meaning, reuse infrastructure
 
 Start with a modular web application and API, a transactional relational database, protected object storage, a background worker and an established identity service. Keep module boundaries explicit so expensive or specialized processing can later run separately. Avoid a distributed microservice platform until operational needs justify it.
+
+**Founder directive — 5 November 2026:** one unified Open Intelligence ecosystem
+with independently evolving specialized engines. Share identity, authorization,
+clinical governance, provenance and navigation; decentralize domain execution
+where justified. Preserve the existing canonical owners. The
+[modular-engine decision and implementation sequence](engineering/MODULAR_ENGINE_BOUNDARIES.md)
+maps all 15 requested engines to existing foundations and subsequent qualification.
+Its first increment adds an executable H1 import-boundary gate and explicit
+coupling debt. Registration metadata is not execution permission, and logical
+ownership is not evidence of independent deployment. This extends the accepted
+architecture without selecting new infrastructure or changing clinical authority.
+
+**Implementation continuation — 5 November 2026:** the
+[H1 durable execution candidate](engineering/H1_DURABLE_EXECUTION.md) now adds
+independent source/question contracts and one PostgreSQL-backed synthetic
+source-brief worker. Existing scope grants and canonical owners remain in force.
+Process-kill and populated-restore tests are implemented; final combined hosted
+acceptance was pending at source publication. [PR #529](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
+maintains current exact-source receipts. This bounded capability does not complete the specialist
+engines or establish production identity, clinical authority or deployment.
 
 The durable data model needs the following objects:
 

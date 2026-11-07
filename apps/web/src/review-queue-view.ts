@@ -34,7 +34,10 @@ export type ReviewQueue=Readonly<{
  external_notification_sent:false;reviewer_identity_verified:false;
  clinical_approval:false;review_completion_supported:false;
 }>;
-export type ReviewReturnResult=Readonly<{receipt_id:string;question_id:string;duplicate:boolean}>;
+export type ReviewArtifacts = Readonly<{
+ run_id:string; result_sha256:string; report_id:string; report_snapshot_sha256:string;
+}>;
+export type ReviewReturnResult=Readonly<{receipt_id:string;question_id:string;duplicate:boolean;artifacts?:ReviewArtifacts}>;
 
 const QID=/^QUESTION-[0-9A-F]{32}$/;
 const SID=/^SRC-[0-9A-F]{32}$/;
@@ -70,6 +73,31 @@ export function decodeReviewReturnResult(value:unknown,question:string):ReviewRe
     value.question_id!==question||typeof value.duplicate!=='boolean')throw Error('contract');
  return Object.freeze(value as ReviewReturnResult);
 }
+/** Both documents must have been opened for this exact queue item in this session. */
+export function openedReviewArtifacts(item:ReviewQueueItem, run:import('./background-brief.js').BackgroundBrief|null,
+                                      report:import('./authored-evidence.js').EvidenceReport|null):ReviewArtifacts|null{
+ const brief=run?.result?.brief;
+ if(!item.queue_fingerprint||!brief||run?.status?.state!=='completed'||!run.status.result_sha256||
+    run.questionId!==item.question_id||!report?.snapshot||report.state!=='current_unreviewed')return null;
+ for(const question of [brief.question,report.snapshot.question]){
+  if(question.patient_id!==item.patient_id||question.case_id!==item.case_id||question.question_id!==item.question_id||
+     question.source_snapshot_sha256!==item.source_snapshot_sha256||question.preflight_sha256!==item.preflight_sha256||
+     question.source_id!==item.source_id||question.source_line!==item.source_line||
+     question.source_version!==item.source_version||question.source_sha256!==item.source_sha256)return null;
+ }
+ return Object.freeze({run_id:run.status.run_id,result_sha256:run.status.result_sha256,
+   report_id:report.report_id,report_snapshot_sha256:report.snapshot_sha256});
+}
+
+export function decodeEvidenceRunReturn(value:unknown,question:string,expected:ReviewArtifacts,status:number):ReviewReturnResult{
+ if(!exact(value,['receipt_id','question_id','duplicate','run_id','result_sha256','report_id',
+     'report_snapshot_sha256','verification','clinical_approval'])||value.verification!=='matched_current_source_and_evidence'||
+    value.clinical_approval!==false||value.duplicate!==(status===200)||
+    !Object.entries(expected).every(([key,ref])=>value[key]===ref))throw Error('Verification references differ');
+ const receipt=decodeReviewReturnResult({receipt_id:value.receipt_id,question_id:value.question_id,duplicate:value.duplicate},question);
+ return Object.freeze({...receipt,artifacts:expected});
+}
+
 export function decodeReviewQueue(value:unknown,patient:string,caseId:string):ReviewQueue{
  if(!exact(value,['contract','patient_id','case_id','synthetic','items','receipts','access_receipt_id',
   'external_notification_sent','reviewer_identity_verified','clinical_approval',

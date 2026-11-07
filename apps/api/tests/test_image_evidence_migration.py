@@ -68,6 +68,15 @@ class PopulatedImageEvidenceUpgradeTests(PopulatedImageReviewFixture):
         "investigation.question_evidence_links": "link_id",
     }
 
+    def _snapshot(self, tables=None):
+        rows = super()._snapshot(tables)
+        # On 0023 a legacy text task acquires exactly one new null field.
+        # Normalize only that additive schema difference, preserving all values.
+        for task in rows.get(TASK_TABLES[0], []):
+            if task.get("observation_reference") is None and task["source_line"] is not None:
+                task.pop("observation_reference", None)
+        return rows
+
     def _schema_definition(self):
         # Compare actual owner definitions before/after a no-DDL merge or a
         # rolled-back migration, without depending on PostgreSQL object OIDs.
@@ -368,27 +377,39 @@ class PopulatedImageEvidenceUpgradeTests(PopulatedImageReviewFixture):
                 self.assertIsNone(connection.execute(text("SELECT to_regclass(:table)"),
                                                       {"table": table}).scalar_one())
 
-    def _reject_populated_downgrade(self, target, reason):
+    def _outbox_history(self):
+        with self.engine.connect() as db:
+            return db.execute(text("SELECT * FROM coordination.source_event_outbox ORDER BY event_id")).all()
+
+    def _reject_populated_downgrade(self, target, reason, *, revision):
         before = self._snapshot()
         definitions = self._schema_definition()
         with self.assertRaisesRegex(CommandError, reason):
             migrate(self.settings, "downgrade", target)
-        self.assertEqual(self._heads(), {SCHEMA_REVISION})
+        self.assertEqual(self._heads(), {revision})
         self.assertEqual(self._snapshot(), before)
         self.assertEqual(self._schema_definition(), definitions)
-        self._assert_readiness(True)
+        self._assert_readiness(revision == SCHEMA_REVISION)
+
+    def _verify_historical_and_current_guards(self, target, historical_reason):
+        self._reject_populated_downgrade(target, historical_reason, revision=MERGE_REVISION)
+        migrate(self.settings, "upgrade", "head")
+        envelopes = self._outbox_history()
+        self.assertTrue(envelopes, "The source import must be backfilled into the outbox")
+        self._reject_populated_downgrade(target, "Stored source delivery history", revision=SCHEMA_REVISION)
+        self.assertEqual(self._outbox_history(), envelopes)
 
     def test_populated_evidence_blocks_downgrade_without_changing_images_tasks_or_receipts(self):
         self._seed_parent(EVIDENCE_REVISION)
-        migrate(self.settings, "upgrade", "head")
+        migrate(self.settings, "upgrade", MERGE_REVISION)
         self._seed_image()
-        self._reject_populated_downgrade("0009_question_followthrough", "Populated evidence history")
+        self._verify_historical_and_current_guards("0009_question_followthrough", "Populated evidence history")
 
     def test_populated_tasks_roll_back_removal_of_empty_evidence_schema_and_preserve_images(self):
         self._seed_parent(IMAGE_REVISION)
-        migrate(self.settings, "upgrade", "head")
+        migrate(self.settings, "upgrade", MERGE_REVISION)
         self._seed_task()
-        self._reject_populated_downgrade("0008_review_convergence", "Follow-through history")
+        self._verify_historical_and_current_guards("0008_review_convergence", "Follow-through history")
 
 
 if __name__ == "__main__":

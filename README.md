@@ -6,6 +6,9 @@ remain in the [first-principles plan](docs/FIRST_PRINCIPLES_PLAN.md).
 
 ## Run the connected fictional application
 
+Current connected-product candidate requires `0028_connected_product`, a no-DDL join of `0027_source_event_purpose` and `0022_encounter_sources`. It preserves the diagnostic interface, visit/source links, shared event processing, durable execution and access controls. Combined acceptance and remaining foundations: [construction record](docs/engineering/CONNECTED_PRODUCT_FOUNDATION.md).
+
+
 Start with the [persistent demo guide](docs/H1_DEMO.md). The connected H1 application
 uses React/Vite/TypeScript and FastAPI/PostgreSQL 16. It brings fictional records,
 source-anchored questions, evidence comparisons, preserved reports and recorded
@@ -15,9 +18,28 @@ patient/case/source; repeated setup and stop/resume retain its saved work.
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. This revision requires `0018_laboratory_questions`
-for [saved laboratory questions](docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md).
-The Python/SQLite application is retained as a separate reference implementation.
+the retained contributions. This integration candidate requires
+`0028_connected_product`, joining the diagnostic source links with the retained
+`0027_source_event_purpose` foundation from upstream #565 at `462e6c2`.
+The [upgrade contract](docs/implementation/SOURCE_EVENT_PURPOSE_REPAIR.md)
+covers fresh and published 0026 databases; older research-history adoption
+remains held. It retains [encounters and draft notes](apps/api/README.md#connected-encounter-and-note-service),
+[laboratory questions and citations](docs/engineering/H1_LABORATORY_CITATIONS.md),
+and the [durable source-question brief worker](docs/engineering/H1_DURABLE_EXECUTION.md).
+The [source-event worker](docs/engineering/H1_SOURCE_EVENT_DELIVERY.md) reconciles
+pending runs after a source changes. The workspace can reopen an amended
+question's existing run and show recorded follow-up beside the selected
+laboratory result, through their existing authorized readers.
+
+[Foundation #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565)
+remains the upstream owner. This dependent draft's PR records its exact combined
+source, verification and landing status. Combined verification is pending at
+this source-publication checkpoint; the verified
+[#529 foundation](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
+and other donor receipts keep their original scope. The
+[implementation status](docs/IMPLEMENTATION_STATUS.md#current-integrated-h1-checkpoint)
+pins the retained inputs and remaining work. The Python/SQLite application
+remains a separate reference implementation.
 
 Use independently authored fictional data only. This application does not establish
 production identity/consent, professional clinical approval, model qualification,

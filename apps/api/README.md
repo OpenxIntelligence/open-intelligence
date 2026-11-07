@@ -1,15 +1,89 @@
 # Open Intelligence H1 patient registry API
 
+Current connected-product candidate requires `0028_connected_product`, a no-DDL join of `0027_source_event_purpose` and `0022_encounter_sources`. It preserves the diagnostic interface, visit/source links, shared event processing, durable execution and access controls. Combined acceptance and remaining foundations: [construction record](../../docs/engineering/CONNECTED_PRODUCT_FOUNDATION.md).
+
+## Administrative patient suspension
+
+`POST /v1/patients/{patient_id}/suspensions` connects the canonical registry's
+existing active-to-suspended transition. The request is
+`{"synthetic":true,"request_key":"SUSPEND-ONE","expected_revision":1}`;
+the successful response contains the patient ID, `status: "suspended"`, and
+revision 2. An operator needs independent `patient_suspend` and `patient_read`
+grants, exact-patient scope, the persisted origin organization, and `operations`
+purpose. Request bodies are bounded to 16 KiB. OpenAPI exposes the typed route.
+
+The patient row serializes concurrent suspension commands. Its existing immutable
+domain journal stores the request key and actor/purpose/revision digest in the
+same transaction as the state change. Exact retries recover the original receipt;
+changed intent, actor or a new command against an already suspended patient
+conflicts. The original bearer is reauthenticated after acquiring the patient
+lock and after preparing actual response bytes. Encoding failure, expired or
+revoked authority aborts both state and event. Receipt recovery also needs the
+current grants. Existing journal history and migration identities are retained;
+this increment adds no table or migration.
+
+Existing record, source and Composer owners enforce active-patient state. Their
+held patient locks let an already authorized transaction finish before suspension
+commits. After that commit, new reads, queued-work claims, claimed-work completion
+and result disclosure are denied. Historical source/job/result rows remain intact;
+queued and leased work is not silently marked cancelled. Authorized identity-only
+metadata remains readable so an operator can see the suspended status.
+
+This is a synthetic administrative API; no UI control, reactivation, identity
+proofing, patient consent withdrawal or caregiver delegation is provided.
+Those broader WS-02 foundations remain construction work. Acceptance cases live
+in `test_patient_suspensions.py` and `test_composer_runs_postgres.py`. The existing
+`verify_registry_compose.py` also checks API/database restart, a second actual
+dump/restore, exact receipt recovery, withheld notes and revoked retries. Local
+contract and 31 architecture checks pass at publication; actual PG16/HTTP and
+Compose outcomes must be recorded against the dependent PR's exact source.
+
 ## Current connected application
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. The current API requires `0018_laboratory_questions`,
-which adds a typed Observation reference to the existing question registry. See
+records the original integration. This candidate requires
+`0028_connected_product`. Run `python -m oi_api.migrate upgrade head` from the
+published histories before startup. The join retains `0022_encounter_sources`
+and `0027_source_event_purpose`. The latter has single parent `0026_integrated_core`,
+whose existing no-DDL join retains the three parents
+`0025_clinical_source_events`, `0023_composer_clinical_join`, and
+`0023_ehr_lab_ownership_join` without renaming their migration identities.
+
+This dependent draft retains all 42 migration files from upstream #565 source
+`462e6c25f805089fadcb290567045447e6d627b7`, including 0020 and 0027. The published
+0027 installs the lineage resolver and replacement capture/outbox guard functions
+without rewriting existing source, journal, delivery or receipt rows. New
+`operations` and `research` source events are validated; only operations creates
+Composer obligations. Downgrade restores the earlier functions and removes the
+helper, retaining custody but allowing later research imports to fail until
+re-upgrade.
+
+The supported upgrade scope is fresh databases and published 0026 installations.
+Pre-0020 research journal history remains held by the original backfill with
+atomic rollback. See the [purpose-repair contract](../../docs/implementation/SOURCE_EVENT_PURPOSE_REPAIR.md)
+for that unresolved legacy-adoption boundary. This composition adds the no-DDL `0028_connected_product` join; the historical repair itself remains unchanged.
+
+The integrated owners retain [encounters and note drafts](#connected-encounter-and-note-service),
+laboratory citation and follow-up history, and
+[durable execution](../../docs/engineering/H1_DURABLE_EXECUTION.md).
+[PR #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565) remains
+the upstream foundation owner. This dependent draft's PR records its own exact
+combined-source acceptance, pending at this publication checkpoint. Earlier
+owner results do not qualify this composition automatically.
+The [source-event worker](../../docs/engineering/H1_SOURCE_EVENT_DELIVERY.md) reconciles changed context. See
 [the laboratory question contract](../../docs/engineering/H1_DURABLE_LABORATORY_QUESTIONS.md)
 for save, retry and history behavior.
 The [convergence record](../../docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md)
 maps the retained source, document, image, laboratory, question, report and task owners.
+
+Follow-up tasks support both exact text lines and saved FHIR Observations.
+`GET /v1/patients/{patient_id}/cases/{case_id}/followthrough` returns the
+existing text-only list by default. Send
+`Accept: application/vnd.open-intelligence.followthrough.v2+json` to request
+`oi.pg-question-followthrough/2` with both origins. An Observation task has an
+immutable source ID, version, digest, and Observation reference. The existing
+create, transition and retry routes accept the same command bodies.
 
 ## Historical document/image checkpoint — #381
 
@@ -709,7 +783,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0012_image_report_convergence; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0027_source_event_purpose; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |
@@ -867,3 +941,25 @@ The source owner's final shell-only [run #41530234376](https://github.com/OpenxI
 at 62d2ad0dd2c2d581f9d13d7659f888265838a4f0 passed 26 API tests, 245 prototype
 tests, both Chromium journeys and the health-only Compose/API-restart probe.
 That proves the base shell, not this new patient/backup/restore extension.
+
+## Connected encounter and note service
+
+The synthetic H1 EHR shares the patient registry, access file and immutable event journal. Its four PostgreSQL tables in the `ehr` schema hold visits, note headers, immutable note versions and idempotent command receipts. Alembic installs them after the existing `0018_laboratory_questions` revision. Migration does not create visits or notes for historical patients.
+
+The normal HTTP entry point is `/v1/patients/{patient_id}/encounters`. A synthetic operations credential must name the patient, belong to their organization, and have both `patient_read` and the specific action below. All writes require `synthetic: true` and an opaque `request_key`. Repeating the exact command returns its original receipt. Reusing the key with a different intent returns 409.
+
+| Method and path relative to the entry point | Required action | Result |
+|---|---|---|
+| POST (root) | `encounter.schedule` | Schedule a visit with `external_key`, `kind`, and `service_date`. |
+| GET (root) | `encounter.read` | List encounters in ID order. Continue using `next_after_id`. |
+| POST `/{id}/transitions` | `encounter.transition` | Supply `expected_revision` and target `in_progress`, `completed`, or `cancelled`. |
+| POST `/{id}/notes/{key}/versions` | `note.write` | Save an attributed fictional draft using `expected_version` (zero for a new note), `body`, and optional `note_kind`, `facility_id`, `department_id`. |
+| GET `/events` | `encounter.events.read`, `encounter.read` and `note.read` | Read committed encounter and draft-note change references in patient-local order. Resume with `after_id=resume_after_id`, even after an empty page. |
+| GET `/{id}/notes` | `note.read` | Discover the note keys and latest versions for this visit. |
+| GET `/{id}/notes/{key}/versions` | `note.read` | Reopen dated, hashed note versions and their author labels. Continue using `next_after_version`. |
+
+Each list takes `limit` (1–25) and its corresponding cursor (`after_id` or `after_version`). A successful read returns an audited access receipt. Only operations on an in-progress or completed visit can save notes. Authored drafts stay distinct from imported reports and any clinical attestation.
+
+The scheduling, transition, versioning, content-integrity and retry rules reuse the [first-party encounter implementation](https://github.com/OpenxIntelligence/open-intelligence/pull/301). The H1 adapter binds them to current request authority and the existing patient transaction. The independent PostgreSQL HTTP and restart/restore exercises use fictional records. Production identity, clinical signatures, treatment orders, note-to-source provenance and a clinician-facing editor remain separate work.
+
+Consumers persist their own cursor per patient and deduplicate using the immutable journal ID. The feed contains encounter IDs/revisions and note keys/versions, with no note bodies. Audit reads produce no new feed item. This is a pull interface for these three event types; push delivery, consumer acknowledgments and a general-purpose worker are separate capabilities.

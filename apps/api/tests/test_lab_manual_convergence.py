@@ -33,7 +33,7 @@ class LabManualMigrationContractTests(unittest.TestCase):
     def test_one_join_preserves_both_published_parents(self):
         script = graph()
         self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
-        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, JOIN)
+        self.assertEqual(script.get_revision("0018_laboratory_questions").down_revision, JOIN)
         self.assertEqual(set(script.get_revision(JOIN).down_revision), {LAB, MANUAL})
         for revision in (LAB, MANUAL):
             self.assertEqual(script.get_revision(revision).down_revision,
@@ -100,10 +100,24 @@ class LabManualPopulatedMigrationTests(SourceVersionFixture):
         self.write()
         return intent, receipt
 
+    def assert_existing_history_preserved(self, before):
+        tables, sequences = self.snapshot(before[0])
+        expected_sequences = dict(before[1])
+        composer_sequence = "investigation.composer_tool_run_events_id_seq"
+        if composer_sequence not in expected_sequences and composer_sequence in sequences:
+            # 0019 adds exactly this unused sequence; every preexisting sequence
+            # position, row and unknown extra object must still compare exactly.
+            expected_sequences[composer_sequence] = (1, False)
+            with self.engine.connect() as conn:
+                self.assertEqual(conn.execute(text(
+                    "SELECT count(*) FROM investigation.composer_tool_run_events"
+                )).scalar_one(), 0)
+        self.assertEqual((tables, sequences), (before[0], expected_sequences))
+
     def upgrade_preserving(self, before, target=SCHEMA_REVISION):
         migrate(self.admin, "upgrade", target)
         self.assertEqual(self.heads(), {target})
-        self.assertEqual(self.snapshot(before[0]), before)
+        self.assert_existing_history_preserved(before)
         self.readiness(target == SCHEMA_REVISION)
 
     def replay(self, patient, question, *, laboratory=None, manual=None):
