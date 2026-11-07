@@ -212,6 +212,10 @@ class HTTPContractTests(unittest.TestCase):
         comparison = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/review-returns/{receipt_id}/attribution-reassessment"]["get"]
         self.assertEqual(comparison["operationId"], "compare_recorded_and_current_attributions_v1")
         self.assertEqual(comparison["security"], [{"SyntheticFixture": []}])
+        expected = next(p for p in comparison["parameters"] if p["name"] == "expected_comparison_sha256")
+        self.assertEqual(expected["in"], "query")
+        self.assertFalse(expected["required"])
+        self.assertIn("comparison_sha256", schema["components"]["schemas"]["AttributionReassessment"]["required"])
         self.assertEqual(queue["operationId"], "list_source_question_review_queue_v1")
         self.assertEqual(returning["operationId"], "return_source_question_for_verification_v1")
         self.assertEqual(queue["security"], [{"SyntheticFixture": []}])

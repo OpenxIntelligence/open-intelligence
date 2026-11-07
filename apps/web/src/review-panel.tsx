@@ -161,6 +161,10 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,onOr
         </button></p>
         {state.attributionTarget===receipt.receipt_id&&<>
          <p role="status">{state.attributionMessage}</p>
+         {state.attributionInspection&&<button type="button" disabled={busy||returning||uncertain}
+          data-testid="recheck-attribution" onClick={()=>void session.inspectAttribution(receipt.receipt_id,state.attributionInspection!.comparison_sha256)}>
+          Recheck this exact comparison
+         </button>}
          {state.attributionInspection&&<ReassessmentPassages packet={state.attributionInspection} disabled={busy||returning||uncertain}
           onOriginal={version=>onOriginal(caseId,version.source_id,version.source_version,version.source_sha256)}/>}
         </>}

@@ -258,8 +258,8 @@ def main():
                 questions.append(question(imported["source_id"], 8 if version == 1 else 9, version))
                 returns.append(return_question(questions[-1], version))
             comparison_url = prefix + "/review-returns/" + returns[0][2]["receipt_id"] + "/attribution-reassessment"
-            def comparison():
-                status, packet = request(comparison_url)
+            def comparison(digest=None):
+                status, packet = request(comparison_url + ("?expected_comparison_sha256=" + digest if digest else ""))
                 assert status == 200 and packet["clinical_approval"] is False
                 access_id = packet.pop("access_receipt_id")
                 assert access_id.startswith("ACCESS-")
@@ -319,7 +319,7 @@ def main():
                 command(["-f", str(override), "up", "-d", "--no-deps", "api"])
             active_database = restored_active
             ready()
-            assert comparison() == recorded, "Restored API changed the recorded or latest passage"
+            assert comparison(recorded["comparison_sha256"]) == recorded, "Restored API changed the recorded comparison"
             assert snapshot("oi_api_synthetic") == before_restore, "The proof read from the original database"
             assert_history()
             print("PASS: restored API reproduced both paired passages and their amendments from the restored database")
