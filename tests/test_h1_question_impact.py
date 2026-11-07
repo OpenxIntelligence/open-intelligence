@@ -3,7 +3,8 @@ import unittest
 
 from open_intelligence.dependency_impact import ImpactContractError
 from open_intelligence.h1_question_impact import (
-    plan_h1_question_reassessment, plan_h1_confirmed_supersessions,\n)
+    plan_h1_question_reassessment, plan_h1_confirmed_supersessions,
+)
 from open_intelligence.h1_semantic_bridge import BoundQuestion
 from open_intelligence.semantic_contract import SemanticReference
 
