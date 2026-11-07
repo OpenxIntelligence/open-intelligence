@@ -7316,29 +7316,32 @@ class CaseStore:
         # until W4's route policy v2 assigns them. The contract still
         # records the route for replay; assignment enforcement arrives
         # with W4/W8.
-        loaded: dict[int, dict | None] = {}
-        for claim_id in claim_ids:
-            match = re.fullmatch(r"inv(\d+):c(\d+)", claim_id)
-            unresolved = InvalidInput(
-                f"Cited claim {claim_id} does not resolve to a kept claim in this case")
-            if not match:
-                raise unresolved
-            inv_id, index = int(match.group(1)), int(match.group(2))
-            if inv_id not in loaded:
-                try:
-                    loaded[inv_id] = self.get_investigation(case_id, inv_id)
-                except InvalidInput:
-                    loaded[inv_id] = None
-            inv = loaded[inv_id]
-            if not isinstance(inv, dict) or inv.get("case_id", case_id) != case_id:
-                raise unresolved
-            if inv.get("stale"):
-                raise unresolved
-            claims = inv.get("claims")
-            if not isinstance(claims, list) or index < 1 or index > len(claims):
-                raise unresolved
         with self.db:
+            # Check cited inputs under the same write lock as publication.
+            # Otherwise an amendment can commit after validation and leave
+            # a newly inserted hypothesis incorrectly marked current.
             self.db.execute("BEGIN IMMEDIATE")
+            loaded: dict[int, dict | None] = {}
+            for claim_id in claim_ids:
+                match = re.fullmatch(r"inv(\d+):c(\d+)", claim_id)
+                unresolved = InvalidInput(
+                    f"Cited claim {claim_id} does not resolve to a kept claim in this case")
+                if not match:
+                    raise unresolved
+                inv_id, index = int(match.group(1)), int(match.group(2))
+                if inv_id not in loaded:
+                    try:
+                        loaded[inv_id] = self.get_investigation(case_id, inv_id)
+                    except InvalidInput:
+                        loaded[inv_id] = None
+                inv = loaded[inv_id]
+                if not isinstance(inv, dict) or inv.get("case_id", case_id) != case_id:
+                    raise unresolved
+                if inv.get("stale"):
+                    raise unresolved
+                claims = inv.get("claims")
+                if not isinstance(claims, list) or index < 1 or index > len(claims):
+                    raise unresolved
             cur = self.db.execute(
                 """INSERT INTO composed_hypotheses
                 (case_id,write_id,text,claim_ids_json,sentences_json,char_count,

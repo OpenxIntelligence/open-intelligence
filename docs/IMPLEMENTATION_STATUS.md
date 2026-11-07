@@ -1959,3 +1959,24 @@ This second local iteration makes the question-driven case review the main workf
 - Limits: the browser journey itself could not run because Chrome/Chromium is unavailable. Hallmark's render tier is unavailable because `puppeteer-core` is absent. Responsive CSS stacks the workbench below 60rem, but this iteration has not had a new narrow-width visual review, physical-device test, or screen-reader test.
 
 This remains a synthetic-only workflow refinement, not the AI research copilot or a clinically validated system. It does not call the model API or change provider configuration. No deployment or real-data use is part of this change.
+
+### W2 hypothesis publication freshness repair — 6 November 2026
+
+Child of hypothesis persistence #609 at `b67e4109`. Citation validation now
+runs inside the same `BEGIN IMMEDIATE` transaction as hypothesis insertion.
+Previously an amendment could commit after validation and before insertion,
+staling the investigation but missing the not-yet-created hypothesis.
+
+A deterministic two-connection SQLite regression commits an independently
+fictional source amendment immediately before write-lock acquisition. It failed
+before repair (save incorrectly succeeded), and passes after repair (InvalidInput,
+no hypothesis row, cited investigation remains stale). The four local suites
+`test_hypothesis_generation`, `test_patient_analytics`, `test_analysis`, and
+`test_vertical_boundary` passed 149 tests with no skips. `git diff --check`
+passed. These results belong to this child, not a merged-main integration.
+
+No composition rules, assignment policy, schema, provider or clinical authority
+changed. Parent #609 remains required and unmerged; assignment enforcement is
+still explicitly deferred by that owner. Hosted acceptance and broader
+PostgreSQL/product integration remain unverified. Next: verify the exact child
+on CI and reconcile the existing W4/W8 assignment work before extending writes.

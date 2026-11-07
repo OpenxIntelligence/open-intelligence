@@ -719,6 +719,36 @@ class ComposedHypothesisPersistenceTests(unittest.TestCase):
         self.assertIs(rows[0]["stale"], True)
         self.assertEqual(rows[0]["stale_reason"], "source_changed")
 
+    def test_amendment_before_write_lock_rejects_hypothesis(self):
+        # A second connection commits an amendment at the save boundary.
+        # The cited investigation must be checked after taking the lock.
+        self.store.close()
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "race.sqlite")
+            self.store = CaseStore(path)
+            self.source_id, self.question_id = seed_case(self.store)
+            inv_id = self.run_once()
+            composed = self.compose(inv_id)
+            peer = CaseStore(path)
+            amended = (Path(__file__).resolve().parents[1] / "examples"
+                       / "synthetic" / "alpha-pathology-amended.txt").read_bytes()
+            fired = []
+            def before_lock(sql):
+                if sql == "BEGIN IMMEDIATE" and not fired:
+                    fired.append(True)
+                    peer.import_report("CASE-ALPHA", amended)
+            self.store.db.set_trace_callback(before_lock)
+            try:
+                with self.assertRaises(InvalidInput):
+                    self.store_hypothesis(composed)
+                self.assertEqual(fired, [True])
+                self.assertTrue(self.store.get_investigation(
+                    "CASE-ALPHA", inv_id)["stale"])
+                self.assertEqual(self.store.list_composed_hypotheses("CASE-ALPHA"), [])
+            finally:
+                self.store.db.set_trace_callback(None)
+                peer.close()
+
     def test_latest_stored_hypothesis_is_current(self):
         inv_id = self.run_once()
         second_text = "The sources report a finding again."
