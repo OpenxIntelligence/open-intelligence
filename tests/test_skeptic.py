@@ -41,6 +41,7 @@ from open_intelligence.skeptic import (
     SKEPTIC_MODEL,
     SKEPTIC_PROMPT_VERSION,
     SkepticError,
+    build_repair_prompt,
     build_skeptic_prompt,
     cited_evidence,
     compute_abstention_codes,
@@ -733,6 +734,23 @@ class PersistenceTests(unittest.TestCase):
             "SELECT state FROM questions WHERE id=? AND case_id=?",
             (self.question_id, "CASE-ALPHA")).fetchone()[0]
         self.assertEqual(state, "addressed")
+
+
+class RepairPromptAttributionTests(unittest.TestCase):
+    def test_repair_prompt_contains_attribution_rule(self):
+        attempt = {
+            "claim_index": 0,
+            "reason": "k2_slot_mismatch",
+            "text": "Marker A was reported.",
+            "evidence": [],
+        }
+        prompt = build_repair_prompt([attempt])
+        sentence = (
+            "Attribute each claim to its sources through the citations array only. "
+            "Do not write source version numbers in the claim text itself, neither "
+            '"Source version N" nor "version N"; the citation identifies the source.'
+        )
+        self.assertIn(sentence, " ".join(prompt.split()))
 
 
 if __name__ == "__main__":

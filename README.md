@@ -556,6 +556,25 @@ still pending — stub verdicts prove wiring only); per-case
 vertical selection via a case-vertical field; per-vertical
 evidence-catalog resolution; no C5 cardiology probes yet.
 
+**K7/K2 keep-rate fix (post-program fix slice, 6 November
+2026):** the Haiku interim live proof showed a live investigation
+keeping only 1 in 5–6 claims: K7 dropped prose carrying "Source
+version N" numbers and K2 dropped cross-source disagreement
+claims. K7 was fixed by a prompt change, not a checker carve-out
+— `build_prompt` (and the repair prompt in `skeptic.py`) now
+instructs the model to attribute through the citations array
+only and never write source version numbers in claim text. K2
+gained a narrow carve-out: a claim with support `"contradicts"`
+whose cited facets genuinely disagree skips slot-equality and
+goes to T6 grouping instead; single-value assertions still go
+through K2. Live re-probe through Haiku 5.5 keeps **6 of 6
+claims** (was 1 of 6), with no "version" phrasing in any claim.
+Local suite at the slice branch: 1258 tests, with the same 17
+pre-existing `test_pdf_intake` failures as the branch baseline
+(1251 tests) and zero new failures. See the K7/K2 section of
+`docs/IMPLEMENTATION_STATUS.md`. Unproven: the Meta-only live
+proof (muse-spark-1.3, Meta billing fix still pending).
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.
