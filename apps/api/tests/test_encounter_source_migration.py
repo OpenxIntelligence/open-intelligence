@@ -80,10 +80,13 @@ class EncounterSourceMigrationTests(SourceVersionFixture):
         migrate(self.admin, "upgrade", REVISION)
         with self.engine.begin() as conn:
             self.insert(conn, alpha)
+        with self.engine.connect() as conn:
+            prior_heads = set(conn.execute(text("SELECT version_num FROM public.alembic_version")).scalars())
+        self.assertIn(REVISION, prior_heads)
         with self.assertRaisesRegex(CommandError, "Populated encounter source links"):
             migrate(self.admin, "downgrade", PREVIOUS)
         with self.engine.connect() as conn:
-            self.assertEqual(conn.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), REVISION)
+            self.assertEqual(set(conn.execute(text("SELECT version_num FROM public.alembic_version")).scalars()), prior_heads)
             self.assertEqual(conn.execute(text("SELECT source_id FROM ehr.encounter_source_links")).scalar_one(),
                              alpha["source_id"])
 
