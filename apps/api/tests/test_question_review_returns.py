@@ -200,10 +200,18 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
             self.assertEqual(packet["first"]["recorded"], packet["first"]["latest"])
             self.assertEqual(packet["second"]["recorded"], packet["second"]["latest"])
             self.assertFalse(packet["clinical_approval"])
+            from oi_api.attribution_reassessment import comparison_snapshot
+            expected = comparison_snapshot(patient_id=patient, case_id="CASE-ALPHA",
+                question_id=qid, receipt_id=pair, first=packet["first"], second=packet["second"])
+            self.assertEqual(packet["comparison_sha256"], expected["sha256"])
+            again = read()[1]
+            self.assertNotEqual(again["access_receipt_id"], packet["access_receipt_id"])
+            self.assertEqual(again["comparison_sha256"], packet["comparison_sha256"])
             amendment = report("episode-origin-consult-v2.txt")
             new_id = self.ingest(base, patient, amendment)[1]["source_id"]
             status, after, _ = read()
             self.assertEqual(status, 200, after)
+            self.assertNotEqual(after["comparison_sha256"], packet["comparison_sha256"])
             self.assertEqual(after["second"]["recorded"], packet["second"]["recorded"])
             latest = after["second"]["latest"]
             self.assertEqual((latest["source_id"], latest["source_version"]), (new_id, 2))
@@ -230,12 +238,10 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
             append = PostgresPatientRegistry.append_event
             def revoke(registry, pid, kind, **details):
                 if kind == "investigation.review.attribution_compared":
-                    from open_intelligence.patient_registry import _digest
-                    snapshot = details["comparison_snapshot"]
-                    self.assertEqual(details["comparison_sha256"], _digest(snapshot))
-                    self.assertEqual(snapshot["review_receipt_id"], pair)
-                    self.assertEqual(snapshot["first"], missing["first"])
-                    self.assertEqual(snapshot["second"], missing["second"])
+                    expected = comparison_snapshot(patient_id=patient, case_id="CASE-ALPHA",
+                        question_id=qid, receipt_id=pair, first=missing["first"], second=missing["second"])
+                    self.assertEqual(details["comparison_sha256"], expected["sha256"])
+                    self.assertNotIn("comparison_snapshot", details)
                 append(registry, pid, kind, **details)
                 if kind == "investigation.review.attribution_compared":
                     self.creds[0]["actions"].remove("source_original_read")

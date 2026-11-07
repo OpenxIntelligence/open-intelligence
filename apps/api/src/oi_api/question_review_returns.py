@@ -281,9 +281,10 @@ class PostgresQuestionReviewReturns:
                 source_access_receipt_id=index["access_receipt_id"], first_original_access_id=first_access,
                 second_original_access_id=second_access, first_latest_source_id=first["latest"]["source_id"],
                 second_latest_source_id=second["latest"]["source_id"],
-                comparison_snapshot=inspected["content"], comparison_sha256=inspected["sha256"],
+                comparison_sha256=inspected["sha256"],
             )
-            packet = {"contract": "oi.synthetic-attribution-reassessment/1", "synthetic": True,
+            packet = {"contract": "oi.synthetic-attribution-reassessment/2", "synthetic": True,
+                      "comparison_sha256": inspected["sha256"],
                       "clinical_approval": False, "patient_id": patient_id, "case_id": case_id,
                       "receipt_id": receipt_id, "question_id": question["question_id"],
                       "access_receipt_id": index["access_receipt_id"],

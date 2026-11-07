@@ -553,7 +553,8 @@ class AttributionComparison(Contract):
 
 
 class AttributionReassessment(Contract):
-    contract: Literal["oi.synthetic-attribution-reassessment/1"]
+    contract: Literal["oi.synthetic-attribution-reassessment/2"]
+    comparison_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     synthetic: Literal[True]
     clinical_approval: Literal[False]
     patient_id: str

@@ -577,7 +577,7 @@ function reassessmentFixture(){
  }
  const first=version(q,'DOC-ALPHA','EP-A'), second=version(consultRef,'DOC-CONSULT','EP-B');
  const latest=version({...consultRef,source_id:'SRC-'+'F'.repeat(32),source_version:2,source_line:9,source_sha256:'4'.repeat(64)},'DOC-CONSULT',null);
- return {q,r,packet:{contract:'oi.synthetic-attribution-reassessment/1',synthetic:true,clinical_approval:false,
+ return {q,r,packet:{contract:'oi.synthetic-attribution-reassessment/2',comparison_sha256:'a'.repeat(64),synthetic:true,clinical_approval:false,
   patient_id:patientId,case_id:caseId,question_id:questionId,receipt_id:receiptId,access_receipt_id:'ACCESS-'+'D'.repeat(32),
   first:{recorded:first,latest:structuredClone(first)},second:{recorded:second,latest}}};
 }
@@ -585,10 +585,12 @@ function reassessmentFixture(){
 test('reassessment verifies both saved anchors and distinguishes a removed key from an unassigned episode',async()=>{
  const {decodeAttributionReassessment}=await import('../.test-dist/attribution-reassessment.js');
  const {q,r,packet}=reassessmentFixture();
+ assert.equal(decodeAttributionReassessment(packet,q,r).comparison_sha256,packet.comparison_sha256);
  assert.equal(decodeAttributionReassessment(packet,q,r).second.latest.finding.oncology.episode_id,null);
  const absent=structuredClone(packet);absent.second.latest.finding=null;
  assert.equal(decodeAttributionReassessment(absent,q,r).second.latest.finding,null);
- for(const mutate of [p=>p.receipt_id='REVIEW-'+'B'.repeat(32),p=>p.patient_id='PAT-OTHER',p=>p.clinical_approval=true,
+ for(const mutate of [p=>delete p.comparison_sha256,p=>p.comparison_sha256='invalid',p=>p.contract='oi.synthetic-attribution-reassessment/1',
+   p=>p.receipt_id='REVIEW-'+'B'.repeat(32),p=>p.patient_id='PAT-OTHER',p=>p.clinical_approval=true,
    p=>p.second.recorded.finding.source_line=33,p=>p.second.latest.document_id='DOC-OTHER',
    p=>p.second.latest.finding.finding_key='other',p=>p.second.latest.source_id=q.source_id,
    p=>p.first.latest.finding.source_statement='Different words from an unchanged source.']){

@@ -5,7 +5,7 @@ export type AttributionVersion=Readonly<{
  source_id:string;document_id:string;source_version:number;source_sha256:string;finding:SourceFinding|null;
 }>;
 type Comparison=Readonly<{recorded:AttributionVersion;latest:AttributionVersion}>;
-export type AttributionReassessment=Readonly<{receipt_id:string;first:Comparison;second:Comparison}>;
+export type AttributionReassessment=Readonly<{receipt_id:string;comparison_sha256:string;first:Comparison;second:Comparison}>;
 
 function fields(value:unknown,keys:readonly string[]):value is Record<string,unknown>{
  return typeof value==='object'&&value!==null&&!Array.isArray(value)&&
@@ -44,8 +44,9 @@ function comparison(raw:unknown,anchor:Anchor):Comparison{
 
 export function decodeAttributionReassessment(raw:unknown,question:ReviewQueueItem,receipt:ReviewHistoryReceipt):AttributionReassessment{
  if(!receipt.comparison_source||!fields(raw,['contract','synthetic','clinical_approval','patient_id','case_id',
-    'question_id','receipt_id','access_receipt_id','first','second'])||
-    raw.contract!=='oi.synthetic-attribution-reassessment/1'||raw.synthetic!==true||raw.clinical_approval!==false||
+    'question_id','receipt_id','access_receipt_id','comparison_sha256','first','second'])||
+    raw.contract!=='oi.synthetic-attribution-reassessment/2'||raw.synthetic!==true||raw.clinical_approval!==false||
+    typeof raw.comparison_sha256!=='string'||!/^[a-f0-9]{64}$/.test(raw.comparison_sha256)||
     raw.patient_id!==question.patient_id||raw.case_id!==question.case_id||raw.question_id!==question.question_id||
     raw.receipt_id!==receipt.receipt_id||receipt.question_id!==question.question_id||
     typeof raw.access_receipt_id!=='string'||!/^ACCESS-[0-9A-F]{32}$/.test(raw.access_receipt_id))throw Error('review scope');
@@ -54,5 +55,5 @@ export function decodeAttributionReassessment(raw:unknown,question:ReviewQueueIt
     first.recorded.finding!.finding_key!==second.recorded.finding!.finding_key||
     first.recorded.finding!.oncology!.episode_id===second.recorded.finding!.oncology!.episode_id||
     [first.recorded.source_id,first.latest.source_id].some(id=>id===second.recorded.source_id||id===second.latest.source_id))throw Error('recorded pair');
- return Object.freeze({receipt_id:receipt.receipt_id,first,second});
+ return Object.freeze({receipt_id:receipt.receipt_id,comparison_sha256:raw.comparison_sha256,first,second});
 }

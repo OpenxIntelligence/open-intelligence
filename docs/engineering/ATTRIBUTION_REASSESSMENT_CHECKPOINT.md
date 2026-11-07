@@ -34,3 +34,11 @@ It does not establish completion of the shared foundation or clinical domains.
 No clinical attribution, reviewer identity verification, signed approval, production
 use, merge or deployment is established. Full platform construction continues
 through the existing execution backlog and domain owners.
+
+## Verification correction
+
+Hosted browser run 42340072072 failed at the attribution comparison. Inspection
+found the nested journal field still present in published f577545a despite the
+earlier correction report. The follow-up removes it and returns the digest in
+version 2 of the API packet. Client validation retains that identity and refuses
+legacy or malformed packets. Fresh hosted verification is required.
