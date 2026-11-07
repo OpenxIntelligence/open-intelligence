@@ -29,22 +29,28 @@ lifting one never supplies a missing grant. Unrecorded preserves existing
 synthetic-fixture behavior and explicitly does not establish consent. All
 responses keep `consent_established: false`. Unknown recorded states deny.
 
-Overview exposes a deliberately read-only restriction inspector, with purpose
-selection, denied/unavailable and unrecorded states. Patient changes and session
-refresh/disconnection fence delayed responses. Mutation UI and its ambiguous
-write recovery are not implemented in this increment; authorized mutations use
-the API. Previously displayed data in other sessions is not remotely erased.
+Overview exposes restriction inspection and explicit revision-bound decisions, with
+purpose selection, denied/unavailable and unrecorded states. The user must check
+the selected patient's current decision and explicitly confirm before recording
+restriction or lifting. A shared pending-write guard preserves unresolved clinical
+commands. Patient content is cleared before sending; in-flight readers are fenced.
+Unknown outcomes retain the exact serialized command in tab memory, block patient
+switching/creation, and offer unchanged retry or explicit departure from recovery.
+A denial on retry cannot erase uncertainty about an earlier attempt. Historical
+receipts never represent current permission; the patient must be reopened and
+current restriction checked. Authentication loss clears credentials and recovery.
+Previously displayed data in other sessions is not remotely erased.
 
 ## Verification checkpoint
 
-Local: 14 authority-port/OpenAPI/typed-contract tests passed, 719 client tests
+Local: 14 authority-port/OpenAPI/typed-contract tests passed, 725 client tests
 passed, including delayed-response/strict-decoder and authentication-loss checks; TypeScript/Vite build,
 61-module architecture check, Python compilation and synthetic boundary check
 passed. Database methods are implemented but were skipped locally because no
 PostgreSQL server is installed. New tests cover actual HTTP restriction/lifting,
 independent grants, purpose/patient isolation, encoding/final-authority rollback,
 concurrent retry, API restart, and queued/claimed/completed Composer work.
-Added a real browser scenario for denied status permission, restriction/source denial, API restart, exact retry, lifting and an unchanged control patient. Hosted verification is pending; no PostgreSQL or browser acceptance is claimed.
+The browser scenario now records and lifts restrictions through the actual workspace, deliberately loses a committed response, navigates away/back, restarts the API, retries the identical body, inspects current state, and verifies an unchanged control patient. Hosted verification is pending; no PostgreSQL or browser acceptance is claimed.
 
 Broader local API discovery ran 1,014 tests: 75 errors were socket PermissionError from the execution sandbox and 611 tests skipped for missing PostgreSQL. This run failed; it is not regression acceptance. The separate 14-test authority/contract run passed. The three new authority-port tests exercise all current data actions, fresh purpose-specific decisions, independent grants, malformed recorded state and cross-organization refusal. They use a database-port double and are not PostgreSQL execution evidence.
 
@@ -52,10 +58,21 @@ Broader local API discovery ran 1,014 tests: 75 errors were socket PermissionErr
 
 This is only the restriction part of PF-02. Positive consent decisions, evidence
 of authorization, validity/expiry, delegated authority, granular data classes,
-and a safe mutation/recovery UI remain unfinished. The existing Compose recovery harness now includes a restriction before API/database restarts and an actual pg_dump/pg_restore into a separate database. It checks denial, exact historical retry, changed intent, revoked manage grant, restored-only lifting, and unchanged source database. This harness compiles but its hosted execution, together with connected browser acceptance, is still pending.
+and delegated patient/caregiver workflows remain unfinished. The existing Compose recovery harness now includes a restriction before API/database restarts and an actual pg_dump/pg_restore into a separate database. It checks denial, exact historical retry, changed intent, revoked manage grant, restored-only lifting, and unchanged source database. This harness compiles but its hosted execution, together with connected browser acceptance, is still pending.
 Do not infer transaction-wide distributed revocation from callback checks:
 existing action boundaries retain their own locking/refresh semantics.
 
 The purpose projection uses the existing patient/event journal index and filters
 purpose in JSON. This bounded synthetic candidate does not establish production
 scale. No merge, deployment or clinical effects are authorized.
+
+
+## Restriction editing continuation
+
+Client regressions cover explicit confirmation, wrong-patient rejection, exact
+command shape, duplicate submission, suspension conflicts, initial stale-revision
+refusal, lost responses, later denial while uncertain, malformed receipts,
+authentication loss, late responses after credential replacement and leaving
+recovery. All 725 client tests pass; final TypeScript/Vite build status is recorded
+in PR #629. Browser journey execution remains pending on hosted runners. The
+backend is unchanged from the restriction/recovery candidate.
