@@ -179,6 +179,11 @@ class SourceIdentityTests(unittest.TestCase):
         with running_server(self.app) as base:
             pid=self.make_patient(base)
             self.assertEqual(self.upload(base,pid,'A')[0],201)
+            self.assertEqual(request(base,f'/v1/patients/{pid}/case-bindings',token=TOKEN_A,body=dict(
+                synthetic=True,case_id='CASE-RETIRED',source_organization='ORG-RETIRED',
+                source_system='SYS-RETIRED',source_subject_ref='SUBJECT-RETIRED',review_ref='REVIEW-RETIRED'))[0],201)
+            self.assertEqual(request(base,f'/v1/patients/{pid}/case-bindings/CASE-RETIRED/revoke',token=TOKEN_A,
+                body={'synthetic':True,'reason':'Retire fictional historical case mapping'})[0],200)
         with self.engine.connect() as c:
             before=c.execute(text('SELECT * FROM coordination.patient_case_bindings')).all()
             sources=c.execute(text('SELECT * FROM clinical_source.source_versions')).all()
@@ -187,7 +192,7 @@ class SourceIdentityTests(unittest.TestCase):
         with self.engine.connect() as c:
             self.assertEqual(c.execute(text('SELECT * FROM coordination.patient_case_bindings')).all(),before)
             self.assertEqual(c.execute(text('SELECT * FROM clinical_source.source_versions')).all(),sources)
-            self.assertEqual(c.execute(text('SELECT count(*) FROM coordination.case_source_identities WHERE primary_identity')).scalar_one(),1)
+            self.assertEqual(c.execute(text('SELECT count(*) FROM coordination.case_source_identities WHERE primary_identity')).scalar_one(),2)
 
     def test_dump_restore_retains_exact_institution_original_and_revocation_denial(self):
         with running_server(self.app) as base:

@@ -867,8 +867,19 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
         inspect(candidate['source_id'], institutional_raw)
         institutional.append(dict(identity_id=identity['identity_id'], source_id=candidate['source_id'], sha256=digest))
     assert len(operator('/cases/' + CASE + '/source-identities')['identities']) == 3
+    operator('/case-bindings', dict(synthetic=True,case_id='CASE-WEB-IDENTITY-HOLD',
+        source_organization='FICT-INSTITUTION-HELD',source_system='FICT-LAB-SYSTEM',
+        source_subject_ref='FICT-HELD-SUBJECT',review_ref='FICT-HELD-REVIEW'))
+    held=operator('/cases/'+CASE+'/source-identities',dict(synthetic=True,request_key='WEB-HELD-IDENTITY',
+        source_organization='FICT-INSTITUTION-HELD',source_system='FICT-LAB-SYSTEM',
+        source_subject_ref='FICT-HELD-SUBJECT',review_ref='FICT-HELD-REVIEW'))
+    assert held['status']=='quarantined'
+    cd.evaluate('document.querySelector("[data-testid=source-identities-refresh]").click()')
+    cd.wait('document.querySelector("[data-testid=laboratory-source-identity]")?.textContent.includes("held for identity review")','conflicting identity held')
+    assert cd.evaluate('document.querySelector("[data-testid=laboratory-source-identity] option[value=\\"'+held['identity_id']+'\\"]").disabled')
     (artifacts / 'institutional-source-identities.json').write_text(json.dumps(dict(synthetic=True,
-        case_id=CASE, institution_count=3, additional_originals=institutional, original_bytes_verified=True), indent=2))
+        case_id=CASE, institution_count=3, additional_originals=institutional, original_bytes_verified=True,
+        conflicting_identity_quarantined=True,held_choice_disabled=True), indent=2))
     (artifacts / 'institutional-source-original.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
     print('PASS INSTITUTIONAL SOURCES: three explicit institutional identities in one case, two UI selections/imports and exact distinct original bytes.')
     cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests;delete window.__oiLabPrepareCodes;delete window.__oiLabQuestionPosts;delete window.__oiLabHistoryCodes;delete window.__oiLabCatalog')
