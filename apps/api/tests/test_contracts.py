@@ -152,6 +152,7 @@ class HTTPContractTests(unittest.TestCase):
             "/v1/patients/{patient_id}/cases/{case_id}/composer/laboratory-questions/{question_id}/source-citation-report/versioned",
             "/v1/patients/{patient_id}/cases/{case_id}/composer/laboratory-questions/{question_id}/source-citation-report/snapshots",
             "/v1/patients/{patient_id}/cases/{case_id}/composer/laboratory-questions/{question_id}/source-citation-report/snapshots/{snapshot_id}",
+            "/v1/patients/{patient_id}/cases/{case_id}/composer/laboratory-questions/{question_id}/source-citation-report/snapshots/{snapshot_id}/review-returns",
             "/v1/patients/{patient_id}/cases/{case_id}/composer/laboratory-questions/{question_id}/evidence-links",
             "/v1/patients/{patient_id}/cases/{case_id}/documents",
             "/v1/patients/{patient_id}/cases/{case_id}/documents/preview",
@@ -191,6 +192,21 @@ class HTTPContractTests(unittest.TestCase):
         self.assertEqual(laboratory["operationId"], "prepare_fictional_laboratory_question_v1")
         self.assertEqual(laboratory["security"], [{"SyntheticFixture": []}])
         self.assertIn("503", laboratory["responses"])
+        inspection_returns = schema["paths"][
+            "/v1/patients/{patient_id}/cases/{case_id}/composer/laboratory-questions/{question_id}"
+            "/source-citation-report/snapshots/{snapshot_id}/review-returns"]
+        self.assertEqual(set(inspection_returns), {"get", "post"})
+        for method, operation_id in (
+            ("get", "read_laboratory_inspection_review_returns_v1"),
+            ("post", "return_laboratory_inspection_for_verification_v1"),
+        ):
+            operation = inspection_returns[method]
+            self.assertEqual(operation["operationId"], operation_id)
+            self.assertEqual(operation["security"], [{"SyntheticFixture": []}])
+            self.assertTrue({"200", "404", "503"}.issubset(operation["responses"]))
+        self.assertIn("201", inspection_returns["post"]["responses"])
+        self.assertEqual(inspection_returns["post"]["requestBody"]["content"]["application/json"]["schema"],
+                         {"$ref": "#/components/schemas/ReturnLaboratoryInspection"})
         preview = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/laboratory/fhir-r4/preview"]["post"]
         self.assertEqual(preview["operationId"], "preview_fictional_fhir_r4_lab_v1")
         self.assertEqual(preview["security"], [{"SyntheticFixture": []}])
