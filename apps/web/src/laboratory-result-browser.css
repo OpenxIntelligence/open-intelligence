@@ -1,0 +1,35 @@
+/* Compact inspection of the same authorized lab rows; no clinical classification. */
+.laboratory-record-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:20px 0}
+.laboratory-record-summary>div{border:1px solid #d5e1d9;border-radius:8px;background:#f8fbf8;padding:14px;min-width:0}
+.laboratory-record-summary dt{font-size:12px;color:#52635d}
+.laboratory-record-summary dd{margin:6px 0 0;font-size:25px;font-weight:650;color:#194d45}
+.laboratory-layout{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:20px 0 14px}
+.laboratory-layout>span{font-size:13px;font-weight:600;margin-right:8px}
+.laboratory-layout button[aria-pressed="true"]{background:#174b48;border-color:#174b48;color:#fff}
+.laboratory-table-help{font-size:12px!important;margin:10px 0!important}
+.laboratory-table-scroll{max-width:100%;overflow-x:auto;border:1px solid #c6d8c9;border-radius:8px;margin:12px 0 20px;scroll-margin-top:var(--workspace-offset,24px)}
+.laboratory-table-scroll:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
+.laboratory-results-table{width:100%;min-width:760px;border-collapse:collapse;table-layout:fixed;font-size:13px;text-align:left}
+.laboratory-results-table caption{text-align:left;padding:12px 14px;font-size:12px;background:#f8fbf8;color:#42594c}
+.laboratory-results-table th,.laboratory-results-table td{vertical-align:top;padding:14px 12px;border-top:1px solid #d5e1d9;overflow-wrap:anywhere;line-height:1.55}
+.laboratory-results-table thead th{background:#edf3ef;font-size:12px;color:#344e42}
+.laboratory-results-table thead th:first-child{width:12%}
+.laboratory-results-table thead th:nth-child(2){width:18%}
+.laboratory-results-table thead th:nth-child(3){width:19%}
+.laboratory-results-table thead th:nth-child(4){width:27%}
+.laboratory-results-table thead th:nth-child(5){width:24%}
+.laboratory-results-table tbody tr:nth-child(even){background:#fcfdfb}
+.laboratory-results-table tbody th{font-weight:600}
+.laboratory-table-specimen{display:block;color:#52635d;margin-top:5px}
+.laboratory-results-table summary{min-height:44px;font-size:13px;color:#174b48;cursor:pointer}
+.laboratory-results-table details[open]{min-width:0}
+.laboratory-results-table details dl{margin:12px 0}
+.laboratory-results-table details dt{font-size:11px;font-weight:600;margin-top:10px;color:#52635d}
+.laboratory-results-table details dd{margin:3px 0 0;font-size:12px}
+.laboratory-results-table details button{max-width:100%;white-space:normal;overflow-wrap:anywhere;font-size:12px;padding:9px}
+.laboratory-pagination{margin:16px 0}
+@media(max-width:900px){.laboratory-record-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){.laboratory-record-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.laboratory-record-summary>div{padding:12px}.laboratory-layout>span{flex-basis:100%}.laboratory-pagination button{flex:1 1 auto}}
+
+.source-filters.laboratory-filters{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:600px){.source-filters.laboratory-filters{grid-template-columns:minmax(0,1fr)}}
