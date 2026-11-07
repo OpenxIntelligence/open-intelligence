@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_REVISION = "0027_source_purpose"
+SCHEMA_REVISION = "0029_episode_history_guard"
 POSTGRES_MAJOR = 16
 
 

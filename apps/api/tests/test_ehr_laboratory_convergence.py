@@ -102,7 +102,7 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
         document_convergence.DocumentImageConvergenceMigrationTests.seed_document(self, document)
         before = self.snapshot()
         migrate(self.admin, "upgrade", SCHEMA_REVISION)
-        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.snapshot(), (before[0] | {"clinical_source.episode_drafts": []}, before[1]))
 
         with running_server(create_app(self.settings)) as base:
             status, page, _ = request(base, url, token=TOKEN_A)
@@ -166,11 +166,13 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
             conn.rollback()
         self.assertEqual(self.snapshot(), before)
         migrate(self.admin, "downgrade", previous)
-        self.assertEqual(self.snapshot(), before)
+        old_tables = dict(before[0])
+        self.assertEqual(old_tables.pop("clinical_source.episode_drafts"), [])
+        self.assertEqual(self.snapshot(), (old_tables, before[1]))
         with self.assertRaisesRegex(DBAPIError, "OI-LAB-CITATION-CASE-SOURCES-CHANGED"):
             with self.engine.begin() as conn:
                 write_directly(conn)
-        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.snapshot(), (old_tables, before[1]))
         migrate(self.admin, "upgrade", SCHEMA_REVISION)
         self.assertEqual(self.snapshot(), before)
         with self.engine.connect() as conn:

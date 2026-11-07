@@ -12,7 +12,7 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
     previous = list(credentials[0]['actions'])
     credentials[0]['actions'] = sorted(set(previous) | {
         'patient_read', 'case_binding_create', 'case_binding_read', 'source_import',
-        'source_read', 'source_original_read', 'composer_context_read',
+        'source_read', 'source_original_read', 'composer_context_read', 'episode_draft_read', 'episode_draft_create',
     })
     write_grants()
 
@@ -48,9 +48,20 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
         cd.wait('document.querySelector("[data-testid=server-original]")?.textContent===' + json.dumps(literal),
                 'original version and attribution retained')
 
+    def click_draft(label):
+        buttons = json.dumps('section[aria-label="Episode drafts"] button')
+        button = f'[...document.querySelectorAll({buttons})].find(b=>b.textContent==={json.dumps(label)})'
+        cd.wait(button + ' && !' + button + '.disabled', label)
+        cd.evaluate(button + '.click()')
+
+    def read_drafts():
+        return cd.evaluate("""[...document.querySelectorAll('[data-testid=saved-episode-draft]')]
+          .map(row=>({label:row.querySelector('strong').textContent,id:row.querySelector('details code').textContent,
+                     statement:row.querySelector('blockquote').textContent,body:row.textContent}))""")
+
     nodule_preflight = ('[...document.querySelectorAll("[data-testid=world-observation]")]'
                         '.find(e=>e.querySelector("strong").textContent==="nodule")'
-                        '.querySelector("[data-testid=composer-preflight]")')
+                        '?.querySelector("[data-testid=composer-preflight]")')
     source_path = '/cases/' + CASE + '/sources'
     try:
         operator('/case-bindings', {'synthetic': True, 'case_id': CASE, 'source_organization': 'FICT-ORIGIN',
@@ -94,14 +105,65 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
             expected.setdefault('Episode unassigned' if version == 1 else 'Episode EP-B', []).append(('nodule', 'indeterminate'))
             assert {k: sorted((key,state) for key,state,_ in items) for k,items in groups.items()} == expected, groups
             assert all(current['source_id'] in anchor and f'v{version}' in anchor for items in groups.values() for _,_,anchor in items)
+            if version == 1:
+                click_draft('Open saved episode drafts')
+                cd.wait('document.body.textContent.includes("No episode drafts saved for this case.")',
+                        'newly authorized case has no drafts')
+                for count, line in enumerate((8, 9), start=1):
+                    value = json.dumps(current['source_id'] + ':' + str(line))
+                    cd.evaluate("""(() => {const s=document.querySelector('section[aria-label="Episode drafts"] select');"""
+                                + "s.value=" + value + ";s.dispatchEvent(new Event('change',{bubbles:true}));})()")
+                    click_draft('Save episode draft')
+                    cd.wait(f'document.querySelectorAll("[data-testid=saved-episode-draft]").length==={count}',
+                            'explicit episode draft saved and re-read')
+                rows = read_drafts()
+                draft_ids = {r['label']:r['id'] for r in rows}
+                assert set(draft_ids) == {'EP-A','EP-B'} and len(set(draft_ids.values())) == 2
+            else:
+                # The current report is still visible under source_read, but the
+                # draft list itself would disclose statements from the old report.
+                click_draft('Open saved episode drafts')
+                cd.wait('document.querySelectorAll("[data-testid=saved-episode-draft]").length===2',
+                        'both original episode drafts visible before grant withdrawal')
+                assert {r['label']:r['id'] for r in read_drafts()} == draft_ids
+                credentials[0]['actions'].remove('source_original_read')
+                write_grants()
+                try:
+                    click_draft('Open saved episode drafts')
+                    cd.wait('document.querySelector("[data-testid=world-status]")?.textContent.includes("Episode draft access unavailable")',
+                            'historical draft lookup rechecks original-read permission')
+                    assert not read_drafts()
+                    assert not cd.evaluate('Boolean(document.querySelector("[data-testid=world-projection], [data-testid=server-original]"))')
+                finally:
+                    credentials[0]['actions'].append('source_original_read')
+                    write_grants()
+                select_case('Journey', 'world-load-cases', '.world-cases li', 'world-load')
+                click_draft('Open saved episode drafts')
+                cd.wait('document.querySelectorAll("[data-testid=saved-episode-draft]").length===2',
+                        'historical drafts reopened after fresh original-read authority')
+                rows = read_drafts()
+                assert {r['label']:r['id'] for r in rows} == draft_ids
+            for row in rows:
+                line, statement = {'EP-A':(8,'Fictional breast primary.'),'EP-B':(9,'Fictional colon primary.')}[row['label']]
+                assert row['statement'] == statement and 'Unreviewed draft' in row['body']
+                assert f'DOC-ALPHA v1 · line {line}' in row['body'] and selected_ids[0] in row['body']
+                expected_basis = 'Current source basis' if version == 1 else 'Reassessment required'
+                assert expected_basis in row['body']
+            click_draft('Inspect original report versions in Records')
+            inspect_original(1, originals[0])
+            if version == 2:
+                inspect_original(2, originals[1])
+            select_case('Journey', 'world-load-cases', '.world-cases li', 'world-load')
+            cd.wait(nodule_preflight + ' && !' + nodule_preflight + '.disabled', 'current nodule available for preflight')
             cd.evaluate(nodule_preflight + '.click()')
             expected_context = 'Source-reported metastasis · ' + ('Episode unassigned' if version == 1 else 'EP-B') + ' · indeterminate'
             cd.wait('document.querySelector("[data-testid=composer-context]")?.textContent.includes('
                     + json.dumps(expected_context) + ')', 'episode and uncertainty survive source-only preflight')
 
+        # Leave the v2 original open so both downstream withdrawal checks
+        # also cover previously disclosed bytes in Records.
         select_case('Records', 'load-cases', '[data-testid=case-row]', 'load-sources')
-        for version, original in enumerate(originals, start=1):
-            inspect_original(version, original)
+        inspect_original(2, originals[-1])
 
         # A protected action and an explicit projection refresh can each discover
         # withdrawal. Both must also clear the previously inspected original in Records.
@@ -134,12 +196,14 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
         (artifacts / 'oncology-episodes.json').write_text(json.dumps({
             'synthetic': True, 'case_id': CASE, 'source_ids': selected_ids,
             'source_sha256': [hashlib.sha256(s.encode()).hexdigest() for s in originals],
+            'durable_episode_draft_ids': draft_ids, 'amended_basis_flagged': True,
+            'historical_drafts_rechecked_original_read': True,
             'primary_episodes': ['EP-A', 'EP-B'], 'nodule_episode_history': [None, 'EP-B'],
             'nodule_reported_state': 'indeterminate', 'source_only_preflights': 2,
             'historical_original_verified': True, 'denied_read_cleared_records': True,
             'denied_preflight_cleared_records': True,
         }, indent=2) + '\n')
-        print('PASS ONCOLOGY EPISODES: file uploads, distinct primaries, amendment with retained uncertainty, source-only question context, exact originals and revocation.')
+        print('PASS ONCOLOGY EPISODES: two primaries retain independent unreviewed draft IDs and original lines after amendment; historical statements require fresh original-read permission; exact v1 and v2 originals verified in Records.')
     finally:
         credentials[0]['actions'] = previous
         write_grants()
