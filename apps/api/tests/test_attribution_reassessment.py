@@ -3,12 +3,58 @@ import hashlib
 from pathlib import Path
 import unittest
 
-from oi_api.attribution_reassessment import compare_versions
+from oi_api.attribution_reassessment import compare_versions, comparison_snapshot
 from open_intelligence.patient_registry import PatientRegistryError
 from open_intelligence.store import parse_report
 
 
 class ReassessmentTests(unittest.TestCase):
+    def test_snapshot_binds_scope_and_content_without_mutable_aliases(self):
+        from copy import deepcopy
+        pair = {"recorded": {"finding": {"source_statement": "Fictional old passage"}},
+                "latest": {"finding": None}}
+        args = dict(patient_id="PAT-A", case_id="CASE-A", question_id="QUESTION-A",
+                    receipt_id="REVIEW-A", first=pair, second=deepcopy(pair))
+        original = comparison_snapshot(**args)
+        self.assertEqual(original, comparison_snapshot(**args))
+        for key in ("patient_id", "case_id", "question_id", "receipt_id"):
+            self.assertNotEqual(original["sha256"], comparison_snapshot(**dict(args, **{key: "OTHER"}))["sha256"])
+        pair["latest"]["finding"] = {"source_statement": "Fictional amended passage"}
+        self.assertIsNone(original["content"]["first"]["latest"]["finding"])
+        self.assertNotEqual(original["sha256"], comparison_snapshot(**args)["sha256"])
+        self.assertFalse(original["content"]["clinical_approval"])
+
+    def test_comparison_service_writes_primitive_journal_metadata(self):
+        from contextlib import nullcontext
+        from unittest.mock import Mock, patch
+        import json
+        from oi_api.question_review_returns import PostgresQuestionReviewReturns
+        from open_intelligence.postgres_registry import PostgresPatientRegistry
+        registry = object.__new__(PostgresPatientRegistry)
+        registry._transaction_active = True
+        registry.transaction = lambda: nullcontext()
+        registry.require_patient = Mock()
+        registry._execute = Mock()
+        owner = PostgresQuestionReviewReturns(registry)
+        question = dict(self.anchor, question_id="QUESTION-A")
+        receipt = dict(receipt_id="REVIEW-A", question_id="QUESTION-A", comparison_source=self.anchor)
+        index = {"sources": [dict(self.later, state="current")],
+                 "source_reported_assertions": [self.finding], "access_receipt_id": "ACCESS-A"}
+        with patch.object(owner, "_read_locked", return_value=([question], [receipt])), \
+             patch("oi_api.question_review_returns.PostgresSourceVersions") as source_class:
+            sources = source_class.return_value
+            sources.list_locked.side_effect = lambda *args, **kwargs: kwargs["prepare_response"](index)
+            sources.original_locked.return_value = dict(self.original, access_receipt_id="ACCESS-B")
+            packet = owner.compare_attributions("PAT-A", "CASE-A", "REVIEW-A", organization="ORG-A",
+                actor="ACTOR-A", purpose="operations", recheck_authority=lambda: None)
+        metadata = json.loads(registry._execute.call_args.args[1][2])
+        expected = comparison_snapshot(patient_id="PAT-A", case_id="CASE-A", question_id="QUESTION-A",
+            receipt_id="REVIEW-A", first=packet["first"], second=packet["second"])
+        self.assertEqual(metadata["comparison_sha256"], expected["sha256"])
+        self.assertEqual(metadata["comparison_contract"], expected["content"]["contract"])
+        self.assertNotIn("comparison_snapshot", metadata)
+        registry._execute.assert_called_once()
+
     def setUp(self):
         directory = Path(__file__).resolve().parents[3] / "examples/synthetic"
         self.raw = (directory / "episode-origin-consult-v1.txt").read_text()

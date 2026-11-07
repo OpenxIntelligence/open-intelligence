@@ -1,6 +1,20 @@
 """Compare recorded passages with current statements from the same document histories."""
-from open_intelligence.patient_registry import PatientRegistryError
+from copy import deepcopy
+
+from open_intelligence.patient_registry import PatientRegistryError, _digest
 from open_intelligence.store import parse_report
+
+
+def comparison_snapshot(*, patient_id: str, case_id: str, question_id: str,
+                        receipt_id: str, first: dict, second: dict) -> dict:
+    """Bind inspected content; immutable source references retain its passages."""
+    content = deepcopy({
+        "contract": "oi.synthetic-attribution-comparison-snapshot/1",
+        "patient_id": patient_id, "case_id": case_id, "question_id": question_id,
+        "review_receipt_id": receipt_id, "first": first, "second": second,
+        "synthetic": True, "clinical_approval": False,
+    })
+    return {"content": content, "sha256": _digest(content)}
 
 
 def compare_versions(anchor: dict, original: dict, latest: dict, findings: list[dict]) -> dict:

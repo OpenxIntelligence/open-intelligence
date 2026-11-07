@@ -229,6 +229,15 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
                 self.write()
             append = PostgresPatientRegistry.append_event
             def revoke(registry, pid, kind, **details):
+                if kind == "investigation.review.attribution_compared":
+                    from oi_api.attribution_reassessment import comparison_snapshot
+                    expected = comparison_snapshot(patient_id=patient, case_id="CASE-ALPHA",
+                        question_id=missing["question_id"], receipt_id=pair,
+                        first=missing["first"], second=missing["second"])
+                    self.assertEqual(details["comparison_sha256"], expected["sha256"])
+                    self.assertEqual(details["comparison_contract"], expected["content"]["contract"])
+                    self.assertTrue(all(isinstance(value, (str, int, bool, type(None))) for value in details.values()))
+                    self.assertNotIn("comparison_snapshot", details)
                 append(registry, pid, kind, **details)
                 if kind == "investigation.review.attribution_compared":
                     self.creds[0]["actions"].remove("source_original_read")
