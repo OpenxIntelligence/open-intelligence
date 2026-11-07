@@ -343,3 +343,41 @@ test('invalid history clears earlier results and provides retry state',async()=>
  await session.loadSourceHistory(source().received_at);
  assert.equal(session.snapshot().historyPhase,'error');assert.equal(session.snapshot().sourceHistory,null);
 });
+
+test('semantic reads reject a response after disconnect and clear denied source context',async()=>{
+  let resolve,replyMode='deferred';
+  const s=new RegistrySession(async url=>{
+    if(url.endsWith('/semantics'))return replyMode==='denied'?response({detail:'Source unavailable'},404):new Promise(r=>{resolve=r;});
+    if(url.endsWith('/case-bindings'))return response(caseList());
+    if(url.endsWith('/world-model'))return response(world());
+    return response(patient());
+  });
+  s.connect(token);await s.read(patientId);await s.loadCases();await s.loadWorldModel(caseId);
+  const pending=s.readSourceSemantics(s.snapshot().worldModel);
+  s.disconnect();resolve(response({}));
+  await assert.rejects(pending);
+  s.connect(token);await s.read(patientId);await s.loadCases();await s.loadWorldModel(caseId);
+  replyMode='denied';
+  await assert.rejects(s.readSourceSemantics(s.snapshot().worldModel));
+  assert.equal(s.snapshot().worldModel,null);
+  assert.equal(s.snapshot().worldPhase,'error');
+});
+
+test('a historical semantic read cannot survive history dismissal or refresh',async()=>{
+  for(const invalidate of [s=>s.dismissSourceHistory(),s=>s.loadWorldModel(caseId),s=>s.disconnect()]){
+    let resolve;
+    const s=new RegistrySession(async url=>{
+      if(url.includes('/history/semantics?'))return new Promise(r=>resolve=r);
+      if(url.includes('/history?'))return response(history());
+      if(url.endsWith('/case-bindings'))return response(caseList());
+      if(url.endsWith('/world-model'))return response(world());
+      return response(patient());
+    });
+    s.connect(token);await s.read(patientId);await s.loadCases();await s.loadWorldModel(caseId);
+    await s.loadSourceHistory(source().received_at);
+    const past=s.snapshot().sourceHistory;
+    const pending=s.readSourceSemantics(past.world_model,past);
+    await invalidate(s);resolve(response({}));await assert.rejects(pending);
+    assert.equal(s.snapshot().sourceHistory,null);
+  }
+});

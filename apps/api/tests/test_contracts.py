@@ -137,6 +137,8 @@ class HTTPContractTests(unittest.TestCase):
             evidence_return,
             "/v1/patients/{patient_id}/permissions",
             "/v1/patients/{patient_id}/permissions/{grant_id}/revocations",
+            "/v1/patients/{patient_id}/cases/{case_id}/world-model/semantics",
+            "/v1/patients/{patient_id}/cases/{case_id}/world-model/history/semantics",
             "/v1/patients/{patient_id}/encounters",
             "/v1/patients/{patient_id}/encounters/events",
             "/v1/patients/{patient_id}/encounters/{encounter_id}/transitions",
