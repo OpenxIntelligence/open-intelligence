@@ -261,7 +261,7 @@ class SourceVersion(HistoricalSourceVersion):
     state: Literal["current", "superseded"]
 
 
-class SourceHistory(Contract):
+class SourceMembershipHistory(Contract):
     contract: Literal["oi.synthetic-source-history/1"]
     patient_id: str
     case_id: str
@@ -1126,9 +1126,9 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
 
-    @router.get("/{patient_id}/cases/{case_id}/source-history", response_model=SourceHistory,
-                responses=errors, operation_id="read_source_history_v1")
-    def source_history(request: Request, patient_id: str, case_id: str, received_through: str,
+    @router.get("/{patient_id}/cases/{case_id}/source-history", response_model=SourceMembershipHistory,
+                responses=errors, operation_id="read_source_membership_history_v1")
+    def source_membership_history(request: Request, patient_id: str, case_id: str, received_through: str,
                        context: Principal = Depends(principal)):
         try:
             # Reject ambiguous cutoffs before opening a database transaction.
@@ -1138,7 +1138,7 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                 return PostgresSourceVersions(patients).list(
                     patient_id, case_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose, received_through=received_through,
-                    prepare_response=lambda index: JSONResponse(SourceHistory(**index).model_dump(mode="json")),
+                    prepare_response=lambda index: JSONResponse(SourceMembershipHistory(**index).model_dump(mode="json")),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "source_read"))
         except PatientRegistryDenied:

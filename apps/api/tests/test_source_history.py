@@ -12,7 +12,7 @@ from sqlalchemy import text
 from oi_api.app import create_app
 from oi_api.config import Settings
 from oi_api.database import Database
-from oi_api.patients import SourceHistory
+from oi_api.patients import SourceMembershipHistory
 from oi_api.sources import PostgresSourceVersions
 from oi_api.source_integrity import SourceIntegrityError
 from open_intelligence.patient_registry import PatientRegistryError
@@ -119,12 +119,12 @@ class SourceHistoryHTTPTests(SourceVersionFixture):
             self.ingest(base, patient)
             path = self.history_url(patient,datetime.now(timezone.utc).isoformat())
             initial = json.loads(json.dumps(self.creds))
-            dump = SourceHistory.model_dump
+            dump = SourceMembershipHistory.model_dump
             def withdraw(model, *args, **kwargs):
                 result = dump(model,*args,**kwargs)
                 self.creds[0]["patient_ids"] = []; self.write()
                 return result
-            with patch.object(SourceHistory,"model_dump",withdraw):
+            with patch.object(SourceMembershipHistory,"model_dump",withdraw):
                 status,body,_ = request(base,path,token=TOKEN_A)
                 self.assertEqual(status,404); self.assertNotIn("sources",body)
             self.creds = json.loads(json.dumps(initial)); self.write()

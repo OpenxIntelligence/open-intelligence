@@ -31,3 +31,11 @@ No new runtime dependencies or database migration. No real patient input, histor
 ## Remaining engineering work
 
 #616 semantic classification overlaps source/API and World Model owners and needs separate conflict-aware convergence. #629 adds independent purpose enforcement; ensure it composes with the persisted grants from #611. #623 lab trends and #627 hypotheses have separate scientific evaluation gates. Full product scope remains human and veterinary oncology EHR, diagnostics, pathology/molecular/genomics, treatments, clinical trials/research, operations, permissions/consent and biomedical computation. Reconcile moving main only after final-head qualification and independent merge review.
+
+## Integration defect found and repaired before hosted acceptance
+
+Independent donor branches each used the Python name `SourceHistory`, the route handler name `source_history`, and OpenAPI operation ID `read_source_history_v1` for different historical contracts. A simple structural merge therefore shadowed the source-membership Pydantic response model with the World Model history model and duplicated the operation ID.
+
+The repair preserves the established `/world-model/history` model/handler/operation ID unchanged. The `/source-history` membership endpoint now uses `SourceMembershipHistory`, `source_membership_history`, and `read_source_membership_history_v1`. The source-membership donor tests patch the correct model. A new dependency-free AST regression `apps/api/tests/test_history_route_collision.py` fails on the collision and passes on the corrected revision. Both historical API behaviors remain separate.
+
+Local evidence: the new 1-test regression failed against the initial merge with two `SourceHistory` classes and passed after repair. `python -m py_compile` and `node --check` passed. Full runtime tests still require hash-locked CI because this local runtime lacks pydicom/pg8000.
