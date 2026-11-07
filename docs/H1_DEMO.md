@@ -37,6 +37,10 @@ Overview shows up to three record-preparation prompts for the checked case. Unde
 
 The supplied laboratory file `examples/synthetic/fictional-fhir-r4-lab-bundle.json` can also be deliberately imported in Records for this case. Its patient reference matches the fictional case binding. Original JSON and typed values stay source-reported; no reference-range interpretation or laboratory-to-question creation is added.
 
+## Ask about a reviewed document
+
+In Records, open a saved text or PDF original with a saved passage selection. Choose **Draft a question about** the quotation, enter a question, and choose **Save passage question**. Reopen the document and select **Open saved passage questions** to retrieve it. The original quotation, line and selection revision remain attached after a correction. The history labels questions affected by the change. After an interrupted save, **Retry exact save** recovers the original request within the connected session.
+
 ## Stop, resume and inspect
 
 Stop the frontend with Ctrl+C, then:

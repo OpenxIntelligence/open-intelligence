@@ -55,10 +55,15 @@ export async function decodeSelection(value:unknown,scope:Pick<PassageScope,'pat
 export async function decodeChosenPassage(value:unknown,scope:Pick<PassageScope,'patient_id'|'case_id'>,doc:Document,finding:Finding):Promise<ResolvedPassage>{
  const revision=doc.revisions.at(-1);
  if(!revision||doc.state!=='current')throw Error('Refresh the saved record before choosing a passage.');
+ const passage=await decodeSavedPassage(value,scope,doc,revision,finding);
+ if(passage.selection_state!=='current_unreviewed_selection')throw Error('This selection changed. Refresh the document before attaching it.');
+ return passage;
+}
+export async function decodeSavedPassage(value:unknown,scope:Pick<PassageScope,'patient_id'|'case_id'>,doc:Document,revision:Document['revisions'][number],finding:Finding):Promise<ResolvedPassage>{
  const passage=await decodeSelection(value,scope,{
   source_id:doc.source_id,annotation_revision_id:revision.revision_id,selection_key:finding.key,
  });
- if(passage.selection_state!=='current_unreviewed_selection')throw Error('This selection changed. Refresh the document before attaching it.');
+ if(passage.latest_annotation_revision_id!==doc.revisions.at(-1)?.revision_id||passage.source_state!==doc.state)throw Error('Refresh the record to see current selection status.');
  const anchor=passage.anchor;
  const line=doc.preview.lines[finding.line-1];
  const pdf=doc.preview.media_type==='application/pdf';

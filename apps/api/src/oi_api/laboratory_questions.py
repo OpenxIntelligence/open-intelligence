@@ -97,7 +97,7 @@ class PostgresLaboratoryQuestions:
             # this check and remain recoverable at capacity.
             total, = self.registry._fetchone(
                 "SELECT count(*) FROM investigation.source_questions WHERE patient_id=%s AND case_id=%s "
-                "AND origin_org=%s AND purpose=%s AND source_line IS NULL",
+                "AND origin_org=%s AND purpose=%s AND source_line IS NULL AND source_snapshot_contract <> 'oi.reviewed-document-selection/1'",
                 (patient_id, case_id, organization, purpose),
             )
             if total >= MAX_LABORATORY_QUESTIONS:
@@ -162,7 +162,7 @@ class PostgresLaboratoryQuestions:
                 "q.actor,q.request_key,q.intent_sha256,a.source_id,a.observation_reference "
                 "FROM investigation.source_questions q LEFT JOIN investigation.laboratory_question_anchors a "
                 "ON a.question_id=q.question_id WHERE q.patient_id=%s AND q.case_id=%s "
-                "AND q.origin_org=%s AND q.purpose=%s AND q.source_line IS NULL "
+                "AND q.origin_org=%s AND q.purpose=%s AND q.source_line IS NULL AND q.source_snapshot_contract <> 'oi.reviewed-document-selection/1' "
                 "ORDER BY q.created_at,q.question_id LIMIT %s",
                 (patient_id, case_id, organization, purpose, MAX_LABORATORY_QUESTIONS + 1),
             )

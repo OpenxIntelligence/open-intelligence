@@ -168,6 +168,22 @@ export class RegistrySession {
   // Exact reference-only commands survive a transient panel or evidence refresh.
   // Scope checks withhold recovery controls from another patient/case/question;
   // explicit disconnect clears this in-memory session just like other drafts.
+  #documentQuestionIntents=new Map<string,string>();
+  documentQuestionIntent(patient:string,caseId:string,source:string){
+    const key=JSON.stringify([patient,caseId,source]), epoch=this.#scope;
+    const current=()=>epoch===this.#scope&&this.#state.connected&&this.#state.patient?.patient_id===patient&&
+      this.#state.sourceIndex?.case_id===caseId&&this.#state.sourceIndex.patient_id===patient;
+    return {
+      read:()=>current()?this.#documentQuestionIntents.get(key)??null:null,
+      begin:(body:string)=>{
+        if(!current())throw Error('Recheck document access');
+        const exact=this.#documentQuestionIntents.get(key)??body;
+        this.#documentQuestionIntents.set(key,exact);
+        return exact;
+      },
+      finish:(body:string)=>{if(epoch===this.#scope&&this.#documentQuestionIntents.get(key)===body)this.#documentQuestionIntents.delete(key);},
+    };
+  }
   #manualPassageIntents=new Map<string,string>();
   #manualPassageDrafts=new Map<string,import('./question-passages').ManualSelectionDraft>();
   #manualDraftEpoch=0;
@@ -194,7 +210,7 @@ export class RegistrySession {
       write:body=>{if(body===null)this.#manualPassageIntents.delete(key);else if(current())this.#manualPassageIntents.set(key,body);}};
   };
   async documentRequest(caseId:string,path:string,body?:string,questionId?:string):Promise<import('./reviewed-documents').DocumentReply>{
-    if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations)|\/selections\/ANN-[A-F0-9]{32}\/[a-z][a-z0-9_-]{0,59})?$/.test(path))throw Error('Invalid document path');
+    if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations|questions)|\/selections\/ANN-[A-F0-9]{32}\/[a-z][a-z0-9_-]{0,59})?$/.test(path))throw Error('Invalid document path');
     if(questionId!==undefined&&!/^QUESTION-[A-F0-9]{32}$/.test(questionId))throw Error('Invalid question scope');
     return this.#caseContentRequest(caseId,'/documents'+path,body,questionId);
   }
@@ -213,7 +229,7 @@ export class RegistrySession {
     const current=()=>scope===this.#scope&&read===this.#read&&records===this.#records&&patient===this.#state.patient?.patient_id&&caseContext();
     if(!patient||!this.#token||!current())throw Error('Recheck patient and case access');
     const control=new AbortController();this.#controllers.add(control);
-    const timeout=questionId!==undefined?setTimeout(()=>control.abort(),10000):undefined;
+    const timeout=questionId!==undefined||path.endsWith('/questions')?setTimeout(()=>control.abort(),10000):undefined;
     try{
       const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+path,this.#init(control,body));
       if(!current()){
@@ -441,6 +457,7 @@ export class RegistrySession {
   };
   #clearPatientSessionData(){
     this.#questionRetryKeys.clear();
+    this.#documentQuestionIntents.clear();
     this.#manualPassageIntents.clear();
     this.#laboratoryWrite++;this.#laboratoryWriting=false;
     this.#scope++;this.#read++;this.#records++;this.#creating=false;this.#uploading=false;
