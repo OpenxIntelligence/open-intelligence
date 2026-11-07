@@ -537,9 +537,27 @@ def _check_k5_snapshot(claim: dict, context: KCheckContext) -> dict | None:
     return None
 
 
+def _facets_disagree(facets: list[Slot], context: KCheckContext) -> bool:
+    """True when the cited facets for one field carry two or more distinct
+    normalised values, i.e. the cited sources disagree on that field.
+
+    Values are normalised with normalise_value(facet.value, context.synonyms),
+    exactly as the K2 slot-mismatch loop does, so synonyms are not counted
+    as a disagreement."""
+    values = {normalise_value(facet.value, context.synonyms) for facet in facets}
+    return len(values) >= 2
+
+
 def _check_k2(claim: dict, context: KCheckContext) -> dict | None:
     """Slot-field match against the cited facets, plus the
-    condition-scope sub-check."""
+    condition-scope sub-check.
+
+    Narrow carve-out: a claim with support "contradicts" whose cited facets
+    for a field disagree (two or more distinct normalised values) is
+    reporting a disagreement between cited sources, not asserting a single
+    value. The slot-mismatch check is skipped for that field only; such
+    claims are routed to T6 grouping downstream, not K2. The
+    k2_no_cited_facet drop and the condition-scope sub-check still apply."""
     text = claim["text"]
     asserted = derive_claim_slots(text, context.derived_slots, context.synonyms)
     cited = _cited_slots(claim, context)
@@ -550,6 +568,10 @@ def _check_k2(claim: dict, context: KCheckContext) -> dict | None:
         facets = by_field.get(pair["field"])
         if not facets:
             return _drop(claim, "K2", "k2_no_cited_facet", {"field": pair["field"]})
+        # Disagreement report: the claim reports that cited sources disagree
+        # on this field. Contradicts-only; handled by T6 grouping, not K2.
+        if claim.get("support") == "contradicts" and _facets_disagree(facets, context):
+            continue
         for facet in facets:
             cited_value = normalise_value(facet.value, context.synonyms)
             if cited_value != pair["value"]:

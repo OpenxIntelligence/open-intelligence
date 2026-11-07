@@ -19,7 +19,6 @@ from open_intelligence.__main__ import (
     AUTH_REQUIRED_MESSAGE,
     DEMO_ACTOR,
     DEMO_OPERATOR,
-    FICTIONAL_ACTOR_HEADER,
     FICTIONAL_ACTOR_PURPOSE,
     ROLE_DENIAL_MESSAGE,
     Handler,
@@ -92,12 +91,10 @@ class AccessLogHttpTests(unittest.TestCase):
         self.assertEqual(status, 200, body)
         return cookie.split(";", 1)[0]
 
-    def request(self, path, data=None, cookie=None, actor=None):
+    def request(self, path, data=None, cookie=None):
         headers = {}
         if cookie is not None:
             headers["Cookie"] = cookie
-        if actor is not None:
-            headers[FICTIONAL_ACTOR_HEADER] = actor
         status, _, body = self.raw(path, data, headers)
         return status, body
 
@@ -140,9 +137,10 @@ class AccessLogHttpTests(unittest.TestCase):
         status, body = self.request(f"/api/cases/{CASE_A}/access-log", cookie=patient)
         self.assertEqual(status, 403)
         self.assertEqual(body, {"error": ROLE_DENIAL_MESSAGE})
-        # The transitional header is not a session: header-only requests
+        # The removed header is not a session: header-only requests
         # are 401 here, never a role decision.
-        status, body = self.request(f"/api/cases/{CASE_A}/access-log", actor=CLINICIAN)
+        status, _, body = self.raw(f"/api/cases/{CASE_A}/access-log", None,
+                                   {"X-Fictional-Actor": CLINICIAN})
         self.assertEqual(status, 401)
         self.assertEqual(body, {"error": AUTH_REQUIRED_MESSAGE})
         # Unsigned-in requests are 401.

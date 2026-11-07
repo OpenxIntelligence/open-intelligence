@@ -21,12 +21,21 @@ anywhere:
 * ``lot-rules-2``: one line per distinct regimen key in
   first-occurrence order; a regimen that re-appears after a different
   regimen RESUMES its earlier line (no new line).
+* ``therapy-rules-1`` (cardiology, slice V2): one line per distinct
+  therapy CLASS in first-occurrence order; a re-appearing regimen
+  resumes its earlier line. Class is the regimen key minus its
+  final hyphen-delimited segment (the agent name), so
+  ``beta-blocker-metoprolol`` and ``beta-blocker-atenolol`` are one
+  class; a key with no hyphen is its own class. The line's
+  ``regimen_key`` value stores the class label. The rationale, as
+  fixture logic: switching agents within a drug class is a regimen
+  adjustment, not a new line; switching classes starts a new line.
 
 An unknown ruleset label fails closed with
 ``unknown_ruleset_version`` — the toolset never silently applies one
 version's rules under another version's label. A vertical whose
-ruleset has no pinned entry here (cardiology's ``therapy-rules-1``)
-is unknown until its ruleset is defined, and is reported as such.
+ruleset has no pinned entry here is unknown until its ruleset is
+defined, and is reported as such.
 
 Input contract: therapy regimens are named explicitly by the caller
 (``therapy_finding_keys`` — the finding keys that denote therapy
@@ -99,12 +108,43 @@ def _rule_v2(occurrences):
     return lines
 
 
+def _rule_cardiology_v1(occurrences):
+    """therapy-rules-1: one line per therapy class; a re-appearing
+    regimen resumes its earlier line.
+
+    Class is the regimen key minus its final hyphen-delimited
+    segment (the agent name): ``beta-blocker-metoprolol`` and
+    ``beta-blocker-atenolol`` are one class; a key with no hyphen
+    is its own class. The line's ``regimen_key`` stores the class
+    label, documented as such — the ruleset defines what
+    identifies a line.
+    """
+    lines = []
+    by_class = {}
+    for occurrence in occurrences:
+        key = occurrence["finding_key"]
+        therapy_class = key.rsplit("-", 1)[0] if "-" in key else key
+        if therapy_class not in by_class:
+            line = {
+                "line_number": len(lines) + 1,
+                "regimen_key": therapy_class,
+                "first_occurred": occurrence["occurred"],
+                "last_occurred": occurrence["occurred"],
+            }
+            lines.append(line)
+            by_class[therapy_class] = line
+        else:
+            by_class[therapy_class]["last_occurred"] = occurrence["occurred"]
+    return lines
+
+
 #: Pinned synthetic rulesets: version label -> counting rule. The
 #: labels are opaque strings from the vertical; the rules are fixture
 #: logic, not guideline content.
 LOT_RULESETS = {
     "lot-rules-1": _rule_v1,
     "lot-rules-2": _rule_v2,
+    "therapy-rules-1": _rule_cardiology_v1,
 }
 
 

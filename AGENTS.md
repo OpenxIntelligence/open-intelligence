@@ -16,7 +16,7 @@ The repository contains a synthetic implementation and a planning foundation. Im
 
 ## Product principles
 
-- Preserve the full longitudinal oncology and biological research ambition.
+- Preserve the full multi-vertical platform ambition — starting with longitudinal cancer care and biological research, spanning domains on a shared core, with each vertical keeping its own rules, toolsets, and evidence.
 - Organize work around a patient case, durable questions, source evidence, review, and updates.
 - Distinguish reported observations, extraction proposals, calculations, clinical interpretations, and research hypotheses.
 - Preserve missing, negative, pending, indeterminate, and conflicting states separately.

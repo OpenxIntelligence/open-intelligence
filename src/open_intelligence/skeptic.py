@@ -335,7 +335,10 @@ def build_repair_prompt(attempts: list[dict]) -> str:
         "evidence listed with it supports, keeping the same meaning "
         "where the evidence allows it. Keep the claim's citations "
         "unchanged. Do not add any number, identifier, date, or named "
-        "substance that is not in the quoted evidence. Do not recommend "
+        "substance that is not in the quoted evidence. Attribute each claim "
+        "to its sources through the citations array only. Do not write source "
+        'version numbers in the claim text itself, neither "Source version N" '
+        'nor "version N"; the citation identifies the source. Do not recommend '
         "treatment, select therapy, dose, or diagnose. If the claim "
         "cannot be restated truthfully from the quoted evidence, mark "
         "it cannot_repair.",

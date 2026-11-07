@@ -88,6 +88,9 @@
           <a href="#analytics">Analytics</a>
           <a href="#hypothesis-report">Hypothesis generation</a>
           <a href="#appointments">Appointments</a>
+          <a href="#notifications">Notifications</a>
+          <a href="#referrals">Referrals</a>
+          <a href="#care-team">Care team</a>
         </nav>
       </details>
       <div class="side-bottom">
@@ -316,6 +319,115 @@
           <label for="appt-change-reason">Why this change (required, kept in history)</label>
           <textarea id="appt-change-reason" rows="2" minlength="10" maxlength="600" required></textarea>
           <button class="button" type="submit">Record change</button>
+        </form>
+      </section>
+      <section class="panel" id="notifications" aria-labelledby="notifications-heading">
+        <div class="panel-head"><div><div class="eyebrow">02f / NOTIFICATIONS</div><h2 id="notifications-heading">Notifications</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Due items and changes recorded for this fictional case: overdue and due-soon follow-through tasks, past-due appointments, tasks needing a re-check, open re-review tasks, and stale drafts whose question is still open. Nothing is sent anywhere — this list is the only delivery. Clearing a notification acknowledges the alert only; the underlying task, draft, or review item stays exactly as it was until a human changes it. Nothing here recommends treatment, selects therapy, doses, or diagnoses.</p>
+        <button id="notifications-apply" type="button" class="button secondary minor">Load notifications</button>
+        <p id="notifications-status" class="muted tiny"></p>
+        <p id="notifications-disclaimer" class="muted tiny"></p>
+        <div id="notifications-list" class="activity" aria-live="polite"></div>
+      </section>
+      <section class="panel" id="referrals" aria-labelledby="referrals-heading">
+        <div class="panel-head"><div><div class="eyebrow">02g / REFERRALS</div><h2 id="referrals-heading">Referrals</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Requests to send a question about this fictional case to another team for input, with their status and outcome. Recording a referral records the request — it sends no message, books nothing, and contacts no one. An outcome is a separate record that never overwrites the request; a referral with a recorded outcome stays in history, and further work is a new referral. Nothing here recommends treatment, selects therapy, doses, or diagnoses.</p>
+        <button id="referrals-apply" type="button" class="button secondary minor">Load referrals</button>
+        <p id="referrals-status" class="muted tiny"></p>
+        <p id="referrals-disclaimer" class="muted tiny"></p>
+        <div id="referrals-list" class="activity" aria-live="polite"></div>
+        <div class="subhead">Record a referral</div>
+        <form id="referrals-form">
+          <label for="ref-question-choice">Case question this referral is about</label><select id="ref-question-choice" required></select>
+          <label for="ref-specialty">Receiving team or specialty (plain label)</label>
+          <input id="ref-specialty" type="text" maxlength="120" required placeholder="Fictional specialty, for example cardiology">
+          <label for="ref-reason">Why this referral is requested (plain description)</label>
+          <textarea id="ref-reason" rows="2" minlength="10" maxlength="500" required placeholder="What the other team is being asked about, in plain words."></textarea>
+          <fieldset class="choice-group">
+            <legend>Materials shared by reference</legend>
+            <div id="ref-source-choice" class="source-choice"></div>
+          </fieldset>
+          <label for="ref-actor">Your label (who records this)</label>
+          <input id="ref-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <button class="button" type="submit">Record referral</button>
+        </form>
+        <div class="subhead">Record receipt of a referral</div>
+        <form id="referrals-acknowledge-form">
+          <label for="ref-ack-choice">Referral</label><select id="ref-ack-choice" required></select>
+          <label for="ref-ack-actor">Your label (who records receipt)</label>
+          <input id="ref-ack-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <label for="ref-ack-reason">Why this receipt is recorded (required, kept in history)</label>
+          <textarea id="ref-ack-reason" rows="2" minlength="10" maxlength="600" required></textarea>
+          <button class="button" type="submit">Record acknowledgment</button>
+        </form>
+        <div class="subhead">Record a referral outcome</div>
+        <form id="referrals-outcome-form">
+          <label for="ref-outcome-choice">Referral</label><select id="ref-outcome-choice" required></select>
+          <label for="ref-outcome-kind">Outcome</label>
+          <select id="ref-outcome-kind" required>
+            <option value="accepted">Accepted — the receiving team took it on for review</option>
+            <option value="declined">Declined — the receiving team declined it</option>
+            <option value="completed">Completed — the consultation is done</option>
+          </select>
+          <label for="ref-outcome-text">Outcome (plain description, 10–2000 characters)</label>
+          <textarea id="ref-outcome-text" rows="3" minlength="10" maxlength="2000" required placeholder="Describe the recorded outcome in plain words."></textarea>
+          <label for="ref-outcome-anchor-choice">Source version this outcome discusses</label><select id="ref-outcome-anchor-choice" required></select>
+          <label for="ref-outcome-actor">Your label (who records this outcome)</label>
+          <input id="ref-outcome-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <label for="ref-outcome-reason">Why this outcome is recorded (required, kept in history)</label>
+          <textarea id="ref-outcome-reason" rows="2" minlength="10" maxlength="600" required></textarea>
+          <button class="button" type="submit">Record outcome</button>
+        </form>
+      </section>
+      <section class="panel" id="care-team" aria-labelledby="care-team-heading">
+        <div class="panel-head"><div><div class="eyebrow">02h / CARE TEAM</div><h2 id="care-team-heading">Care team</h2></div><span class="pill pill-warn">FICTIONAL DEMO DATA — not a real patient</span></div>
+        <p class="muted">Shared updates and handoffs the patient and team read in the product, not outside it. A shared update is a note the whole team sees; a handoff records a transfer of responsibility for a case question. Recording either sends no message, books nothing, and contacts no one. The patient sees the same shared record as the clinician; the role boundary is write access, not visibility. Nothing here recommends treatment, selects therapy, doses, or diagnoses.</p>
+        <button id="care-team-apply" type="button" class="button secondary minor">Load care team</button>
+        <p id="care-team-status" class="muted tiny"></p>
+        <p id="care-team-disclaimer" class="muted tiny"></p>
+        <div id="care-team-list" class="activity" aria-live="polite"></div>
+        <div class="subhead">Post a shared update</div>
+        <form id="care-team-update-form">
+          <label for="team-update-text">Update (plain description, 10–1000 characters)</label>
+          <textarea id="team-update-text" rows="2" minlength="10" maxlength="1000" required placeholder="What the team should know, in plain words."></textarea>
+          <label for="team-update-author">Your label (who posts this)</label>
+          <input id="team-update-author" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <button class="button" type="submit">Post update</button>
+        </form>
+        <div class="subhead">Record a handoff</div>
+        <form id="care-team-handoff-form">
+          <label for="ho-question-choice">Case question this handoff is about</label><select id="ho-question-choice" required></select>
+          <label for="ho-from">Handing over from (label)</label>
+          <input id="ho-from" type="text" maxlength="80" required placeholder="Fictional actor (unverified)">
+          <label for="ho-to">Handing over to (label)</label>
+          <input id="ho-to" type="text" maxlength="80" required placeholder="Fictional actor (unverified)">
+          <label for="ho-reason">Why this handoff is recorded (plain description)</label>
+          <textarea id="ho-reason" rows="2" minlength="10" maxlength="500" required placeholder="What responsibility is being handed over, in plain words."></textarea>
+          <fieldset class="choice-group">
+            <legend>Materials handed over by reference</legend>
+            <div id="ho-source-choice" class="source-choice"></div>
+          </fieldset>
+          <label for="ho-actor">Your label (who records this)</label>
+          <input id="ho-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <button class="button" type="submit">Record handoff</button>
+        </form>
+        <div class="subhead">Record receipt of a handoff</div>
+        <form id="care-team-handoff-acknowledge-form">
+          <label for="ho-ack-choice">Handoff</label><select id="ho-ack-choice" required></select>
+          <label for="ho-ack-actor">Your label (who records receipt)</label>
+          <input id="ho-ack-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <label for="ho-ack-reason">Why this receipt is recorded (required, kept in history)</label>
+          <textarea id="ho-ack-reason" rows="2" minlength="10" maxlength="600" required></textarea>
+          <button class="button" type="submit">Record acknowledgment</button>
+        </form>
+        <div class="subhead">Close a handoff</div>
+        <form id="care-team-handoff-close-form">
+          <label for="ho-close-choice">Handoff</label><select id="ho-close-choice" required></select>
+          <label for="ho-close-actor">Your label (who records the close)</label>
+          <input id="ho-close-actor" type="text" maxlength="80" required placeholder="Fictional recorder (unverified)">
+          <label for="ho-close-reason">Closing note (required, kept in history)</label>
+          <textarea id="ho-close-reason" rows="2" minlength="10" maxlength="600" required></textarea>
+          <button class="button" type="submit">Close handoff</button>
         </form>
       </section>
       <section class="panel" id="patient-view">

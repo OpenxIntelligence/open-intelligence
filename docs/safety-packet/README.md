@@ -37,16 +37,19 @@ bibliography panel, synthetic metrics, the review queue and receipts,
 scoped review, and re-review tasks. `SBOM.md` maps each surface to
 its module, routes, store tables, and UI panel.
 
-Auth state on `main`: the demo still runs behind the B-01
-fictional-actor gate (`X-Fictional-Actor` header, deny-by-default,
-seeded demo actor, `actor_grants` + `access_log` tables). There are
-no real accounts, roles, or sessions on `main` yet. Real accounts,
-roles, and sessions are pending in PR #515 (readied for merge on
-green; the demo-credential, registration, roles/patient-binding,
+Auth state on `main`: local demo accounts, roles, and 24-hour
+server-side sessions exist (operator / clinician / patient
+read-only on their own case / auditor; operator-created accounts
+only). Case routes require a live session, a live grant
+(`actor_grants` table, deny-by-default), and role permission; every
+case access is written to `access_log`, readable by operator/auditor.
+The `X-Fictional-Actor` header path was removed in auth slice 2
+(W1): a header-only request is denied. These are local demo labels,
+not verified identities — there is still no authenticated identity,
+consent, delegation, production access control, or full security
+assessment. The demo-credential, registration, roles/patient-binding,
 header-retirement, session, access-log-UI, and vanilla-only decisions
-were confirmed by the user on 2026-11-05). The `access_log` table
-exists on `main` but has no HTTP route or UI there — that arrives
-with #515.
+were confirmed by the user on 2026-11-05.
 
 ## Rules this packet follows
 

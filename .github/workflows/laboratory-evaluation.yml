@@ -3,11 +3,14 @@ on:
   pull_request:
     paths:
       - 'apps/api/src/oi_api/laboratory_evaluation.py'
+      - 'apps/api/src/oi_api/laboratory_experiments.py'
       - 'apps/api/src/oi_api/laboratory_fhir_r4.py'
       - 'apps/api/tests/test_laboratory_evaluation_registry.py'
+      - 'apps/api/tests/test_laboratory_experiments.py'
       - 'apps/api/tests/test_laboratory_fhir_r4.py'
       - 'apps/api/tests/test_laboratory_question_preflight.py'
       - 'apps/api/tools/verify_laboratory_evaluation.py'
+      - 'apps/api/tools/verify_laboratory_experiments.py'
       - 'validation/laboratory-evaluation/**'
       - '.github/workflows/laboratory-evaluation.yml'
   workflow_dispatch:
@@ -45,13 +48,14 @@ jobs:
           python - <<'PY'
           import unittest
           suite = unittest.TestSuite()
-          for name in ('test_laboratory_evaluation_registry.py', 'test_laboratory_fhir_r4.py', 'test_laboratory_question_preflight.py'):
+          for name in ('test_laboratory_evaluation_registry.py', 'test_laboratory_experiments.py', 'test_laboratory_fhir_r4.py', 'test_laboratory_question_preflight.py'):
               suite.addTests(unittest.defaultTestLoader.discover('apps/api/tests', pattern=name))
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           raise SystemExit(not result.wasSuccessful() or bool(result.skipped) or not result.testsRun)
           PY
           mkdir -p verification-laboratory
           python apps/api/tools/verify_laboratory_evaluation.py --registry /tmp/oi-laboratory-evaluation.sqlite > verification-laboratory/practice.json
+          python apps/api/tools/verify_laboratory_experiments.py --registry /tmp/oi-laboratory-experiments.sqlite > verification-laboratory/experiments.json
           git rev-parse HEAD > verification-laboratory/commit.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

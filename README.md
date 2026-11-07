@@ -428,6 +428,153 @@ no link to a follow-through task and no link to a source version;
 no live model call exists in the slice (Meta billing fix still
 pending).
 
+**Care coordination dimension (Slice D7, 6 November 2026):**
+Notifications — the patient and team learn of changes and due items —
+as deterministic code in `src/open_intelligence/notifications.py`,
+with a `notification_clears` table and `clear_notification` /
+`list_notification_clears` in the store, two routes
+(`GET /api/cases/{id}/notifications`,
+`POST /api/cases/{id}/notifications/clear`), and a Notifications
+panel in the web app. A notification is a derived, in-app-only
+record: one per trigger, computed from the ledger at read time, and
+nothing is ever sent anywhere. The pinned trigger kinds are overdue
+and due-soon follow-through tasks, past-due appointments, follow-through
+tasks needing a re-check (anchored source superseded), open re-review
+tasks, and stale snapshots whose question is still open. Each trigger
+produces exactly one notification per source record, keyed stably
+(the key carries the due date, scheduled date, or source version,
+so a changed date or reschedule is a new occurrence). The patient
+sees due kinds only on their own bound case; operator and clinician
+see all kinds; auditors hold no case grants. Clearing is explicit
+and per-role — a clear records who cleared which key, for which
+role, and when, is idempotent, and never touches the underlying
+task, draft, or review item. Patients may clear only via the
+notifications-clear route on their own bound case (a single narrow,
+tested carve-out in the role check: clearing writes only an
+acknowledgment row, never case content). No model call exists in the
+slice (an AST test pins that the module imports neither the
+model-call path nor any other dimension module). Local suite at the
+slice branch: 1206 tests, with the same 17 pre-existing
+`test_pdf_intake` failures as the branch baseline (1182 tests) and
+zero new failures. Unproven: no external delivery of any kind; no
+reminder scheduling; no C5 evaluation-harness probes for
+notifications yet; no live model call exists in the slice (Meta
+billing fix still pending).
+
+**Care coordination dimension (Slice D8, 6 November 2026):**
+referrals — a fictional, case-scoped record of a request to send a
+case question to another team for input (question + specialty
+label + reason + 1–50 pinned materials), with lifecycle
+`requested` → `acknowledged` → `outcome_recorded` (terminal;
+further work is a new referral), exactly one outcome per referral
+(pinned kinds accepted/declined/completed, anchored to one current
+source version), full status history, and the second-opinion
+review/audit treatment (`pending` / `reviewed_in_demo` /
+`needs_review`, reopened on amendment of a pinned material or the
+outcome anchor). Recording a referral records the request — it
+sends nothing, contacts no one, books nothing, and performs no
+handoff outside the product; the specialty is a plain label, never
+a real destination. Role-gated through the generic case gate
+(patient reads own case only, writes are operator/clinician only);
+the follow-through text guard is reused for all referral text.
+Five routes, a Referrals panel (02g), and 19 new tests in
+`tests/test_referrals.py` (+1 guard test). The module is registered
+in `DIMENSION_MODULES` (an AST test pins that the module imports
+neither the model-call path nor any other dimension module). Local
+suite at the slice branch: 1226 tests, with the same 17
+pre-existing `test_pdf_intake` failures as the branch baseline
+(1206 tests) and zero new failures. Unproven: no message or
+handoff leaves the product; no link to a follow-through task or an
+appointment; no per-referral snapshot link; no C5
+evaluation-harness probes for referrals yet; no live model call
+exists in the slice (Meta billing fix still pending).
+
+**Care coordination dimension (Slice D9, 6 November 2026):**
+care-team collaboration — shared updates and handoffs the patient
+and team read in the product, not outside it. A shared update is a
+short dated note posted by the operator or clinician, visible to
+the whole team including the patient on their own bound case (the
+author role comes from the session account, never free text); a
+handoff records a transfer of responsibility for a case question
+(question + from/to actor labels + reason + 1–50 pinned
+materials), with lifecycle `open` → `acknowledged` → `closed`
+(terminal; further work is a new handoff), full status history,
+and the second-opinion review/audit treatment (`pending` /
+`reviewed_in_demo` / `needs_review`, reopened on amendment of a
+pinned material). Recording either sends nothing, books nothing,
+and contacts no one; the patient sees the same shared record as
+the clinician — the role boundary is write access, not
+visibility. Role-gated through the generic case gate (patient
+reads own case only, writes are operator/clinician only); the
+follow-through text guard is reused for all care-team text. Seven
+routes, a Care team panel (02h), and 22 new tests in
+`tests/test_team_collaboration.py` (+1 guard test). The module is
+registered in `DIMENSION_MODULES` (an AST test pins that the
+module imports neither the model-call path nor any other dimension
+module). Local suite at the slice branch: 1249 tests, with the same
+17 pre-existing `test_pdf_intake` failures as the branch baseline
+(1226 tests) and zero new failures. Unproven: no message or
+handoff leaves the product; no link to a follow-through task or an
+appointment; no per-record snapshot link; no C5
+evaluation-harness probes for care-team collaboration yet; no live
+model call exists in the slice (Meta billing fix still pending).
+
+**Second vertical (Slice V2, 6 November 2026):** the capstone —
+a full synthetic cardiology end-to-end (CASE-CARDIO) through the
+same coordination core + ledger + dimensions as the oncology path,
+with zero core changes. The cardiology vertical
+(`vertical_cardiology.py`) now carries its own terminology
+bindings, pinned only from the publishers' own listings (LOINC
+`10230-1` "Left ventricular Ejection fraction" for
+`ejection-fraction`; ICD-10 `I50.9` "Heart failure, unspecified"
+for `heart-failure`), and its own substance vocabulary
+(`metoprolol`, `lisinopril`, `atorvastatin`, `furosemide`) for the
+K7 substance arm. The one domain toolset is the line-of-therapy
+equivalent: `therapy-rules-1` in the T4 table counts one line per
+therapy class in first-occurrence order (a re-appearing regimen
+resumes its earlier line; class is the regimen key minus its final
+hyphen-delimited segment), so the two beta-blockers share a line
+and the ACE inhibitor starts a new one. The end-to-end test
+(`tests/test_cardiology_end_to_end.py`) runs route → K-checks →
+Skeptic → T6 → D1 extraction and T3 specimen chain → D2
+terminology and FHIR exchange (the ejection-fraction Observation
+carries LOINC 10230-1, the heart-failure Condition carries ICD-10
+I50.9 unconfirmed) → D3 longitudinal / lab series / imaging
+comparison / therapy lines → D4 patient analytics → D5 HYPOTHESIS
+composition and T5 assembly → the D6–D9 care loop, all against
+CASE-CARDIO. The K-check context is built from the ledger, as the
+live route does. Core-change accounting: no core module changed;
+the single dimension-module touch is the `therapy-rules-1` entry
+in `therapy.py`'s own fixture table, reported transparently in
+the V2 section of `docs/IMPLEMENTATION_STATUS.md`. Local suite at
+the slice branch: 1251 tests, with the same 17 pre-existing
+`test_pdf_intake` failures as the branch baseline (1249 tests)
+and zero new failures; the C5 harness still passes all 8 measured
+metrics with `model_calls: 0`. Unproven: the live-model half of
+the end-to-end (Skeptic over muse-spark-1.3, Meta billing fix
+still pending — stub verdicts prove wiring only); per-case
+vertical selection via a case-vertical field; per-vertical
+evidence-catalog resolution; no C5 cardiology probes yet.
+
+**K7/K2 keep-rate fix (post-program fix slice, 6 November
+2026):** the Haiku interim live proof showed a live investigation
+keeping only 1 in 5–6 claims: K7 dropped prose carrying "Source
+version N" numbers and K2 dropped cross-source disagreement
+claims. K7 was fixed by a prompt change, not a checker carve-out
+— `build_prompt` (and the repair prompt in `skeptic.py`) now
+instructs the model to attribute through the citations array
+only and never write source version numbers in claim text. K2
+gained a narrow carve-out: a claim with support `"contradicts"`
+whose cited facets genuinely disagree skips slot-equality and
+goes to T6 grouping instead; single-value assertions still go
+through K2. Live re-probe through Haiku 5.5 keeps **6 of 6
+claims** (was 1 of 6), with no "version" phrasing in any claim.
+Local suite at the slice branch: 1258 tests, with the same 17
+pre-existing `test_pdf_intake` failures as the branch baseline
+(1251 tests) and zero new failures. See the K7/K2 section of
+`docs/IMPLEMENTATION_STATUS.md`. Unproven: the Meta-only live
+proof (muse-spark-1.3, Meta billing fix still pending).
+
 ## Development boundaries
 
 - Use independently authored synthetic patient examples. Keep real patient records, credentials, and restricted clinical content out of this repository and its issues.

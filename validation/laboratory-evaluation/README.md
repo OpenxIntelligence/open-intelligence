@@ -5,6 +5,80 @@ the existing H1 FHIR laboratory parser. It also supports OI-018's separation of
 source corrections from model improvement. It does not replace the canonical
 patient, source, observation, review or evaluation protocol owners.
 
+## Experiment execution extension — 6 November 2026
+
+The same registry now persists recipes, frozen experiment plans, unique start
+claims, candidate outcomes, model artifacts/checkpoints and final selection
+receipts. No new database schema or parallel source owner is introduced.
+
+| Component | Executable now | Still absent |
+| --- | --- | --- |
+| AutoResearch foundation | Freeze a finite candidate list; fit/run allowed local adapters under budgets; evaluate validation outputs; select by a frozen objective; record failures and results | LLM post-training, adaptive recipe generation, synthetic-data generation, GPU/provider orchestration, general hyperparameter or mixture search |
+| Fine-tuning ontology foundation | Existing datasets/reviews plus recipes, input/code hashes, experiment lineage, checkpoint artifacts, timing/resource measurements and selection receipts | Neural weight registry, deployment lifecycle, live operational feedback, production reviewer UI |
+
+The two adapters are the **existing deterministic parser** and an **exact-source
+memorization control**. The latter fits a lookup table from explicitly eligible,
+reviewed train examples and abstains on every unseen source hash. It is an
+intentional leakage/generalization control, not an LLM, gradient training,
+learned medical interpretation, or an accuracy improvement. Its persisted
+checkpoint contains the fitted table and the exact training-input fingerprint.
+The parser checkpoint records its source identity, not invented model weights.
+
+Run the real two-candidate exercise with a fresh file:
+
+```bash
+PYTHONPATH=apps/api/src:src python apps/api/tools/verify_laboratory_experiments.py \
+  --registry /tmp/oi-laboratory-experiments.sqlite
+```
+
+This authors dataset version 2 with one explicitly eligible fictional training
+example; version 1 remains unchanged. Only train/validation fixture reviews are
+recorded. The worker receives eligible train examples and validation inputs, never
+test cases or validation references. The parent coordinator reads the frozen
+manifest/reference records; this is not a blinded study or a file-access sandbox.
+The existing scorer now supports explicitly selected evaluation splits, preserving
+historical all-split run/retry shapes. Excluded test cases are not scored as
+abstentions or silently included in a denominator.
+
+Observed practice outcome: the memorizer fits one example, abstains on the one
+validation case (11 omitted field opportunities), and the parser has zero field
+errors. The frozen validation objective selects the parser. That is useful evidence
+that fitting this control does not improve this structured task, not evidence
+against other trained models or an estimate of clinical accuracy.
+
+Each built-in worker has a 5 CPU-second and 256 MiB address-space limit. Plans
+allow at most eight candidates, 100 training examples, 10 wall seconds per worker
+and 60 wall seconds for the experiment's worker-launch budget. Each worker's
+timeout is capped by the remaining total budget. Parent bookkeeping may add
+overhead after worker termination. The receipt reports actual elapsed time,
+child CPU time and peak resident memory; external service charges are zero for
+these local adapters, while total cost is **unknown**, not asserted free.
+
+Duplicate/concurrent execution cannot launch a second copy of a claimed plan.
+Completed retries return the original receipt without rerunning. A parent-process
+crash remains `interrupted_or_running`; no automatic takeover or fabricated
+completion occurs. Inspect it and use a new explicit experiment ID after resolving
+the prior process. Checkpoint-based mid-training resume is not implemented.
+Worker errors, timeouts and exhausted budgets remain visible; they cannot be
+selected as successful candidates. An entirely unassessable validation set cannot
+select a candidate. Selection never grants deployment/clinical approval.
+
+The command interface is:
+
+```text
+python -m oi_api.laboratory_experiments --registry <path> recipe --input <recipe.json>
+python -m oi_api.laboratory_experiments --registry <path> plan --input <plan.json>
+python -m oi_api.laboratory_experiments --registry <path> execute --experiment <id>
+python -m oi_api.laboratory_experiments --registry <path> inspect --experiment <id>
+```
+
+The executable verification script supplies complete recipe and plan examples.
+Unsupported techniques, remote models, arbitrary commands and hyperparameters
+are rejected rather than presented as implemented integrations. No third-party
+model weights or new dependency are introduced. This extension is verified by
+13 new execution/isolation/budget/recovery tests and the original 38 checks;
+the updated hosted workflow executes both practice exercises on its exact head.
+
 ## Implemented behavior
 
 - Freeze a versioned, hash-bound dataset containing the original fictional FHIR
@@ -98,11 +172,11 @@ are declarations, not verified permissions or a personal-data detector. Local
 file administrators are trusted; hashes and SQLite triggers are not an access
 control or tamper-proof audit service. Split isolation applies within one registry
 to declared identities, not aliases across separate registries or institutions.
-No real patient data, network call, trained model, deployment or clinical
+No real patient data, network call, neural model weights, deployment or clinical
 validation is part of this increment. Text/PDF/OCR laboratory extraction and a
 connected reviewer interface remain separate work.
 
-Local focused checks: **38 tests passed**, zero skips, including 17 new registry
+Initial registry local focused checks: **38 tests passed**, zero skips, including 17 new registry
 tests and 21 inherited parser/question-preflight checks. The executable practice
 exercise passed, including restart and both planted defects. Initial verification
 found read-only reopen changing SQLite header counters; initialization now avoids

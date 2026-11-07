@@ -18,7 +18,8 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore
-from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
+from open_intelligence.__main__ import Handler, seed
+from session_auth import signin_demo
 from open_intelligence.agent_writes import build_investigation_contract
 from open_intelligence.changes import changes_since_review
 from open_intelligence.investigation import validate_output
@@ -352,6 +353,7 @@ class PacketHttpTests(unittest.TestCase):
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -362,7 +364,7 @@ class PacketHttpTests(unittest.TestCase):
 
     def get_json(self, path: str):
         request = Request(f"http://127.0.0.1:{self.port}{path}",
-                          headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
+                          headers={"Cookie": self._cookie})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, response.headers.get_content_type(), json.loads(response.read())
@@ -371,7 +373,7 @@ class PacketHttpTests(unittest.TestCase):
 
     def get_text(self, path: str):
         request = Request(f"http://127.0.0.1:{self.port}{path}",
-                          headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
+                          headers={"Cookie": self._cookie})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, response.headers.get_content_type(), response.read().decode("utf-8")

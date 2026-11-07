@@ -16,6 +16,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence.__main__ import Handler, seed
+from session_auth import signin_demo
 from open_intelligence.rights import (
     RightsError, check_link_content, excerpt_mode, normalize_permissions,
 )
@@ -257,6 +258,7 @@ class BrokerHttpTests(unittest.TestCase):
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -267,8 +269,8 @@ class BrokerHttpTests(unittest.TestCase):
 
     def request(self, path, data=None):
         headers = {"Content-Type": "application/json"} if data is not None else {}
-        # B-01: case routes require a fictional actor; seed() grants this one.
-        headers["X-Fictional-Actor"] = "FICTIONAL-NAVIGATOR-A"
+        # W1: case routes require a live session; signin_demo signs in as the seeded demo clinician.
+        headers["Cookie"] = self._cookie
         req = Request(f"http://127.0.0.1:{self.port}{path}",
                       data=None if data is None else json.dumps(data).encode(),
                       headers=headers)

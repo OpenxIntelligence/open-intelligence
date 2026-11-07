@@ -17,6 +17,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence.__main__ import Handler, seed
+from session_auth import signin_demo
 from open_intelligence.agent_writes import build_investigation_contract
 from open_intelligence.store import CaseStore
 from open_intelligence.investigation import (
@@ -255,6 +256,7 @@ class HttpInvestigationTests(unittest.TestCase):
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -265,8 +267,8 @@ class HttpInvestigationTests(unittest.TestCase):
 
     def request(self, path, data=None):
         values = {'Content-Type': 'application/json'} if data is not None else {}
-        # B-01: case routes require a fictional actor; seed() grants this one.
-        values['X-Fictional-Actor'] = 'FICTIONAL-NAVIGATOR-A'
+        # W1: case routes require a live session; signin_demo signs in as the seeded demo clinician.
+        values["Cookie"] = self._cookie
         request = Request(f'http://127.0.0.1:{self.port}{path}',
                           data=None if data is None else json.dumps(data).encode(), headers=values)
         try:
@@ -320,6 +322,18 @@ class HttpInvestigationTests(unittest.TestCase):
         finally:
             if saved is not None:
                 os.environ["META_API_KEY"] = saved
+
+
+class AttributionRulePromptTests(unittest.TestCase):
+    def test_build_prompt_contains_attribution_rule(self):
+        prompt = build_prompt("evidence-summary", "What does the source report?", [], [])
+        sentence = (
+            "Attribute each claim to its sources through the citations array only. "
+            "Do not write source version numbers in the claim text itself, neither "
+            '"Source version N" nor "version N"; the citation identifies the source.'
+        )
+        # The prompt joins lines with newlines; normalise whitespace first.
+        self.assertIn(sentence, " ".join(prompt.split()))
 
 
 if __name__ == '__main__':

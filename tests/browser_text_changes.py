@@ -71,8 +71,15 @@ def main():
             session.wait("active.sources.length === 3 && document.querySelector('#source-change-list .change-card') !== null",
                          'source change available')
             versions = session.evaluate("active.sources.filter(s=>s.document_id==='PATH-ALPHA').sort((a,b)=>a.version-b.version).map(s=>s.id)")
-            # B-01: case routes require a fictional actor; seed() grants this one.
-            headers = {'X-Fictional-Actor': 'FICTIONAL-NAVIGATOR-A'}
+            # W1: the header path is gone; sign in over HTTP and send the
+            # session cookie. set_demo_account_password ran in main().
+            signin = Request(f'{url}api/auth/sign-in',
+                             data=json.dumps({'account_id': 'FICTIONAL-NAVIGATOR-A',
+                                            'password': 'fictional-demo-1'}).encode(),
+                             headers={'Content-Type': 'application/json',
+                                      'Origin': url.rstrip('/')})
+            cookie = urlopen(signin, timeout=5).headers.get('Set-Cookie').split(';', 1)[0]
+            headers = {'Cookie': cookie}
             originals = [json.load(urlopen(Request(
                 f'{url}api/cases/CASE-ALPHA/sources/{sid}', headers=headers)))['text'] for sid in versions]
             session.evaluate("document.querySelector('#source-change-list .change-card .actions button').click()")

@@ -909,6 +909,122 @@ CREATE TABLE IF NOT EXISTS appointment_events (
 );
 CREATE INDEX IF NOT EXISTS idx_appointments_case ON appointments(case_id);
 CREATE INDEX IF NOT EXISTS idx_appointment_events_appointment ON appointment_events(appointment_id);
+-- Care-coordination notification clears (slice D7): explicit, per-role
+-- acknowledgment records for derived in-app notifications. A clear
+-- records who cleared which notification key, for which role, and
+-- when; rows are never updated or deleted. Clearing acknowledges
+-- the alert only — the underlying task, draft, or review item is
+-- untouched. One row per (case, key, role): clearing is idempotent
+-- and per-role, so one role's clear never hides the notification
+-- from another role.
+CREATE TABLE IF NOT EXISTS notification_clears (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  notification_key TEXT NOT NULL, role TEXT NOT NULL,
+  cleared_by TEXT NOT NULL, cleared_at TEXT NOT NULL,
+  UNIQUE(case_id, notification_key, role)
+);
+CREATE INDEX IF NOT EXISTS idx_notification_clears_case ON notification_clears(case_id);
+-- Care-coordination referrals (slice D8): fictional requests to send a
+-- question to another team or specialty for input. A referral records
+-- the request; it sends nothing, contacts no one, books nothing, and
+-- performs no handoff outside the product. Status moves
+-- requested → acknowledged → outcome_recorded, each transition
+-- appending one event row; history rows are never updated or deleted.
+-- The outcome is a separate record (exactly one per referral) that
+-- never overwrites the request. Review state follows the
+-- second-opinion pattern: pending → reviewed_in_demo on a demo
+-- acknowledgment, needs_review when a pinned material or the outcome
+-- anchor is superseded by an amendment.
+CREATE TABLE IF NOT EXISTS referrals (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question_id INTEGER NOT NULL REFERENCES questions(id),
+  specialty_label TEXT NOT NULL, reason_text TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('requested','acknowledged','outcome_recorded')),
+  review_state TEXT NOT NULL CHECK(review_state IN ('pending','reviewed_in_demo','needs_review')),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS referral_materials (
+  referral_id INTEGER NOT NULL REFERENCES referrals(id),
+  source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  PRIMARY KEY(referral_id,source_version_id)
+);
+CREATE TABLE IF NOT EXISTS referral_outcomes (
+  id INTEGER PRIMARY KEY, referral_id INTEGER NOT NULL UNIQUE REFERENCES referrals(id),
+  outcome_kind TEXT NOT NULL CHECK(outcome_kind IN ('accepted','declined','completed')),
+  outcome_text TEXT NOT NULL,
+  anchor_source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS referral_events (
+  id INTEGER PRIMARY KEY, referral_id INTEGER NOT NULL REFERENCES referrals(id),
+  change_kind TEXT NOT NULL CHECK(change_kind IN ('created','acknowledged','outcome_recorded')),
+  previous_status TEXT CHECK(previous_status IN ('requested','acknowledged','outcome_recorded')),
+  new_status TEXT NOT NULL CHECK(new_status IN ('requested','acknowledged','outcome_recorded')),
+  actor_label TEXT NOT NULL, reason TEXT NOT NULL, noted_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS referral_review_events (
+  id INTEGER PRIMARY KEY, referral_id INTEGER NOT NULL REFERENCES referrals(id),
+  reviewer_label TEXT NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('acknowledge')),
+  scope TEXT NOT NULL, noted_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_referrals_case ON referrals(case_id);
+CREATE INDEX IF NOT EXISTS idx_referral_materials_source ON referral_materials(source_version_id);
+CREATE INDEX IF NOT EXISTS idx_referral_outcomes_anchor ON referral_outcomes(anchor_source_version_id);
+CREATE INDEX IF NOT EXISTS idx_referral_events_referral ON referral_events(referral_id);
+-- Care-team collaboration (slice D9): shared updates the patient and
+-- team read in the product, and handoffs of responsibility for a case
+-- question. An update is a dated note (no lifecycle, no materials);
+-- a handoff moves open → acknowledged → closed, each transition
+-- appending one event row; history rows are never updated or deleted.
+-- Review state follows the second-opinion pattern: pending →
+-- reviewed_in_demo on a demo acknowledgment, needs_review when a
+-- pinned handoff material is superseded by an amendment.
+CREATE TABLE IF NOT EXISTS team_updates (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  author_label TEXT NOT NULL,
+  author_role TEXT NOT NULL CHECK(author_role IN ('operator','clinician')),
+  update_text TEXT NOT NULL,
+  review_state TEXT NOT NULL CHECK(review_state IN ('pending','reviewed_in_demo','needs_review')),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS team_update_review_events (
+  id INTEGER PRIMARY KEY, update_id INTEGER NOT NULL REFERENCES team_updates(id),
+  reviewer_label TEXT NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('acknowledge')),
+  scope TEXT NOT NULL, noted_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS handoffs (
+  id INTEGER PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(case_id),
+  question_id INTEGER NOT NULL REFERENCES questions(id),
+  from_actor TEXT NOT NULL, to_actor TEXT NOT NULL, reason_text TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('open','acknowledged','closed')),
+  review_state TEXT NOT NULL CHECK(review_state IN ('pending','reviewed_in_demo','needs_review')),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS handoff_materials (
+  handoff_id INTEGER NOT NULL REFERENCES handoffs(id),
+  source_version_id INTEGER NOT NULL REFERENCES source_versions(id),
+  PRIMARY KEY(handoff_id,source_version_id)
+);
+CREATE TABLE IF NOT EXISTS handoff_events (
+  id INTEGER PRIMARY KEY, handoff_id INTEGER NOT NULL REFERENCES handoffs(id),
+  change_kind TEXT NOT NULL CHECK(change_kind IN ('created','acknowledged','closed')),
+  previous_status TEXT CHECK(previous_status IN ('open','acknowledged','closed')),
+  new_status TEXT NOT NULL CHECK(new_status IN ('open','acknowledged','closed')),
+  actor_label TEXT NOT NULL, reason TEXT NOT NULL, noted_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS handoff_review_events (
+  id INTEGER PRIMARY KEY, handoff_id INTEGER NOT NULL REFERENCES handoffs(id),
+  reviewer_label TEXT NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('acknowledge')),
+  scope TEXT NOT NULL, noted_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_team_updates_case ON team_updates(case_id);
+CREATE INDEX IF NOT EXISTS idx_team_update_review_events_update ON team_update_review_events(update_id);
+CREATE INDEX IF NOT EXISTS idx_handoffs_case ON handoffs(case_id);
+CREATE INDEX IF NOT EXISTS idx_handoff_materials_source ON handoff_materials(source_version_id);
+CREATE INDEX IF NOT EXISTS idx_handoff_events_handoff ON handoff_events(handoff_id);
 -- Clinician review queue sign-off receipts: append-only acknowledgment
 -- records. The queue itself is a derived projection over the existing
 -- ledger (snapshots, model investigations, amendments, held options,
@@ -1992,7 +2108,7 @@ class CaseStore:
         # Second-opinion and survivorship records stay case-scoped and
         # anchor-exact like snapshots: only rows pinning the superseded
         # version (or the invalidated original conclusion) reopen.
-        invalidated_second_opinions, invalidated_survivorship = self._invalidate_care_records(
+        invalidated_second_opinions, invalidated_survivorship, invalidated_referrals, invalidated_handoffs = self._invalidate_care_records(
             case_id, previous["id"] if previous else None, invalidated)
         # B-05: record the explicit match decision that bound these bytes
         # to this case. Duplicates return before this point, so the
@@ -2012,6 +2128,8 @@ class CaseStore:
                     invalidated_bio_assay_observations=invalidated_bio_assays,
                     invalidated_second_opinions=invalidated_second_opinions,
                     invalidated_survivorship_items=invalidated_survivorship,
+                    invalidated_referrals=invalidated_referrals,
+                    invalidated_handoffs=invalidated_handoffs,
                     invalidated_workspace_questions=invalidated_workspace)
         if previous is not None and invalidated:
             self._create_re_review_tasks(
@@ -2028,6 +2146,8 @@ class CaseStore:
                 "invalidated_bio_assay_observations": invalidated_bio_assays,
                 "invalidated_second_opinions": invalidated_second_opinions,
                 "invalidated_survivorship_items": invalidated_survivorship,
+                "invalidated_referrals": invalidated_referrals,
+                "invalidated_handoffs": invalidated_handoffs,
                 "invalidated_workspace_questions": invalidated_workspace}
     # ---- B-05: explicit subject binding + reversible quarantine correction ----
     SUBJECT_LINK_DECISION = "bound_by_declared_id_equality"
@@ -5402,6 +5522,713 @@ class CaseStore:
                 "synthetic": True,
             }
 
+    # ---- Care-coordination notifications (slice D7) ----
+    def list_notification_clears(self, case_id: str) -> list[dict]:
+        """Explicit clear records for one case, oldest first.
+
+        Read-only; writes nothing. Strictly case-scoped.
+        """
+        self._case(case_id)
+        with self.db:
+            self.db.execute("BEGIN")
+            return self._dicts(self.db.execute(
+                "SELECT id,case_id,notification_key,role,cleared_by,cleared_at "
+                "FROM notification_clears WHERE case_id=? ORDER BY id",
+                (case_id,)).fetchall())
+
+    def clear_notification(self, case_id: str, notification_key: object,
+                           role: str, cleared_by: str) -> dict:
+        """Record an explicit, per-role clear of one notification key.
+
+        Idempotent: clearing an already-cleared key for the same role
+        returns the existing record. The key must be well-formed and
+        currently derived for this case and role — a guessed or
+        invisible key cannot be cleared. Clearing never touches the
+        underlying task, draft, or review item.
+        """
+        from .notifications import (
+            NotificationInputError,
+            PATIENT_VISIBLE_KINDS,
+            check_notification_key,
+            notifications_view,
+        )
+        self._case(case_id)
+        if role not in ("operator", "clinician", "patient"):
+            raise InvalidInput("Unknown role for notification clearing")
+        if not isinstance(cleared_by, str) or not cleared_by.strip():
+            raise InvalidInput("Cleared-by label is required")
+        try:
+            key = check_notification_key(notification_key)
+        except NotificationInputError as error:
+            raise InvalidInput(str(error)) from error
+        kind = key.split(":", 1)[0]
+        if role == "patient" and kind not in PATIENT_VISIBLE_KINDS:
+            raise InvalidInput(
+                "Patients clear only their own due notifications")
+        # Idempotent: a second clear of an already-cleared key is the
+        # same as the first. This check comes before the active-set
+        # check — a cleared key no longer derives, so it is no longer
+        # "active". Each phase holds its own transaction: the view
+        # opens its own reads and cannot run inside the write lock.
+        with self.db:
+            self.db.execute("BEGIN")
+            existing = self.db.execute(
+                "SELECT id,cleared_at FROM notification_clears "
+                "WHERE case_id=? AND notification_key=? AND role=?",
+                (case_id, key, role)).fetchone()
+        if existing is not None:
+            return {"notification_key": key, "role": role,
+                    "cleared_by": cleared_by,
+                    "cleared_at": existing["cleared_at"],
+                    "already_cleared": True}
+        active = {entry["key"]
+                  for entry in notifications_view(self, case_id, role)["notifications"]}
+        if key not in active:
+            raise InvalidInput("No such active notification for this role")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute(
+                "SELECT id,cleared_at FROM notification_clears "
+                "WHERE case_id=? AND notification_key=? AND role=?",
+                (case_id, key, role)).fetchone()
+            if row is not None:
+                return {"notification_key": key, "role": role,
+                        "cleared_by": cleared_by,
+                        "cleared_at": row["cleared_at"],
+                        "already_cleared": True}
+            timestamp = now_utc()
+            self.db.execute(
+                "INSERT INTO notification_clears "
+                "(case_id,notification_key,role,cleared_by,cleared_at) "
+                "VALUES (?,?,?,?,?)",
+                (case_id, key, role, cleared_by.strip()[:128], timestamp))
+            self._event(case_id, "notification_cleared")
+            return {"notification_key": key, "role": role,
+                    "cleared_by": cleared_by.strip()[:128],
+                    "cleared_at": timestamp, "already_cleared": False}
+
+    # ---- Care-coordination referrals (slice D8) ----
+    @staticmethod
+    def _project_referral(row: dict) -> dict:
+        return {
+            "id": row["id"],
+            "case_id": row["case_id"],
+            "question_id": row["question_id"],
+            "specialty_label": row["specialty_label"],
+            "reason_text": row["reason_text"],
+            "status": row["status"],
+            "review_state": row["review_state"],
+            "created_at": row["created_at"],
+        }
+
+    @staticmethod
+    def _project_referral_event(row: dict) -> dict:
+        return {
+            "id": row["id"],
+            "referral_id": row["referral_id"],
+            "change_kind": row["change_kind"],
+            "previous_status": row["previous_status"],
+            "new_status": row["new_status"],
+            "actor_label": row["actor_label"],
+            "reason": row["reason"],
+            "noted_at": row["noted_at"],
+        }
+
+    def create_referral(self, case_id: str, question_id: int, specialty_label: str,
+                        reason_text: str, source_version_ids: list[int], *,
+                        actor_label: str) -> int:
+        """Record a referral request: question, specialty, reason, materials.
+
+        Materials are pinned by exact source version, exactly like a
+        second-opinion request. The request sends nothing anywhere.
+        """
+        from .referrals import (
+            ReferralInputError,
+            check_actor_label,
+            check_reason,
+            check_specialty,
+        )
+        self._case(case_id)
+        if type(question_id) is not int:
+            raise InvalidInput("Question ID must be an integer")
+        try:
+            specialty = check_specialty(specialty_label)
+            reason = check_reason(reason_text)
+            actor = check_actor_label(actor_label)
+        except ReferralInputError as error:
+            raise InvalidInput(str(error)) from error
+        if (not isinstance(source_version_ids, list) or not source_version_ids
+                or len(source_version_ids) != len(set(source_version_ids))
+                or len(source_version_ids) > 50
+                or any(type(x) is not int or x < 1 for x in source_version_ids)):
+            raise InvalidInput("Shared materials must be 1–50 unique source version IDs")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                                   (question_id, case_id)).fetchone():
+                raise InvalidInput("Question not in this case")
+            for sid in source_version_ids:
+                if not self.db.execute(
+                        "SELECT 1 FROM source_versions WHERE id=? AND case_id=? AND state='current'",
+                        (sid, case_id)).fetchone():
+                    raise InvalidInput("Shared material is missing, superseded, or belongs to another case")
+            timestamp = now_utc()
+            cur = self.db.execute("""INSERT INTO referrals
+                (case_id,question_id,specialty_label,reason_text,status,review_state,created_at)
+                VALUES (?,?,?,?,'requested','pending',?)""",
+                (case_id, question_id, specialty, reason, timestamp))
+            referral_id = int(cur.lastrowid)
+            for sid in source_version_ids:
+                self.db.execute("INSERT INTO referral_materials VALUES (?,?)", (referral_id, sid))
+            self.db.execute("""INSERT INTO referral_events
+                (referral_id,change_kind,previous_status,new_status,actor_label,reason,noted_at)
+                VALUES (?,'created',NULL,'requested',?, '',?)""",
+                (referral_id, actor, timestamp))
+            self._event(case_id, "referral_requested", referral_id=referral_id,
+                        question_id=question_id,
+                        material_source_version_ids=list(source_version_ids))
+            return referral_id
+
+    def acknowledge_referral(self, case_id: str, referral_id: int, *,
+                            actor_label: str, reason: str) -> dict:
+        """Record receipt of a referral: requested → acknowledged.
+
+        Only from 'requested'. The acknowledgment is a status event,
+        not a review: review is a separate demo acknowledgment.
+        """
+        from .referrals import (
+            ReferralInputError,
+            check_actor_label,
+            check_change_reason,
+        )
+        self._case(case_id)
+        if type(referral_id) is not int or referral_id < 1:
+            raise InvalidInput("Invalid referral ID")
+        try:
+            actor = check_actor_label(actor_label)
+            reason_text = check_change_reason(reason)
+        except ReferralInputError as error:
+            raise InvalidInput(str(error)) from error
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT status FROM referrals WHERE id=? AND case_id=?",
+                                  (referral_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Referral not in this case")
+            if row["status"] != "requested":
+                raise InvalidInput("Only a requested referral can be acknowledged")
+            timestamp = now_utc()
+            self.db.execute("UPDATE referrals SET status='acknowledged' WHERE id=?", (referral_id,))
+            cur = self.db.execute("""INSERT INTO referral_events
+                (referral_id,change_kind,previous_status,new_status,actor_label,reason,noted_at)
+                VALUES (?,'acknowledged','requested','acknowledged',?,?,?)""",
+                (referral_id, actor, reason_text, timestamp))
+            self._event(case_id, "referral_acknowledged", referral_id=referral_id)
+            return {"result": "acknowledged", "referral_id": referral_id,
+                    "previous_status": "requested",
+                    "change_kind": "acknowledged", "event_id": int(cur.lastrowid)}
+
+    def record_referral_outcome(self, case_id: str, referral_id: int, outcome_kind: str,
+                                outcome_text: str, anchor_source_version_id: int, *,
+                                actor_label: str, reason: str) -> int:
+        """Record one outcome as a separate record. The request is untouched.
+
+        Only from 'acknowledged'. Exactly one outcome per referral:
+        follow-up needs a new referral, so no outcome can silently
+        replace an earlier one.
+        """
+        from .referrals import (
+            ReferralInputError,
+            check_actor_label,
+            check_change_reason,
+            check_outcome_kind,
+            check_outcome_text,
+        )
+        self._case(case_id)
+        if type(referral_id) is not int or referral_id < 1:
+            raise InvalidInput("Invalid referral ID")
+        try:
+            kind = check_outcome_kind(outcome_kind)
+            text = check_outcome_text(outcome_text)
+            actor = check_actor_label(actor_label)
+            reason_text = check_change_reason(reason)
+        except ReferralInputError as error:
+            raise InvalidInput(str(error)) from error
+        if type(anchor_source_version_id) is not int or anchor_source_version_id < 1:
+            raise InvalidInput("Anchor source version ID must be a positive integer")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT status FROM referrals WHERE id=? AND case_id=?",
+                                  (referral_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Referral not in this case")
+            if row["status"] != "acknowledged":
+                raise InvalidInput("An outcome is recorded only for an acknowledged referral")
+            anchor = self.db.execute("SELECT state FROM source_versions WHERE id=? AND case_id=?",
+                                     (anchor_source_version_id, case_id)).fetchone()
+            if not anchor or anchor["state"] != "current":
+                raise InvalidInput("Outcome anchor is missing, superseded, or belongs to another case")
+            timestamp = now_utc()
+            try:
+                cur = self.db.execute("""INSERT INTO referral_outcomes
+                    (referral_id,outcome_kind,outcome_text,anchor_source_version_id,created_at)
+                    VALUES (?,?,?,?,?)""",
+                    (referral_id, kind, text, anchor_source_version_id, timestamp))
+            except sqlite3.IntegrityError:
+                raise InvalidInput("An outcome is already recorded for this referral; create a new referral for follow-up") from None
+            self.db.execute("UPDATE referrals SET status='outcome_recorded' WHERE id=?", (referral_id,))
+            self.db.execute("""INSERT INTO referral_events
+                (referral_id,change_kind,previous_status,new_status,actor_label,reason,noted_at)
+                VALUES (?,'outcome_recorded','acknowledged','outcome_recorded',?,?,?)""",
+                (referral_id, actor, reason_text, timestamp))
+            self._event(case_id, "referral_outcome_recorded", referral_id=referral_id,
+                        outcome_id=int(cur.lastrowid),
+                        anchor_source_version_id=anchor_source_version_id)
+            return int(cur.lastrowid)
+
+    def review_referral(self, case_id: str, referral_id: int, reviewer_label: str, scope: str) -> dict:
+        """Demo-acknowledge a referral record. History is kept."""
+        from .referrals import (
+            ReferralInputError,
+            check_actor_label,
+            check_review_scope,
+        )
+        self._case(case_id)
+        if type(referral_id) is not int or referral_id < 1:
+            raise InvalidInput("Invalid referral ID")
+        try:
+            reviewer = check_actor_label(reviewer_label)
+            scope_text = check_review_scope(scope)
+        except ReferralInputError as error:
+            raise InvalidInput(str(error)) from error
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT review_state FROM referrals WHERE id=? AND case_id=?",
+                                  (referral_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Referral not in this case")
+            if row["review_state"] == "needs_review":
+                raise InvalidInput("Shared materials changed since this referral; preserve it and create a new referral")
+            if row["review_state"] == "reviewed_in_demo":
+                raise InvalidInput("Referral is already reviewed in this demo")
+            self.db.execute("UPDATE referrals SET review_state='reviewed_in_demo' WHERE id=?", (referral_id,))
+            cur = self.db.execute("""INSERT INTO referral_review_events
+                (referral_id,reviewer_label,action,scope,noted_at) VALUES (?,?,'acknowledge',?,?)""",
+                (referral_id, reviewer, scope_text, now_utc()))
+            self._event(case_id, "referral_reviewed", referral_id=referral_id,
+                        review_event_id=int(cur.lastrowid))
+            return {"result": "acknowledged_in_demo", "review_event_id": int(cur.lastrowid)}
+
+    def list_referrals(self, case_id: str) -> dict:
+        """List this case's referrals with materials, outcome, and history.
+
+        Strictly case-scoped: only rows carrying this case_id are read.
+        History arrays are in noted order; the current referral is also
+        projected separately for convenient rendering.
+        """
+        from .referrals import DISCLAIMER
+        self._case(case_id)
+        with self.db:
+            self.db.execute("BEGIN")
+            referrals = self._dicts(self.db.execute(
+                "SELECT id,case_id,created_at FROM referrals WHERE case_id=? ORDER BY id",
+                (case_id,)).fetchall())
+            out = []
+            for referral in referrals:
+                current = self.db.execute(
+                    "SELECT * FROM referrals WHERE id=?",
+                    (referral["id"],)).fetchone()
+                current = self._project_referral(dict(current))
+                question = self.db.execute("SELECT question FROM questions WHERE id=?",
+                                           (current["question_id"],)).fetchone()
+                materials = self._dicts(self.db.execute(
+                    """SELECT v.id,v.document_id,v.version,v.state FROM referral_materials m
+                    JOIN source_versions v ON v.id=m.source_version_id
+                    WHERE m.referral_id=? ORDER BY v.document_id,v.version""",
+                    (referral["id"],)).fetchall())
+                outcome = self.db.execute(
+                    "SELECT * FROM referral_outcomes WHERE referral_id=?", (referral["id"],)).fetchone()
+                outcome_view = None
+                if outcome:
+                    outcome_view = dict(outcome)
+                    anchor = self.db.execute(
+                        "SELECT document_id,version,state FROM source_versions WHERE id=?",
+                        (outcome["anchor_source_version_id"],)).fetchone()
+                    outcome_view["anchor"] = dict(anchor) if anchor else {"missing": True}
+                events = self._dicts(self.db.execute(
+                    "SELECT * FROM referral_events WHERE referral_id=? ORDER BY id",
+                    (referral["id"],)).fetchall())
+                review_events = self._dicts(self.db.execute(
+                    "SELECT * FROM referral_review_events WHERE referral_id=? ORDER BY id",
+                    (referral["id"],)).fetchall())
+                out.append({
+                    "referral_id": referral["id"],
+                    "created_at": referral["created_at"],
+                    "current": current,
+                    "question": question["question"] if question else None,
+                    "materials": materials,
+                    "outcome": outcome_view,
+                    "history": [self._project_referral_event(row) for row in events],
+                    "review_events": review_events,
+                })
+            return {
+                "referrals": out,
+                "disclaimer": DISCLAIMER,
+                "synthetic": True,
+            }
+
+    # ---- Care-team collaboration (slice D9) ----
+    @staticmethod
+    def _project_team_update(row: dict) -> dict:
+        return {
+            "id": row["id"],
+            "case_id": row["case_id"],
+            "author_label": row["author_label"],
+            "author_role": row["author_role"],
+            "update_text": row["update_text"],
+            "review_state": row["review_state"],
+            "created_at": row["created_at"],
+        }
+
+    @staticmethod
+    def _project_handoff(row: dict) -> dict:
+        return {
+            "id": row["id"],
+            "case_id": row["case_id"],
+            "question_id": row["question_id"],
+            "from_actor": row["from_actor"],
+            "to_actor": row["to_actor"],
+            "reason_text": row["reason_text"],
+            "status": row["status"],
+            "review_state": row["review_state"],
+            "created_at": row["created_at"],
+        }
+
+    @staticmethod
+    def _project_handoff_event(row: dict) -> dict:
+        return {
+            "id": row["id"],
+            "handoff_id": row["handoff_id"],
+            "change_kind": row["change_kind"],
+            "previous_status": row["previous_status"],
+            "new_status": row["new_status"],
+            "actor_label": row["actor_label"],
+            "reason": row["reason"],
+            "noted_at": row["noted_at"],
+        }
+
+    def create_team_update(self, case_id: str, update_text: str, *,
+                           author_label: str, author_role: str) -> int:
+        """Post a shared team update: a dated note the patient and team
+        read in the product. An update pins no evidence and links no
+        question, so no amendment can reopen it; its review state is a
+        demo acknowledgment only. The update sends nothing anywhere.
+        """
+        from .team_collaboration import (
+            TeamCollaborationInputError,
+            check_author_label,
+            check_author_role,
+            check_update_text,
+        )
+        self._case(case_id)
+        try:
+            text = check_update_text(update_text)
+            author = check_author_label(author_label)
+            role = check_author_role(author_role)
+        except TeamCollaborationInputError as error:
+            raise InvalidInput(str(error)) from error
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            timestamp = now_utc()
+            cur = self.db.execute("""INSERT INTO team_updates
+                (case_id,author_label,author_role,update_text,review_state,created_at)
+                VALUES (?,?,?,?,'pending',?)""",
+                (case_id, author, role, text, timestamp))
+            self._event(case_id, "team_update_posted", update_id=int(cur.lastrowid),
+                        author_role=role)
+            return int(cur.lastrowid)
+
+    def review_team_update(self, case_id: str, update_id: int, reviewer_label: str,
+                           scope: str) -> dict:
+        """Demo-acknowledge a shared update. History is kept."""
+        from .team_collaboration import (
+            TeamCollaborationInputError,
+            check_author_label,
+            check_review_scope,
+        )
+        self._case(case_id)
+        if type(update_id) is not int or update_id < 1:
+            raise InvalidInput("Invalid team update ID")
+        try:
+            reviewer = check_author_label(reviewer_label)
+            scope_text = check_review_scope(scope)
+        except TeamCollaborationInputError as error:
+            raise InvalidInput(str(error)) from error
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT review_state FROM team_updates WHERE id=? AND case_id=?",
+                                  (update_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Team update not in this case")
+            if row["review_state"] == "needs_review":
+                raise InvalidInput("This update is awaiting re-review; preserve it and post a new update")
+            if row["review_state"] == "reviewed_in_demo":
+                raise InvalidInput("Team update is already reviewed in this demo")
+            self.db.execute("UPDATE team_updates SET review_state='reviewed_in_demo' WHERE id=?", (update_id,))
+            cur = self.db.execute("""INSERT INTO team_update_review_events
+                (update_id,reviewer_label,action,scope,noted_at) VALUES (?,?,'acknowledge',?,?)""",
+                (update_id, reviewer, scope_text, now_utc()))
+            self._event(case_id, "team_update_reviewed", update_id=update_id,
+                        review_event_id=int(cur.lastrowid))
+            return {"result": "acknowledged_in_demo", "review_event_id": int(cur.lastrowid)}
+
+    def list_team_updates(self, case_id: str) -> dict:
+        """List this case's shared updates with their review events.
+
+        Strictly case-scoped: only rows carrying this case_id are read.
+        The patient sees the same record as the clinician; the role
+        boundary is write access, not visibility.
+        """
+        from .team_collaboration import DISCLAIMER
+        self._case(case_id)
+        with self.db:
+            self.db.execute("BEGIN")
+            updates = self._dicts(self.db.execute(
+                "SELECT * FROM team_updates WHERE case_id=? ORDER BY id",
+                (case_id,)).fetchall())
+            out = []
+            for update in updates:
+                review_events = self._dicts(self.db.execute(
+                    "SELECT * FROM team_update_review_events WHERE update_id=? ORDER BY id",
+                    (update["id"],)).fetchall())
+                out.append({
+                    "update_id": update["id"],
+                    "created_at": update["created_at"],
+                    "current": self._project_team_update(dict(update)),
+                    "review_events": review_events,
+                })
+            return {
+                "updates": out,
+                "disclaimer": DISCLAIMER,
+                "synthetic": True,
+            }
+
+    def create_handoff(self, case_id: str, question_id: int, from_actor: str,
+                       to_actor: str, reason_text: str, source_version_ids: list[int], *,
+                       actor_label: str) -> int:
+        """Record a handoff of responsibility for a case question.
+
+        Materials are pinned by exact source version, exactly like a
+        referral's materials. The handoff sends nothing anywhere and
+        performs no transfer outside the product.
+        """
+        from .team_collaboration import (
+            TeamCollaborationInputError,
+            check_author_label,
+            check_handoff_reason,
+        )
+        self._case(case_id)
+        if type(question_id) is not int:
+            raise InvalidInput("Question ID must be an integer")
+        try:
+            sender = check_author_label(from_actor)
+            receiver = check_author_label(to_actor)
+            reason = check_handoff_reason(reason_text)
+            actor = check_author_label(actor_label)
+        except TeamCollaborationInputError as error:
+            raise InvalidInput(str(error)) from error
+        if (not isinstance(source_version_ids, list) or not source_version_ids
+                or len(source_version_ids) != len(set(source_version_ids))
+                or len(source_version_ids) > 50
+                or any(type(x) is not int or x < 1 for x in source_version_ids)):
+            raise InvalidInput("Shared materials must be 1–50 unique source version IDs")
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM questions WHERE id=? AND case_id=?",
+                                   (question_id, case_id)).fetchone():
+                raise InvalidInput("Question not in this case")
+            for sid in source_version_ids:
+                if not self.db.execute(
+                        "SELECT 1 FROM source_versions WHERE id=? AND case_id=? AND state='current'",
+                        (sid, case_id)).fetchone():
+                    raise InvalidInput("Shared material is missing, superseded, or belongs to another case")
+            timestamp = now_utc()
+            cur = self.db.execute("""INSERT INTO handoffs
+                (case_id,question_id,from_actor,to_actor,reason_text,status,review_state,created_at)
+                VALUES (?,?,?,?,?,'open','pending',?)""",
+                (case_id, question_id, sender, receiver, reason, timestamp))
+            handoff_id = int(cur.lastrowid)
+            for sid in source_version_ids:
+                self.db.execute("INSERT INTO handoff_materials VALUES (?,?)", (handoff_id, sid))
+            self.db.execute("""INSERT INTO handoff_events
+                (handoff_id,change_kind,previous_status,new_status,actor_label,reason,noted_at)
+                VALUES (?,'created',NULL,'open',?, '',?)""",
+                (handoff_id, actor, timestamp))
+            self._event(case_id, "handoff_recorded", handoff_id=handoff_id,
+                        question_id=question_id,
+                        material_source_version_ids=list(source_version_ids))
+            return handoff_id
+
+    def acknowledge_handoff(self, case_id: str, handoff_id: int, *,
+                            actor_label: str, reason: str) -> dict:
+        """Record receipt of a handoff: open → acknowledged.
+
+        Only from 'open'. The acknowledgment is a status event, not a
+        review: review is a separate demo acknowledgment.
+        """
+        from .team_collaboration import (
+            TeamCollaborationInputError,
+            check_author_label,
+            check_change_reason,
+        )
+        self._case(case_id)
+        if type(handoff_id) is not int or handoff_id < 1:
+            raise InvalidInput("Invalid handoff ID")
+        try:
+            actor = check_author_label(actor_label)
+            reason_text = check_change_reason(reason)
+        except TeamCollaborationInputError as error:
+            raise InvalidInput(str(error)) from error
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT status FROM handoffs WHERE id=? AND case_id=?",
+                                  (handoff_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Handoff not in this case")
+            if row["status"] != "open":
+                raise InvalidInput("Only an open handoff can be acknowledged")
+            timestamp = now_utc()
+            self.db.execute("UPDATE handoffs SET status='acknowledged' WHERE id=?", (handoff_id,))
+            cur = self.db.execute("""INSERT INTO handoff_events
+                (handoff_id,change_kind,previous_status,new_status,actor_label,reason,noted_at)
+                VALUES (?,'acknowledged','open','acknowledged',?,?,?)""",
+                (handoff_id, actor, reason_text, timestamp))
+            self._event(case_id, "handoff_acknowledged", handoff_id=handoff_id)
+            return {"result": "acknowledged", "handoff_id": handoff_id,
+                    "previous_status": "open",
+                    "change_kind": "acknowledged", "event_id": int(cur.lastrowid)}
+
+    def close_handoff(self, case_id: str, handoff_id: int, *,
+                      actor_label: str, reason: str) -> dict:
+        """Record a handoff as taken up: acknowledged → closed.
+
+        Only from 'acknowledged'. Terminal — further work is a new
+        handoff, never a reopen (mirroring the follow-through rule
+        that completed work stays in history).
+        """
+        from .team_collaboration import (
+            TeamCollaborationInputError,
+            check_author_label,
+            check_close_note,
+        )
+        self._case(case_id)
+        if type(handoff_id) is not int or handoff_id < 1:
+            raise InvalidInput("Invalid handoff ID")
+        try:
+            actor = check_author_label(actor_label)
+            reason_text = check_close_note(reason)
+        except TeamCollaborationInputError as error:
+            raise InvalidInput(str(error)) from error
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT status FROM handoffs WHERE id=? AND case_id=?",
+                                  (handoff_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Handoff not in this case")
+            if row["status"] != "acknowledged":
+                raise InvalidInput("Only an acknowledged handoff can be closed")
+            timestamp = now_utc()
+            self.db.execute("UPDATE handoffs SET status='closed' WHERE id=?", (handoff_id,))
+            cur = self.db.execute("""INSERT INTO handoff_events
+                (handoff_id,change_kind,previous_status,new_status,actor_label,reason,noted_at)
+                VALUES (?,'closed','acknowledged','closed',?,?,?)""",
+                (handoff_id, actor, reason_text, timestamp))
+            self._event(case_id, "handoff_closed", handoff_id=handoff_id)
+            return {"result": "closed", "handoff_id": handoff_id,
+                    "previous_status": "acknowledged",
+                    "change_kind": "closed", "event_id": int(cur.lastrowid)}
+
+    def review_handoff(self, case_id: str, handoff_id: int, reviewer_label: str, scope: str) -> dict:
+        """Demo-acknowledge a handoff record. History is kept."""
+        from .team_collaboration import (
+            TeamCollaborationInputError,
+            check_author_label,
+            check_review_scope,
+        )
+        self._case(case_id)
+        if type(handoff_id) is not int or handoff_id < 1:
+            raise InvalidInput("Invalid handoff ID")
+        try:
+            reviewer = check_author_label(reviewer_label)
+            scope_text = check_review_scope(scope)
+        except TeamCollaborationInputError as error:
+            raise InvalidInput(str(error)) from error
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            row = self.db.execute("SELECT review_state FROM handoffs WHERE id=? AND case_id=?",
+                                  (handoff_id, case_id)).fetchone()
+            if not row:
+                raise InvalidInput("Handoff not in this case")
+            if row["review_state"] == "needs_review":
+                raise InvalidInput("Shared materials changed since this handoff; preserve it and create a new handoff")
+            if row["review_state"] == "reviewed_in_demo":
+                raise InvalidInput("Handoff is already reviewed in this demo")
+            self.db.execute("UPDATE handoffs SET review_state='reviewed_in_demo' WHERE id=?", (handoff_id,))
+            cur = self.db.execute("""INSERT INTO handoff_review_events
+                (handoff_id,reviewer_label,action,scope,noted_at) VALUES (?,?,'acknowledge',?,?)""",
+                (handoff_id, reviewer, scope_text, now_utc()))
+            self._event(case_id, "handoff_reviewed", handoff_id=handoff_id,
+                        review_event_id=int(cur.lastrowid))
+            return {"result": "acknowledged_in_demo", "review_event_id": int(cur.lastrowid)}
+
+    def list_handoffs(self, case_id: str) -> dict:
+        """List this case's handoffs with materials and history.
+
+        Strictly case-scoped: only rows carrying this case_id are read.
+        History arrays are in noted order; the current handoff is also
+        projected separately for convenient rendering.
+        """
+        from .team_collaboration import DISCLAIMER
+        self._case(case_id)
+        with self.db:
+            self.db.execute("BEGIN")
+            handoffs = self._dicts(self.db.execute(
+                "SELECT id,case_id,created_at FROM handoffs WHERE case_id=? ORDER BY id",
+                (case_id,)).fetchall())
+            out = []
+            for handoff in handoffs:
+                current = self.db.execute(
+                    "SELECT * FROM handoffs WHERE id=?",
+                    (handoff["id"],)).fetchone()
+                current = self._project_handoff(dict(current))
+                question = self.db.execute("SELECT question FROM questions WHERE id=?",
+                                           (current["question_id"],)).fetchone()
+                materials = self._dicts(self.db.execute(
+                    """SELECT v.id,v.document_id,v.version,v.state FROM handoff_materials m
+                    JOIN source_versions v ON v.id=m.source_version_id
+                    WHERE m.handoff_id=? ORDER BY v.document_id,v.version""",
+                    (handoff["id"],)).fetchall())
+                events = self._dicts(self.db.execute(
+                    "SELECT * FROM handoff_events WHERE handoff_id=? ORDER BY id",
+                    (handoff["id"],)).fetchall())
+                review_events = self._dicts(self.db.execute(
+                    "SELECT * FROM handoff_review_events WHERE handoff_id=? ORDER BY id",
+                    (handoff["id"],)).fetchall())
+                out.append({
+                    "handoff_id": handoff["id"],
+                    "created_at": handoff["created_at"],
+                    "current": current,
+                    "question": question["question"] if question else None,
+                    "materials": materials,
+                    "history": [self._project_handoff_event(row) for row in events],
+                    "review_events": review_events,
+                })
+            return {
+                "handoffs": out,
+                "disclaimer": DISCLAIMER,
+                "synthetic": True,
+            }
+
     def create_snapshot(self, case_id: str, question_id: int, summary: str, source_ids: list[int],
                         evidence_assessment_ids: list[int] | None = None,
                         broker_link_ids: list[int] | None = None) -> int:
@@ -6994,15 +7821,15 @@ class CaseStore:
         return value.strip()
 
     def _invalidate_care_records(self, case_id: str, superseded_source_id: int | None,
-                                 invalidated_snapshot_ids: list[int]) -> tuple[list[int], list[int]]:
+                                 invalidated_snapshot_ids: list[int]) -> tuple[list[int], list[int], list[int], list[int]]:
         """Mark dependent care records needs_review. Caller owns a write transaction.
 
-        Only rows in THIS case whose pinned material, response/item anchor,
-        or linked original snapshot was superseded are affected. History is
-        preserved; other cases are untouched.
+        Only rows in THIS case whose pinned material, response/item/outcome
+        anchor, or linked original snapshot was superseded are affected.
+        History is preserved; other cases are untouched.
         """
         if superseded_source_id is None:
-            return [], []
+            return [], [], [], []
         so_ids: set[int] = set()
         for row in self.db.execute(
                 """SELECT DISTINCT r.id FROM second_opinion_requests r
@@ -7041,7 +7868,44 @@ class CaseStore:
                             invalidated_surv)
             self._event(case_id, "survivorship_review_reopened",
                         source_version_id=superseded_source_id, invalidated_items=invalidated_surv)
-        return invalidated_so, invalidated_surv
+        # D8: referrals pin materials like second-opinion requests and
+        # anchor their outcome like a second-opinion response; either
+        # side superseded reopens the referral for review.
+        ref_ids: set[int] = set()
+        for row in self.db.execute(
+                """SELECT DISTINCT r.id FROM referrals r
+                JOIN referral_materials m ON m.referral_id=r.id
+                WHERE r.case_id=? AND m.source_version_id=? AND r.review_state!='needs_review'""",
+                (case_id, superseded_source_id)).fetchall():
+            ref_ids.add(row[0])
+        for row in self.db.execute(
+                """SELECT DISTINCT r.id FROM referrals r
+                JOIN referral_outcomes o ON o.referral_id=r.id
+                WHERE r.case_id=? AND o.anchor_source_version_id=? AND r.review_state!='needs_review'""",
+                (case_id, superseded_source_id)).fetchall():
+            ref_ids.add(row[0])
+        invalidated_ref = sorted(ref_ids)
+        if invalidated_ref:
+            marks = ",".join("?" for _ in invalidated_ref)
+            self.db.execute(f"UPDATE referrals SET review_state='needs_review' WHERE id IN ({marks})",
+                            invalidated_ref)
+            self._event(case_id, "referral_review_reopened",
+                        source_version_id=superseded_source_id, invalidated_referrals=invalidated_ref)
+        # D9: handoffs pin materials like referrals; a superseded
+        # material reopens the handoff for review.
+        invalidated_ho = [row[0] for row in self.db.execute(
+            """SELECT DISTINCT h.id FROM handoffs h
+            JOIN handoff_materials m ON m.handoff_id=h.id
+            WHERE h.case_id=? AND m.source_version_id=? AND h.review_state!='needs_review'""",
+            (case_id, superseded_source_id)).fetchall()]
+        invalidated_ho = sorted(invalidated_ho)
+        if invalidated_ho:
+            marks = ",".join("?" for _ in invalidated_ho)
+            self.db.execute(f"UPDATE handoffs SET review_state='needs_review' WHERE id IN ({marks})",
+                            invalidated_ho)
+            self._event(case_id, "handoff_review_reopened",
+                        source_version_id=superseded_source_id, invalidated_handoffs=invalidated_ho)
+        return invalidated_so, invalidated_surv, invalidated_ref, invalidated_ho
 
     def create_second_opinion_request(self, case_id: str, question_id: int, question_text: str,
                                       source_version_ids: list[int],

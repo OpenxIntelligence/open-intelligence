@@ -62,6 +62,9 @@ DIMENSION_MODULES: tuple[str, ...] = (
     "open_intelligence.trials",
     "open_intelligence.hypothesis",
     "open_intelligence.appointments",
+    "open_intelligence.notifications",
+    "open_intelligence.referrals",
+    "open_intelligence.team_collaboration",
 )
 
 
@@ -288,13 +291,26 @@ class RegistryTests(unittest.TestCase):
 
     def test_terminology_bindings_live_on_the_vertical(self):
         # D2: the oncology vertical declares its own terminology
-        # binding (histology -> ICD-10 C80.1); cardiology declares none.
+        # binding (histology -> ICD-10 C80.1); V2: cardiology
+        # declares its own (ejection-fraction -> LOINC 10230-1,
+        # heart-failure -> ICD-10 I50.9), pinned from the
+        # publishers' own listings.
         oncology = get_vertical("oncology")
         self.assertEqual(
             oncology.terminology_bindings["histology"],
             ({"system": "http://hl7.org/fhir/sid/icd-10", "code": "C80.1",
               "display": "Malignant (primary) neoplasm, unspecified"},))
-        self.assertEqual(get_vertical("cardiology").terminology_bindings, {})
+        self.assertEqual(
+            get_vertical("cardiology").terminology_bindings,
+            {
+                "ejection-fraction": (
+                    {"system": "http://loinc.org", "code": "10230-1",
+                     "display": "Left ventricular Ejection fraction"},),
+                "heart-failure": (
+                    {"system": "http://hl7.org/fhir/sid/icd-10",
+                     "code": "I50.9",
+                     "display": "Heart failure, unspecified"},),
+            })
 
 
 class CrossVerticalBehaviourTests(unittest.TestCase):

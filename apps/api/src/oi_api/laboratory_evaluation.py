@@ -264,7 +264,8 @@ class LaboratoryEvaluationRegistry:
     def dataset(self, key):
         return self._get("dataset", key)
 
-    def record_run(self, run_id, dataset, system, outputs, *, execution="supplied_outputs"):
+    def record_run(self, run_id, dataset, system, outputs, *, execution="supplied_outputs",
+                   evaluated_splits=None):
         _id(run_id)
         _shape(system, ("system_id", "system_version", "software_commit"))
         _id(system["system_id"])
@@ -272,12 +273,19 @@ class LaboratoryEvaluationRegistry:
         _sha(system["software_commit"], 40)
         _require(execution in ("supplied_outputs", "deterministic_parser"), "Invalid execution kind")
         manifest = self.dataset(dataset)
-        _shape(outputs, [c["case_id"] for c in manifest["cases"]])
+        if evaluated_splits is None:
+            evaluated_splits = list(SPLITS)
+        _require(type(evaluated_splits) is list and bool(evaluated_splits)
+                 and all(type(s) is str and s in SPLITS for s in evaluated_splits)
+                 and len(set(evaluated_splits)) == len(evaluated_splits), "Invalid evaluated splits")
+        cases = [c for c in manifest["cases"] if c["split"] in evaluated_splits]
+        _require(bool(cases), "No cases in evaluated splits")
+        _shape(outputs, [c["case_id"] for c in cases])
         for output in outputs.values():
             _output(output)
         if execution == "deterministic_parser":
             _require(system["system_id"] == "oi.fhir-r4-laboratory-parser"
-                     and outputs == {c["case_id"]: baseline_output(c) for c in manifest["cases"]},
+                     and outputs == {c["case_id"]: baseline_output(c) for c in cases},
                      "Baseline receipt does not match canonical parser")
         run = {"contract": CONTRACT, "run_id": run_id, "dataset": dataset,
                "dataset_sha256": fingerprint(manifest), "system": system, "execution": execution,
@@ -285,6 +293,9 @@ class LaboratoryEvaluationRegistry:
                "parser_source_sha256": (hashlib.sha256(Path(__file__).with_name(
                    "laboratory_fhir_r4.py").read_bytes()).hexdigest()
                    if execution == "deterministic_parser" else None), "outputs": outputs}
+        # Preserve the byte shape of historical all-split records and retries.
+        if evaluated_splits != list(SPLITS):
+            run["evaluated_splits"] = evaluated_splits
         with self._transaction():
             return {"run_id": run_id, "sha256": self._put("run", run_id, run)}
 
@@ -364,7 +375,10 @@ class LaboratoryEvaluationRegistry:
                           "reference_correction_seconds": 0} for split in SPLITS}
         details = []
         for case in self.dataset(candidate["dataset"])["cases"]:
+            if case["split"] not in candidate.get("evaluated_splits", SPLITS):
+                continue
             case_id = case["case_id"]
+            _require(case_id in reference["outputs"], "Reference did not evaluate this case")
             review = self._get("review", f"{reference_id}:{case_id}")
             g = groups[case["split"]]
             g["cases"] += 1

@@ -15,7 +15,8 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore, InvalidInput
-from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
+from open_intelligence.__main__ import Handler, seed
+from session_auth import signin_demo
 from open_intelligence.agent_writes import build_investigation_contract
 from open_intelligence.investigation import validate_output
 
@@ -352,6 +353,7 @@ class ReviewQueueHttpTests(unittest.TestCase):
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -361,7 +363,7 @@ class ReviewQueueHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def request(self, path, data=None):
-        values = {FICTIONAL_ACTOR_HEADER: 'FICTIONAL-NAVIGATOR-A'}
+        values = {"Cookie": self._cookie}
         if data is not None:
             values['Content-Type'] = 'application/json'
         request = Request(f'http://127.0.0.1:{self.port}{path}',
