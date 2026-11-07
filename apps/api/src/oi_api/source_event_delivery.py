@@ -102,6 +102,130 @@ class PostgresSourceEventDelivery:
             "ORDER BY d.event_id,d.delivery_id LIMIT 1 FOR UPDATE OF d SKIP LOCKED",
             (patient_id, case_id, organization, actor, purpose, CONSUMER)))
 
+    def inspect(self, patient_id, case_id, *, organization, actor, purpose, recheck_authority):
+        """Observe this actor's backlog without claiming or changing delivery state."""
+        with self.registry.transaction():
+            self._scope(patient_id, case_id, organization, actor, purpose, recheck_authority)
+            row = self.registry._fetchone(
+                "WITH stamp AS MATERIALIZED (SELECT clock_timestamp() AS observed_at) "
+                "SELECT stamp.observed_at, "
+                "count(o.event_id) FILTER (WHERE d.delivery_id IS NULL), "
+                "count(*) FILTER (WHERE d.state='queued' AND d.available_at<=stamp.observed_at), "
+                "count(*) FILTER (WHERE d.state='queued' AND d.available_at>stamp.observed_at), "
+                "count(*) FILTER (WHERE d.state='running' AND d.lease_expires_at>stamp.observed_at), "
+                "count(*) FILTER (WHERE d.state='running' AND d.lease_expires_at<=stamp.observed_at), "
+                "count(*) FILTER (WHERE d.state='delivered'), "
+                "count(*) FILTER (WHERE d.state='dead_letter') "
+                "FROM stamp LEFT JOIN coordination.source_event_outbox o ON "
+                "o.patient_id=%s AND o.case_id=%s AND o.origin_org=%s AND o.purpose=%s "
+                "LEFT JOIN coordination.source_event_deliveries d ON d.event_id=o.event_id "
+                "AND d.patient_id=o.patient_id AND d.case_id=o.case_id AND d.origin_org=o.origin_org "
+                "AND d.purpose=o.purpose AND d.actor=%s AND d.consumer=%s "
+                "GROUP BY stamp.observed_at",
+                (patient_id, case_id, organization, purpose, actor, CONSUMER))
+            # The empty outbox's LEFT JOIN sentinel must not count as pending.
+            result = dict(zip(("observed_at", "unclaimed", "queued_ready", "queued_waiting",
+                               "running_active", "running_expired", "delivered", "dead_letter"), row))
+            result["observed_at"] = result["observed_at"].isoformat()
+            recheck_authority()
+            self.registry.append_event(
+                patient_id, "source.delivery.status_read_authorized", case_id=case_id,
+                actor=actor, purpose=purpose, consumer=CONSUMER)
+            recheck_authority()
+            return {"status": "observed", **result}
+
+    @staticmethod
+    def validate_page(limit, after_event):
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("Page size must be between 1 and 100")
+        if type(after_event) is not int or not 0 <= after_event <= 9223372036854775807:
+            raise ValueError("Event cursor must be a nonnegative PostgreSQL bigint")
+
+    def dead_letters(self, patient_id, case_id, *, organization, actor, purpose,
+                     recheck_authority, limit=20, after_event=0):
+        """Read bounded terminal metadata; the page cursor is not a delivery watermark."""
+        self.validate_page(limit, after_event)
+        with self.registry.transaction():
+            self._scope(patient_id, case_id, organization, actor, purpose, recheck_authority)
+            rows = self.registry._fetchall(
+                "SELECT d.delivery_id,d.event_id,d.revision,d.attempt_count,d.failure_count,"
+                "e.reason_code,d.updated_at FROM coordination.source_event_deliveries d "
+                "JOIN coordination.source_event_delivery_events e ON e.delivery_id=d.delivery_id "
+                "AND e.revision=d.revision AND e.state='dead_letter' "
+                "WHERE d.patient_id=%s AND d.case_id=%s AND d.origin_org=%s AND d.actor=%s "
+                "AND d.purpose=%s AND d.consumer=%s AND d.state='dead_letter' AND d.event_id>%s "
+                "ORDER BY d.event_id LIMIT %s",
+                (patient_id, case_id, organization, actor, purpose, CONSUMER, after_event, limit + 1))
+            fields = ("delivery_id", "event_id", "revision", "attempt_count", "failure_count",
+                      "reason_code", "failed_at")
+            items = [dict(zip(fields, row)) for row in rows[:limit]]
+            for item in items:
+                item["failed_at"] = item["failed_at"].isoformat()
+            recheck_authority()
+            self.registry.append_event(
+                patient_id, "source.delivery.dead_letters_read_authorized", case_id=case_id,
+                actor=actor, purpose=purpose, consumer=CONSUMER, limit=limit,
+                after_event_id=after_event, returned_count=len(items))
+            recheck_authority()
+            return {"status": "observed", "items": items,
+                    "next_after_event_id": items[-1]["event_id"] if len(rows) > limit else None}
+
+    @staticmethod
+    def validate_recovery(delivery_id, event_id, expected_revision):
+        if type(delivery_id) is not str or re.fullmatch(r"DELIVERY-[0-9A-F]{32}", delivery_id) is None:
+            raise ValueError("A delivery identity is required")
+        if type(event_id) is not int or not 1 <= event_id <= 9223372036854775807:
+            raise ValueError("Event identity must be a positive PostgreSQL bigint")
+        if type(expected_revision) is not int or not 1 <= expected_revision < 2147483647:
+            raise ValueError("A recoverable delivery revision is required")
+
+    def recover(self, patient_id, case_id, *, organization, actor, purpose,
+                recheck_authority, delivery_id, event_id, expected_revision):
+        """Authorize one explicit retry of an inspected terminal revision.
+
+        This only queues the existing current-context reconciler. It does not
+        execute the consumer, resurrect completed work or replay external effects.
+        A repeated request recovers its immutable receipt even after later work.
+        """
+        self.validate_recovery(delivery_id, event_id, expected_revision)
+        with self.registry.transaction():
+            self._scope(patient_id, case_id, organization, actor, purpose, recheck_authority)
+            row = self._load(dict(delivery_id=delivery_id, event_id=event_id,
+                                  patient_id=patient_id, case_id=case_id, origin_org=organization,
+                                  actor=actor, purpose=purpose), lock=True)
+            saved = self.registry._fetchone(
+                "SELECT recovery_revision FROM coordination.source_event_recoveries "
+                "WHERE delivery_id=%s AND failed_revision=%s", (delivery_id, expected_revision))
+            if saved is None:
+                if row["state"] != "dead_letter" or row["revision"] != expected_revision:
+                    raise PatientRegistryConflict("Delivery revision is not recoverable")
+                failure = self.registry._fetchone(
+                    "SELECT reason_code FROM coordination.source_event_delivery_events "
+                    "WHERE delivery_id=%s AND revision=%s AND state='dead_letter'",
+                    (delivery_id, expected_revision))
+                if failure is None or failure[0] not in {
+                        "retryable_failure", "lease_expired", "authority_unavailable"}:
+                    raise PatientRegistryConflict("Delivery failure requires separate repair")
+                self.registry._execute(
+                    "INSERT INTO coordination.source_event_recoveries "
+                    "(delivery_id,failed_revision,recovery_revision) VALUES (%s,%s,%s)",
+                    (delivery_id, expected_revision, expected_revision + 1))
+                current = self._transition(row, "queued", "recovery_requested", failures=0)
+                recovery_revision = current["revision"]
+            else:
+                recovery_revision = saved[0]
+            recheck_authority()
+            self.registry.append_event(
+                patient_id, "source.delivery.recovery_read_authorized" if saved else
+                "source.delivery.recovery_requested", case_id=case_id, actor=actor,
+                purpose=purpose, consumer=CONSUMER, delivery_id=delivery_id,
+                source_event_id=event_id, failed_revision=expected_revision,
+                recovery_revision=recovery_revision)
+            recheck_authority()
+            return {"status": "recovery_requested", "delivery_id": delivery_id,
+                    "event_id": event_id, "failed_revision": expected_revision,
+                    "recovery_revision": recovery_revision, "duplicate": saved is not None}
+
     def claim_next(self, patient_id: str, case_id: str, *, organization: str, actor: str,
                    purpose: str, recheck_authority: Callable[[], None], lease_seconds: int = 30):
         """Claim one event for the current actor, or expose an exhausted lease.

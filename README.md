@@ -1,6 +1,6 @@
 # Open Intelligence
 
-Current permission continuation requires `0029_patient_access`, extending the preserved `0028_connected_product` join. The API and both workers support explicit persisted-grant enforcement; Overview provides permission history, grant/revoke and exact retry recovery. See [patient permissions](docs/engineering/PERSISTED_PATIENT_PERMISSIONS.md). Synthetic declarations do not verify legal consent or identity.
+Current event recovery requires `0030_source_event_recovery`, extending the preserved `0029_patient_access` and `0028_connected_product` histories. The API and both workers support explicit persisted-grant enforcement; Overview provides permission history, grant/revoke and exact retry recovery. See [patient permissions](docs/engineering/PERSISTED_PATIENT_PERMISSIONS.md). Synthetic declarations do not verify legal consent or identity.
 
 Open Intelligence is building a patient-centered healthcare intelligence platform,
 initially focused on oncology. The full product ambition and canonical architecture

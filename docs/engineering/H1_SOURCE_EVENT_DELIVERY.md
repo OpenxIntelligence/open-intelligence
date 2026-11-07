@@ -30,6 +30,64 @@ contract, whose namespace, subject-binding and authority references differ.
 
 ## Prepare the existing synthetic environment
 
+### Inspect the scoped backlog
+
+Under #104 / PF-06 and OI-013, the operator can inspect delivery state using the
+same separately supplied event-worker credential and current scope grants:
+
+```bash
+PYTHONPATH=apps/api/src:src python -m oi_api.event_worker --status \
+  --patient PATIENT-EXAMPLE --case CASE-EXAMPLE
+```
+
+The JSON observation contains `observed_at` and counts for `unclaimed`,
+`queued_ready`, `queued_waiting`, `running_active`, `running_expired`,
+`delivered` and `dead_letter`. A single PostgreSQL snapshot and database-clock
+instant classify that actor's obligations. Another actor's deliveries do not
+consume this actor's unclaimed count. No source text, identifiers, lease tokens
+or stored credentials are returned.
+
+Inspection appends only an authorized-read audit event, with authority checked
+before reading and again after audit insertion. It does not create a delivery,
+claim work, renew a lease, reset a failure or retry a dead letter. `--once` and
+`--status` are mutually exclusive. Exit zero means inspection succeeded, even
+when its counts include dead letters; it does not declare the relay healthy.
+Denied inspection returns only `blocked`; storage/provider failures withhold
+counts. The existing `idle` execution result means no work was claimed in that
+attempt, not that every obligation was delivered.
+
+This bounded operational view adds no migration, scheduler, dependency or
+general observability service. General replay and production
+monitoring remain separate construction work. PostgreSQL and CLI acceptance
+for this addition belongs to its dependent draft, not its parent's receipts.
+
+### Inspect terminal failures
+
+The same current actor/org/purpose/patient/case authorization protects a bounded
+terminal-failure listing:
+
+```bash
+PYTHONPATH=apps/api/src:src python -m oi_api.event_worker --dead-letters \
+  --patient PATIENT-EXAMPLE --case CASE-EXAMPLE --limit 20 --after-event 0
+```
+
+`items` contains delivery/event IDs, current revision, attempt/failure counts,
+the terminal lifecycle reason code and `failed_at`. Source text, stored
+credentials and lease tokens remain excluded. These operational identifiers
+are disclosed only by this separately selected mode, not aggregate `--status`.
+The command adds an authorized-read audit event and rechecks authority after
+that insertion; revoked reads return only `blocked` and roll back the audit.
+It never claims, retries or resets an obligation.
+
+`--limit` is 1–100 (default 20). `--after-event` is a nonnegative PostgreSQL
+bigint (default 0). Pass `next_after_event_id` for the next page; null means no
+further row was seen in that query. Pages are live observations, not a frozen
+multi-page snapshot. Restart at zero to refresh: an earlier event can become
+terminal later, so this cursor must never be used as a durable delivery
+watermark. All three command modes are mutually exclusive; pagination options
+require `--dead-letters`. Exit zero means the read succeeded, not that failures
+were repaired. Explicit recovery is described below. General event replay remains open under #104 / OI-013.
+
 Use the existing [persistent demo setup](../H1_DEMO.md), dependency lock and
 PostgreSQL 16 configuration. The event worker uses `OI_API_DATABASE_URL`,
 `OI_API_ACCESS_FILE` and the same synthetic access provider as the application.
@@ -161,10 +219,48 @@ explicitly instead of reporting idle. An obsolete token cannot publish an
 effect, receipt or acknowledgment.
 
 Dead-letter state is specific to this actor's delivery and preserves its history.
-There is currently **no dead-letter replay/reset command**. Repeating `--once`
-does not reopen it. Inspect the original source/journal and delivery/receipt
-evidence through authorized engineering access; a replay workflow requires a
-separate reviewed contract.
+Repeating `--once` does not reopen a terminal delivery. An operator can explicitly
+request another reconciliation after correcting an authority or transient failure.
+Inspect `--dead-letters` first, then name that exact delivery, event and failed revision:
+
+```sh
+python -m oi_api.event_worker --recover DELIVERY-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA \
+  --event-id 123 --expected-revision 7 --patient PATIENT-FICTIONAL --case CASE-ALPHA
+```
+
+The identifiers above are fictional examples; use the freshly inspected receipt.
+The command requires the same independently supplied current worker authority and
+four grants as ordinary delivery. Persisted-grant mode applies to inspection,
+recovery and later execution. The actor, organization, purpose, patient, case,
+consumer and source event retain their original identities. Changing actor does
+not recover another actor's delivery.
+
+Migration `0030_source_event_recovery` adds immutable recovery receipts after the
+published `0029_patient_access` history. It changes no previously published
+migration. A request atomically records `(delivery_id, failed_revision)`, queues
+the next revision, resets consecutive failures and records attributable history.
+Lifetime attempt counts and prior leases, failures and consumer receipts remain
+inspectable. The database rejects resets without a matching recovery receipt or
+lifecycle event. Populated downgrade is refused.
+
+Only `retryable_failure`, `lease_expired` and `authority_unavailable` can be
+recovered. `invalid_event` remains held for a separately verified integrity repair.
+A stale revision or a delivery that was never terminal returns `conflict` and
+exit 2. A `recovery_requested` response and exit 0 mean that the request committed;
+they do not establish delivery or a successful domain effect.
+
+If the response is lost, repeat the same delivery/event/revision. Current authority
+is checked again before returning the immutable receipt with `duplicate: true`.
+This retry does not reset a later attempt or a subsequent terminal failure. To
+recover a later failure, inspect and explicitly request that new revision.
+After a successful request, invoke ordinary `--once` to run the existing bounded
+current-context reconciliation. It preserves its own fresh context and authority
+checks, lease fencing and atomic receipts. This recovery path has no capability
+to repeat an external effect or execute a different consumer.
+
+The existing full PostgreSQL, populated migration, permissions, restart and restore
+gates must qualify the combined source. The PR records exact-source results;
+a parent pass alone does not qualify this new migration or recovery operation.
 
 ## Correctness while the worker is stopped
 

@@ -37,6 +37,13 @@ class SourceEventWorkerTests(unittest.TestCase):
                 self.assertEqual(worker.run_once(Settings(), lambda: TOKEN,
                                                   "PATIENT-ONE", "CASE-ALPHA", authentication=Provider()),
                                  {"status": "blocked"})
+                for reader in (worker.read_status, worker.read_dead_letters):
+                    self.assertEqual(reader(Settings(), lambda: TOKEN, "PATIENT-ONE", "CASE-ALPHA",
+                                            authentication=Provider()), {"status": "blocked"})
+                self.assertEqual(worker.request_recovery(
+                    Settings(), lambda: TOKEN, "PATIENT-ONE", "CASE-ALPHA", authentication=Provider(),
+                    delivery_id="DELIVERY-" + "A" * 32, event_id=1, expected_revision=3),
+                    {"status": "blocked"})
 
     def test_wrong_patient_or_purpose_cannot_claim_delivery(self):
         worker = self.worker()
@@ -50,6 +57,9 @@ class SourceEventWorkerTests(unittest.TestCase):
                 self.assertEqual(worker.run_once(Settings(), lambda: TOKEN,
                                                   "PATIENT-ONE", "CASE-ALPHA", authentication=Provider()),
                                  {"status": "blocked"})
+                for reader in (worker.read_status, worker.read_dead_letters):
+                    self.assertEqual(reader(Settings(), lambda: TOKEN, "PATIENT-ONE", "CASE-ALPHA",
+                                            authentication=Provider()), {"status": "blocked"})
 
     def test_provider_failure_never_discloses_credential_or_exception_details(self):
         worker = self.worker()
@@ -60,6 +70,8 @@ class SourceEventWorkerTests(unittest.TestCase):
         result = worker.run_once(Settings(), lambda: TOKEN, "PATIENT-ONE", "CASE-ALPHA",
                                  authentication=Provider())
         self.assertEqual(result, {"status": "blocked"})
+        self.assertEqual(worker.read_status(Settings(), lambda: TOKEN, "PATIENT-ONE", "CASE-ALPHA",
+                                            authentication=Provider()), {"status": "blocked"})
         for secret in (private, TOKEN):
             self.assertNotIn(secret, json.dumps(result))
 
@@ -76,6 +88,58 @@ class SourceEventWorkerTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 worker.run_once(Settings(), forbidden_read, "PATIENT-ONE", "CASE-ALPHA",
                                 lease_seconds=value)
+
+    def test_dead_letter_page_bounds_reject_before_reading_credentials(self):
+        def forbidden_read():
+            raise AssertionError("Invalid page must not read credentials")
+        for key, values in (("limit", (0, -1, 101, True, "20", 1.5)),
+                            ("after_event", (-1, 9223372036854775808, True, "0", 1.5))):
+            for value in values:
+                with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                    self.worker().read_dead_letters(Settings(), forbidden_read,
+                                                    "PATIENT-ONE", "CASE-ALPHA", **{key: value})
+
+    def test_recovery_identity_and_revision_reject_before_reading_credentials(self):
+        def forbidden_read():
+            raise AssertionError("Invalid recovery request must not read credentials")
+        valid = dict(delivery_id="DELIVERY-" + "A" * 32, event_id=1, expected_revision=3)
+        for key, values in (("delivery_id", (None, "", "DELIVERY-invalid")),
+                            ("event_id", (0, -1, True, "1", 9223372036854775808)),
+                            ("expected_revision", (0, -1, True, "3", 2147483647))):
+            for value in values:
+                with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                    self.worker().request_recovery(Settings(), forbidden_read,
+                        "PATIENT-ONE", "CASE-ALPHA", **{**valid, key: value})
+
+    def test_recovery_cli_requires_exact_identity_and_exclusive_mode(self):
+        identity = "DELIVERY-" + "A" * 32
+        for flags in (("--recover", identity),
+                      ("--recover", identity, "--event-id", "1"),
+                      ("--recover", identity, "--event-id", "1", "--expected-revision", "0"),
+                      ("--recover", identity, "--event-id", "1", "--expected-revision", "3", "--once"),
+                      ("--recover", identity, "--event-id", "1", "--expected-revision", "3", "--limit", "1"),
+                      ("--status", "--event-id", "1", "--expected-revision", "3")):
+            with self.subTest(flags=flags):
+                result = subprocess.run([sys.executable, "-m", "oi_api.event_worker", *flags,
+                                         "--patient", "PATIENT-ONE", "--case", "CASE-ALPHA"],
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("error:", result.stderr)
+
+    def test_cli_rejects_ambiguous_modes_and_invalid_pagination(self):
+        for flags in (("--once", "--dead-letters"), ("--status", "--dead-letters"),
+                      ("--status", "--limit", "1"), ("--once", "--after-event", "0"),
+                      ("--dead-letters", "--after-event", "-1"),
+                      ("--dead-letters", "--after-event", "9223372036854775808"),
+                      ("--dead-letters", "--limit", "101")):
+            with self.subTest(flags=flags):
+                result = subprocess.run([sys.executable, "-m", "oi_api.event_worker", *flags,
+                                         "--patient", "PATIENT-ONE", "--case", "CASE-ALPHA"],
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("error:", result.stderr)
 
     def test_cli_does_not_reuse_composer_worker_credential_file(self):
         self.worker()
