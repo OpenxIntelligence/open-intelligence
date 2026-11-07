@@ -35,5 +35,5 @@ export function parseSourceInstitution(v:unknown,patientId:string,caseId:string,
     typeof v.subject_reference!=='string'||!/^Patient\/[A-Za-z0-9.-]{1,64}$/.test(v.subject_reference)||
     typeof v.report_reference!=='string'||!/^DiagnosticReport\/[A-Z][A-Z0-9-]{1,39}$/.test(v.report_reference))
     throw Error('Invalid source institution');
-  return {subject:v.subject_reference,report:v.report_reference};
+  return {subject:v.subject_reference,report:v.report_reference,organization:v.source_organization,system:v.source_system};
 }

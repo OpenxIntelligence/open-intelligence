@@ -65,7 +65,7 @@ export function LaboratoryIntake({session,patientId,caseId,disabled=false}:{
       </select>
       <p className="small">Select a predecessor only for a correction of that same report. Different specimens and time points remain separate records.</p>
       <label className="check"><input data-testid="laboratory-confirm" type="checkbox" checked={confirmed} disabled={!file||locked}
-        onChange={event=>setConfirmed(event.target.checked)}/>I confirm this is independently authored fictional data and I have inspected the original, case and report version.</label>
+        onChange={event=>setConfirmed(event.target.checked)}/>I confirm this is independently authored fictional data and I have inspected the original, case, selected institution and report version.</label>
       <div className="actions"><button data-testid="laboratory-import" className="primary" disabled={!file||!confirmed||locked}>
         {state.laboratoryPhase==='sending'?'Importing laboratory original…':'Import laboratory original'}</button>
         <button type="button" onClick={discard} disabled={locked}>Discard local laboratory selection</button></div>

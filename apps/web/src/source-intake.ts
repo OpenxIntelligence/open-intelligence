@@ -5,6 +5,7 @@ export type ImportReceipt = Readonly<{
   result:'imported'|'duplicate'|'quarantined';duplicate:boolean;source_id:string|null;version:number|null;
 }>;
 export type OriginalSource = Readonly<{
+  institution?:Readonly<{organization:string;system:string;subject:string;report:string}>;
   source_id:string;case_id:string;access_receipt_id:string;document_id:string;version:number;state:'current'|'superseded';
   sha256:string;original_text:string;synthetic:true;clinical_review_state:'not_established';
 }>;

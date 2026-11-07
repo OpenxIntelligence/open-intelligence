@@ -1874,6 +1874,7 @@ export class RegistrySession {
       // A 64 KiB original can expand under JSON escaping. Keep the envelope bounded too.
       const raw=await json(res,524288);
       const subject=this.#state.cases?.find(item=>item.case_id===caseId&&item.status==='active')?.source_subject_ref;
+      let institution:ReturnType<typeof parseSourceInstitution>|undefined;
       let expectedSubject=subject?'Patient/'+subject:undefined,reportReference:string|undefined;
       if(source.kind==='laboratory'&&/^F-[A-F0-9]{32}$/.test(source.document_id)){
         const attribution=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+
@@ -1881,11 +1882,11 @@ export class RegistrySession {
         if(!current())return;
         if(attribution.status!==200)throw Error('Institution source unavailable');
         const qualified=parseSourceInstitution(await json(attribution),patientId,caseId,sourceId,source.document_id,source.sha256);
-        expectedSubject=qualified.subject;reportReference=qualified.report;
+        institution=qualified;expectedSubject=qualified.subject;reportReference=qualified.report;
       }
       const original=await verifyOriginal(raw,caseId,source,expectedSubject,reportReference);
       if(!current())return;
-      this.#publish({original,recordsPhase:'ready',recordMessage:'Exact original bytes verified against the selected source hash. Clinical review remains not established.'});
+      this.#publish({original:institution?Object.freeze({...original,institution}):original,recordsPhase:'ready',recordMessage:'Exact original bytes verified against the selected source hash. Clinical review remains not established.'});
     }catch(_){if(current())this.#publish({original:null,recordsPhase:'error',recordMessage:'Original failed verification or service unavailable. Reload metadata before trying again.'});}
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }

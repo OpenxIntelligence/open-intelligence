@@ -10,7 +10,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from open_intelligence.patient_registry import (
-    PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError, _key,
+    PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError, _digest, _key,
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
@@ -114,6 +114,18 @@ class CanonicalCaseBindings:
                 return self._receipt(case_id, patient_id, duplicate=True)
             # The unique qualified external subject prevents silent many-to-many
             # reuse. Do not infer identity from subject text; this is a fixture.
+            identities = self.registry._fetchone("SELECT to_regclass('coordination.case_source_identities')")[0]
+            if identities is not None:
+                # Share the qualified-subject lock with institutional review so a
+                # fresh primary mapping cannot race a secondary link to another case.
+                self.registry._fetchone("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                    (_digest({'org': source_organization, 'system': source_system,
+                              'subject': source_subject_ref}),))
+                if self.registry._fetchone(
+                    "SELECT 1 FROM coordination.case_source_identities WHERE status='active' "
+                    "AND source_organization=%s AND source_system=%s AND source_subject_ref=%s",
+                    (source_organization, source_system, source_subject_ref)):
+                    raise PatientRegistryConflict("Case or external subject is already linked")
             inserted = self.registry._fetchone(
                 "INSERT INTO coordination.patient_case_bindings "
                 "(case_id,patient_id,origin_org,source_organization,source_system,"

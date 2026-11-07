@@ -123,6 +123,54 @@ class InstitutionIdentityTests(laboratory_fixture.LaboratoryFHIRHTTPTests):
                 self.assertEqual(self.propose(base,pid)[0],404)
             self.assertEqual(len(request(base,self.path(pid),token=TOKEN_A)[1]['identities']),1)
 
+    def test_competing_cases_cannot_accept_the_same_qualified_subject(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+        with running_server(self.app) as base:
+            pid=self.make_patient(base)
+            status,other,_=request(base,'/v1/patients',token=TOKEN_A,
+                body={'synthetic':True,'request_key':'PATIENT-OTHER-IDENTITY'})
+            self.assertEqual(status,201,other)
+            other=other['patient_id'];self.creds[0]['patient_ids'].append(other);self.write_access()
+            self.assertEqual(request(base,f'/v1/patients/{other}/case-bindings',token=TOKEN_A,
+                body={'synthetic':True,'case_id':'CASE-LAB-B','source_organization':'ORG-OTHER',
+                      'source_system':'SYS-OTHER','source_subject_ref':'OTHER-PATIENT','review_ref':'OTHER-REVIEW'})[0],201)
+            first=self.propose(base,pid)[1]['identity']['identity_id']
+            other_path=f'/v1/patients/{other}/cases/CASE-LAB-B/institution-identities'
+            status,second,_=request(base,other_path,token=TOKEN_A,body={'synthetic':True,
+                'request_key':'PROPOSAL-OTHER','source_organization':'ORG-SECOND',
+                'source_system':'SYS-FICTIONAL-LIS','source_subject_ref':'SECOND-PATIENT'})
+            self.assertEqual(status,201,second)
+            paths=[self.path(pid)+'/'+first+'/decision',other_path+'/'+second['identity']['identity_id']+'/decision']
+            gate=Barrier(2)
+            def decide(path):
+                gate.wait(timeout=5)
+                return request(base,path,token=TOKEN_A,body={'synthetic':True,'decision':'link','review_ref':'RACE-REVIEW'})
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                results=list(executor.map(decide,paths))
+            self.assertEqual(sorted(row[0] for row in results),[200,409],results)
+            with self.engine.connect() as c:
+                states=c.execute(text("SELECT status FROM coordination.case_source_identities WHERE source_organization='ORG-SECOND' ORDER BY status")).scalars().all()
+                self.assertEqual(states,['active','quarantined'])
+            failed=next(row for row in results if row[0]==409)
+            self.assertNotIn(other,json.dumps(failed));self.assertNotIn(pid,json.dumps(failed))
+
+    def test_populated_primary_upgrade_and_roundtrip_preserve_identity_and_original(self):
+        with running_server(self.app) as base:
+            pid=self.make_patient(base)
+            source=self.import_source(base,pid)[1]
+            with self.engine.connect() as c:
+                original=c.execute(text('SELECT * FROM clinical_source.source_versions')).all()
+                mapping=c.execute(text('SELECT * FROM coordination.patient_case_bindings')).all()
+                identity=c.execute(text('SELECT * FROM coordination.case_source_identities')).all()
+            migrate(self.settings,'downgrade','0022_lab_citation_source_scope')
+            migrate(self.settings,'upgrade','head')
+            with self.engine.connect() as c:
+                self.assertEqual(c.execute(text('SELECT * FROM clinical_source.source_versions')).all(),original)
+                self.assertEqual(c.execute(text('SELECT * FROM coordination.patient_case_bindings')).all(),mapping)
+                self.assertEqual(c.execute(text('SELECT * FROM coordination.case_source_identities')).all(),identity)
+            self.assertEqual(self.import_source(base,pid)[1]['source_id'],source['source_id'])
+
     def test_immutable_events_and_decisions_rollback_and_downgrade_refuses_history(self):
         with running_server(self.app) as base:
             pid=self.make_patient(base)
@@ -134,6 +182,10 @@ class InstitutionIdentityTests(laboratory_fixture.LaboratoryFHIRHTTPTests):
             with self.assertRaises(CommandError):
                 migrate(self.settings,'downgrade','0022_lab_citation_source_scope')
             self.assertEqual(self.decision(base,pid,identity)[0],200)
+            conflict=request(base,f'/v1/patients/{pid}/case-bindings',token=TOKEN_A,
+                body={'synthetic':True,'case_id':'CASE-CANNOT-REUSE','source_organization':'ORG-SECOND',
+                      'source_system':'SYS-FICTIONAL-LIS','source_subject_ref':'SECOND-PATIENT','review_ref':'REUSE-REVIEW'})
+            self.assertEqual(conflict[0],409,conflict)
             for sql in ('DELETE FROM coordination.case_source_identities',
                         "UPDATE coordination.case_source_identities SET source_subject_ref='FORGED'",
                         "UPDATE coordination.case_source_identities SET status='quarantined'"):

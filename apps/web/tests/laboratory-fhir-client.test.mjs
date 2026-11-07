@@ -207,3 +207,9 @@ test('a late institution response cannot cross credential changes',async()=>{
  session.disconnect();hold.resolve(reply({patient_id:PID,case_id:CID,identities:[],source_identity_verified:false}));
  await assert.rejects(()=>work);assert.equal(session.snapshot().patient,null);
 });
+test('institution transport diagnostics never expose a credential through the UI error',async()=>{
+ const{session}=await ready(()=>{throw Error('sensitive transport trace '+TOKEN);});
+ await assert.rejects(()=>session.institutionRequest(CID,new AbortController().signal),error=>{
+  assert.equal(error.message.includes(TOKEN),false);assert.match(error.message,/Outcome unknown/);return true;
+ });
+});
