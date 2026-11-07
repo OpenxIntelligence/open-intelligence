@@ -31,7 +31,8 @@ def classify_question_origin(*, question_id: str, source_id: str,
             or type(source_id) is not str or not SOURCE_ID.fullmatch(source_id)):
         raise ValueError("Invalid canonical question or source identifier")
     if source_line is not None:
-        if type(source_line) is not int or source_line < 1 or observation_reference is not None:
+        if (type(source_line) is not int or not 1 <= source_line <= 10000
+                or observation_reference is not None):
             raise ValueError("Question origin must have exactly one valid anchor")
         return QuestionOrigin("source_line", question_id, source_id, line=source_line)
     if (type(observation_reference) is not str
