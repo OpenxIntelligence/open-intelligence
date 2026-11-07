@@ -18,6 +18,7 @@ import sys
 import tempfile
 import time
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import ProxyHandler, Request, build_opener
 import uuid
 
@@ -87,7 +88,7 @@ def assert_read_only_recovery(before, after, expected_events):
         assert actual["id"] > max(old, default=0), "Access event is not appended"
         assert {key: actual[key] for key in ("patient_id", "event_type", "metadata_json")} == expected, \
             "Restored receipt differs from returned scope or action"
-        assert actual["event_type"] in {"source.document_read_authorized", "source.original_read_authorized",
+        assert actual["event_type"] in {"source.read_authorized", "source.document_read_authorized", "source.original_read_authorized",
                                         "source.document_selection_read_authorized"}, \
             "Read/retry emitted a business event"
     assert before["sequences"].keys() == after["sequences"].keys(), "Sequence coverage changed"
@@ -215,6 +216,7 @@ def main():
             expected = "Independently fictional café marker — " + (
                 "pending." if len(ids) == 1 else "negative.")
             assert assertion["source_statement"] == expected
+            return value
 
         def read_original(source_id, original, version, state):
             status, value = request(source_path + "/" + source_id)
@@ -327,8 +329,15 @@ def main():
                 assert (status, receipt["result"], receipt["version"]) == (201, "imported", version)
                 assert re.fullmatch(r"SRC-[0-9A-F]{32}", receipt["source_id"])
                 source_ids.append(receipt["source_id"])
-                read_index(source_ids)
+                source_index = read_index(source_ids)
                 read_original(source_ids[-1], original, version, "current")
+            history_path = source_path.removesuffix('/sources') + '/source-history?' + urlencode({
+                'received_through': source_index['sources'][0]['received_at']})
+            status, historical = request(history_path)
+            assert status == 200
+            remember(historical, 'source.read_authorized')
+            historical_content = {k:v for k,v in historical.items() if k != 'access_receipt_id'}
+            assert historical['sources'] == [{k:v for k,v in source_index['sources'][0].items() if k != 'state'}]
             read_original(source_ids[0], ORIGINAL, 1, "superseded")
             original_path = source_path + "/" + source_ids[0]
             check_history()
@@ -447,6 +456,10 @@ def main():
                 read_index(source_ids)
                 read_original(source_ids[0], ORIGINAL, 1, "superseded")
                 read_original(source_ids[1], AMENDED, 2, "current")
+                status, recovered_history = request(history_path)
+                assert status == 200
+                assert {k:v for k,v in recovered_history.items() if k != 'access_receipt_id'} == historical_content
+                remember(recovered_history, 'source.read_authorized')
                 check_history()
                 status, recovered_document = request(saved_path)
                 assert status == 200 and recovered_document["preview"] == document["preview"]
@@ -473,6 +486,17 @@ def main():
                 assert stored["sha256"] == hashlib.sha256(item["raw"]).hexdigest()
 
             restored_events = []
+
+            def restored_history():
+                status, value = request(history_path)
+                assert status == 200
+                content = {k:v for k,v in value.items() if k != 'access_receipt_id'}
+                assert content == historical_content, 'Restored receipt-time source membership changed'
+                restored_events.append({'patient_id':patient,'event_type':'source.read_authorized',
+                    'metadata_json':{'receipt_id':value['access_receipt_id'],'case_id':CASE,
+                        'actor':credential['actor'],'purpose':'operations','binding_revision':1,
+                        'snapshot_sha256':hashlib.sha256(json.dumps(content,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest(),
+                        'source_count':1,'assertion_count':0,'received_through':content['received_through']}})
 
             def document_receipt(receipt_id, event_type, item=None):
                 assert re.fullmatch(r"ACCESS-[A-F0-9]{32}", receipt_id)
@@ -525,6 +549,7 @@ def main():
                     assert status == 200 and value == {**prior, "duplicate": True}, "Restored retry identity changed"
 
             def readable_cycle():
+                restored_history()
                 restored_index()
                 for item in documents:
                     restored_document(item)
@@ -552,8 +577,10 @@ def main():
                 credential["actions"] = [action for action in actions if action != missing]
                 save_access()
                 if missing in ("source_read", "patient_read"):
+                    no_effect_denial(history_path)
                     no_effect_denial(document_path)
                 else:
+                    restored_history()
                     restored_index()
                 for item in documents:
                     if missing in ("source_read", "source_original_read", "patient_read"):
@@ -628,7 +655,7 @@ def main():
                     no_effect_denial(path, body, database=revoked_database)
                 for selected in item["selections"]:
                     no_effect_denial(selected["path"], database=revoked_database)
-            for path in (source_path, original_path, source_path + "/" + source_ids[1]):
+            for path in (source_path, history_path, original_path, source_path + "/" + source_ids[1]):
                 status, value = request(path)
                 assert status == 404 and "access_receipt_id" not in value and "original_text" not in value
             assert snapshot(revoked_database) == revoked_before, "Restored revoked requests changed state"

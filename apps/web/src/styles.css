@@ -184,6 +184,9 @@ main :is(h1,h2,h3,input,select,textarea,button,summary,a){scroll-margin-block:va
 .reading-controls label{font-size:12px}
 #reading-view-help{display:block;font-size:11px;color:#53685f;margin-top:4px;overflow-wrap:anywhere}
 select{font:inherit;color:inherit;background:#fff;border:1px solid #9caeac;border-radius:6px;min-height:44px;max-width:100%;width:100%;padding:8px}
+.source-history{margin-top:24px;padding-top:16px;border-top:1px solid var(--line);min-width:0;overflow-wrap:anywhere}
+.source-history select{margin:8px 0 12px}.source-history ul{list-style:none;padding:0;display:grid;gap:12px}
+.source-history li{padding:14px;border:1px solid var(--line);border-radius:8px}.source-history button{max-width:100%;white-space:normal}
 select:focus-visible{outline:3px solid #ba8639;outline-offset:3px}
 h1:focus{outline:2px solid #174b48;outline-offset:5px}
 .source-filters{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;margin:24px 0 4px;align-items:start}

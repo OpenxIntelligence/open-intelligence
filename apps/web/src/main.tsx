@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {RegistrySession} from './registry-client';
 import {createEncounterScope, EncounterChart} from './encounter-chart';
 import {EncounterSourceLinks} from './encounter-source-links-view';
+import {SourceHistory} from './source-history';
 import {PatientSuspension} from './patient-suspension-view';
 import {SourceIntake} from './source-intake-view';
 import {RecordImportDisclosure} from './record-import-disclosure';
@@ -252,6 +253,8 @@ function App(){
         onAskQuestion={(sourceId,line)=>{const caseId=state.sourceIndex!.case_id;
           navigate('Investigations');
           void session.beginQuestionFromSourceReading(caseId,sourceId,line);}}/>
+       {!reportKind&&<SourceHistory key={'history:'+state.sourceIndex.access_receipt_id} session={session} index={state.sourceIndex} busy={busy||state.recordsPhase.startsWith('loading')}
+        onOpenOriginal={(sourceId,trigger)=>{originalReturn.current={sourceId,trigger,pending:true};void session.loadOriginal(sourceId)}}/>}
        {!reportKind&&<EncounterSourceLinks key={state.sourceIndex.access_receipt_id} session={session} patientId={state.patient.patient_id} index={state.sourceIndex}
         requestedVisit={recordsVisit?.patient===state.patient?recordsVisit?.id:undefined}
         onOpenOriginal={(sourceId,trigger)=>{originalReturn.current={sourceId,trigger,pending:true};void session.loadOriginal(sourceId)}}/>}

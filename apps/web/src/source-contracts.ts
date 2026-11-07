@@ -30,6 +30,47 @@ export type SourceIndex = Readonly<{
   research_review_invalidation_integrated:false;
 }>;
 const PATIENT=/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
+export type SourceHistory = Readonly<{
+  contract:'oi.synthetic-source-history/1';patient_id:string;case_id:string;access_receipt_id:string;
+  received_through:string;cutoff_basis:'platform_received_at';selection:'latest_version_per_document';
+  sources:ReadonlyArray<Omit<SourceVersion,'state'>>;synthetic:true;clinical_interpretation:false;
+}>;
+
+/** Date alone truncates PostgreSQL receipt boundaries to milliseconds. */
+export function receiptMicros(value:string):bigint {
+  const m=/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(value);
+  if(!m||value.startsWith('0000-')||Number(m[5]??0)>23||Number(m[6]??0)>59)throw Error('Invalid receipt time');
+  const base=Date.parse(m[1]+'Z');
+  if(!Number.isFinite(base)||new Date(base).toISOString().slice(0,19)!==m[1])throw Error('Invalid receipt time');
+  const offset=(Number(m[5]??0)*60+Number(m[6]??0))*(m[4]==='-'?-1:1);
+  return BigInt(base)*1000n+BigInt((m[2]??'').padEnd(6,'0'))-BigInt(offset)*60000000n;
+}
+
+export function parseSourceHistory(value:unknown,index:SourceIndex,cutoff:string):SourceHistory {
+  if(!exact(value,['contract','patient_id','case_id','access_receipt_id','received_through',
+      'cutoff_basis','selection','sources','synthetic','clinical_interpretation'])||
+    value.contract!=='oi.synthetic-source-history/1'||value.patient_id!==index.patient_id||value.case_id!==index.case_id||
+    typeof value.access_receipt_id!=='string'||!RECEIPT.test(value.access_receipt_id)||
+    typeof value.received_through!=='string'||receiptMicros(value.received_through)!==receiptMicros(cutoff)||
+    value.cutoff_basis!=='platform_received_at'||value.selection!=='latest_version_per_document'||
+    value.synthetic!==true||value.clinical_interpretation!==false||!Array.isArray(value.sources))throw Error('contract');
+  const expected=new Map<string,SourceVersion>();
+  for(const source of index.sources){
+    if(receiptMicros(source.received_at)<=receiptMicros(cutoff)&&source.version>(expected.get(source.document_id)?.version??0))
+      expected.set(source.document_id,source);
+  }
+  if(value.sources.length!==expected.size)throw Error('Refresh records before checking history');
+  const sources:Omit<SourceVersion,'state'>[]=[];
+  for(const raw of value.sources){
+    if(!exact(raw,['source_id','document_id','version','sha256','kind','event_date','issued_at','received_at','specimen_id','supersedes_id'])||
+       typeof raw.document_id!=='string')throw Error('contract');
+    const known=expected.get(raw.document_id);
+    if(!known||Object.entries(raw).some(([key,val])=>known[key as keyof SourceVersion]!==val))throw Error('Refresh records before checking history');
+    expected.delete(raw.document_id);
+    sources.push(Object.freeze({...raw} as Omit<SourceVersion,'state'>));
+  }
+  return Object.freeze({...value,sources:Object.freeze(sources)} as SourceHistory);
+}
 const CASE=/^CASE-[A-Z0-9-]{1,35}$/;
 const SOURCE=/^SRC-[0-9A-F]{32}$/;
 const SHA=/^[a-f0-9]{64}$/;
@@ -110,6 +151,7 @@ export function parseSourceIndex(v:unknown,expectedPatient:string,expectedCase:s
       !optional(raw.specimen_id,128) ||
       !['current','superseded'].includes(String(raw.state)) ||
       !(raw.supersedes_id===null || (typeof raw.supersedes_id==='string' && SOURCE.test(raw.supersedes_id)))) throw Error('contract');
+    receiptMicros(raw.received_at);
     seen.add(raw.source_id);
     if(raw.state==='current')current.add(raw.source_id);
     versions.push(Object.freeze(raw as SourceVersion));

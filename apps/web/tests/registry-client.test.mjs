@@ -54,6 +54,36 @@ const sourceIndex=()=>({
   }],synthetic:true,clinical_interpretation:false,
   research_review_invalidation_integrated:false,
 });
+test('historical source reads reject late results after case refresh, abort, or session replacement',async()=>{
+  for(const transition of ['refresh','abort','disconnect','reopen']){
+    const pending=deferred();let sent;
+    const s=new RegistrySession(async(url,init)=>{
+      if(url.includes('/source-history?')){sent=[url,init];return pending.promise;}
+      return response(url.endsWith('/case-bindings')?caseList():url.endsWith('/sources')?sourceIndex():patient());
+    });
+    s.connect(token);await s.read('PAT-EXAMPLE-001');await s.loadCases();await s.loadSources('CASE-ALPHA');
+    const index=s.snapshot().sourceIndex,control=new AbortController(),cutoff=index.sources[0].received_at;
+    const read=s.sourceHistory(index,cutoff,control.signal);const rejected=assert.rejects(read);
+    assert.equal(sent[0],'/v1/patients/PAT-EXAMPLE-001/cases/CASE-ALPHA/source-history?received_through='+encodeURIComponent(cutoff));
+    assert.equal(sent[1].method,'GET');assert.equal(sent[1].cache,'no-store');
+    if(transition==='refresh')await s.loadSources('CASE-ALPHA');
+    if(transition==='abort')control.abort();
+    if(transition==='disconnect'){s.disconnect();s.connect(token);}
+    if(transition==='reopen')await s.read('PAT-EXAMPLE-001');
+    pending.resolve(response({}));await rejected;
+  }
+});
+test('history denial clears prior patient context and expiry clears credentials',async()=>{
+  for(const status of [401,403,404]){
+    const s=new RegistrySession(async url=>url.includes('/source-history?')?response({detail:'private'},status):
+      response(url.endsWith('/case-bindings')?caseList():url.endsWith('/sources')?sourceIndex():patient()));
+    s.connect(token);await s.read('PAT-EXAMPLE-001');await s.loadCases();await s.loadSources('CASE-ALPHA');
+    const index=s.snapshot().sourceIndex;
+    await assert.rejects(s.sourceHistory(index,index.sources[0].received_at,new AbortController().signal));
+    assert.equal(s.snapshot().patient,null);assert.equal(s.snapshot().sourceIndex,null);
+    assert.equal(s.snapshot().connected,status!==401);assert.ok(!JSON.stringify(s.snapshot()).includes('private'));
+  }
+});
 test('read-only Records requests use exact canonical patient/case URLs and no local clinical authority',async()=>{
   const seen=[];
   const s=new RegistrySession(async (url,init)=>{
