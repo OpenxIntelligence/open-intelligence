@@ -8,6 +8,8 @@ Parent is #640 `606e22a0fba78d52f4aec7cef0e44ec10d9ef565` (tree `1399a040ae77b5e
 
 Inspection reproduced two `SourceHistory` class definitions in #640's patient routes. The later World Model wrapper shadows the metadata wrapper, so constructing the metadata response fails with a literal-contract mismatch, missing world_model and forbidden metadata fields. The merged test_source_history.py also replaces the six original World Model HTTP replay methods with the separate metadata suite. A textual merge success was not combined contract acceptance.
 
+The concurrent #640 repair `11f09a3219201a4a9bb0baa08529e182de5af03e` renamed the duplicate metadata DTO/handler/operation and added an AST collision check. This follow-up explicitly incorporates that head as a merge parent, preserves its documentary record and adapts the collision check to the single canonical history route. It additionally restores the displaced World Model replay suite and eliminates the duplicated history client/API.
+
 ## Constructed behavior
 
 One canonical GET `/v1/patients/{patient_id}/cases/{case_id}/world-model/history?received_through=...` now serves Journey and Records. It retains the existing `oi.pg-source-history/1` response, source version owner, source-reported observations and typed FHIR values. No schema, dependency, separate source ledger or clinical interpretation is introduced.
@@ -21,7 +23,7 @@ One canonical GET `/v1/patients/{patient_id}/cases/{case_id}/world-model/history
 
 ## Verification and recovery gates
 
-Local combined checks: 837 client tests passed, zero failures or skips; hosted results are recorded in the dependent PR. Locked production TypeScript/Vite build passed; dependency-rights gate passed 13 tests with no errors (two existing optional uninspected packages remain excluded). Local API/wire/recovery assertions: 37 discovered, 28 passed, nine actual PostgreSQL cases explicitly skipped because PostgreSQL16 is unavailable locally. No database pass is inferred from that run.
+Local combined checks: 837 client tests passed, zero failures or skips; hosted results are recorded in the dependent PR. Locked production TypeScript/Vite build passed; dependency-rights gate passed 13 tests with no errors (two existing optional uninspected packages remain excluded). Local API/wire/recovery assertions: 38 discovered, 29 passed, nine actual PostgreSQL cases explicitly skipped because PostgreSQL16 is unavailable locally. No database pass is inferred from that run.
 
 Focused hosted gate runs all nine historical HTTP scenarios, strict cutoff/wire controls and the original FHIR historical-value scenario, rejecting skips. The source Compose probe runs before the broad regression and checks exact historical context before/after amendment, API restart, database restart and backup/restore, independent current grants, revoked binding and unchanged original database. Recovery assertions independently account for the paired history-prepared/read-authorized audit events with a shared fresh receipt; every other business row, prior event and sequence remains checked.
 
