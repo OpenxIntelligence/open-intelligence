@@ -44,7 +44,9 @@ class FakeOwner:
             "contract": "oi.synthetic-original-sources/1",
             "patient_id": patient_id, "case_id": case_id,
             "access_receipt_id": RECEIPT,
-            "sources": [{"source_id": SID, "version": 1, "sha256": SHA}],
+            "sources": [{"source_id": SID, "version": 1, "sha256": SHA,
+                         "document_id": "DOC-ONE", "state": "current",
+                         "supersedes_id": None}],
             "synthetic": True, "clinical_interpretation": False,
         }
         return prepare_response(index)
@@ -85,6 +87,7 @@ class SemanticOwnerReadTests(unittest.TestCase):
         self.assertEqual(result["bindings"][0]["question_id"], QID)
         self.assertTrue(result["bindings"][0]["requires_reassessment"])
         self.assertFalse(result["clinical_approval"])
+        self.assertEqual(result["direct_supersession_impacts"], [])
 
     def test_invalid_question_projection_rolls_back_owner_preparation(self):
         malformed = question()
