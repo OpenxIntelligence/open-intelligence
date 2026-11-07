@@ -86,6 +86,13 @@ export function decodeComposerPreflight(value:unknown,world:SourceWorldModel,
     typeof value.preflight_sha256!=='string'||!HEX.test(value.preflight_sha256)||
     typeof value.limitations!=='string'||value.limitations.length<20||
     value.limitations.length>1000)throw Error('contract');
+ // The requested selection and response can agree while both belong to an old
+ // snapshot. Bind them to the decoded world's exact source/line observation;
+ // matching the outer fingerprint alone does not establish that membership.
+ const matches=world.observations.filter(item=>item.source_id===observation.source_id&&
+  item.source_line===observation.source_line);
+ if(matches.length!==1)throw Error('contract');
+ const selectedSource=decodeCurrentComposerSource(value.selected_source,matches[0]);
  return Object.freeze({...value,
-  selected_source:decodeCurrentComposerSource(value.selected_source,observation)} as ComposerPreflight);
+  selected_source:decodeCurrentComposerSource(selectedSource,observation)} as ComposerPreflight);
 }
