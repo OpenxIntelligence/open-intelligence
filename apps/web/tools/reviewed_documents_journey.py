@@ -227,6 +227,10 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     # A transient metadata service failure is distinct from an authoritative
     # 404 grant denial (which already unmounts the entire shared case scope).
     # A failed new search must not display the prior citation as fresh.
+    # Reopening the question remounts the search form with an empty query.
+    value('[data-testid=passage-evidence-query]','continuity')
+    assert cd.evaluate("[...document.querySelectorAll('[data-testid=saved-passage-questions] button')].some(button=>button.textContent==='Search evidence catalog'&&!button.disabled)"), 'Fault probe requires an enabled search control'
+    assert cd.evaluate("document.querySelector('[data-testid=passage-citations]')?.textContent.includes('FICT-RECORD-CONTINUITY@1 · available')"), 'Fault probe begins with an actually displayed saved citation'
     cd.evaluate("""(() => {
       const original = window.fetch;
       if(window.__failPassageSearch) throw Error('Evidence interceptor already installed');
