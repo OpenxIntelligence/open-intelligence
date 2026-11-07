@@ -1,3 +1,26 @@
+## Comparison fingerprint integration — acceptance pending
+
+The continuation after #622 adopts the comparison-snapshot helper from #621
+(`f577545a3c4ac6811301f4dccf31204541598314`) with a necessary journal correction:
+write only the contract identifier and digest alongside existing immutable source
+references. That donor revision still sends a nested dictionary to the primitive-only
+journal and is not adopted unchanged. No narrative is duplicated in the journal.
+
+Five focused local tests pass, including execution of the actual comparison service
+against the real journal validator with source/database boundaries stubbed. The
+PostgreSQL test additionally checks the digest against returned passages before
+revoking original-read permission and requiring complete transaction rollback.
+Hosted PostgreSQL and recovery acceptance remain pending for this integration.
+
+#622 head `1cc6b26934cb9f0972a6366d5a89f1b5ba34f90b` passed 724 client tests,
+production build, hosted Chromium and persistent demo in run 42340152037.
+#614 head `55a427e71aeec164e4845d7f885a35ff97b50747` retains passed browser and
+136 worker tests; full API/recovery acceptance is still pending as of this update.
+
+Next: reconstruct and authorize the exact recorded comparison by its immutable
+references and digest before adding idempotent reviewer disposition. Current
+fingerprinting alone provides no reviewer identity, clinical approval or decision.
+
 ## Continuation: inspect current paired-report originals
 
 The dependent continuation of PR #614 adds direct original-report controls beside
