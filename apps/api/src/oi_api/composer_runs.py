@@ -263,9 +263,22 @@ class PostgresComposerRuns:
             recheck_authority=recheck_authority, prepare_response=queue)
 
     def _inspect(self, patient_id, case_id, question_id, run_id, *, organization, actor, purpose,
-                 recheck_authority, prepare_response=None, cancel=False, private=False):
+                 recheck_authority, prepare_response=None, cancel=False, private=False, latest=False):
         with self.registry.transaction():
             self._scope(patient_id, case_id, organization, actor, purpose, recheck_authority)
+            if latest:
+                # Discovery uses the same actor scope as an exact status read. Ignore
+                # the last transition time: it could belong to an older run.
+                self._identifier(question_id, "QUESTION")
+                match = self.registry._fetchone(
+                    "SELECT run_id FROM investigation.composer_tool_runs "
+                    "WHERE patient_id=%s AND case_id=%s AND question_id=%s "
+                    "AND origin_org=%s AND actor=%s AND purpose=%s "
+                    "ORDER BY created_at DESC,run_id DESC LIMIT 1",
+                    (patient_id, case_id, question_id, organization, actor, purpose))
+                if match is None:
+                    raise PatientRegistryDenied("Composer run unavailable")
+                run_id = match[0]
             row = self._load(patient_id, case_id, question_id, run_id, organization, actor, purpose, lock=cancel)
             if cancel and row["state"] not in TERMINAL:
                 row = self._transition(row, "cancelled", "cancelled")
@@ -279,6 +292,9 @@ class PostgresComposerRuns:
 
     def get(self, patient_id, case_id, question_id, run_id, **kwargs):
         return self._inspect(patient_id, case_id, question_id, run_id, **kwargs)
+
+    def latest(self, patient_id, case_id, question_id, **kwargs):
+        return self._inspect(patient_id, case_id, question_id, None, latest=True, **kwargs)
 
     def cancel(self, patient_id, case_id, question_id, run_id, **kwargs):
         return self._inspect(patient_id, case_id, question_id, run_id, cancel=True, **kwargs)

@@ -225,6 +225,39 @@ class ComposerRunsPostgresTests(source_fixture.SourceVersionFixture):
             self.creds[0] = original; self.write()
             self.assertEqual(self.status(base, patient, question, run)[0], 200)
 
+    def test_latest_status_is_scoped_read_only_and_survives_amendment(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, question, preflight = self.seed(base)
+            path = self.run_path(patient, question)
+            def lookup(route=path):
+                return patient_fixture.request(base, route, token=TOKEN)
+            self.assertEqual(lookup()[0], 404)
+            first = self.enqueue(base, patient, question, preflight)[1]['run']['run_id']
+            latest = self.enqueue(base, patient, question, preflight, key='ANOTHER-RUN')[1]['run']['run_id']
+            self.cancel(base, patient, question, first)  # older intent now has the newest transition
+            self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
+            before = self.stored(latest)
+            code, status, headers = lookup()
+            self.assertEqual((code, status['run_id'], headers['Cache-Control']), (200, latest, 'no-store'))
+            self.assertNotIn('brief', status)
+            self.assertEqual(self.stored(latest), before)
+            self.assertEqual(self.events()[-1][1]['run_id'], latest)
+            for wrong in [path.replace(question, 'QUESTION-' + 'F' * 32), path.replace(CASE, 'CASE-BETA')]:
+                self.assertEqual(lookup(wrong)[0], 404)
+            for change in [{'actor': 'ACTOR-DIFFERENT'}, {'organization': 'ORG-DIFFERENT'}, {'patient_ids': []},
+                           {'actions': [a for a in self.creds[0]['actions'] if a != 'source_brief_export']}]:
+                original = deepcopy(self.creds[0])
+                self.creds[0].update(change)
+                self.write()
+                try:
+                    code, denied, _ = lookup()
+                    self.assertIn(code, (403, 404))
+                    self.assertEqual(set(denied), {'detail'})
+                finally:
+                    self.creds[0] = original
+                    self.write()
+            self.assertEqual(self.stored(latest), before)
+
     def test_amendment_before_work_marks_stale_without_result(self):
         with running_server(create_app(self.settings)) as base:
             patient, question, _, run = self.seeded_run(base)
