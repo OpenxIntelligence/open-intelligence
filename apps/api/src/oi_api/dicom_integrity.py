@@ -1,7 +1,8 @@
-"""Pure integrity checks for a bounded original CT custody profile.
+"""Pure integrity checks for a bounded original CT and MR custody profile.
 
-This accepts Part 10, Explicit VR Little Endian, one 16-bit MONOCHROME2 CT
-frame, with ASCII patient/issuer identity and dimensions at most 1024 each.
+This accepts Part 10, Explicit VR Little Endian, one 16-bit MONOCHROME2 frame
+from classic CT or MR Image Storage, with ASCII patient/issuer identity and
+dimensions at most 1024 each.
 It is neither a general DICOM validator nor identity/consent/clinical authority.
 The custody owner must compare the returned identity to its locked source and
 case binding. No original bytes, pixel arrays or diagnostics are returned.
@@ -25,7 +26,10 @@ from pydicom.filereader import dcmread
 MAX_DICOM_BYTES = 2_097_152
 _MAX_ELEMENTS = 1024
 _MAX_META_BYTES = 65_536
-_CT_STORAGE = "1.2.840.10008.5.1.4.1.1.2"
+_STORAGE_MODALITY = {
+    "1.2.840.10008.5.1.4.1.1.2": "CT",
+    "1.2.840.10008.5.1.4.1.1.4": "MR",
+}
 _EXPLICIT_LE = "1.2.840.10008.1.2.1"
 _UID = re.compile(r"(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))+\Z")
 _LONG_VRS = frozenset({"OB", "OD", "OF", "OL", "OV", "OW", "SV", "UC", "UN", "UR", "UT", "UV"})
@@ -176,7 +180,7 @@ def parse_dicom(raw: bytes) -> DicomIdentity:
         _uid(elements, 0x00020012)
         sop_class, sop = _uid(elements, 0x00080016), _uid(elements, 0x00080018)
         if (meta_class != sop_class or meta_sop != sop
-                or sop_class != _CT_STORAGE or transfer_syntax != _EXPLICIT_LE):
+                or sop_class not in _STORAGE_MODALITY or transfer_syntax != _EXPLICIT_LE):
             raise ValueError()
         if 0x00080005 in elements and _value(elements, 0x00080005, "CS").rstrip(b" ") not in (b"", b"ISO_IR 6"):
             raise ValueError()
@@ -189,7 +193,7 @@ def parse_dicom(raw: bytes) -> DicomIdentity:
         actual_date = date(int(study_date[:4]), int(study_date[4:6]), int(study_date[6:]))
         modality = _text(elements, 0x00080060, "CS", 16)
         rows, columns = _unsigned(elements, 0x00280010), _unsigned(elements, 0x00280011)
-        if modality != "CT" or not 1 <= rows <= 1024 or not 1 <= columns <= 1024:
+        if modality != _STORAGE_MODALITY[sop_class] or not 1 <= rows <= 1024 or not 1 <= columns <= 1024:
             raise ValueError()
         if (_unsigned(elements, 0x00280002) != 1
                 or _text(elements, 0x00280004, "CS", 16) != "MONOCHROME2"
@@ -257,6 +261,8 @@ def render_dicom_preview(raw: bytes) -> bytes:
     """
     try:
         identity = parse_dicom(raw)
+        if identity.modality != "CT":
+            raise DicomIntegrityError("Preview requires the qualified CT profile")
         elements = _elements(raw)
         pixels = _value(elements, 0x7FE00010, "OW")
         signed = _unsigned(elements, 0x00280103) == 1

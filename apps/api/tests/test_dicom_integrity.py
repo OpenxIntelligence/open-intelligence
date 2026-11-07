@@ -44,6 +44,20 @@ class DicomIntegrityTests(unittest.TestCase):
         with self.assertRaises(FrozenInstanceError):
             actual.patient_id = "ANOTHER-SUBJECT"
 
+    def test_classic_mr_verifies_class_modality_pair_and_exact_original(self):
+        raw = dicom_bytes(modality="MR")
+        identity = self.parser.parse_dicom(raw)
+        self.assertEqual((identity.modality, identity.sop_class_uid, identity.sha256),
+                         ("MR", "1.2.840.10008.5.1.4.1.1.4", hashlib.sha256(raw).hexdigest()))
+        meta, dataset = fixture_elements(modality="MR")
+        self.reject(file_bytes(meta, replace(dataset, 0x00080060, "CS", b"CT")))
+        self.reject(file_bytes(replace(meta, 0x00020002, "UI", b"1.2.840.10008.5.1.4.1.1.2"), dataset))
+        for unsupported in (b"1.2.840.10008.5.1.4.1.1.4.1", b"1.2.840.10008.5.1.4.1.1.4.2"):
+            self.reject(file_bytes(replace(meta, 0x00020002, "UI", unsupported),
+                                   replace(dataset, 0x00080016, "UI", unsupported)))
+        self.reject(file_bytes(meta, replace(dataset, 0x00280008, "IS", b"2")))
+        self.reject(file_bytes(meta, replace(dataset, 0x7FE00010, "OW", b"\0" * 6)))
+
     def test_two_instances_keep_distinct_identity_and_bytes(self):
         first = self.parser.parse_dicom(dicom_bytes())
         second = self.parser.parse_dicom(dicom_bytes(sop_uid="2.25.11004", pixels=b"\4\0\5\0\6\0\7\0"))

@@ -19,11 +19,26 @@ test('image list rejects wrong identities, digests, duplicate objects and imposs
  for(const change of [p=>p.patient_id='PAT-OTHER',p=>p.case_id='CASE-BETA',p=>p.source_id='SRC-'+'B'.repeat(32),
   p=>p.images[0].source_id='SRC-'+'B'.repeat(32),p=>p.images[0].case_id='CASE-BETA',
   p=>p.images[0].sha256='not-a-digest',p=>p.images.push({...p.images[0]}),p=>p.images[0].byte_count=2_097_153,
+  p=>p.images[0].study_uid='1',p=>p.images[0].series_uid='2',p=>p.images[0].sop_uid='3',
   p=>p.access_receipt_id='not-a-receipt',p=>p.images[0].study_date='2026-01-11']){
   const bad=images();change(bad);const s=new RegistrySession(transportForImages(url=>url.endsWith('/images')?response(bad):undefined));
   await readyImages(s);await s.loadSourceImages?.(sourceId);
   assert.equal(s.snapshot().sourceImagesPhase,'error','an unqualified image index must fail closed');
   assert.equal(s.snapshot().sourceImages,null);assert.equal(s.snapshot().sourceImageDownload,null);
+ }
+});
+
+test('mixed studies accept CT and MR in separate series and reject a conflicting series or unsupported modality',async()=>{
+ const imageList=(series,modality)=>{const result=images(),ct=result.images[0];
+  result.images.push({...ct,image_id:'IMG-'+'F'.repeat(32),series_uid:series,sop_uid:'2.25.8888',modality});
+  return result;};
+ for(const [series,modality,phase] of [['2.25.8889','MR','ready'],[images().images[0].series_uid,'MR','error'],
+  ['2.25.8889','PT','error']]){
+  const data=imageList(series,modality);
+  const session=new RegistrySession(transportForImages(url=>url.endsWith('/images')?response(data):undefined));
+  await readyImages(session);await session.loadSourceImages(sourceId);
+  assert.equal(session.snapshot().sourceImagesPhase,phase);
+  assert.deepEqual(session.snapshot().sourceImages,phase==='ready'?data:null);
  }
 });
 
@@ -164,3 +179,15 @@ for(const transition of ['patient','case','source-refresh','dismiss']){
   assert.equal(blobs.length,0);assert.equal(links.length,0);assert.equal(s.snapshot().sourceImageDownload,null);
  });
 }
+
+test('ambiguous study, series or instance identities withhold all linked image controls',async()=>{
+ for(const conflict of [{study_uid:'2.25.900'}, {sop_uid:image().sop_uid},
+                         {series_uid:image().study_uid}, {sop_uid:image().series_uid}]){
+  const index=images();
+  index.images.push({...image(),image_id:'IMG-'+'E'.repeat(32),sop_uid:'2.25.908',...conflict});
+  const session=new RegistrySession(transportForImages(url=>url.endsWith('/images')?response(index):undefined));
+  await readyImages(session);await session.loadSourceImages(sourceId);
+  assert.equal(session.snapshot().sourceImagesPhase,'error');
+  assert.equal(session.snapshot().sourceImages,null);
+ }
+});

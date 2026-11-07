@@ -4,7 +4,7 @@
 
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
-records the original integration. The API requires `0022_encounter_sources`. Run
+records the original integration. The API requires `0024_diagnostic_convergence`, which joins the published encounter-source and CT/MR histories. Run
 `python -m oi_api.migrate upgrade head` from either published 0019 revision.
 The join retains both the [encounter and note service](#connected-encounter-and-note-service)
 and the original Observation behind each governed laboratory citation. See
@@ -610,13 +610,18 @@ image ID; original bytes are not duplicated or moved. Historical source text
 remains readable through its original endpoint. Stored original-image reads
 recompute the digest, reparse metadata and compare both to custody and binding.
 
-The bounded profile is one uncompressed Explicit VR Little Endian CT object,
+The bounded custody profile is one uncompressed Explicit VR Little Endian classic CT or MR object,
 single frame, 16-bit MONOCHROME2. The parser validates file framing, lengths,
 unique ordered tags, file-meta identity, identifiers, date and pixel geometry
 before using the typed parser; it performs no pixel decoding or clinical
 interpretation. Unsupported syntax, sequences and malformed input fail closed.
 Maximum input is 2 MiB, with 256 originals/64 MiB per case and no bundled-file imports.
-These are development limits, not a claim of general CT-study ingestion.
+These are development limits, not a claim of general study ingestion. CT retains the bounded non-diagnostic preview. MR preview is withheld while exact original download remains independently authorized. Study/series grouping requires unambiguous UID roles, parents, modality and study dates.
+
+The existing `0022_encounter_sources`, `0022_lab_citation_source_scope` and
+`0023_dicom_mr_custody` migrations remain unchanged. The explicit no-DDL join
+`0024_diagnostic_convergence` accepts either populated published history or both
+after upgrade. MR originals prevent downgrade through their custody migration.
 
 Read receipts contain opaque IDs, hashes and counts, not raw image identifiers,
 originals or tokens. The whole buffered response is withheld until final access

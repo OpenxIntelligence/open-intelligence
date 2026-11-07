@@ -3,7 +3,7 @@ import type {SourceVersion} from './source-contracts.js';
 
 export type SourceImage=Readonly<{
  image_id:string;source_id:string;case_id:string;sha256:string;byte_count:number;
- study_uid:string;series_uid:string;sop_uid:string;modality:'CT';study_date:string;
+ study_uid:string;series_uid:string;sop_uid:string;modality:'CT'|'MR';study_date:string;
 }>;
 export type SourceImageIndex=Readonly<{
  patient_id:string;case_id:string;source_id:string;images:readonly SourceImage[];
@@ -36,7 +36,7 @@ function exact(value:unknown,keys:readonly string[]):value is Record<string,unkn
   Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 }
 function uid(value:unknown):value is string{
- return typeof value==='string'&&value.length<=64&&/^(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))*$/.test(value);
+ return typeof value==='string'&&value.length<=64&&/^(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))+$/.test(value);
 }
 function day(value:unknown):value is string{
  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
@@ -50,13 +50,22 @@ export function decodeSourceImages(value:unknown,patientId:string,caseId:string,
   typeof value.access_receipt_id!=='string'||!RECEIPT.test(value.access_receipt_id)||
   value.synthetic!==true||value.source_identity_verified!==false||!Array.isArray(value.images)||value.images.length>256)throw Error('image index');
  const images:SourceImage[]=[],seen=new Set<string>();let total=0;
+ const hierarchy = new Map<string, string>();
+ function bindUid(uid: string, owner: string) {
+  const previous = hierarchy.get(uid);
+  if (previous !== undefined && previous !== owner) throw Error('image hierarchy');
+  hierarchy.set(uid, owner);
+ }
  for(const raw of value.images){
   if(!exact(raw,['image_id','source_id','case_id','sha256','byte_count','study_uid','series_uid','sop_uid','modality','study_date'])||
    typeof raw.image_id!=='string'||!IMAGE.test(raw.image_id)||seen.has(raw.image_id)||
    raw.source_id!==source.source_id||raw.case_id!==caseId||typeof raw.sha256!=='string'||!SHA.test(raw.sha256)||
    typeof raw.byte_count!=='number'||!Number.isSafeInteger(raw.byte_count)||raw.byte_count<132||raw.byte_count>MAX_BYTES||
-   !uid(raw.study_uid)||!uid(raw.series_uid)||!uid(raw.sop_uid)||raw.modality!=='CT'||
+   !uid(raw.study_uid)||!uid(raw.series_uid)||!uid(raw.sop_uid)||(raw.modality!=='CT'&&raw.modality!=='MR')||
    !day(raw.study_date)||raw.study_date!==source.event_date)throw Error('image index');
+  bindUid(raw.study_uid, 'study');
+  bindUid(raw.series_uid, 'series:' + raw.study_uid + ':' + raw.modality);
+  bindUid(raw.sop_uid, 'instance:' + raw.image_id);
   total+=raw.byte_count;if(total>67_108_864)throw Error('image index');
   seen.add(raw.image_id);images.push(Object.freeze({...raw} as SourceImage));
  }
@@ -96,6 +105,7 @@ function uint32(bytes:Uint8Array,offset:number):number{
 export async function readSourceImagePreview(response:Response,expected:SourceImage):Promise<{
  bytes:Uint8Array<ArrayBuffer>;accessReceiptId:string;
 }>{
+ if(expected.modality!=='CT')throw Error('preview modality');
  if(!/^image\/png$/i.test(response.headers.get('Content-Type')??''))throw Error('preview type');
  const accessReceiptId=response.headers.get('X-OI-Access-Receipt');
  if(!accessReceiptId||!RECEIPT.test(accessReceiptId))throw Error('preview receipt');
