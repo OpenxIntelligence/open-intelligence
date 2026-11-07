@@ -1,3 +1,29 @@
+## Review history truncation guard — PostgreSQL acceptance pending
+
+Before adding reviewer disposition, review-return custody now has an explicit
+whole-table truncation guard in `0030_review_history_guard`, following the existing
+episode-history protection. The migration preserves existing rows and events;
+populated downgrade refuses to remove the guard. Empty downgrade/re-upgrade stays
+available, and the API requires the new revision before serving case requests.
+This prevents future truncation; it does not reconstruct previously lost records.
+
+Local validation: 17 migration-graph, API contract and comparison tests pass.
+The first hosted run reached the joined migration gate and exposed two legacy
+downgrade assertions that expected the older outbox guard to run before the new
+review guard. The repair checks both the published 0029 parent and current 0030
+head explicitly, including unchanged rows, schema, readiness and outbox. The
+browser repair refreshes authorized review history before inspecting the saved
+receipt. Local client tests pass 727/727 and the production build passes.
+Hosted PostgreSQL tests cover direct/CASCADE truncation, populated upgrade with
+exact row/event preservation, populated downgrade refusal and empty round trip.
+These database checks remain pending for this revision. No clinical disposition,
+new dependency, production change or merge is introduced.
+
+Verified checkpoint: #614 at `55a427e71aeec164e4845d7f885a35ff97b50747` passed
+1,023 API/PostgreSQL tests, 927 reference tests, all seven recovery gates, 136
+worker tests and its browser walkthrough. #637 exact-comparison recheck remains
+queued for hosted qualification; its local 727 client tests/build passed.
+
 ## Exact comparison recheck — hosted acceptance pending
 
 The paired-review response contract is now `oi.synthetic-attribution-reassessment/2`

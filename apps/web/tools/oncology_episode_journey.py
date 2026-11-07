@@ -245,17 +245,74 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
         cd.command('Input.insertText', {'text': reason})
         record = form + '.querySelector("button")'
         cd.wait('!' + record + '.disabled', 'authored comparison reason')
+        question_id = cd.evaluate(form + '.closest("[data-question-id]").dataset.questionId')
         cd.evaluate(record + '.click()')
         cd.wait('Boolean(' + element('[data-testid=review-return-result]') + ')', 'paired receipt returned')
-        cd.evaluate(element('[data-testid=inspect-attribution]') + '.click()')
+        receipt_id = cd.evaluate(element('[data-testid=review-return-id]') + '.textContent')
+        assert receipt_id.startswith('REVIEW-') and len(receipt_id) == 39
+        assert question_id in cd.evaluate(element('[data-testid=review-return-result]') + '.textContent')
+        # A write receipt does not refresh or authorize the history projection.
+        # Follow the displayed instruction and read it again through the UI.
+        refresh = element('[data-testid=load-review-queue]')
+        cd.wait(refresh + ' && !' + refresh + '.disabled', 'authorized history refresh available')
+        cd.evaluate(refresh + '.click()')
+        returned = ('[...document.querySelectorAll("[data-testid=review-return-history] > li")]'
+                    '.find(row=>row.querySelector("details code")?.textContent==='
+                    + json.dumps(receipt_id) + ')')
+        compare = returned + '?.querySelector("[data-testid=inspect-attribution]")'
+        cd.wait(compare + ' && !' + compare + '.disabled', 'exact paired receipt freshly read in history')
+        assert reason in cd.evaluate(returned + '.textContent')
+        assert question_id in cd.evaluate(returned + '.textContent')
+        cd.evaluate('''(() => {
+          if (window.__oiEpisodeComparisons) throw Error('Comparison observer already installed');
+          const original=window.fetch;
+          const state={original,reads:[],holdNext:false,release:null};
+          window.__oiEpisodeComparisons=state;
+          window.fetch=async(input,init)=>{
+            const url=new URL(typeof input==='string'?input:input.url,location.href);
+            const result=await original.call(window,input,init);
+            if(!url.pathname.endsWith('/attribution-reassessment')) return result;
+            const row={path:url.pathname,method:init?.method??'GET',
+              expected:url.searchParams.get('expected_comparison_sha256'),status:result.status,
+              body:await result.clone().json()};
+            state.reads.push(row);
+            if(state.holdNext){
+              state.holdNext=false;
+              await new Promise(resolve=>{state.release=()=>{state.release=null;resolve();};});
+            }
+            return result;
+          };
+        })()''')
+        cd.evaluate(compare + '.click()')
         recheck = element('[data-testid=recheck-attribution]')
-        cd.wait('Boolean(' + recheck + ')', 'recorded comparison identity available')
+        cd.wait('window.__oiEpisodeComparisons.reads.length===1 && ' + recheck + ' && !' + recheck + '.disabled',
+                'recorded comparison received and rendered')
+        first_read = cd.evaluate('window.__oiEpisodeComparisons.reads[0]')
+        assert first_read['status'] == 200 and first_read['method'] == 'GET' and first_read['expected'] is None
+        assert first_read['body']['receipt_id'] == receipt_id and first_read['body']['question_id'] == question_id
+        cd.evaluate('window.__oiEpisodeComparisons.holdNext=true')
         cd.evaluate(recheck + '.click()')
-        cd.wait('Boolean(' + recheck + ')', 'same comparison successfully rechecked')
+        # Hold a real completed response. The old passages must clear before a
+        # later render can establish completion; an existing button cannot pass.
+        cd.wait('window.__oiEpisodeComparisons.reads.length===2 && window.__oiEpisodeComparisons.release!==null'
+                ' && !document.querySelector("[data-testid=recheck-attribution], [data-testid=attribution-passages]")',
+                'fresh recheck withholds old passages while its real response is held')
+        second_read = cd.evaluate('window.__oiEpisodeComparisons.reads[1]')
+        assert second_read['status'] == 200 and second_read['expected'] == first_read['body']['comparison_sha256']
+        assert second_read['body']['comparison_sha256'] == first_read['body']['comparison_sha256']
+        assert second_read['body']['access_receipt_id'] != first_read['body']['access_receipt_id']
+        assert second_read['body']['first'] == first_read['body']['first']
+        assert second_read['body']['second'] == first_read['body']['second']
+        cd.evaluate('window.__oiEpisodeComparisons.release()')
+        cd.wait(recheck + ' && !' + recheck + '.disabled && Boolean(document.querySelector("[data-testid=attribution-passages]"))',
+                'same comparison freshly rendered after completed recheck')
         operator(source_path, {'synthetic': True, 'original_text': (FIXTURES / 'episode-origin-consult-v2.txt').read_text()})
         cd.evaluate(recheck + '.click()')
-        cd.wait(element('[data-testid=review-workspace]') + '.textContent.includes("The recorded comparison has changed")',
+        cd.wait('window.__oiEpisodeComparisons.reads.length===3 && '
+                + element('[data-testid=review-workspace]') + '.textContent.includes("The recorded comparison has changed")',
                 'amendment refuses the previously inspected comparison')
+        refused = cd.evaluate('window.__oiEpisodeComparisons.reads[2]')
+        assert refused['status'] == 409 and refused['expected'] == first_read['body']['comparison_sha256']
         assert not cd.evaluate('Boolean(' + element('[data-testid=attribution-passages]') + ')')
         select_case('Journey', 'world-load-cases', '.world-cases li', 'world-load')
         reviews = element('section[aria-label="Episode attribution reviews"]')
@@ -268,7 +325,12 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
         compare = element('[data-testid=inspect-attribution]')
         cd.evaluate(compare + '.click()')
         passages = element('[data-testid=attribution-passages]')
-        cd.wait(passages + '?.textContent.includes("DOC-CONSULT v2")', 'two-version attribution comparison')
+        cd.wait('window.__oiEpisodeComparisons.reads.length===4 && '
+                + passages + '?.textContent.includes("DOC-CONSULT v2")', 'two-version attribution comparison')
+        amended_read = cd.evaluate('window.__oiEpisodeComparisons.reads[3]')
+        assert amended_read['status'] == 200 and amended_read['expected'] is None
+        assert amended_read['body']['receipt_id'] == receipt_id
+        assert amended_read['body']['comparison_sha256'] != first_read['body']['comparison_sha256']
         consult_side = passages + '.querySelector(' + json.dumps('section[aria-label="DOC-CONSULT"]') + ')'
         quoted = cd.evaluate('[...' + consult_side + '.querySelectorAll("blockquote")].map(node=>node.textContent)')
         amended_consult = (FIXTURES / 'episode-origin-consult-v2.txt').read_text()
@@ -294,6 +356,11 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
             'compared_consult_versions': [1, 2], 'latest_consult_line': 9,
             'paired_review_reassessment': True, 'consult_original_reopened': True,
             'comparison_current_original_verified': True, 'stale_comparison_recheck_refused': True,
+            'review_receipt_id': receipt_id, 'review_question_id': question_id,
+            'comparison_http_statuses': [first_read['status'], second_read['status'], refused['status'], amended_read['status']],
+            'comparison_access_receipts': [read['body']['access_receipt_id'] for read in (first_read, second_read, amended_read)],
+            'comparison_sha256_history': [first_read['body']['comparison_sha256'], amended_read['body']['comparison_sha256']],
+            'held_recheck_cleared_prior_passages': True,
             'primary_episodes': ['EP-A', 'EP-B'], 'nodule_episode_history': [None, 'EP-B'],
             'nodule_reported_state': 'indeterminate', 'source_only_preflights': 2,
             'historical_original_verified': True, 'denied_read_cleared_records': True,
@@ -301,6 +368,9 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
         }, indent=2) + '\n')
         print('PASS ONCOLOGY EPISODES: two primaries retain independent unreviewed draft IDs and original lines after amendment; historical statements require fresh original-read permission; exact v1 and v2 originals verified in Records.')
     finally:
+        cd.evaluate('''(() => {const state=window.__oiEpisodeComparisons;if(state){
+          window.fetch=state.original;state.release?.();delete window.__oiEpisodeComparisons;
+        }})()''')
         credentials[0]['actions'] = previous
         write_grants()
         navigate('Overview')

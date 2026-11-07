@@ -29,6 +29,7 @@ API_ROOT = Path(__file__).resolve().parents[1]
 MERGE_REVISION = "0011_image_evidence_merge"
 IMAGE_REVISION = "0009_image_review_merge"
 EVIDENCE_REVISION = "0010_question_evidence"
+REVIEW_GUARD_PARENT = "0029_episode_history_guard"
 TASK_ID = "TASK-" + "A" * 32
 LINK_ID = "EVIDENCE-LINK-" + "A" * 32
 IMAGE_TABLES = ("clinical_source.dicom_objects", "clinical_source.source_image_links")
@@ -393,10 +394,19 @@ class PopulatedImageEvidenceUpgradeTests(PopulatedImageReviewFixture):
 
     def _verify_historical_and_current_guards(self, target, historical_reason):
         self._reject_populated_downgrade(target, historical_reason, revision=MERGE_REVISION)
-        migrate(self.settings, "upgrade", "head")
+        # Exercise the published source-delivery guard before the newer
+        # review-receipt guard can intercept the same downgrade.
+        migrate(self.settings, "upgrade", REVIEW_GUARD_PARENT)
         envelopes = self._outbox_history()
         self.assertTrue(envelopes, "The source import must be backfilled into the outbox")
-        self._reject_populated_downgrade(target, "Stored source delivery history", revision=SCHEMA_REVISION)
+        self._reject_populated_downgrade(target, "Stored source delivery history", revision=REVIEW_GUARD_PARENT)
+        self.assertEqual(self._outbox_history(), envelopes)
+        history = self._snapshot()
+        migrate(self.settings, "upgrade", "head")
+        self.assertEqual(self._snapshot(), history)
+        self._reject_populated_downgrade(
+            target, "Populated review receipts require explicit preservation", revision=SCHEMA_REVISION,
+        )
         self.assertEqual(self._outbox_history(), envelopes)
 
     def test_populated_evidence_blocks_downgrade_without_changing_images_tasks_or_receipts(self):

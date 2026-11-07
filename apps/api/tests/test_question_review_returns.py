@@ -417,6 +417,41 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
             self.assertEqual(self.returning(base,patient,qid,fp,
                 request_key="SECOND-RETURN")[0],201)
 
+    def test_populated_review_guard_upgrade_preserves_receipts_and_events(self):
+        from oi_api.question_review_returns import PostgresQuestionReviewReturns
+        from test_evidence_convergence_migrations import PublishedEvidenceFixture, COMMON
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            question, _ = self.prepared_question(base, patient)
+            fingerprint = self.inbox(base, patient)[1]["items"][0]["queue_fingerprint"]
+        migrate(self.admin, "downgrade", "0029_episode_history_guard")
+        with PublishedEvidenceFixture.services(self) as registry:
+            PostgresQuestionReviewReturns(registry).return_for_verification(
+                patient, "CASE-ALPHA", question, **COMMON, request_key="OLD-REVIEW-GUARD",
+                expected_queue_fingerprint=fingerprint, reason=REASON, recheck_authority=lambda: None)
+        before = self.persisted_state()
+        self.assertEqual(len(before[0]), 1)
+        migrate(self.admin, "upgrade", "head")
+        migrate(self.admin, "upgrade", "head")
+        self.assertEqual(self.persisted_state(), before)
+        with self.assertRaises(SQLAlchemyError), self.engine.begin() as conn:
+            conn.execute(text("TRUNCATE investigation.question_review_receipts"))
+        self.assertEqual(self.persisted_state(), before)
+        with running_server(create_app(self.settings)) as base:
+            self.assertEqual(len(self.inbox(base, patient)[1]["receipts"]), 1)
+
+    def test_empty_review_guard_downgrade_and_upgrade_preserve_history(self):
+        before = self.persisted_state()
+        migrate(self.admin, "downgrade", "0029_episode_history_guard")
+        self.assertEqual(self.persisted_state(), before)
+        with running_server(create_app(self.settings)) as base:
+            self.assertEqual(request(base, "/health/ready")[0], 503)
+        migrate(self.admin, "upgrade", "head")
+        migrate(self.admin, "upgrade", "head")
+        self.assertEqual(self.persisted_state(), before)
+        with running_server(create_app(self.settings)) as base:
+            self.assertEqual(request(base, "/health/ready")[0], 200)
+
     def test_question_return_is_immutable_and_cross_patient_inserts_are_denied(self):
         with running_server(create_app(self.settings)) as base:
             patient=self.setup_case(base)
@@ -427,6 +462,8 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
                 "UPDATE investigation.question_review_receipts SET action='reviewed'",
                 "UPDATE investigation.question_review_receipts SET reason='forged'",
                 "DELETE FROM investigation.question_review_receipts",
+                "TRUNCATE investigation.question_review_receipts",
+                "TRUNCATE investigation.question_review_receipts CASCADE",
             ):
                 with self.subTest(query=query),self.assertRaises(SQLAlchemyError):
                     with self.engine.begin() as conn:
@@ -447,6 +484,11 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
                         "FROM investigation.source_questions LIMIT 1"
                     ))
             self.assertEqual(len(self.inbox(base,patient)[1]["receipts"]),1)
+            before = self.persisted_state()
+            with self.assertRaisesRegex(CommandError, "Populated review receipts"):
+                migrate(self.admin, "downgrade", "0029_episode_history_guard")
+            self.assertEqual(self.persisted_state(), before)
+            self.assertEqual(request(base, "/health/ready")[0], 200)
 
     def test_event_failure_rolls_back_review_receipt(self):
         with running_server(create_app(self.settings)) as base:
