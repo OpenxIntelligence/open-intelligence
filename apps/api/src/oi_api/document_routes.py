@@ -3,7 +3,7 @@ from fastapi import Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from open_intelligence.patient_registry import PatientRegistryDenied, PatientRegistryError
 from open_intelligence.store import InvalidInput
-from .evidence_contracts import EvidenceSearch, EvidenceSearchResult, PassageEvidenceLinkCreate, EvidenceLinkReceipt, EvidenceLinks
+from .evidence_contracts import EvidenceSearch, EvidenceSearchResult, PassageEvidenceLinkCreate, EvidenceLinkReceipt, EvidenceLinks, PassageReviewPreparation
 from .evidence_routes import _prepare
 from .question_evidence import PostgresQuestionEvidence
 from .access import Principal
@@ -107,6 +107,21 @@ def register_document_routes(router, *, principal, registry, records_authorized,
             PostgresQuestionEvidence(owner.registry).links(patient_id, case_id, question_id,
                 reviewed_source=source_id, **kwargs,
                 prepare_response=lambda result: _prepare(EvidenceLinks, result)))
+
+    @router.get(prefix+"/{source_id}/questions/{question_id}/review-preparation",
+                response_model=PassageReviewPreparation)
+    def prepare_passage_review(request: Request, patient_id: str, case_id: str,
+                               source_id: str, question_id: str,
+                               context: Principal = Depends(principal)):
+        # Read-only, independent-authority, single-transaction source and
+        # citation packet. Never a clinical assessment or Review-return write.
+        actions = ("patient_read", "source_read", "source_original_read", "question_read",
+                   "evidence_read")
+        return execute(request, context, patient_id, case_id, actions, lambda owner, kwargs:
+            PostgresQuestionEvidence(owner.registry).links(
+                patient_id, case_id, question_id, reviewed_source=source_id,
+                prepare_review=True, **kwargs,
+                prepare_response=lambda result: _prepare(PassageReviewPreparation, result)))
 
     @router.post(prefix+"/{source_id}/questions/{question_id}/evidence-links", response_model=EvidenceLinkReceipt)
     def save_passage_citation(request: Request, patient_id: str, case_id: str, source_id: str,

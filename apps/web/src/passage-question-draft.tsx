@@ -1,13 +1,14 @@
 import {useEffect,useRef,useState} from 'react';
 import type {Document,Finding} from './reviewed-documents';
 import {decodeChosenPassage,decodeSavedPassage,manualHash} from './question-passages';
+import type {ResolvedPassage} from './question-passages';
 import type {RegistrySession} from './registry-client';
 
-import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,validEvidenceQuery} from './question-evidence-view';
-import type {QuestionEvidenceSearch,QuestionEvidenceLinks,QuestionEvidenceRecord} from './question-evidence-view';
+import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,decodePassageReviewPreparation,validEvidenceQuery} from './question-evidence-view';
+import type {QuestionEvidenceSearch,QuestionEvidenceLinks,QuestionEvidenceRecord,PassageReviewPreparation} from './question-evidence-view';
 
-function PassageEvidenceSearch({patient,caseId,source,id,anchor,question,current,session}:{
- patient:string;caseId:string;source:string;id:string;anchor:string;question:string;current:boolean;session:RegistrySession;
+function PassageEvidenceSearch({patient,caseId,source,id,anchor,question,quote,line,revision,passage,current,session}:{
+ patient:string;caseId:string;source:string;id:string;anchor:string;question:string;quote:string;line:number;revision:number;passage:ResolvedPassage;current:boolean;session:RegistrySession;
 }){
  const [query,setQuery]=useState('');
  const [result,setResult]=useState<QuestionEvidenceSearch|null>(null);
@@ -16,11 +17,12 @@ function PassageEvidenceSearch({patient,caseId,source,id,anchor,question,current
  const [pending,setPending]=useState<string|null>(()=>intent.read());
  const [saving,setSaving]=useState(false);
  const [links,setLinks]=useState<QuestionEvidenceLinks|null>(null);
+ const [review,setReview]=useState<PassageReviewPreparation|null>(null);
  const generation=useRef(0);
  useEffect(()=>()=>{generation.current++;},[patient,caseId,source,id,session]);
  async function search(){
   const request=++generation.current;
-  setResult(null);setLinks(null);setStatus('Searching…');
+  setResult(null);setLinks(null);setReview(null);setStatus('Searching…');
   try{
    const reply=await session.documentRequest(caseId,'/'+source+'/questions/'+id+'/evidence-search',
     JSON.stringify({synthetic:true,query}));
@@ -31,7 +33,7 @@ function PassageEvidenceSearch({patient,caseId,source,id,anchor,question,current
  }
  async function save(record?:QuestionEvidenceRecord){
   const request=++generation.current;
-  setSaving(true);setLinks(null);setStatus('');
+  setSaving(true);setLinks(null);setReview(null);setStatus('');
   let body=pending;
   try{
    if(!body){
@@ -57,7 +59,7 @@ function PassageEvidenceSearch({patient,caseId,source,id,anchor,question,current
   finally{if(request===generation.current)setSaving(false);}
  }
  async function reopen(){
-  const request=++generation.current;setLinks(null);setStatus('');
+  const request=++generation.current;setLinks(null);setReview(null);setStatus('');
   try{
    const reply=await session.documentRequest(caseId,'/'+source+'/questions/'+id+'/evidence-links');
    if(reply.status!==200)throw Error();
@@ -65,17 +67,44 @@ function PassageEvidenceSearch({patient,caseId,source,id,anchor,question,current
    if(request===generation.current)setLinks(data);
   }catch{if(request===generation.current)setStatus('Saved citations unavailable. Recheck access.');}
  }
+ async function prepareReview(){
+  const request=++generation.current;
+  setReview(null);setStatus('Checking independent review preparation…');
+  try{
+   const reply=await session.documentRequest(caseId,'/'+source+'/questions/'+id+'/review-preparation');
+   if(reply.status!==200)throw Error();
+   const data=await decodePassageReviewPreparation(reply.body,patient,caseId,source,id,anchor,question,quote,line,revision,passage);
+   if(request===generation.current){setReview(data);setStatus('');}
+  }catch{if(request===generation.current)setStatus('Review preparation unavailable. Recheck record and citation permissions.');}
+ }
  return <form onSubmit={event=>{event.preventDefault();if(!saving&&validEvidenceQuery(query))void search();}}>
   <label>Search fictional evidence metadata<input value={query} disabled={saving} maxLength={200} data-testid="passage-evidence-query"
-   onChange={event=>{generation.current++;setQuery(event.target.value);setStatus('');setResult(null);}}/></label>
+   onChange={event=>{generation.current++;setQuery(event.target.value);setStatus('');setResult(null);setReview(null);}}/></label>
   <button disabled={saving||!validEvidenceQuery(query)||status==='Searching…'}>Search evidence catalog</button>
   <div role="status">{status}{result&&<><p>{result.records.length} matching fictional catalog records.</p>
    {result.source_context_state==='source_reassessment_required'&&<p>The source passage needs reassessment.</p>}
    {result.records.map(record=><p key={record.citation}>{record.title} · {record.citation} · {record.licence} <button type="button" disabled={saving||!!pending||!current} onClick={()=>void save(record)}>Save citation {record.citation}</button></p>)}</>}</div>
   {pending&&<button type="button" disabled={saving} onClick={()=>void save()}>Retry exact citation save</button>}
   <button type="button" disabled={saving} onClick={()=>void reopen()}>Open saved passage citations</button>
+  <button type="button" disabled={saving} onClick={()=>void prepareReview()}>Prepare independent verification</button>
   {links&&<div data-testid="passage-citations">{links.source_context_state==='source_reassessment_required'&&<p>The source passage needs reassessment.</p>}
    {links.links.length===0?<p>No saved citations.</p>:links.links.map(link=><p key={link.link_id}>{link.citation} · {link.status}{link.record&&' · '+link.record.title}</p>)}</div>}
+  {review&&<section data-testid="passage-review-preparation" aria-label="Independent review preparation">
+   <h5>Independent review preparation — not yet reviewed</h5>
+   <p>Original {review.selection.document_id} · version {review.selection.source_version} ·
+    selection revision {review.selection.annotation_revision} · line {review.selection.line}
+    {review.selection.page!==null?' · PDF page '+review.selection.page:''}</p>
+   <blockquote>{review.selection.quote}</blockquote>
+   <p>{review.question_text}</p>
+   <p>{review.next_step==='source_reassessment_required'
+       ?'Source or selected passage changed. Historical context only; reassessment required.'
+       :'Source and question are current and awaiting independent verification.'}</p>
+   <p>{review.links.length} saved citation references. Metadata only: no study findings appraised,
+    no clinical approval, no AI model executed.</p>
+   {review.links.map(link=><p key={link.link_id}>{link.citation} · {link.status}
+    {link.record?' · '+link.record.title:''}</p>)}
+   <p>Review preparation fingerprint: <code>{review.packet_sha256}</code></p>
+  </section>}
  </form>;
 }
 
@@ -90,7 +119,7 @@ export function PassageQuestionDraft({doc,session,patientId,caseId}:{
  const intent=session.documentQuestionIntent(patientId,caseId,doc.source_id);
  const [pending,setPending]=useState<string|null>(()=>intent.read());
  const [busy,setBusy]=useState(false);
- const [history,setHistory]=useState<{id:string;text:string;quote:string;line:number;revision:number;state:string;anchor:string}[]|null>(null);
+ const [history,setHistory]=useState<{id:string;text:string;quote:string;line:number;revision:number;state:string;anchor:string;passage:ResolvedPassage}[]|null>(null);
  const [message,setMessage]=useState('');
  useEffect(()=>()=>{generation.current++;},[doc,session,patientId,caseId]);
  async function start(chosen:Finding){
@@ -150,7 +179,7 @@ export function PassageQuestionDraft({doc,session,patientId,caseId}:{
     if(!revision||!finding)throw Error();
     const verified=await decodeSavedPassage({...selection,access_receipt_id:receipt},{patient_id:patientId,case_id:caseId},doc,revision,finding);
     if(!/^QUESTION-[A-F0-9]{32}$/.test(row.question_id)||typeof row.question!=='string'||verified.anchor.original_sha256!==doc.sha256)throw Error();
-    return {id:row.question_id,text:row.question,anchor:verified.anchor_sha256,quote:verified.anchor.quote,line:verified.anchor.line,revision:verified.anchor.annotation_revision,state:verified.selection_state};
+    return {id:row.question_id,text:row.question,passage:verified,anchor:verified.anchor_sha256,quote:verified.anchor.quote,line:verified.anchor.line,revision:verified.anchor.annotation_revision,state:verified.selection_state};
    }));
    if(request===generation.current)setHistory(rows);
   }catch{if(request===generation.current)setMessage('Saved questions unavailable. Recheck record access.');}
@@ -167,7 +196,7 @@ export function PassageQuestionDraft({doc,session,patientId,caseId}:{
   </>:pending?<button type="button" disabled={busy} onClick={()=>void save()}>Retry exact save</button>:doc.state==='current'&&revision.findings.map(item=><button type="button" key={item.key}
    disabled={busy} onClick={()=>void start(item)}>Draft a question about “{item.quote}” (line {item.line})</button>)}
   {!finding&&<button type="button" disabled={busy} onClick={()=>void reopen()}>Open saved passage questions</button>}
-  {history&&<div data-testid="saved-passage-questions">{history.length===0?'No saved passage questions.':history.map(row=><article key={row.id}><h5>{row.text}</h5><blockquote>{row.quote}</blockquote><p>Selection revision {row.revision} · line {row.line} · {row.state==='current_unreviewed_selection'?'Current selection':'Source or selection changed'}</p><PassageEvidenceSearch patient={patientId} caseId={caseId} source={doc.source_id} id={row.id} anchor={row.anchor} question={row.text} current={row.state==='current_unreviewed_selection'} session={session}/></article>)}</div>}
+  {history&&<div data-testid="saved-passage-questions">{history.length===0?'No saved passage questions.':history.map(row=><article key={row.id}><h5>{row.text}</h5><blockquote>{row.quote}</blockquote><p>Selection revision {row.revision} · line {row.line} · {row.state==='current_unreviewed_selection'?'Current selection':'Source or selection changed'}</p><PassageEvidenceSearch patient={patientId} caseId={caseId} source={doc.source_id} id={row.id} anchor={row.anchor} question={row.text} quote={row.quote} line={row.line} revision={row.revision} passage={row.passage} current={row.state==='current_unreviewed_selection'} session={session}/></article>)}</div>}
   {message&&<p role="status">{message}</p>}
  </section>;
 }

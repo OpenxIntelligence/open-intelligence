@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, StrictBool, field_validator, model_validator
+from pydantic import Field, StrictBool, StrictInt, StrictStr, field_validator, model_validator
 
 from .contracts import Contract
 
@@ -157,6 +157,55 @@ class EvidenceLink(Contract):
 class EvidenceLinks(EvidenceScope):
     contract: Literal["oi.pg-question-evidence-links/1"]
     links: list[EvidenceLink] = Field(max_length=100)
+
+
+class PassageReviewSelection(Contract):
+    """Immutable user-selected origin, not a clinical or source-authored finding."""
+    source_id: StrictStr = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    document_id: StrictStr = Field(min_length=2, max_length=40)
+    source_version: StrictInt = Field(ge=1)
+    original_sha256: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+    annotation_revision_id: StrictStr = Field(pattern=r"^ANN-[0-9A-F]{32}$")
+    annotation_revision: StrictInt = Field(ge=1)
+    review_sha256: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+    selected_by: StrictStr = Field(min_length=3, max_length=128)
+    selected_at: StrictStr = Field(min_length=20, max_length=40)
+    selected_state: Literal["reported", "negative", "pending", "indeterminate",
+                            "not-reported", "not-assessed", "conflicting"]
+    quote: StrictStr = Field(min_length=1, max_length=1200)
+    line: StrictInt = Field(ge=1, le=512)
+    page: StrictInt | None = Field(default=None, ge=1)
+    classification_origin: Literal["user_selected"]
+    clinical_review: Literal["not_performed"]
+    anchor_sha256: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+    selection_state: Literal["current_unreviewed_selection", "selection_reassessment_required"]
+
+
+class PassageReviewPreparation(EvidenceScope):
+    """Atomic, rights-filtered material for a future independent human review.
+
+    Metadata-only citations do not imply scientific appraisal, comparison,
+    clinical review, patient-specific evidence, or treatment guidance.
+    """
+    contract: Literal["oi.pg-passage-review-preparation/1"]
+    source_id: StrictStr = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    question_text: StrictStr = Field(min_length=8, max_length=500)
+    selection: PassageReviewSelection
+    links: list[EvidenceLink] = Field(max_length=100)
+    human_review_state: Literal["not_performed"]
+    next_step: Literal["independent_verification_required", "source_reassessment_required"]
+    packet_sha256: StrictStr = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def status_and_source_are_not_promoted(self):
+        if self.source_id != self.selection.source_id:
+            raise ValueError("Review source mismatch")
+        current = self.source_context_state == "current_unreviewed_question"
+        if ((self.selection.selection_state == "current_unreviewed_selection") != current
+                or self.next_step != ("independent_verification_required" if current
+                                     else "source_reassessment_required")):
+            raise ValueError("Historical passage cannot be marked ready for review")
+        return self
 
 
 class EvidenceLinkReceipt(Contract):

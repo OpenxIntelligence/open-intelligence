@@ -7,6 +7,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from pdf_fixtures import text_pdf
 from question_review_journey import QuestionReviewChecks
+from passage_review_integrity_journey import exercise as exercise_review_integrity
 
 CASE='CASE-WEB-REVIEWED'
 
@@ -227,6 +228,10 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     # A transient metadata service failure is distinct from an authoritative
     # 404 grant denial (which already unmounts the entire shared case scope).
     # A failed new search must not display the prior citation as fresh.
+    # Reopening the question remounts the search form with an empty query.
+    value('[data-testid=passage-evidence-query]','continuity')
+    assert cd.evaluate("[...document.querySelectorAll('[data-testid=saved-passage-questions] button')].some(button=>button.textContent==='Search evidence catalog'&&!button.disabled)"), 'Fault probe requires an enabled search control'
+    assert cd.evaluate("document.querySelector('[data-testid=passage-citations]')?.textContent.includes('FICT-RECORD-CONTINUITY@1 · available')"), 'Fault probe begins with an actually displayed saved citation'
     cd.evaluate("""(() => {
       const original = window.fetch;
       if(window.__failPassageSearch) throw Error('Evidence interceptor already installed');
@@ -259,6 +264,38 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     click('Open saved passage citations')
     cd.wait("document.querySelector('[data-testid=passage-citations]')?.textContent.includes('FICT-RECORD-CONTINUITY@1 · available')",
             'a fresh authorized read restores the original citation')
+    click('Prepare independent verification')
+    cd.wait("document.querySelector('[data-testid=passage-review-preparation]')?.textContent.includes('Marker pending.')",
+            'source-anchored review preparation')
+    review_text=cd.evaluate("document.querySelector('[data-testid=passage-review-preparation]').textContent")
+    assert 'Independent review preparation' in review_text
+    assert 'PDF page 2' in review_text
+    assert 'FICT-RECORD-CONTINUITY@1' in review_text
+    assert 'metadata' in review_text.lower() and 'no clinical approval' in review_text.lower()
+    assert 'awaiting independent verification' in review_text.lower()
+    review_hash=cd.evaluate("document.querySelector('[data-testid=passage-review-preparation] code').textContent")
+    assert len(review_hash)==64 and all(ch in '0123456789abcdef' for ch in review_hash)
+    exercise_review_integrity(cd,click,value,review_hash)
+    cd.evaluate("""(() => {
+      const original = window.fetch;
+      window.__verifyReviewPrep = {original, statuses:[]};
+      window.fetch = async(input,init) => {
+        const path = new URL(typeof input==='string'?input:input.url,location.href).pathname;
+        const response = await original(input,init);
+        if(path.endsWith('/review-preparation'))
+          window.__verifyReviewPrep.statuses.push(response.status);
+        return response;
+      };
+    })()""")
+    try:
+        click('Prepare independent verification')
+        cd.wait("window.__verifyReviewPrep.statuses.length===1 && Boolean(document.querySelector('[data-testid=passage-review-preparation] code'))",
+                'new authorized review preparation read completed')
+        assert cd.evaluate('window.__verifyReviewPrep.statuses')==[200]
+        assert cd.evaluate("document.querySelector('[data-testid=passage-review-preparation] code').textContent")==review_hash, (
+            'New access receipt must not silently change the frozen review-preparation fingerprint')
+    finally:
+        cd.evaluate("window.fetch=window.__verifyReviewPrep.original;delete window.__verifyReviewPrep")
     original_question,=operator(prefix+'/'+first+'/questions')['questions']
     assert original_question['selection']['anchor']['annotation_revision_id']==initial_revision['revision_id']
 
@@ -307,6 +344,28 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     assert current_selection['anchor']['quote']=='Second selected passage.'
     assert (current_selection['anchor']['line'],current_selection['anchor']['page'])==(3,2)
     assert current_selection['selection_state']=='current_unreviewed_selection'
+    # Reopening an amended selection must not promote its saved history to
+    # current, enable new citation writes, or replace the original quotation.
+    citation_path=prefix+'/'+first+'/questions/'+original_question['question_id']+'/evidence-links'
+    citations_before=operator(citation_path)['links']
+    click('Open saved passage questions')
+    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('Source or selection changed')",
+            'historical passage state after annotation correction')
+    value('[data-testid=passage-evidence-query]','continuity')
+    click('Search evidence catalog')
+    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('FICT-RECORD-CONTINUITY@1')",
+            'historical question retains permitted metadata inspection')
+    assert cd.evaluate("""(() => {
+      const button=[...document.querySelectorAll('[data-testid=saved-passage-questions] button')]
+        .find(item=>item.textContent==='Save citation FICT-RECORD-CONTINUITY@1');
+      return Boolean(button?.disabled);
+    })()"""), 'A historical passage must not enable a new citation save'
+    click('Prepare independent verification')
+    cd.wait("document.querySelector('[data-testid=passage-review-preparation]')?.textContent.includes('Historical context only; reassessment required.')",
+            'historical original reaches review preparation without promotion')
+    assert cd.evaluate("document.querySelector('[data-testid=passage-review-preparation] blockquote')?.textContent")=='Marker pending.'
+    assert operator(citation_path)['links']==citations_before, (
+        'Inspecting historical context must not create or change citation records')
     destination=artifacts/'reviewed-document-downloads';destination.mkdir(parents=True,exist_ok=True)
     cd.command('Browser.setDownloadBehavior',{'behavior':'allow','downloadPath':str(destination)})
     cd.evaluate("document.querySelector('[data-testid=download-reviewed]').click()")
