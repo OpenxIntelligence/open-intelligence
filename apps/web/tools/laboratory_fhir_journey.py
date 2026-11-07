@@ -4,6 +4,7 @@ The operator grants scope; the UI cannot grant itself access. No external FHIR
 service, patient data, terminology expansion or clinical interpretation is used.
 """
 import base64
+from datetime import datetime
 import hashlib
 import json
 from urllib.request import Request, urlopen
@@ -730,13 +731,18 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     groups = cd.evaluate('''[...document.querySelectorAll('[data-testid=laboratory-same-test] > section')].map(section=>({
       heading:section.querySelector('h5').textContent,
       rows:[...section.querySelectorAll('[data-testid=laboratory-same-test-row]')].map(row=>({
-        text:row.textContent,value:row.querySelector('[data-testid=laboratory-same-test-value]').textContent}))
+        text:row.textContent,value:row.querySelector('[data-testid=laboratory-same-test-value]').textContent,
+        times:[...row.querySelectorAll('time')].map(time=>time.dateTime)}))
     }))''')
     assert len(groups) == 4 and all(len(g['rows']) == 2 for g in groups), groups
     for group in groups:
         # Preserve the existing source timeline's ascending effective-time order.
         earlier, later = group['rows']
-        assert all(part in later['text'] for part in (other['source_id'], other['sha256'], 'FICT-WEB-SECOND-SPEC', '2026-04-06T09:05:00-04:00'))
+        assert all(part in later['text'] for part in (other['source_id'], other['sha256'], 'FICT-WEB-SECOND-SPEC'))
+        # PostgreSQL retains the instant, not the original offset spelling.
+        assert len(later['times']) == 3
+        assert all(datetime.fromisoformat(value) == datetime.fromisoformat('2026-04-06T09:05:00-04:00')
+                   for value in later['times'][:2])
         assert all(part in earlier['text'] for part in (current['source_id'], current['sha256'], 'FICT-WEB-SPEC'))
         assert all(first['source_id'] not in row['text'] for row in group['rows'])
     number = next(g for g in groups if g['heading'].startswith('LOINC 718-7 '))

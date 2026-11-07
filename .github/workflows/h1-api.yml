@@ -103,6 +103,10 @@ jobs:
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           raise SystemExit(0 if result.wasSuccessful() and result.testsRun and not result.skipped else 1)
           PYTEST
+      - name: Verify FHIR original custody, captured inspections, current rights and recovery
+        env:
+          OI_LABORATORY_ACCEPTANCE_FILE: verification-api/laboratory-snapshot-recovery.json
+        run: python apps/api/tools/verify_fhir_laboratory_compose.py
       - name: Verify joined EHR, coded-result migration and source-bound laboratory history
         run: |
           python - <<'PYTEST'
@@ -151,10 +155,6 @@ jobs:
         env:
           OI_SOURCE_ACCEPTANCE_FILE: verification-api/source-document-recovery.json
         run: python apps/api/tools/verify_sources_compose.py
-      - name: Verify FHIR original custody, captured inspections, current rights and recovery
-        env:
-          OI_LABORATORY_ACCEPTANCE_FILE: verification-api/laboratory-snapshot-recovery.json
-        run: python apps/api/tools/verify_fhir_laboratory_compose.py
       - name: Verify exact image originals, source amendments, image grants and restored custody
         run: python apps/api/tools/verify_images_compose.py
       - name: Verify canonical review returns, history, retry recovery and backup restore
