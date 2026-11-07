@@ -21,6 +21,8 @@ Search has an explicit submit action. Query terms stay in the synthetic system.
 | POST `/source-citation-report/snapshots` | Requires the dedicated capture grant, a request key, and the fingerprint of the opened report. Stores the source anchor, ordered citation references and capture fingerprint. |
 | GET `/source-citation-report/snapshots` | Lists captures under the question’s current report-read permissions. |
 | GET `/source-citation-report/snapshots/{snapshot_id}` | Reopens the originally captured citation set. Current content rights and source freshness can change the visible report and its live fingerprint. |
+| GET `/source-citation-report/snapshots/{snapshot_id}/review-returns` | Requires `review_queue_read` alongside report-read permissions. Returns the exact opened context and nonterminal request history. |
+| POST `/source-citation-report/snapshots/{snapshot_id}/review-returns` | Requires `review_return` and the checked queue, captured-report and opened-report fingerprints. Records the reason and trusted actor in the existing review owner. |
 | GET `/evidence-links` | Reopens the original question anchor and links. Rights restrictions withhold the record metadata. |
 
 A capture stores references and a fingerprint. Each saved question supports up
@@ -30,7 +32,25 @@ later grant. If visible content or freshness changes, the reopened report can
 have a different fingerprint from the captured version. The write checks that
 the current content matches the submitted fingerprint. Its audit event records
 the access receipt from capture. A qualified reviewer’s disposition is still
-an outstanding operation.
+an outstanding operation. A nonterminal human request for independent verification
+is now connected to each reopened saved inspection through the existing
+`question_review_receipts` owner. The additive `0026_laboratory_review_returns`
+migration records a typed inspection origin; it preserves earlier text-question
+contracts and refuses downgrade once laboratory returns exist.
+
+The user reopens an inspection, checks its verification requests, enters a reason,
+and returns that exact visible version for independent verification. Both the
+captured hash and reopened hash remain traceable. A changed source or citation
+permission moves earlier requests into prior history; it does not erase them.
+A newly returned amended inspection still requires source reassessment. An
+ambiguous reply can be retried with the exact original command after fresh
+authorization. New altered commands fail without a return or event. No external
+notification, professional identity verification or completed review is implied.
+
+Verification: focused API/real-PostgreSQL tests, strict client state-machine tests,
+the built React journey, and the existing FHIR restart/backup-restore probe cover
+this increment. Exact source revision and actual hosted results belong to the
+stacked pull request; a donor pass is not a combined pass.
 
 When a source changes, the saved question and its links retain their original
 identities. Historical reads show reassessment status. The scope of a citation

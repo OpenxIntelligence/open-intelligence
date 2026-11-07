@@ -15,7 +15,7 @@ patient/case/source; repeated setup and stop/resume retain its saved work.
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. This diagnostic branch requires `0025_lab_inspection_snapshots`.
+the retained contributions. This diagnostic branch requires `0026_laboratory_review_returns`.
 It connects [encounters and draft notes](apps/api/README.md#connected-encounter-and-note-service),
 [laboratory questions and citations](docs/engineering/H1_LABORATORY_CITATIONS.md) for numeric,
 explicitly absent and [source-reported coded results](apps/api/README.md#source-reported-coded-laboratory-results),

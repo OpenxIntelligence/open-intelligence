@@ -1276,6 +1276,9 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         records_authorized=records_authorized,
         final_question_authority=final_question_authority, errors=errors,
     )
+    from .laboratory_review_routes import register_laboratory_review_returns
+    register_laboratory_review_returns(router, principal=principal, registry=registry,
+        records_authorized=records_authorized, final_question_authority=final_question_authority, errors=errors)
     from .laboratory_snapshot_routes import register_laboratory_snapshots
     register_laboratory_snapshots(
         router, principal=principal, registry=registry, records_authorized=records_authorized,

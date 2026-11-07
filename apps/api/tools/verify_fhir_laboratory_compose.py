@@ -88,7 +88,7 @@ def main():
         actions = ["patient_create", "patient_read", "case_binding_create", "case_binding_read",
                    "case_binding_revoke", "source_import", "source_read", "source_original_read",
                    "composer_context_read", "question_create", "question_read", "evidence_read", "evidence_link",
-                   "review_packet_read", "laboratory_snapshot_create"]
+                   "review_packet_read", "laboratory_snapshot_create", "review_queue_read", "review_return"]
         credential = {
             "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
             "actor": "ACTOR-FHIR-LAB-PROOF", "organization": "ORG-FHIR-LAB-PROOF",
@@ -175,6 +175,12 @@ def main():
                 FROM investigation.laboratory_inspection_snapshots x),
               'snapshot_events',(SELECT COALESCE(json_agg(x ORDER BY x.id),'[]'::json)
                 FROM identity.identity_domain_events x WHERE event_type='investigation.laboratory_snapshot.captured'),
+              'review_returns',(SELECT COALESCE(json_agg(x ORDER BY x.receipt_id),'[]'::json)
+                FROM investigation.question_review_receipts x),
+              'review_origins',(SELECT COALESCE(json_agg(x ORDER BY x.receipt_id),'[]'::json)
+                FROM investigation.laboratory_review_origins x),
+              'review_events',(SELECT COALESCE(json_agg(x ORDER BY x.id),'[]'::json)
+                FROM identity.identity_domain_events x WHERE event_type='investigation.review.returned_for_verification'),
               'catalog',(SELECT COALESCE(json_agg(x ORDER BY x.record_id,x.version),'[]'::json)
                 FROM investigation.evidence_catalog_records x),
               'rights',(SELECT COALESCE(json_agg(x ORDER BY x.record_id,x.version,x.revision),'[]'::json)
@@ -324,6 +330,46 @@ def main():
             assert inspection["citations"]["links"] == expected
             return inspection["citations"]["source_access_receipt_id"]
 
+        def review_history(captured, source_state, *, current=0, prior=0):
+            path = captured["path"] + "/" + captured["saved"]["snapshot_id"] + "/review-returns"
+            status, queue = request(path)
+            assert status == 200, (status, queue)
+            assert queue["contract"] == "oi.laboratory-inspection-review-returns/1"
+            assert queue["snapshot_id"] == captured["saved"]["snapshot_id"]
+            assert queue["question_id"] == captured["report"]["citations"]["question_id"]
+            assert queue["captured_report_sha256"] == captured["saved"]["captured_report_sha256"]
+            assert queue["source_context_state"] == source_state
+            assert (queue["return_count"], queue["prior_return_count"]) == (current, prior)
+            assert len(queue["receipts"]) == current + prior
+            expected = ("source_reassessment_required" if source_state == "source_reassessment_required" else
+                        "returned_for_independent_verification" if current else "awaiting_independent_verification")
+            assert queue["review_state"] == expected
+            assert not any(queue[name] for name in ("clinical_approval", "reviewer_identity_verified", "external_notification_sent"))
+            for receipt in queue["receipts"]:
+                assert receipt["action"] == "returned" and receipt["snapshot_id"] == queue["snapshot_id"]
+                assert not any(receipt[name] for name in ("clinical_approval", "reviewer_identity_verified", "external_notification_sent"))
+            return path, queue
+
+        def return_inspection(captured, key, source_state):
+            path, queue = review_history(captured, source_state)
+            payload = {"synthetic": True, "request_key": key,
+                       "expected_queue_fingerprint": queue["queue_fingerprint"],
+                       "expected_captured_report_sha256": queue["captured_report_sha256"],
+                       "expected_report_sha256": queue["current_report_sha256"],
+                       "reason": "Please independently verify this fictional laboratory source and its permitted citations."}
+            status, saved = request(path, payload)
+            assert status == 201 and saved["duplicate"] is False, (status, saved)
+            _, after = review_history(captured, source_state, current=1)
+            receipt, = after["receipts"]
+            assert receipt["receipt_id"] == after["current_return_receipt_id"] == saved["receipt_id"]
+            assert receipt["captured_report_sha256"] == queue["captured_report_sha256"]
+            assert receipt["report_sha256"] == queue["current_report_sha256"]
+            assert receipt["queue_fingerprint"] == queue["queue_fingerprint"]
+            return {"path": path, "payload": payload, "saved": saved, "receipt": receipt}
+
+        def retry_return(returned):
+            assert request(returned["path"], returned["payload"]) == (200, {**returned["saved"], "duplicate": True})
+
         def withdraw_fixture_rights():
             # Exercise the existing trusted operator port, only for the second fictional citation.
             command(["exec", "-T", "api", "python", "-c", """
@@ -404,6 +450,7 @@ finally:
             # This older inspection must stay empty even though the question now has a citation.
             reopen(before_link, "current_unreviewed_question")
             first_inspection = capture(original_question_path, "SNAPSHOT-ORIGINAL-CITED")
+            first_return = return_inspection(first_inspection, "RETURN-ORIGINAL-INSPECTION", "current_unreviewed_question")
             assert request(endpoint,body(FHIR_V2,"FHIR-LAB-AMEND-WRONG"))[0] == 409
             status, second = request(endpoint,body(FHIR_V2,"FHIR-LAB-AMEND-1",first_id))
             assert status == 201 and second["version"] == 2
@@ -424,8 +471,13 @@ finally:
             verify_citation(second_cite, "current_unreviewed_question")
 
             second_inspection = capture(second_cite["path"], "SNAPSHOT-AMENDED-CITED")
+            second_return = return_inspection(second_inspection, "RETURN-AMENDED-INSPECTION", "current_unreviewed_question")
+            _, amended_history = review_history(first_inspection, "source_reassessment_required", prior=1)
+            assert amended_history["receipts"] == [first_return["receipt"]]
+            assert amended_history["current_return_receipt_id"] is None
             preserved = (before_link, first_inspection, second_inspection)
             state=snapshot()
+            assert len(state["review_returns"]) == len(state["review_origins"]) == len(state["review_events"]) == 2
             assert len(state["snapshots"]) == len(state["snapshot_events"]) == len(preserved)
             assert {row["snapshot_id"] for row in state["snapshots"]} == {
                 item["saved"]["snapshot_id"] for item in preserved}
@@ -487,9 +539,18 @@ finally:
                 reopen(before_link, "source_reassessment_required")
                 reopen(first_inspection, "source_reassessment_required")
                 reopen(second_inspection, "current_unreviewed_question")
+                review_history(first_inspection, "source_reassessment_required", prior=1)
+                review_history(second_inspection, "current_unreviewed_question", current=1)
+                retry_return(first_return)
+                retry_return(second_return)
 
             withdraw_fixture_rights()
             verify_citation(second_cite, "current_unreviewed_question", restricted=True)
+            _, restricted_history = review_history(second_inspection, "current_unreviewed_question", prior=1)
+            assert restricted_history["receipts"] == [second_return["receipt"]]
+            assert restricted_history["current_report_sha256"] != second_return["receipt"]["report_sha256"]
+            assert restricted_history["current_return_receipt_id"] is None
+            assert second_cite["entry"]["record"]["title"] not in json.dumps(restricted_history)
             before_restore=restore("oi_api_synthetic",RESTORED)
             verify_original(patient_path,first_id,FHIR_V1,1,"superseded")
             verify_original(patient_path,second_id,FHIR_V2,2,"current")
@@ -513,6 +574,20 @@ finally:
             assert len(set(snapshot_receipts)) == len(preserved)
             assert set(snapshot_receipts) <= set(query(receipts_sql, RESTORED))
             assert set(snapshot_receipts).isdisjoint(query(receipts_sql))
+            review_receipts = []
+            for captured, returned, source_state in (
+                (first_inspection, first_return, "source_reassessment_required"),
+                (second_inspection, second_return, "current_unreviewed_question"),
+            ):
+                _, restored_queue = review_history(captured, source_state, prior=1)
+                assert restored_queue["receipts"] == [returned["receipt"]]
+                review_receipts.append(restored_queue["source_access_receipt_id"])
+                retry_return(returned)
+                before_denial = snapshot(RESTORED)
+                assert request(returned["path"], {**returned["payload"], "request_key": "RESTORED-STALE-RETURN"})[0] == 409
+                assert snapshot(RESTORED) == before_denial
+            assert set(review_receipts) <= set(query(receipts_sql, RESTORED))
+            assert set(review_receipts).isdisjoint(query(receipts_sql))
             for item in preserved:
                 assert request(item["path"], item["payload"]) == (200, {**item["saved"], "duplicate": True})
             # Same question, changed source or changed permissions: a fresh capture
@@ -544,7 +619,15 @@ finally:
                                  "continuity", "FICT-RECORD-CONTINUITY@1", "CITE-RESTORED-NEW")
             restored_inspection = capture(restored_cite["path"], "RESTORED-NEW-SNAPSHOT")
             reopen(restored_inspection, "current_unreviewed_question")
+            restored_return = return_inspection(restored_inspection, "RESTORED-NEW-RETURN", "current_unreviewed_question")
+            retry_return(restored_return)
             inserted = snapshot(RESTORED)
+            assert len(inserted["review_returns"]) == len(inserted["review_origins"]) == len(inserted["review_events"]) == 3
+            # Revoking an independent return grant must deny even an exact retry.
+            credential["actions"].remove("review_return"); save_access()
+            assert request(restored_return["path"], restored_return["payload"])[0] == 404
+            assert snapshot(RESTORED) == inserted
+            credential["actions"].append("review_return"); save_access()
             assert len(inserted["snapshots"]) == len(inserted["snapshot_events"]) == len(preserved) + 1
             assert restored_inspection["saved"]["snapshot_id"] not in {row["snapshot_id"] for row in before_restore["snapshots"]}
             assert len(inserted["citations"]) == len(inserted["citation_anchors"]) == 3
@@ -568,6 +651,8 @@ finally:
                 **restored_cite["payload"], "request_key": "CITE-RESTORED-STALE-NEW"})[0] == 409
             assert snapshot(RESTORED) == changed, "Rejected stale citation committed state or a receipt"
             verify_citation(restored_cite, "source_reassessment_required")
+            _, stale_review = review_history(restored_inspection, "source_reassessment_required", prior=1)
+            assert stale_review["receipts"] == [restored_return["receipt"]]
             assert snapshot() == before_restore, "Restored writes changed the original database"
 
             status, revoked = request(patient_path+"/case-bindings/"+CASE+"/revoke",{
@@ -578,6 +663,10 @@ finally:
             banned = restore(RESTORED, REVOKED_RESTORE)
             assert banned["bindings"][0]["status"] == "revoked"
             before_receipts = query(receipts_sql, REVOKED_RESTORE)
+            for returned in (first_return, second_return, restored_return):
+                for payload in (None, returned["payload"]):
+                    status, refusal = request(returned["path"], payload)
+                    assert status == 404 and set(refusal) == {"detail"}, (status, refusal)
             # The same credential that captured these inspections still has all
             # grants. The restored revoked binding must deny read, list, and retry.
             for prior in (*preserved, restored_inspection):
@@ -612,10 +701,17 @@ finally:
                                                "current_unreviewed_question"],
                     "restored_restricted_citation": second_cite["entry"]["citation"],
                     "exact_retries": len(preserved), "revoked_snapshots_denied": len(preserved) + 1,
+                    "review_return_ids": [item["saved"]["receipt_id"] for item in (first_return, second_return, restored_return)],
+                    "restored_review_read_receipts": review_receipts,
+                    "review_returns_preserved": True, "review_retry_authority_checked": True,
+                    "source_and_rights_changes_require_reassessment": True, "clinical_approval": False,
                 }, indent=2) + "\n", encoding="utf-8")
             print("PASS LABORATORY SNAPSHOT RECOVERY: original coded results and frozen citation membership "
                   "survived restart and restore; withdrawn metadata was withheld, exact retries recovered their IDs, "
                   "and the restored revoked binding denied list, reopen and replay.")
+            print("PASS LABORATORY REVIEW RECOVERY: inspection-bound returns and exact retries survived restart and restore; "
+                  "source and rights changes preserved prior receipts, stale new writes were refused, "
+                  "and revoked return grants and restored bindings denied mutation.")
             print("PASS LABORATORY CITATION RECOVERY: two immutable observation-bound citations, "
                   "permitted historical replay with the same link ID, restricted title withheld, "
                   "restored new citation insert and independent-import stale refusal, import receipts and sequences, "

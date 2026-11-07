@@ -1,3 +1,4 @@
+import {inspectionReview,inspectionReturnReceipt,type OpenedInspection,type CheckedInspection} from './laboratory-review-returns.js';
 import {readLaboratoryCitationReport,type LaboratoryInspection} from './laboratory-citation-report.js';
 import {snapshotReceipt,snapshotHistory,reopenedSnapshot,type InspectionSnapshot} from './laboratory-inspection-snapshots.js';
 import type {SavedLabQuestion} from './laboratory-question.js';
@@ -204,6 +205,10 @@ export class RegistrySession {
   // Report values, citation titles and tokens never enter this recovery map.
   #snapshotCommands=new Map<string,{patient:string;caseId:string;digest:string;body:string;generation:number;sending:boolean}>();
 
+  #openedInspections=new WeakSet<OpenedInspection>();
+  #checkedInspections=new WeakSet<CheckedInspection>();
+  #inspectionReturnCommands=new Map<string,{patient:string;caseId:string;snapshotId:string;body:string;generation:number;sending:boolean}>();
+
   async #inspectionRequest<T>(questionId:string,signal:AbortSignal,suffix:string,body:string|undefined,
     decode:(wire:unknown,model:SourceWorldModel,question:SavedLabQuestion,status:number)=>T){
     if(signal.aborted||this.#savingEvidence||this.#state.evidenceLinkPhase==='unknown')throw Error('Finish the citation save first');
@@ -251,7 +256,55 @@ export class RegistrySession {
     if(!listed||listed.generation!==this.#evidenceRead||listed.question!==questionId)throw Error('Refresh saved inspections');
     const {value,generation}=await this.#inspectionRequest(questionId,signal,'/snapshots/'+encodeURIComponent(row.snapshot_id),undefined,
       (wire,model,question)=>reopenedSnapshot(wire,row,model,question));
-    return {...value,generation};
+    const opened=Object.freeze({...value,generation});this.#openedInspections.add(opened);
+    return opened;
+  }
+  async readLaboratoryReviewReturns(questionId:string,opened:OpenedInspection,signal:AbortSignal){
+    if(!this.#openedInspections.has(opened)||opened.generation!==this.#evidenceRead||opened.report.citations.question_id!==questionId)
+      throw Error('Reopen the saved inspection');
+    const {value:review,generation}=await this.#inspectionRequest(questionId,signal,
+      '/snapshots/'+encodeURIComponent(opened.snapshot.snapshot_id)+'/review-returns',undefined,
+      wire=>inspectionReview(wire,opened));
+    const checked=Object.freeze({...opened,review,generation});this.#checkedInspections.add(checked);
+    return checked;
+  }
+  laboratoryReviewWritePhase(questionId:string):'idle'|'saving'|'unknown'{
+    const cmd=this.#inspectionReturnCommands.get(questionId),subject=this.#catalogSubject(questionId,'laboratory');
+    if(!cmd||!subject||cmd.patient!==this.#state.patient?.patient_id||cmd.caseId!==subject.caseId)return 'idle';
+    return cmd.sending&&cmd.generation===this.#evidenceRead?'saving':'unknown';
+  }
+  async returnLaboratoryInspection(questionId:string,checked:CheckedInspection|null,reason:string,signal:AbortSignal){
+    const subject=this.#catalogSubject(questionId,'laboratory'),patient=this.#state.patient?.patient_id;
+    if(!patient||!subject||signal.aborted||this.#savingEvidence||this.#state.evidenceLinkPhase==='unknown')throw Error('Reopen the saved question');
+    const pending=this.#inspectionReturnCommands.get(questionId);
+    let body:string,snapshotId:string;
+    if(checked){
+      if(pending||!this.#checkedInspections.has(checked)||checked.generation!==this.#evidenceRead||
+        checked.review.question_id!==questionId||checked.review.patient_id!==patient||checked.review.case_id!==subject.caseId||
+        !validReturnReason(reason))throw Error('Check the saved inspection and return reason');
+      snapshotId=checked.snapshot.snapshot_id;
+      body=JSON.stringify({synthetic:true,request_key:crypto.randomUUID(),expected_queue_fingerprint:checked.review.queue_fingerprint,
+        expected_captured_report_sha256:checked.snapshot.captured_report_sha256,expected_report_sha256:checked.report.report_sha256,reason});
+    }else{
+      if(!pending||this.laboratoryReviewWritePhase(questionId)!=='unknown')throw Error('No unconfirmed return');
+      ({body,snapshotId}=pending);
+    }
+    const attempt={patient,caseId:subject.caseId,snapshotId,body,generation:this.#evidenceRead,sending:true};
+    this.#inspectionReturnCommands.set(questionId,attempt);
+    try{
+      const send=this.#inspectionRequest(questionId,signal,'/snapshots/'+encodeURIComponent(snapshotId)+'/review-returns',body,
+        (wire,_model,_question,status)=>inspectionReturnReceipt(wire,questionId,snapshotId,status));
+      attempt.generation=this.#evidenceRead;this.#publish({});
+      const {value:receipt,generation}=await send;
+      if(this.#inspectionReturnCommands.get(questionId)!==attempt)throw Error('Inspection return changed');
+      this.#inspectionReturnCommands.delete(questionId);this.#publish({});return {receipt,generation};
+    }catch(error){
+      if(this.#inspectionReturnCommands.get(questionId)===attempt){
+        if(error instanceof InspectionRequestRefused)this.#inspectionReturnCommands.delete(questionId);else attempt.sending=false;
+        this.#publish({});
+      }
+      throw error;
+    }
   }
   laboratorySnapshotWritePhase(questionId:string):'idle'|'saving'|'unknown'{
     const cmd=this.#snapshotCommands.get(questionId),subject=this.#catalogSubject(questionId,'laboratory');
@@ -391,6 +444,10 @@ export class RegistrySession {
       if((next.patient&&next.patient.patient_id!==cmd.patient)||(next.worldModel&&next.worldModel.case_id!==cmd.caseId)||
         (next.sourceIndex&&next.sourceIndex.case_id!==cmd.caseId)||
         (next.cases&&!next.cases.some(c=>c.patient_id===cmd.patient&&c.case_id===cmd.caseId&&c.status==='active')))this.#snapshotCommands.delete(qid);
+    }    for(const [qid,cmd] of this.#inspectionReturnCommands){
+      if((next.patient&&next.patient.patient_id!==cmd.patient)||(next.worldModel&&next.worldModel.case_id!==cmd.caseId)||
+        (next.sourceIndex&&next.sourceIndex.case_id!==cmd.caseId)||
+        (next.cases&&!next.cases.some(c=>c.patient_id===cmd.patient&&c.case_id===cmd.caseId&&c.status==='active')))this.#inspectionReturnCommands.delete(qid);
     }
     const prior=this.#state.laboratoryIntent,intent=next.laboratoryIntent;
     let invalidated=prior!==null&&intent===null;
@@ -474,7 +531,7 @@ export class RegistrySession {
     this.#publish({...emptyWorld(),...this.#resetInvestigation(preserveReviewCase)});
   }
   #resetDeniedCaseSources(recordMessage='Source access must be rechecked. Reload case permissions to reopen records.'){
-    this.#snapshotCommands.clear();
+    this.#snapshotCommands.clear();this.#inspectionReturnCommands.clear();
     this.#records++;
     return {...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error' as const,recordMessage};
   }
@@ -545,7 +602,7 @@ export class RegistrySession {
       sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
   };
   #clearPatientSessionData(){
-    this.#snapshotCommands.clear();
+    this.#snapshotCommands.clear();this.#inspectionReturnCommands.clear();
     this.#questionRetryKeys.clear();
     this.#manualPassageIntents.clear();
     this.#laboratoryWrite++;this.#laboratoryWriting=false;
@@ -574,6 +631,7 @@ export class RegistrySession {
   }
   async read(id:string):Promise<void>{
     for(const [qid,cmd] of this.#snapshotCommands)if(cmd.patient!==id)this.#snapshotCommands.delete(qid);
+    for(const [qid,cmd] of this.#inspectionReturnCommands)if(cmd.patient!==id)this.#inspectionReturnCommands.delete(qid);
     if(this.#state.patient?.patient_id!==id)this.#questionRetryKeys.clear();
     const scope=this.#scope, request=++this.#read;
     const lab=this.#state.laboratoryIntent;
@@ -608,7 +666,7 @@ export class RegistrySession {
       if(res.status!==200){
         // A temporary recheck failure cannot establish the earlier write's
         // outcome. Explicit patient denial does withdraw this shared scope.
-        if([403,404].includes(res.status)){this.#snapshotCommands.clear();this.#publish({...this.#resetInvestigation(),...emptyLaboratory()});}
+        if([403,404].includes(res.status)){this.#snapshotCommands.clear();this.#inspectionReturnCommands.clear();this.#publish({...this.#resetInvestigation(),...emptyLaboratory()});}
         this.#httpError(res.status);return;
       }
       const value=patient(await json(res),id); if(!current())return;
@@ -621,7 +679,7 @@ export class RegistrySession {
     if(!this.#token){this.#publish({message:'Connect an authorized synthetic credential first.'});return;}
     if(confirmed!==true || !boundedKey(requestKey)){this.#publish({phase:'error',message:'Confirm fictional identity creation and use a valid request key.'});return;}
     // A new creation is a new selection intent; an older read cannot restore it.
-    this.#snapshotCommands.clear();
+    this.#snapshotCommands.clear();this.#inspectionReturnCommands.clear();
     this.#read++;this.#records++;
     const scope=this.#scope,control=new AbortController();this.#controllers.add(control);this.#creating=true;
     const timeout=setTimeout(()=>control.abort(),10000);
@@ -660,7 +718,7 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
-        if([403,404].includes(res.status)){this.#snapshotCommands.clear();this.#clearManualDrafts();}
+        if([403,404].includes(res.status)){this.#snapshotCommands.clear();this.#inspectionReturnCommands.clear();this.#clearManualDrafts();}
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
           ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetLabQuestions(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           recordMessage:'Case mappings unavailable or permission changed. No records are shown.'});
@@ -704,7 +762,7 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
-        if([403,404].includes(res.status)){this.#snapshotCommands.clear();this.#clearManualDrafts();}
+        if([403,404].includes(res.status)){this.#snapshotCommands.clear();this.#inspectionReturnCommands.clear();this.#clearManualDrafts();}
         this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
           ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetLabQuestions(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           recordMessage:'Sources unavailable, denied or mapping revoked. Reload case permissions.'});
@@ -1976,7 +2034,7 @@ export class RegistrySession {
       if(!current())return;
       if(response.status===401){this.#httpError(401);return;}
       if([403,404].includes(response.status)){
-        this.#snapshotCommands.clear();
+        this.#snapshotCommands.clear();this.#inspectionReturnCommands.clear();
         this.#publish({...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error',
           recordMessage:'Laboratory import permission or case binding unavailable. Reload current access.'});return;
       }
@@ -2021,7 +2079,7 @@ export class RegistrySession {
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if([403,404,409,413,422].includes(res.status)){
-        if([403,404].includes(res.status)){this.#snapshotCommands.clear();this.#clearManualDrafts();}
+        if([403,404].includes(res.status)){this.#snapshotCommands.clear();this.#inspectionReturnCommands.clear();this.#clearManualDrafts();}
         this.#publish({cases:null,sourceIndex:null,original:null,recordsPhase:'error',importOutcome:'rejected',
           ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetLabQuestions(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
           importMessage:'The server rejected this import. Reload current case permissions; no success is claimed.'});return;

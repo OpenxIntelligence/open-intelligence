@@ -39,7 +39,8 @@ class EHRLaboratoryGraphTests(unittest.TestCase):
     def test_single_head_depends_on_both_published_owners(self):
         script = graph()
         self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
-        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0024_fhir_coded_results")
+        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0025_lab_inspection_snapshots")
+        self.assertEqual(script.get_revision("0025_lab_inspection_snapshots").down_revision, "0024_fhir_coded_results")
         self.assertEqual(script.get_revision("0024_fhir_coded_results").down_revision, "0023_dicom_mr_custody")
         self.assertEqual(script.get_revision("0023_dicom_mr_custody").down_revision, "0022_lab_citation_source_scope")
         self.assertEqual(script.get_revision("0022_lab_citation_source_scope").down_revision,
@@ -100,8 +101,9 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
         document_convergence.DocumentImageConvergenceMigrationTests.seed_document(self, document)
         before = self.snapshot()
         migrate(self.admin, "upgrade", SCHEMA_REVISION)
-        new_owner = "investigation.laboratory_inspection_snapshots"
-        self.assertEqual(self.snapshot(), (before[0] | {new_owner: []}, before[1]))
+        new_tables = {"investigation.laboratory_inspection_snapshots": [],
+                      "investigation.laboratory_review_origins": []}
+        self.assertEqual(self.snapshot(), (before[0] | new_tables, before[1]))
 
         with running_server(create_app(self.settings)) as base:
             status, page, _ = request(base, url, token=TOKEN_A)
@@ -165,8 +167,8 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
             conn.rollback()
         self.assertEqual(self.snapshot(), before)
         migrate(self.admin, "downgrade", previous)
-        self.assertEqual(before[0][new_owner], [])
-        previous_schema = ({k: v for k, v in before[0].items() if k != new_owner}, before[1])
+        self.assertEqual({name: before[0][name] for name in new_tables}, new_tables)
+        previous_schema = ({k: v for k, v in before[0].items() if k not in new_tables}, before[1])
         self.assertEqual(self.snapshot(), previous_schema)
         with self.assertRaisesRegex(DBAPIError, "OI-LAB-CITATION-CASE-SOURCES-CHANGED"):
             with self.engine.begin() as conn:
