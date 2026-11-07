@@ -11,7 +11,7 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from .case_bindings import _case_id
-from .question_origin import classify_question_origin
+from .question_origin import classify_question_origin, classify_stored_question_origin
 from .composer_preflight import SHA256, SOURCE_SNAPSHOT_CONTRACT, prepare_laboratory_question
 from .laboratory_fhir_store import PostgresLaboratoryFHIR
 from .source_questions import PreparedResponse, _request_key
@@ -180,8 +180,9 @@ class PostgresLaboratoryQuestions:
                             author, purpose, key, sid, ref, question, snapshot, preflight))):
                     raise PatientRegistryError("Stored laboratory question provenance is inconsistent")
                 try:
-                    origin = classify_question_origin(question_id=qid, source_id=sid,
-                                                      source_line=None, observation_reference=ref)
+                    origin = classify_stored_question_origin(question_id=qid, source_id=sid,
+                                                             source_line=None, observation_reference=ref,
+                                                             anchor_source_id=anchor_sid)
                 except ValueError as exc:
                     raise PatientRegistryError("Stored laboratory question origin is invalid") from exc
                 if origin.kind != "fhir_observation":
