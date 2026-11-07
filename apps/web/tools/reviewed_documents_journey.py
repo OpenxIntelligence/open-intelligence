@@ -14,7 +14,7 @@ CASE='CASE-WEB-REVIEWED'
 def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,restart_api):
     credentials[0]['actions']=sorted(set(credentials[0]['actions'])|{
         'source_import','source_read','source_original_read','case_binding_create','case_binding_read',
-        'composer_context_read','question_create','question_read','review_queue_read'})
+        'composer_context_read','question_create','question_read','review_queue_read','evidence_read','evidence_link'})
     write_grants()
     root='/v1/patients/'+patient_id
     def operator(path,body=None):
@@ -172,7 +172,131 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     cd.wait("Boolean(document.querySelector('[data-testid=passage-question-draft]'))",'fresh saved PDF passage opens question draft')
     value('[data-testid=passage-question-draft]','What would resolve this pending fictional result?')
     assert cd.evaluate("""document.querySelector('section[aria-label="Draft a passage question"] blockquote').textContent""")==initial_revision['findings'][0]['quote']
-    click('Discard question draft')
+    cd.evaluate("""(()=>{const original=window.fetch;window.__manualQuestionWrites=[];window.fetch=async(input,init)=>{
+      const tracked=String(input).endsWith('/questions')&&init?.method==='POST';
+      if(tracked)window.__manualQuestionWrites.push(init.body);
+      const response=await original(input,init);
+      if(tracked&&window.__manualQuestionWrites.length===1&&response.ok)throw Error('Fictional lost response');
+      return response;};window.__restoreQuestionFetch=()=>{window.fetch=original};})()""")
+    click('Save passage question')
+    cd.wait("document.querySelector('[data-testid=save-passage-question]')?.textContent==='Retry exact save'&&!document.querySelector('[data-testid=save-passage-question]').disabled",'question save recovery offered')
+    click('Refresh reviewed documents')
+    cd.wait("!document.querySelector('[data-testid=passage-question-draft]')",'question panel unmounted')
+    cd.wait("""[...document.querySelectorAll('button')].some(b=>b.textContent==='WEB-PDF · v1 · current'&&!b.disabled)""",'refreshed document list ready')
+    click('WEB-PDF · v1 · current')
+    cd.wait("""[...document.querySelectorAll('button')].some(b=>b.textContent==='Retry exact save'&&!b.disabled)""",'recovery after reopening original')
+    click('Retry exact save')
+    cd.wait("""document.querySelector('section[aria-label="Draft a passage question"]')?.textContent.includes('Question saved.')""",'question write recovered')
+    attempts=cd.evaluate('window.__manualQuestionWrites')
+    assert len(attempts)==2 and attempts[0]==attempts[1]
+    cd.evaluate('window.__restoreQuestionFetch()')
+    click('Open saved passage questions')
+    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('What would resolve this pending fictional result?')",'saved question reopened')
+    value('[data-testid=passage-evidence-query]','continuity')
+    click('Search evidence catalog')
+    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('FICT-RECORD-CONTINUITY@1')",'question-scoped catalog search')
+    cd.evaluate("""(()=>{const original=window.fetch;window.__citationWrites=[];window.fetch=async(input,init)=>{
+      const response=await original(input,init);
+      if(String(input).endsWith('/evidence-links')&&init?.method==='POST'){
+        window.__citationWrites.push({status:response.status,body:await response.clone().json(),command:JSON.parse(init.body)});
+        if(window.__citationWrites.length===1&&response.status===201)throw Error('Fictional lost citation response');
+      }
+      return response;};window.__restoreCitationFetch=()=>{window.fetch=original};})()""")
+    click('Save citation FICT-RECORD-CONTINUITY@1')
+    try:
+        cd.wait("[...document.querySelectorAll('button')].some(b=>b.textContent==='Retry exact citation save'&&!b.disabled)",'citation retry offered')
+        assert cd.evaluate('window.__citationWrites[0].status')==201
+        click('Refresh reviewed documents')
+        cd.wait("[...document.querySelectorAll('button')].some(b=>b.textContent==='WEB-PDF · v1 · current'&&!b.disabled)",'citation original reopened')
+        click('WEB-PDF · v1 · current')
+        cd.wait("[...document.querySelectorAll('button')].some(b=>b.textContent==='Open saved passage questions'&&!b.disabled)",'passage question history available')
+        click('Open saved passage questions')
+        cd.wait("[...document.querySelectorAll('button')].some(b=>b.textContent==='Retry exact citation save'&&!b.disabled)",'citation retry survives remount')
+        click('Retry exact citation save')
+        cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('Citation saved.')",'passage citation saved')
+        writes=cd.evaluate('window.__citationWrites')
+        assert len(writes)==2 and writes[0]['command']==writes[1]['command']
+        assert writes[1]['status']==200 and writes[1]['body']=={**writes[0]['body'],'duplicate':True}
+    except Exception:
+        print('CITATION FAILURE',cd.evaluate("({writes:window.__citationWrites,visible:document.querySelector('[data-testid=saved-passage-questions]')?.textContent})"))
+        raise
+    finally:
+        cd.evaluate('window.__restoreCitationFetch()')
+    click('Open saved passage citations')
+    cd.wait("document.querySelector('[data-testid=passage-citations]')?.textContent.includes('FICT-RECORD-CONTINUITY@1 · available')",'saved citation reopened')
+    # A transient metadata service failure is distinct from an authoritative
+    # 404 grant denial (which already unmounts the entire shared case scope).
+    # A failed new search must not display the prior citation as fresh.
+    # Reopening the question remounts the search form with an empty query.
+    value('[data-testid=passage-evidence-query]','continuity')
+    assert cd.evaluate("[...document.querySelectorAll('[data-testid=saved-passage-questions] button')].some(button=>button.textContent==='Search evidence catalog'&&!button.disabled)"), 'Fault probe requires an enabled search control'
+    assert cd.evaluate("document.querySelector('[data-testid=passage-citations]')?.textContent.includes('FICT-RECORD-CONTINUITY@1 · available')"), 'Fault probe begins with an actually displayed saved citation'
+    cd.evaluate("""(() => {
+      const original = window.fetch;
+      if(window.__failPassageSearch) throw Error('Evidence interceptor already installed');
+      window.__failPassageSearch = original;
+      window.__failedPassageSearchRequests = 0;
+      window.fetch = async(input, init) => {
+        const path = new URL(typeof input==='string'?input:input.url,location.href).pathname;
+        if(path.endsWith('/evidence-search') && init?.method==='POST'){
+          window.__failedPassageSearchRequests++;
+          return new Response(JSON.stringify({detail:'Fictional temporary metadata service failure'}), {
+            status:503, headers:{'Content-Type':'application/json'}
+          });
+        }
+        return original(input,init);
+      };
+    })()""")
+    try:
+        click('Search evidence catalog')
+        cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('Evidence search unavailable.')",
+                'failed metadata refresh is reported')
+        assert cd.evaluate('window.__failedPassageSearchRequests')==1, 'One failed metadata request was intercepted'
+        assert cd.evaluate("Boolean(document.querySelector('[data-testid=source-index]'))"), (
+            'Temporary evidence failure must preserve independently authorized source reading')
+        assert cd.evaluate("!document.querySelector('[data-testid=passage-citations]')"), (
+            'A failed metadata refresh must remove the previously displayed citation')
+        assert not cd.evaluate("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('FICT-RECORD-CONTINUITY@1')"), (
+            'The failed metadata refresh must not leave the old citation visible')
+    finally:
+        cd.evaluate("window.fetch=window.__failPassageSearch;delete window.__failPassageSearch;delete window.__failedPassageSearchRequests")
+    click('Open saved passage citations')
+    cd.wait("document.querySelector('[data-testid=passage-citations]')?.textContent.includes('FICT-RECORD-CONTINUITY@1 · available')",
+            'a fresh authorized read restores the original citation')
+    click('Prepare independent verification')
+    cd.wait("document.querySelector('[data-testid=passage-review-preparation]')?.textContent.includes('Marker pending.')",
+            'source-anchored review preparation')
+    review_text=cd.evaluate("document.querySelector('[data-testid=passage-review-preparation]').textContent")
+    assert 'Independent review preparation' in review_text
+    assert 'PDF page 2' in review_text
+    assert 'FICT-RECORD-CONTINUITY@1' in review_text
+    assert 'metadata' in review_text.lower() and 'no clinical approval' in review_text.lower()
+    assert 'awaiting independent verification' in review_text.lower()
+    review_hash=cd.evaluate("document.querySelector('[data-testid=passage-review-preparation] code').textContent")
+    assert len(review_hash)==64 and all(ch in '0123456789abcdef' for ch in review_hash)
+    cd.evaluate("""(() => {
+      const original = window.fetch;
+      window.__verifyReviewPrep = {original, statuses:[]};
+      window.fetch = async(input,init) => {
+        const path = new URL(typeof input==='string'?input:input.url,location.href).pathname;
+        const response = await original(input,init);
+        if(path.endsWith('/review-preparation'))
+          window.__verifyReviewPrep.statuses.push(response.status);
+        return response;
+      };
+    })()""")
+    try:
+        click('Prepare independent verification')
+        cd.wait("window.__verifyReviewPrep.statuses.length===1 && Boolean(document.querySelector('[data-testid=passage-review-preparation] code'))",
+                'new authorized review preparation read completed')
+        assert cd.evaluate('window.__verifyReviewPrep.statuses')==[200]
+        assert cd.evaluate("document.querySelector('[data-testid=passage-review-preparation] code').textContent")==review_hash, (
+            'New access receipt must not silently change the frozen review-preparation fingerprint')
+    finally:
+        cd.evaluate("window.fetch=window.__verifyReviewPrep.original;delete window.__verifyReviewPrep")
+    original_question,=operator(prefix+'/'+first+'/questions')['questions']
+    assert original_question['selection']['anchor']['annotation_revision_id']==initial_revision['revision_id']
+
     assert not cd.evaluate("Boolean(document.querySelector('[data-testid=passage-question-draft]'))")
     selection_path=prefix+'/'+first+'/selections/'+initial_revision['revision_id']+'/'+initial_key
     initial_selection=operator(selection_path)
@@ -182,6 +306,14 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     assert initial_selection['anchor']['extraction_sha256']==initial_document['preview']['extraction_sha256']
     assert initial_selection['anchor']['classification_origin']=='user_selected'
     assert initial_selection['selection_state']=='current_unreviewed_selection'
+    cd.evaluate("""document.querySelector('section[aria-label="Draft a passage question"] button').click()""")
+    cd.wait("Boolean(document.querySelector('[data-testid=passage-question-draft]'))",'select passage before correction')
+    value('[data-testid=passage-question-draft]','Does this fictional passage need correction?')
+    cd.evaluate("""(()=>{const original=window.fetch;window.fetch=(input,init)=>{
+      if(String(input).endsWith('/questions')&&init?.method==='POST'){window.fetch=original;throw Error('Dropped before sending')}
+      return original(input,init);};})()""")
+    click('Save passage question')
+    cd.wait("document.querySelector('[data-testid=save-passage-question]')?.textContent==='Retry exact save'&&!document.querySelector('[data-testid=save-passage-question]').disabled",'uncommitted pending request')
     click('Remove finding-one');click('Select line 3 · page 2');click('Add exact passage')
     value('[data-testid=document-reason]','Correct the selected fictional passage')
     cd.evaluate("document.querySelector('[data-testid=document-confirm]').click()")
@@ -194,6 +326,10 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     history=cd.evaluate("document.querySelector('[data-testid=reviewed-preview] details').textContent")
     assert 'Page 2, page line 1 (extraction line 2)' in history and 'Page 2, page line 2 (extraction line 3)' in history
     assert operator(source_path)['sources']==structured_sources, 'Manual selections must not enter the structured source index'
+    cd.wait("""[...document.querySelectorAll('button')].some(b=>b.textContent==='Retry exact save'&&!b.disabled)""",'pending intent retained on corrected version')
+    click('Retry exact save')
+    cd.wait("""document.querySelector('section[aria-label="Draft a passage question"]')?.textContent.includes('Save refused.')""",'stale uncommitted retry rejected')
+    assert cd.evaluate("""[...document.querySelectorAll('button')].some(b=>b.textContent.startsWith('Draft a question about')&&!b.disabled)""")
     saved=operator(prefix+'/'+first);assert saved['revisions'][0]['findings'][0]['line']==2
     assert saved['revisions'][1]['findings'][0]['line']==3
     historical_selection=operator(selection_path)
@@ -206,6 +342,28 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     assert current_selection['anchor']['quote']=='Second selected passage.'
     assert (current_selection['anchor']['line'],current_selection['anchor']['page'])==(3,2)
     assert current_selection['selection_state']=='current_unreviewed_selection'
+    # Reopening an amended selection must not promote its saved history to
+    # current, enable new citation writes, or replace the original quotation.
+    citation_path=prefix+'/'+first+'/questions/'+original_question['question_id']+'/evidence-links'
+    citations_before=operator(citation_path)['links']
+    click('Open saved passage questions')
+    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('Source or selection changed')",
+            'historical passage state after annotation correction')
+    value('[data-testid=passage-evidence-query]','continuity')
+    click('Search evidence catalog')
+    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('FICT-RECORD-CONTINUITY@1')",
+            'historical question retains permitted metadata inspection')
+    assert cd.evaluate("""(() => {
+      const button=[...document.querySelectorAll('[data-testid=saved-passage-questions] button')]
+        .find(item=>item.textContent==='Save citation FICT-RECORD-CONTINUITY@1');
+      return Boolean(button?.disabled);
+    })()"""), 'A historical passage must not enable a new citation save'
+    click('Prepare independent verification')
+    cd.wait("document.querySelector('[data-testid=passage-review-preparation]')?.textContent.includes('Historical context only; reassessment required.')",
+            'historical original reaches review preparation without promotion')
+    assert cd.evaluate("document.querySelector('[data-testid=passage-review-preparation] blockquote')?.textContent")=='Marker pending.'
+    assert operator(citation_path)['links']==citations_before, (
+        'Inspecting historical context must not create or change citation records')
     destination=artifacts/'reviewed-document-downloads';destination.mkdir(parents=True,exist_ok=True)
     cd.command('Browser.setDownloadBehavior',{'behavior':'allow','downloadPath':str(destination)})
     cd.evaluate("document.querySelector('[data-testid=download-reviewed]').click()")
@@ -218,6 +376,10 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     image=cd.command('Page.captureScreenshot',{'format':'png'});(artifacts/'h1-reviewed-document-mobile.png').write_bytes(base64.b64decode(image['data']))
     restart_api()
     assert operator(prefix+'/'+first)['revisions']==saved['revisions']
+    restored_question,=operator(prefix+'/'+first+'/questions')['questions']
+    assert restored_question['question_id']==original_question['question_id']
+    assert restored_question['selection']['anchor']==original_question['selection']['anchor']
+    assert restored_question['selection']['selection_state']=='selection_reassessment_required'
     restored_selection=operator(selection_path)
     assert restored_selection['anchor']==initial_selection['anchor']
     assert restored_selection['anchor_sha256']==initial_selection['anchor_sha256']

@@ -66,9 +66,10 @@ def upgrade():
             RETURN NEW;
         END;
         $oi$;
-        DROP TRIGGER zz_oi_anchor_text_question_required ON investigation.question_evidence_links;
+        DROP TRIGGER IF EXISTS zz_oi_anchor_text_question_required ON investigation.question_evidence_links;
         CREATE TRIGGER zz_oi_citation_question_target BEFORE INSERT ON investigation.question_evidence_links
-            FOR EACH ROW EXECUTE FUNCTION investigation.guard_citation_question_target();
+            FOR EACH ROW WHEN(NEW.source_snapshot_contract <> 'oi.reviewed-document-selection/1')
+            EXECUTE FUNCTION investigation.guard_citation_question_target();
     """)
 
 
@@ -87,5 +88,6 @@ def downgrade():
         DROP TABLE investigation.laboratory_citation_anchors;
         ALTER TABLE investigation.question_evidence_links DROP CONSTRAINT oi_citation_question_pair;
         CREATE TRIGGER zz_oi_anchor_text_question_required BEFORE INSERT ON investigation.question_evidence_links
-            FOR EACH ROW EXECUTE FUNCTION investigation.require_text_question_target();
+            FOR EACH ROW WHEN(NEW.source_snapshot_contract <> 'oi.reviewed-document-selection/1')
+            EXECUTE FUNCTION investigation.require_text_question_target();
     """)

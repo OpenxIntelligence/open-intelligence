@@ -1,5 +1,5 @@
 import {PatientPermissions} from './patient-permissions-view';
-import {StrictMode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {lazy, Suspense, StrictMode, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {createRoot} from 'react-dom/client';
 import {RegistrySession} from './registry-client';
 import {createEncounterScope, EncounterChart} from './encounter-chart';
@@ -8,7 +8,7 @@ import {SourceHistoryView} from './source-history-view';
 import {PatientSuspension} from './patient-suspension-view';
 import {SourceIntake} from './source-intake-view';
 import {RecordImportDisclosure} from './record-import-disclosure';
-import {ReviewedDocumentDisclosure} from './reviewed-documents-view';
+const ReviewedDocumentDisclosure=lazy(()=>import('./reviewed-documents-view').then(module=>({default:module.ReviewedDocumentDisclosure})));
 import {WorldModelView} from './world-model-view';
 import {PatientContinuity} from './patient-continuity-view';
 import {SecondOpinionPreparation} from './second-opinion-preparation-view';
@@ -230,7 +230,7 @@ function App(){
        <h3 id="sources-heading" data-workspace-anchor="Source versions" ref={sourcesHeading} tabIndex={-1}>Source history for <code>{state.sourceIndex.case_id}</code></h3>
        {reportKind?<button type="button" onClick={()=>navigate('Records')}>Open all records and uploads for this case</button>:<>
        <p>Immutable original source identifiers, hashes and historical versions. These records are independently fictional.</p>
-       <ReviewedDocumentDisclosure key={"documents:"+state.patient.patient_id+":"+state.sourceIndex.case_id} session={session} patientId={state.patient.patient_id} caseId={state.sourceIndex.case_id}/>
+       <Suspense fallback={<p role="status">Loading document workspace…</p>}><ReviewedDocumentDisclosure key={"documents:"+state.patient.patient_id+":"+state.sourceIndex.case_id} session={session} patientId={state.patient.patient_id} caseId={state.sourceIndex.case_id}/></Suspense>
        <RecordImportDisclosure key={state.patient.patient_id+':'+state.sourceIndex.case_id} initiallyOpen={state.sourceIndex.sources.length===0}>
         <SourceIntake session={session} patientId={state.patient.patient_id} caseId={state.sourceIndex.case_id} sending={state.importOutcome==='sending'}/>
        </RecordImportDisclosure>
