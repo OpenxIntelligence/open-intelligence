@@ -479,11 +479,56 @@ class SourceImageIndex(Contract):
     source_identity_verified: Literal[False]
 
 
+class ComparisonSourceLine(Contract):
+    source_id: str = Field(pattern=r"^SRC-[0-9A-F]{32}$")
+    source_line: int = Field(strict=True, ge=1, le=10000)
+
+
+class ComparisonSourceReceipt(ComparisonSourceLine):
+    document_id: str
+    source_version: int = Field(ge=1)
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class AttributionVersion(Contract):
+    source_id: str
+    document_id: str
+    source_version: int = Field(ge=1)
+    source_sha256: str
+    finding: SourceFinding | None
+
+
+class AttributionComparison(Contract):
+    recorded: AttributionVersion
+    latest: AttributionVersion
+
+
+class AttributionReassessment(Contract):
+    contract: Literal["oi.synthetic-attribution-reassessment/1"]
+    synthetic: Literal[True]
+    clinical_approval: Literal[False]
+    patient_id: str
+    case_id: str
+    question_id: str
+    receipt_id: str
+    access_receipt_id: str
+    first: AttributionComparison
+    second: AttributionComparison
+
+
 class ReturnForVerification(Contract):
+    comparison_source: ComparisonSourceLine | None = None
     synthetic: StrictBool
     request_key: str = Field(min_length=3, max_length=128)
     expected_queue_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     reason: str = Field(min_length=10, max_length=600)
+
+    @field_validator("comparison_source", mode="before")
+    @classmethod
+    def require_selected_line_if_present(cls, value):
+        if value is None:
+            raise ValueError("Omit comparison_source for a single-source return")
+        return value
 
     @field_validator("synthetic")
     @classmethod
@@ -527,6 +572,7 @@ class QuestionReviewItem(Contract):
 
 
 class QuestionReturnHistory(Contract):
+    comparison_source: ComparisonSourceReceipt | None = Field(default=None, exclude_if=lambda value: value is None)
     receipt_id: str
     question_id: str
     queue_fingerprint: str
@@ -917,6 +963,26 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         except PatientRegistryDenied:
             raise HTTPException(404, "Question review queue unavailable") from None
 
+    @router.get("/{patient_id}/cases/{case_id}/review-returns/{receipt_id}/attribution-reassessment",
+                response_model=AttributionReassessment, responses=errors,
+                operation_id="compare_recorded_and_current_attributions_v1")
+    def compare_attributions(request: Request, patient_id: str, case_id: str, receipt_id: str,
+                             context: Principal = Depends(principal)):
+        actions = ("question_read", "source_read", "source_original_read", "review_queue_read")
+        try:
+            with registry(context) as patients:
+                for action in actions:
+                    records_authorized(patients, context, patient_id, action)
+                return PostgresQuestionReviewReturns(patients).compare_attributions(
+                    patient_id, case_id, receipt_id, organization=context.organization, actor=context.actor,
+                    purpose=context.purpose, recheck_authority=lambda: final_question_authority(
+                        request, context, patients, patient_id, actions),
+                    prepare_response=lambda packet: JSONResponse(
+                        AttributionReassessment(**packet).model_dump(mode="json"),
+                        headers={"Cache-Control": "no-store"}))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Attribution review unavailable") from None
+
     @router.post(
         "/{patient_id}/cases/{case_id}/questions/{question_id}/return-for-verification",
         response_model=ReturnForVerificationReceipt, status_code=201,
@@ -939,6 +1005,7 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                     request_key=payload.request_key,
                     expected_queue_fingerprint=payload.expected_queue_fingerprint,
                     reason=payload.reason,
+                    comparison_source=payload.comparison_source.model_dump() if payload.comparison_source else None,
                     prepare_response=lambda result: JSONResponse(
                         ReturnForVerificationReceipt(**result).model_dump(mode="json"),
                         status_code=200 if result["duplicate"] else 201,

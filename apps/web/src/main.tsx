@@ -52,6 +52,7 @@ function App(){
  const [requestKey,setRequestKey]=useState(()=>crypto.randomUUID());
  const [readiness,setReadiness]=useState<'checking'|'ready'|'unavailable'>('checking');
  const [section,setSection]=useState('Overview');
+ const navigationId=useRef(0);
  const [view,setView]=useState<ReadingView>('patient');
  const [sourceFilters,setSourceFilters]=useState({scope:state.sourceIndex,...emptySourceFilters});
  const filters=sourceFilters.scope===state.sourceIndex?sourceFilters:emptySourceFilters;
@@ -118,10 +119,10 @@ function App(){
  useEffect(()=>{if(!state.connected){setPatientId('');setConfirmed(false)}},[state.connected]);
  useEffect(()=>{const clear=()=>session.disconnect();window.addEventListener('pagehide',clear);return()=>window.removeEventListener('pagehide',clear)},[]);
   const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||state.evidenceWritePhase==='saving';
- function navigate(nextSection:string){
+ function navigate(nextSection:string){navigationId.current++;session.dismissAttributionInspection();
   if(taskOriginal.current){taskOriginal.current=null;session.dismissOriginal();}
   passageResume.current=null;sourceEntry.current=null;originalReturn.current=null;session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();session.dismissSourceImages();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
- function disconnect(){taskOriginal.current=null;passageResume.current=null;sourceEntry.current=null;session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
+ function disconnect(){navigationId.current++;taskOriginal.current=null;passageResume.current=null;sourceEntry.current=null;session.disconnect();setToken('');setPatientId('');setConfirmed(false);setSection('Overview');}
  return <div className="app" onFocusCapture={()=>{if(sourceEntry.current&&document.activeElement!==sourceEntry.current.trigger)sourceEntry.current=null;}}>
   <a className="skip" href="#main">Skip to workspace</a>
   <aside className="rail" aria-label="Workspace navigation">
@@ -134,7 +135,15 @@ function App(){
    <main id="main" tabIndex={-1}>
     <div className="heading"><div><p className="eyebrow">OPEN INTELLIGENCE · H1</p><h1 ref={heading} tabIndex={-1}>{section==='Overview'?'Start with the right patient.':section}</h1><p className="lede">{section==='Overview'?'A connected foundation for the patient’s story, evidence and care.':section==='Records'?'Inspect authorized fictional case mappings, original source history and unreviewed source statements.':section==='Journey'?'View source-linked chronology, uncertainty and disagreements without implying clinical assessment.':section==='Investigations'?'Prepare exact source context, save a question and inspect its current or reassessment status. No AI execution or clinical approval.':'Inspect saved questions, record a source verification return and preserve its history as sources change. Clinical approval remains unavailable.'}</p></div></div>
     <div className="boundary" role="note"><strong>Development workspace, not a clinical service.</strong> Use operator-issued synthetic credentials and fictional identities only. These are not patient accounts, verified consent or professional sign-off.</div>
-    {section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onOriginal={(world,sourceId)=>{navigate('Records');taskOriginal.current=sourceId;void session.loadWorldOriginal(world,sourceId);}} onRecords={(caseId,task)=>{navigate('Records');taskOriginal.current=task?.source_id??null;void session.loadSources(caseId,task);}} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
+    {section==='Journey'||section==='Investigations'?<WorldModelView session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onOriginal={(world,sourceId)=>{navigate('Records');taskOriginal.current=sourceId;void session.loadWorldOriginal(world,sourceId);}} onRecords={(caseId,task)=>{navigate('Records');taskOriginal.current=task?.source_id??null;void session.loadSources(caseId,task);}} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} onOriginal={(caseId,sourceId,version,digest)=>{
+     navigate('Records');
+     const opened=navigationId.current;
+     void session.loadSources(caseId).then(()=>{
+      const fresh=session.snapshot();
+      if(navigationId.current===opened&&fresh.patient?.patient_id===state.patient?.patient_id&&fresh.sourceIndex?.case_id===caseId&&
+        fresh.sourceIndex.sources.some(row=>row.source_id===sourceId&&row.version===version&&row.sha256===digest))void session.loadOriginal(sourceId);
+     });
+    }} onOverview={()=>navigate('Overview')} onInvestigations={()=>navigate('Investigations')}/>:section==='Records'?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
      <span className="step">CANONICAL SOURCE OWNER / ORIGINALS</span>
      <h2 id="records-heading">{view==='patient'?'Records available to you':'Original source records'}</h2>
      <p>Shows source-reported information from the existing scoped PostgreSQL API. Original-text inspection and deliberate import require separate server permissions. AI interpretation, clinical decisions, verified identity and consent are not supplied by this screen. Information is current only at its last successful check.</p>
