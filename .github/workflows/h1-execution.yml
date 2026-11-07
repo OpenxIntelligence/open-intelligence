@@ -75,6 +75,7 @@ jobs:
           python - <<'PY' 2>&1 | tee verification-execution/tests.txt
           import sys, unittest
           suite = unittest.TestSuite([
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_patient_permissions.py'),
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_connected_product_foundation.py'),
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_patient_suspensions.py'),
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_composer_run*.py'),

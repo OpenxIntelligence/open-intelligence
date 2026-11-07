@@ -118,7 +118,7 @@ class PostgresPatientPermissions:
         with self.registry.transaction():
             row = self.registry._fetchone("SELECT status FROM identity.identity_patients "
                 "WHERE patient_id=%s AND origin_org=%s FOR UPDATE", (patient, context.organization))
-            if row is None or row[0] != "active":
+            if row is None or (row[0] != "active" and grant_id is None):
                 raise PatientRegistryDenied("Patient permissions unavailable")
             recheck()
             if grant_id is None:
@@ -155,8 +155,9 @@ class PostgresPatientPermissions:
                     self.registry._execute("""INSERT INTO identity.patient_access_revocations
                         (grant_id,revoked_by,authority_ref,request_key,request_digest) VALUES (%s,%s,%s,%s,%s)""",
                         (grant_id, context.actor, command.authority_ref, command.request_key, digest))
-                    self.registry.append_event(patient, "identity.access.revoked", grant_id=grant_id,
-                        actor=context.actor, authority_ref=command.authority_ref)
+                    # Suspension must not prevent removal of an existing grant.
+                    self.registry._write_event(patient, "identity.access.revoked", dict(grant_id=grant_id,
+                        actor=context.actor, authority_ref=command.authority_ref))
             response = prepare({"patient_id": patient, "grant_id": grant_id, "duplicate": bool(old)})
             recheck()
             return response

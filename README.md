@@ -1,12 +1,14 @@
 # Open Intelligence
 
+Current permission continuation requires `0029_patient_access`, extending the preserved `0028_connected_product` join. The API and both workers support explicit persisted-grant enforcement; Overview provides permission history, grant/revoke and exact retry recovery. See [patient permissions](docs/engineering/PERSISTED_PATIENT_PERMISSIONS.md). Synthetic declarations do not verify legal consent or identity.
+
 Open Intelligence is building a patient-centered healthcare intelligence platform,
 initially focused on oncology. The full product ambition and canonical architecture
 remain in the [first-principles plan](docs/FIRST_PRINCIPLES_PLAN.md).
 
 ## Run the connected fictional application
 
-Current connected-product candidate requires `0028_connected_product`, a no-DDL join of `0027_source_event_purpose` and `0022_encounter_sources`. It preserves the diagnostic interface, visit/source links, shared event processing, durable execution and access controls. Combined acceptance and remaining foundations: [construction record](docs/engineering/CONNECTED_PRODUCT_FOUNDATION.md).
+The preserved connected-product parent uses `0028_connected_product`, a no-DDL join of `0027_source_event_purpose` and `0022_encounter_sources`. It preserves the diagnostic interface, visit/source links, shared event processing, durable execution and access controls. Combined acceptance and remaining foundations: [construction record](docs/engineering/CONNECTED_PRODUCT_FOUNDATION.md).
 
 
 Start with the [persistent demo guide](docs/H1_DEMO.md). The connected H1 application
@@ -18,8 +20,7 @@ patient/case/source; repeated setup and stop/resume retain its saved work.
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. This integration candidate requires
-`0028_connected_product`, joining the diagnostic source links with the retained
+the retained contributions. The retained `0028_connected_product` migration joins the diagnostic source links with the retained
 `0027_source_event_purpose` foundation from upstream #565 at `462e6c2`.
 The [upgrade contract](docs/implementation/SOURCE_EVENT_PURPOSE_REPAIR.md)
 covers fresh and published 0026 databases; older research-history adoption

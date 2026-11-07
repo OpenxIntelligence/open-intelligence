@@ -73,6 +73,8 @@ jobs:
         run: |
           set -o pipefail
           python apps/web/tools/browser_journey.py 2>&1 | tee verification-web/browser.txt
+      - name: Persisted permissions through actual React and PostgreSQL
+        run: python apps/web/tools/patient_permissions_journey.py
       - name: Persistent fictional demo and complete browser walkthrough
         run: python apps/web/tools/demo_journey.py
       - name: Retain exact code, lock and notices without credentials

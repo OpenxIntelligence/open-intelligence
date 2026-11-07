@@ -1,6 +1,8 @@
 # Open Intelligence H1 patient registry API
 
-Current connected-product candidate requires `0028_connected_product`, a no-DDL join of `0027_source_event_purpose` and `0022_encounter_sources`. It preserves the diagnostic interface, visit/source links, shared event processing, durable execution and access controls. Combined acceptance and remaining foundations: [construction record](../../docs/engineering/CONNECTED_PRODUCT_FOUNDATION.md).
+Current permission continuation requires `0029_patient_access`, extending the preserved `0028_connected_product` join. The API and both workers support explicit persisted-grant enforcement; Overview provides permission history, grant/revoke and exact retry recovery. See [patient permissions](../../docs/engineering/PERSISTED_PATIENT_PERMISSIONS.md). Synthetic declarations do not verify legal consent or identity.
+
+The preserved connected-product parent uses `0028_connected_product`, a no-DDL join of `0027_source_event_purpose` and `0022_encounter_sources`. It preserves the diagnostic interface, visit/source links, shared event processing, durable execution and access controls. Combined acceptance and remaining foundations: [construction record](../../docs/engineering/CONNECTED_PRODUCT_FOUNDATION.md).
 
 ## Administrative patient suspension
 
@@ -43,7 +45,7 @@ Compose outcomes must be recorded against the dependent PR's exact source.
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integration. This candidate requires
-`0028_connected_product`. Run `python -m oi_api.migrate upgrade head` from the
+`0029_patient_access`. Run `python -m oi_api.migrate upgrade head` from the
 published histories before startup. The join retains `0022_encounter_sources`
 and `0027_source_event_purpose`. The latter has single parent `0026_integrated_core`,
 whose existing no-DDL join retains the three parents
