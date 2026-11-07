@@ -71,6 +71,11 @@ class SourceEventPurposeUpgradeTests(SourceVersionFixture):
                 sequences[f"{schema}.{name}"] = tuple(connection.execute(text(
                     f"SELECT last_value,is_called FROM {schema}.{name}"
                 )).one())
+        # The connected-product join adds this independent owner. Normalize only
+        # its absent, empty pre-migration state; populated rows and consumed
+        # sequence values remain part of every preservation comparison.
+        tables.setdefault("ehr.encounter_source_links", [])
+        sequences.setdefault("ehr.encounter_source_links_id_seq", (1, False))
         return tables, sequences
 
     def bind_source(self, *, research=False):

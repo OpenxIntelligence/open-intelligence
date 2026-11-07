@@ -43,8 +43,9 @@ Compose outcomes must be recorded against the dependent PR's exact source.
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integration. This candidate requires
-`0027_source_event_purpose`. Run `python -m oi_api.migrate upgrade head` from the
-published histories before startup. Its single parent is `0026_integrated_core`,
+`0028_connected_product`. Run `python -m oi_api.migrate upgrade head` from the
+published histories before startup. The join retains `0022_encounter_sources`
+and `0027_source_event_purpose`. The latter has single parent `0026_integrated_core`,
 whose existing no-DDL join retains the three parents
 `0025_clinical_source_events`, `0023_composer_clinical_join`, and
 `0023_ehr_lab_ownership_join` without renaming their migration identities.
@@ -61,7 +62,7 @@ re-upgrade.
 The supported upgrade scope is fresh databases and published 0026 installations.
 Pre-0020 research journal history remains held by the original backfill with
 atomic rollback. See the [purpose-repair contract](../../docs/implementation/SOURCE_EVENT_PURPOSE_REPAIR.md)
-for that unresolved legacy-adoption boundary. No 0028 migration is introduced.
+for that unresolved legacy-adoption boundary. This composition adds the no-DDL `0028_connected_product` join; the historical repair itself remains unchanged.
 
 The integrated owners retain [encounters and note drafts](#connected-encounter-and-note-service),
 laboratory citation and follow-up history, and
