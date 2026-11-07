@@ -1,4 +1,5 @@
 import {test} from 'node:test';
+import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
 import {decodePassageReviewPreparation} from '../.test-dist/question-evidence-view.js';
@@ -277,7 +278,7 @@ test('evidence envelopes enforce content type and streaming size before showing 
   assert.equal(s.snapshot().evidenceSearchPhase,'error');}
 });
 
-test('passage review-preparation packet preserves exact original, refuses stale or promoted science and redacts rights',()=>{
+test('passage review-preparation packet preserves exact original, refuses stale or promoted science and redacts rights',async()=>{
  const anchor='e'.repeat(64),questionText='Which fictional marker needs independent verification?';
  const selection={
   source_id:sid,document_id:'DOC-MANUAL',source_version:1,original_sha256:sha,
@@ -290,9 +291,17 @@ test('passage review-preparation packet preserves exact original, refuses stale 
   source_id:sid,question_text:questionText,selection,links:[linked()],
   human_review_state:'not_performed',next_step:'independent_verification_required',
   packet_sha256:'f'.repeat(64)};
+ const expected={anchor:{...selection,patient_id:pid,case_id:cid},anchor_sha256:anchor,
+  selection_state:'current_unreviewed_selection'};
+ // This fixture uses ASCII literals. Independent Node crypto supplies the
+ // expected digest rather than a production serialization/hash helper.
+ const order=v=>Array.isArray(v)?v.map(order):v&&typeof v==='object'
+  ?Object.fromEntries(Object.keys(v).sort().map(k=>[k,order(v[k])])):v;
+ const seal=v=>{const {packet_sha256:_,source_access_receipt_id:__,...stable}=v;
+  return {...v,packet_sha256:createHash('sha256').update(JSON.stringify(order(stable))).digest('hex')};};
  const decode=value=>decodePassageReviewPreparation(value,pid,cid,sid,qid,anchor,questionText,
-  selection.quote,selection.line,selection.annotation_revision);
- const current=decode(packet);
+  selection.quote,selection.line,selection.annotation_revision,expected);
+ const current=await decode(seal(packet));
  assert.equal(current.selection.quote,'Marker pending.');
  assert.equal(current.links[0].record.availability,'metadata_only');
  assert.equal(current.content_appraised,false);
@@ -302,7 +311,6 @@ test('passage review-preparation packet preserves exact original, refuses stale 
  for(const altered of [
   {...packet,question_text:'A different question'},
   {...packet,source_id:'SRC-'+'A'.repeat(32)},
-  {...packet,packet_sha256:'invalid'},
   {...packet,clinical_approval:true},
   {...packet,content_appraised:true},
   {...packet,model_executed:true},
@@ -313,14 +321,15 @@ test('passage review-preparation packet preserves exact original, refuses stale 
   {...packet,selection:{...selection,annotation_revision:2}},
   {...packet,selection:{...selection,classification_origin:'model_inferred'}},
   {...packet,links:[{...linked(),status:'rights_restricted'}]},
- ])assert.throws(()=>decode(altered),'forged or stale preparation must not render');
+ ])await assert.rejects(decode(seal(altered)),'forged or stale preparation must not render');
+ await assert.rejects(decode({...seal(packet),packet_sha256:'invalid'}));
  const historical={...packet,source_context_state:'source_reassessment_required',
   selection:{...selection,selection_state:'selection_reassessment_required'},
   next_step:'source_reassessment_required',
   links:[{...linked(),status:'rights_restricted',record:null}]};
- const resumed=decode(historical);
+ const resumed=await decode(seal(historical));
  assert.equal(resumed.selection.quote,selection.quote);
  assert.equal(resumed.links[0].record,null);
  assert.equal(resumed.next_step,'source_reassessment_required');
- assert.throws(()=>decode({...historical,next_step:'independent_verification_required'}));
+ await assert.rejects(decode(seal({...historical,next_step:'independent_verification_required'})));
 });

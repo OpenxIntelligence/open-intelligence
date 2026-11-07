@@ -7,6 +7,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from pdf_fixtures import text_pdf
 from question_review_journey import QuestionReviewChecks
+from passage_review_integrity_journey import exercise as exercise_review_integrity
 
 CASE='CASE-WEB-REVIEWED'
 
@@ -274,6 +275,7 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     assert 'awaiting independent verification' in review_text.lower()
     review_hash=cd.evaluate("document.querySelector('[data-testid=passage-review-preparation] code').textContent")
     assert len(review_hash)==64 and all(ch in '0123456789abcdef' for ch in review_hash)
+    exercise_review_integrity(cd,click,value,review_hash)
     cd.evaluate("""(() => {
       const original = window.fetch;
       window.__verifyReviewPrep = {original, statuses:[]};

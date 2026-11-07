@@ -1,5 +1,7 @@
 /** Fictional metadata projections. A citation link is not a claim assessment. */
 import {citationEvidenceTimestamp as instant} from './evidence-timestamp.js';
+import {canonicalEvidenceJson} from './authored-evidence.js';
+import type {ResolvedPassage} from './question-passages.js';
 
 export type EvidenceSourceState='current_unreviewed_question'|'source_reassessment_required';
 export type QuestionEvidenceRecord=Readonly<{
@@ -67,7 +69,8 @@ function decodeRecord(value:unknown):QuestionEvidenceRecord{
 function scoped(value:Record<string,unknown>,patient:string,caseId:string,questionId:string):boolean{
  return value.patient_id===patient&&value.case_id===caseId&&value.question_id===questionId&&opaque(questionId,'QUESTION-')&&
   opaque(value.source_access_receipt_id,'ACCESS-')&&
-  ['current_unreviewed_question','source_reassessment_required'].includes(String(value.source_context_state))&&
+  typeof value.source_context_state==='string'&&
+  ['current_unreviewed_question','source_reassessment_required'].includes(value.source_context_state)&&
   value.synthetic===true&&value.model_executed===false&&value.content_appraised===false&&value.clinical_approval===false;
 }
 export function decodeQuestionEvidenceSearch(value:unknown,patient:string,caseId:string,questionId:string,query:string):QuestionEvidenceSearch{
@@ -88,7 +91,7 @@ export function decodeQuestionEvidenceLinks(value:unknown,patient:string,caseId:
   if(!exact(row,['link_id','citation','metadata_sha256','created_at','actor_label','status','record'])||
    !opaque(row.link_id,'EVIDENCE-LINK-')||seen.has(row.link_id)||!citation(row.citation)||!hash(row.metadata_sha256)||
    !instant(row.created_at)||!text(row.actor_label,3,128)||!(/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/).test(row.actor_label)||
-   !['available','rights_restricted','superseded','unavailable'].includes(String(row.status)))throw Error('evidence link');
+   (typeof row.status!=='string'||!['available','rights_restricted','superseded','unavailable'].includes(row.status)))throw Error('evidence link');
   seen.add(row.link_id);
   const record=row.status==='available'?decodeRecord(row.record):null;
   if(record?(record.citation!==row.citation||record.metadata_sha256!==row.metadata_sha256):row.record!==null)
@@ -122,9 +125,10 @@ const passageSelectionFields=['source_id','document_id','source_version','origin
  'annotation_revision_id','annotation_revision','review_sha256','selected_by','selected_at',
  'selected_state','quote','line','page','classification_origin','clinical_review',
  'anchor_sha256','selection_state'];
-export function decodePassageReviewPreparation(value:unknown,patient:string,caseId:string,
+export async function decodePassageReviewPreparation(value:unknown,patient:string,caseId:string,
  source:string,questionId:string,expectedAnchor:string,expectedQuestion:string,
- expectedQuote:string,expectedLine:number,expectedRevision:number):PassageReviewPreparation{
+ expectedQuote:string,expectedLine:number,expectedRevision:number,
+ expectedPassage:ResolvedPassage):Promise<PassageReviewPreparation>{
  if(!exact(value,[...scopeFields,'source_id','question_text','selection','links',
       'human_review_state','next_step','packet_sha256'])||
   value.contract!=='oi.pg-passage-review-preparation/1'||
@@ -139,16 +143,25 @@ export function decodePassageReviewPreparation(value:unknown,patient:string,case
    typeof selection.annotation_revision!=='number'||!Number.isInteger(selection.annotation_revision)||selection.annotation_revision<1||
    !hash(selection.review_sha256)||!text(selection.selected_by,3,128)||
    !instant(selection.selected_at)||typeof selection.quote!=='string'||
-   selection.quote.length<1||selection.quote.length>1200||selection.quote!==expectedQuote||
+   Array.from(selection.quote).length<1||Array.from(selection.quote).length>1200||selection.quote!==expectedQuote||
    selection.line!==expectedLine||selection.annotation_revision!==expectedRevision||
    typeof selection.line!=='number'||!Number.isInteger(selection.line)||selection.line<1||selection.line>512||
    !(selection.page===null||(Number.isInteger(selection.page)&&Number(selection.page)>=1))||
-   !['reported','negative','pending','indeterminate','not-reported','not-assessed','conflicting'].includes(String(selection.selected_state))||
+   (typeof selection.selected_state!=='string'||!['reported','negative','pending','indeterminate','not-reported','not-assessed','conflicting'].includes(selection.selected_state))||
    selection.classification_origin!=='user_selected'||selection.clinical_review!=='not_performed'||
    !hash(selection.anchor_sha256)||selection.anchor_sha256!==expectedAnchor||
-   !['current_unreviewed_selection','selection_reassessment_required'].includes(String(selection.selection_state)))
+   (typeof selection.selection_state!=='string'||!['current_unreviewed_selection','selection_reassessment_required'].includes(selection.selection_state)))
   throw Error('passage review selection');
+ // This anchor was independently checked against the saved document and its
+ // immutable annotation revision. A rehashed packet cannot retarget it.
+ const expected=expectedPassage.anchor;
+ if(expected.patient_id!==patient||expected.case_id!==caseId||expected.source_id!==source||
+  expectedPassage.anchor_sha256!==expectedAnchor||
+  passageSelectionFields.some(key=>key!=='anchor_sha256'&&key!=='selection_state'&&
+   selection[key]!==expected[key as keyof typeof expected]))throw Error('Different saved passage');
  const current=value.source_context_state==='current_unreviewed_question';
+ if(current&&expectedPassage.selection_state!=='current_unreviewed_selection')
+  throw Error('Historical passage cannot become current');
  if((selection.selection_state==='current_unreviewed_selection')!==current||
   value.next_step!==(current?'independent_verification_required':'source_reassessment_required'))
   throw Error('stale passage review status');
@@ -156,6 +169,18 @@ export function decodePassageReviewPreparation(value:unknown,patient:string,case
   ...Object.fromEntries(scopeFields.map(k=>[k,value[k]])),
   contract:'oi.pg-question-evidence-links/1',links:value.links
  },patient,caseId,questionId);
- return Object.freeze({...value,selection:Object.freeze({...selection}),
+ // Snapshot the validated primitives before hashing; callers cannot mutate
+ // source or citation objects during the asynchronous Web Crypto operation.
+ const packet=Object.freeze({...value,selection:Object.freeze({...selection}),
   links:linked.links} as PassageReviewPreparation);
+ const {source_access_receipt_id:_receipt,packet_sha256:expectedHash,...content}=packet;
+ // patient_registry._digest uses Python json.dumps' default ensure_ascii=True.
+ // Escape UTF-16 units, including supplementary-character surrogate pairs,
+ // without normalizing source text or changing the existing server contract.
+ const encoded=canonicalEvidenceJson(content).replace(/[\u007f-\uffff]/g,
+  char=>'\\u'+char.charCodeAt(0).toString(16).padStart(4,'0'));
+ const bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(encoded)));
+ const actualHash=Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
+ if(actualHash!==expectedHash)throw Error('Passage review preparation digest differs');
+ return packet;
 }
