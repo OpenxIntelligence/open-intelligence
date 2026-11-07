@@ -76,6 +76,24 @@ class SemanticContractTests(unittest.TestCase):
                 self.assert_rejected("missing_provenance",
                                      lambda: registry().validate_reference(reference(**{field: "  "})))
 
+    def test_reference_version_type_cannot_coerce_to_integer(self):
+        for bad in (True, 1.0, "1"):
+            with self.subTest(version=bad):
+                self.assert_rejected(
+                    "unknown_concept_version",
+                    lambda: registry().validate_reference(reference(concept_version=bad)),
+                )
+
+    def test_edge_version_type_cannot_coerce_to_integer(self):
+        for bad in (True, 1.0, "1"):
+            with self.subTest(version=bad):
+                self.assert_rejected(
+                    "unknown_relationship_version",
+                    lambda: registry().validate_edge(
+                        "oi:input-to", bad, reference(), reference("oi:calculation")
+                    ),
+                )
+
     def test_invalid_relationship_version(self):
         self.assert_rejected("invalid_relationship", lambda: SemanticRegistry(
             (Concept("oi:observation", 1, "Observation"),),
