@@ -30,7 +30,7 @@ def upgrade():
           reviewed_by text,
           reviewed_at timestamptz,
           CHECK ((status='quarantined' AND review_ref IS NULL AND reviewed_by IS NULL AND reviewed_at IS NULL)
-            OR (status IN ('active','rejected') AND char_length(review_ref) BETWEEN 3 AND 128
+            OR (status IN ('active','rejected') AND review_ref IS NOT NULL AND char_length(review_ref) BETWEEN 3 AND 128
                 AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL)),
           CHECK (NOT primary_identity OR status='active'),
           UNIQUE (case_id,request_key)

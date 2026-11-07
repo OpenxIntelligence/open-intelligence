@@ -175,6 +175,10 @@ class InstitutionIdentityTests(laboratory_fixture.LaboratoryFHIRHTTPTests):
         with running_server(self.app) as base:
             pid=self.make_patient(base)
             identity=self.propose(base,pid)[1]['identity']['identity_id']
+            with self.assertRaises(Exception), self.engine.begin() as c:
+                c.execute(text("UPDATE coordination.case_source_identities SET status='active',review_ref=NULL,"
+                               "reviewed_by='ACTOR-FICTION',reviewed_at=now() WHERE identity_id=:identity"),
+                          {'identity':identity})
             with patch.object(PostgresPatientRegistry,'append_event',side_effect=RuntimeError('synthetic event failure')):
                 self.assertEqual(self.decision(base,pid,identity)[0],503)
             rows=request(base,self.path(pid),token=TOKEN_A)[1]['identities']
