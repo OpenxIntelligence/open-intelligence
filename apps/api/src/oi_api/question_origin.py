@@ -39,3 +39,25 @@ def classify_question_origin(*, question_id: str, source_id: str,
         raise ValueError("Question origin must have exactly one valid anchor")
     return QuestionOrigin("fhir_observation", question_id, source_id,
                           observation_reference=observation_reference)
+
+
+def classify_stored_question_origin(*, question_id: str, source_id: str,
+                                    source_line: int | None,
+                                    observation_reference: str | None,
+                                    anchor_source_id: str | None) -> QuestionOrigin:
+    """Validate the canonical question row together with its optional typed child.
+
+    The child must be absent for a source-line question and must match the
+    canonical source for a laboratory question. This pure helper never queries
+    storage, confers authority, or changes question freshness.
+    """
+    origin = classify_question_origin(
+        question_id=question_id, source_id=source_id,
+        source_line=source_line, observation_reference=observation_reference,
+    )
+    if origin.kind == "source_line":
+        if anchor_source_id is not None:
+            raise ValueError("Text-line question must not have a laboratory child")
+    elif anchor_source_id != source_id:
+        raise ValueError("Laboratory question child must match canonical source")
+    return origin
