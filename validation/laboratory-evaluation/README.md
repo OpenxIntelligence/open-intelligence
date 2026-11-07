@@ -272,3 +272,20 @@ Three regression tests failed before the repair: lock delay still allowed a
 claim/worker, preparation exhaustion still invoked a worker, and preparation time
 was not subtracted from its timeout. After repair, **66 focused tests passed,
 zero skips**, including the unchanged existing timeout/cancellation checks.
+
+## Atomic candidate completion
+
+Candidate output, evaluation score, checkpoint and completed-trial receipt now
+commit in one SQLite transaction. Registry operations use nested savepoints when
+called inside this transaction. A failed artifact write rolls back that candidate's
+artifacts before recording its failed trial; readers cannot see the intermediate
+candidate run. Worker execution itself remains outside the database transaction.
+An interrupt rolls back the active transaction and leaves the start/launch claims
+visible as interrupted or running, without inventing completion or allowing an
+automatic duplicate execution. Recovery/takeover remains separate work.
+
+The checkpoint-failure regression reproduced an orphaned candidate run before the
+repair. **69 focused tests passed, zero skips**, including injected failures at
+run, score, checkpoint and completed-trial writes; separate-connection visibility;
+and interrupted commit/reopen checks. Persistence of a failure receipt still
+requires a functioning writable registry; persistent disk failure is not hidden.

@@ -473,6 +473,67 @@ class LaboratoryExperimentTests(unittest.TestCase):
         self.assertEqual([row["rank"] for row in report["rows"]], [1, None, None])
         self.assertEqual([row["status"] for row in report["rows"]], ["completed", "failed", "failed"])
 
+    def test_failed_artifact_commit_rolls_back_candidate_and_preserves_failure(self):
+        original = self.registry._put
+        for kind in ("run", "score", "checkpoint", "experiment-trial"):
+            experiment_id = "failure-" + kind
+            self.service.plan(self.spec(experiment_id))
+            def fail_write(record_kind, key, value):
+                if record_kind == kind and (kind != "experiment-trial" or value["status"] == "completed"):
+                    raise OSError("Injected artifact write failure")
+                return original(record_kind, key, value)
+            with self.subTest(kind=kind), patch.object(self.registry, "_put", side_effect=fail_write):
+                receipt = self.service.execute(experiment_id)
+            self.assertTrue(all(t["status"] == "failed" for t in receipt["trials"]))
+            self.assertTrue(all(t["run_id"] is None for t in receipt["trials"]))
+            for index in range(2):
+                key = "trial-" + fingerprint([experiment_id, index])[:48]
+                for artifact in ("run", "checkpoint"):
+                    self.assertIsNone(self.registry.db.execute(
+                        "SELECT 1 FROM records WHERE kind=? AND id=?", (artifact, key)).fetchone())
+            self.assertEqual(self.registry.db.execute("SELECT count(*) FROM records WHERE kind='score'").fetchone()[0], 0)
+            with LaboratoryEvaluationRegistry(self.path) as reopened:
+                service = LaboratoryExperiments(reopened)
+                self.assertEqual(service.execute(experiment_id), receipt)
+                self.assertTrue(service.lineage(experiment_id)["integrity_checked"])
+
+    def test_interrupt_during_artifact_commit_rolls_back_without_false_completion(self):
+        self.service.plan(self.spec())
+        original = self.registry._put
+        def interrupt(kind, key, value):
+            if kind == "checkpoint":
+                raise KeyboardInterrupt()
+            return original(kind, key, value)
+        with patch.object(self.registry, "_put", side_effect=interrupt), self.assertRaises(KeyboardInterrupt):
+            self.service.execute("search")
+        self.assertFalse(self.registry.db.in_transaction)
+        with LaboratoryEvaluationRegistry(self.path) as reopened:
+            service = LaboratoryExperiments(reopened)
+            self.assertEqual(service.inspect("search")["status"], "interrupted_or_running")
+            kinds = [n["kind"] for n in service.lineage("search")["nodes"]]
+            self.assertNotIn("checkpoint", kinds)
+            self.assertNotIn("score", kinds)
+            self.assertNotIn("experiment-trial", kinds)
+            self.assertEqual(kinds.count("run"), 1)  # Only the reference exists.
+            with self.assertRaisesRegex(ValueError, "already claimed"):
+                service.execute("search")
+
+    def test_candidate_artifacts_are_invisible_until_trial_commit(self):
+        self.service.plan(self.spec())
+        original = self.registry._put
+        checks = []
+        reader = LaboratoryEvaluationRegistry(self.path)
+        self.addCleanup(reader.close)
+        def observe(record_kind, key, value):
+            if record_kind == "checkpoint":
+                checks.append(reader.db.execute("SELECT 1 FROM records WHERE kind='run' AND id=?", (key,)).fetchone())
+            return original(record_kind, key, value)
+        with patch.object(self.registry, "_put", side_effect=observe):
+            receipt = self.service.execute("search")
+        self.assertEqual(checks, [None, None])
+        self.assertTrue(all(t["status"] == "completed" for t in receipt["trials"]))
+        self.assertTrue(self.service.lineage("search")["integrity_checked"])
+
     def test_cli_executes_and_reopens_existing_plan(self):
         self.service.plan(self.spec())
         cmd = [sys.executable, "-m", "oi_api.laboratory_experiments", "--registry", str(self.path)]

@@ -417,19 +417,23 @@ class LaboratoryExperiments:
                     _validate_result(result, payload, plan["source_identity"])
                     # No weight-execution claim is inferred from supplied output
                     # registration. The separate trial proves this adapter call.
-                    registry.record_run(trial_key, spec["dataset"],
-                                        {"system_id": recipe["technique"], "system_version": str(recipe["version"]),
-                                         "software_commit": spec["software_commit"]}, result["outputs"],
-                                        evaluated_splits=["validation"])
-                    score = registry.score(trial_key, spec["reference_run"])
-                    checkpoint = {"recipe_sha256": plan["recipes"][key], "training_sha256": plan["training_sha256"],
-                                  "source_identity": plan["source_identity"], "artifact": result["checkpoint"]}
                     with registry._transaction():
+                        registry.record_run(trial_key, spec["dataset"],
+                                            {"system_id": recipe["technique"], "system_version": str(recipe["version"]),
+                                             "software_commit": spec["software_commit"]}, result["outputs"],
+                                            evaluated_splits=["validation"])
+                        score = registry.score(trial_key, spec["reference_run"])
+                        checkpoint = {"recipe_sha256": plan["recipes"][key], "training_sha256": plan["training_sha256"],
+                                      "source_identity": plan["source_identity"], "artifact": result["checkpoint"]}
                         checkpoint_sha = registry._put("checkpoint", trial_key, checkpoint)
-                    trial.update(status="completed", run_id=trial_key, checkpoint_sha256=checkpoint_sha,
-                                 score_sha256=fingerprint(score), cpu_seconds=result["cpu_seconds"],
-                                 peak_rss_kib=result["peak_rss_kib"], fit_performed=result["fit_performed"],
-                                 fitted_examples=result["fitted_examples"], validation=score["by_split"]["validation"])
+                        completed_trial = dict(trial)
+                        completed_trial.update(status="completed", run_id=trial_key, checkpoint_sha256=checkpoint_sha,
+                                     score_sha256=fingerprint(score), cpu_seconds=result["cpu_seconds"],
+                                     peak_rss_kib=result["peak_rss_kib"], fit_performed=result["fit_performed"],
+                                     fitted_examples=result["fitted_examples"], validation=score["by_split"]["validation"])
+                        completed_trial["wall_seconds"] = time.monotonic() - before
+                        registry._put("experiment-trial", trial_key, completed_trial)
+                    trial = completed_trial
                 except _LaunchBudgetExhausted:
                     trial["status"] = "budget_exhausted"
                     trial["failure_reason"] = "worker_budget_exhausted_before_launch"
@@ -439,9 +443,11 @@ class LaboratoryExperiments:
                 except (ValueError, OSError, sqlite3.Error) as exc:
                     trial["status"] = "failed"
                     trial["failure_reason"] = type(exc).__name__ + ": " + str(exc)[:256]
-                trial["wall_seconds"] = time.monotonic() - before
-            with registry._transaction():
-                registry._put("experiment-trial", trial_key, trial)
+                if trial["status"] != "completed":
+                    trial["wall_seconds"] = time.monotonic() - before
+            if trial["status"] != "completed":
+                with registry._transaction():
+                    registry._put("experiment-trial", trial_key, trial)
             trials.append(trial)
         eligible = [t for t in trials if t["status"] == "completed"
                     and t["validation"]["field_opportunities"] > 0

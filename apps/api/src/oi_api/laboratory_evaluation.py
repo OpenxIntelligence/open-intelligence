@@ -215,12 +215,17 @@ class LaboratoryEvaluationRegistry:
 
     @contextmanager
     def _transaction(self):
-        self.db.execute("BEGIN IMMEDIATE")
+        nested = self.db.in_transaction
+        self.db.execute("SAVEPOINT evaluation_nested" if nested else "BEGIN IMMEDIATE")
         try:
             yield
-            self.db.execute("COMMIT")
-        except Exception:
-            self.db.execute("ROLLBACK")
+            self.db.execute("RELEASE SAVEPOINT evaluation_nested" if nested else "COMMIT")
+        except BaseException:
+            if nested:
+                self.db.execute("ROLLBACK TO SAVEPOINT evaluation_nested")
+                self.db.execute("RELEASE SAVEPOINT evaluation_nested")
+            else:
+                self.db.execute("ROLLBACK")
             raise
 
     def _put(self, kind, key, value):
