@@ -76,6 +76,8 @@ class RegistryMigrationTests(unittest.TestCase):
             connection.execute(text('DROP FUNCTION IF EXISTS coordination.source_event_binding(bigint)'))
             connection.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_delivery()'))
             connection.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_event_delivery_event()'))
+            connection.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_retry_transition()'))
+            connection.execute(text('DROP FUNCTION IF EXISTS coordination.guard_source_retry_event()'))
             connection.execute(text('DROP FUNCTION IF EXISTS coordination.require_source_delivery_consistency()'))
             connection.execute(text('DROP FUNCTION IF EXISTS investigation.guard_composer_source_receipt()'))
             connection.execute(text("DROP TABLE IF EXISTS investigation.composer_tool_run_results"))

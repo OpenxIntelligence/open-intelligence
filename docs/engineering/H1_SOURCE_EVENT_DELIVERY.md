@@ -57,9 +57,38 @@ counts. The existing `idle` execution result means no work was claimed in that
 attempt, not that every obligation was delivered.
 
 This bounded operational view adds no migration, scheduler, dependency or
-general observability service. Dead-letter repair/replay and production
-monitoring remain separate construction work. PostgreSQL and CLI acceptance
+general observability service. Explicit retry is described below. Production
+monitoring remains construction work. PostgreSQL and CLI acceptance
 for this addition belongs to its dependent draft, not its parent's receipts.
+
+### Process a bounded eligible backlog
+
+```bash
+PYTHONPATH=apps/api/src:src python -m oi_api.event_worker --drain \
+  --patient PATIENT-EXAMPLE --case CASE-EXAMPLE --max-batches 20
+```
+
+This existing-owner PF-06 / OI-013 command invokes the same transactional
+single-batch worker up to 1–100 times (default 20). Every batch rereads current
+authority. Actor, organization and purpose remain pinned for the invocation;
+a credential rotation cannot silently switch the actor whose backlog is being
+processed. Revocation stops subsequent work without undoing prior committed
+batches or claiming rollback of an uncertain result.
+
+Output reports `batches_attempted`, `delivered_batches`, `continued_batches`
+and the final status. Attempts include an idle or blocked final call. Counts
+are processing batches, not unique events; a large event may need continuations.
+`limit_reached` means the configured budget was consumed, not that the backlog
+is empty. `idle` means no eligible work was claimed, not that delayed retries
+or dead letters are absent. Both exit zero. Use the inspection modes separately.
+
+A successful queued continuation may proceed to another batch. A delayed
+failure (`queued` without a consumer result), `fenced`, `dead_letter`, `blocked`
+or `unavailable` stops immediately and exits two. The command does not sleep,
+busy-poll, reset failures or replay dead letters. It is a finite invocation,
+not a scheduler or daemon; its budget bounds attempts, not wall-clock duration.
+Existing lease expiry and receipt/replay semantics govern process interruption.
+`--max-batches` requires `--drain`, which is exclusive with all other modes.
 
 ### Inspect terminal failures
 
@@ -84,9 +113,9 @@ bigint (default 0). Pass `next_after_event_id` for the next page; null means no
 further row was seen in that query. Pages are live observations, not a frozen
 multi-page snapshot. Restart at zero to refresh: an earlier event can become
 terminal later, so this cursor must never be used as a durable delivery
-watermark. All three command modes are mutually exclusive; pagination options
+watermark. All command modes are mutually exclusive; pagination options
 require `--dead-letters`. Exit zero means the read succeeded, not that failures
-were repaired. Explicit repair/replay remains outstanding under #104 / OI-013.
+were repaired. The controlled retry command below continues #104 / OI-013.
 
 Use the existing [persistent demo setup](../H1_DEMO.md), dependency lock and
 PostgreSQL 16 configuration. The event worker uses `OI_API_DATABASE_URL`,
@@ -100,16 +129,16 @@ Apply the explicit additive migration through the normal migration command:
 PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade head
 ```
 
-The application requires `0027_source_event_purpose`, the single successor of
-`0026_integrated_core`. The existing 0026 no-DDL join retains
+The application requires `0028_source_delivery_retry`, following
+`0027_source_event_purpose` and `0026_integrated_core`. The existing 0026 no-DDL join retains
 `0025_clinical_source_events`, `0023_composer_clinical_join` and
 `0023_ehr_lab_ownership_join` as its three published parents.
 
 All 42 migration files from upstream #565 source
 `462e6c25f805089fadcb290567045447e6d627b7` remain unchanged, including 0020 and
 0027. The published 0020 creates the delivery tables and its original
-operations-only capture/backfill. This candidate does not replay #529's edited
-version of that historical migration or add a 0028 successor.
+operations-only capture/backfill. The new 0028 successor adds an explicit
+recovery authorization link and guarded failed-to-queued transition.
 
 The published 0027 installs the source-event binding resolver and replaces the
 capture and outbox guard functions. On new writes, both `operations` and
@@ -128,8 +157,10 @@ records that boundary.
 
 Downgrading 0027 to 0026 restores the earlier capture/guard functions and removes
 the binding helper. Research history is retained, but later research imports can
-be refused until the explicit upgrade is applied again. The application requires
-0027 for readiness. The original populated-history downgrade guards remain.
+be refused until the explicit upgrade is applied again. This recovery candidate
+requires 0028 for readiness. Downgrade from 0028 refuses while any accepted retry
+authorization exists; otherwise it restores the published 0027 guards. The
+original populated-history downgrade guards remain.
 
 The original construction baseline remains
 `cd10a828e499bf65dbbe8eb4ca77207710a5f2b7`, joining worker source
@@ -219,10 +250,43 @@ explicitly instead of reporting idle. An obsolete token cannot publish an
 effect, receipt or acknowledgment.
 
 Dead-letter state is specific to this actor's delivery and preserves its history.
-There is currently **no dead-letter replay/reset command**. Repeating `--once`
-does not reopen it. Inspect the original source/journal and delivery/receipt
-evidence through authorized engineering access; a replay workflow requires a
-separate reviewed contract.
+An operator with all worker grants and the separate patient-scoped
+`source_delivery_retry` grant can retry an inspected, recoverable failure.
+
+### Authorize recovery of a failed delivery
+
+Use `--dead-letters` to read the delivery identity, current revision and reason.
+Failures caused by `lease_expired`, `retryable_failure` or
+`authority_unavailable` may be requeued. Repair the underlying cause first.
+
+```bash
+PYTHONPATH=apps/api/src:src python -m oi_api.event_worker \
+  --retry-delivery "$OI_FAILED_DELIVERY" --expected-revision "$OI_FAILED_REVISION" \
+  --patient "$OI_PATIENT" --case "$OI_CASE"
+```
+
+A successful `retry_authorized` response records the delivery, failed revision
+and immutable journal audit ID. The authorization, queued transition and
+history link commit together. Repeating that exact request recovers its
+receipt, even after the worker progresses or encounters a later failure.
+The later failure requires inspection and its own explicit authorization.
+An obsolete request never resets a newer attempt. A mismatched state returns
+`conflict`; revoked grants or another actor's delivery return `blocked`.
+Only the original actor, organization, patient, case and operations purpose
+can authorize this retry. Cross-actor delegation remains open.
+
+Requeueing preserves the event ID, lifetime attempt count and prior receipts,
+and resets the consecutive failure budget. A subsequent `--once` invocation
+rechecks current source context and authority before Composer reconciles its
+pending runs. Completed results and human decisions retain their owners.
+`invalid_event` failures require explicit investigation and remain held.
+This command supports the existing internal Composer consumer, which has no
+external effects. Future consumers require their own recovery contract.
+
+Migration `0028_source_delivery_retry` extends the published
+`0027_source_event_purpose` lineage. Existing history receives a nullable
+retry-audit link. Every operator retry requires its exact immutable journal
+entry. A downgrade is refused once a retry authorization is stored.
 
 ## Correctness while the worker is stopped
 

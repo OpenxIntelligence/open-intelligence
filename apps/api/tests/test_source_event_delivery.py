@@ -260,6 +260,71 @@ class SourceEventDeliveryPostgresTests(source_fixture.SourceVersionFixture):
             self.assertEqual(self.event_dead_letters(patient), {"status": "blocked"})
         self.assertEqual(self.snapshot(), before)
 
+    def test_bounded_drain_budget_and_cli_resume_preserve_exact_delivery_receipts(self):
+        from oi_api.event_worker import run_bounded
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            self.assertEqual(self.ingest(base, patient)[0], 201)
+            self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
+        result = run_bounded(self.settings, lambda: TOKEN, patient, CASE, max_batches=1)
+        self.assertEqual(result, {"status": "limit_reached", "batches_attempted": 1,
+                                  "delivered_batches": 1, "continued_batches": 0})
+        self.assertEqual(self.event_status(patient)["unclaimed"], 1)
+        cli = subprocess.run([sys.executable, "-m", "oi_api.event_worker", "--drain",
+                              "--patient", patient, "--case", CASE, "--max-batches", "10"],
+                             env=self.event_worker_env(), capture_output=True, text=True, timeout=30)
+        self.assertEqual(cli.returncode, 0, cli.stderr)
+        self.assertEqual(json.loads(cli.stdout), {"status": "idle", "batches_attempted": 2,
+                                                 "delivered_batches": 1, "continued_batches": 0})
+        self.assertEqual(cli.stderr, "")
+        self.assertEqual(self.event_status(patient)["delivered"], 2)
+        rows = self.rows(DELIVERIES, "event_id")
+        self.assertEqual(len(rows), 2)
+        for row in rows:
+            self.assertEqual(row["attempt_count"], 1)
+            self.assertEqual(len(self.receipts(row["delivery_id"])), 1)
+
+    def assert_bounded_drain_authority_change(self, change):
+        import oi_api.event_worker as worker
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base, key="CREATE-DRAIN-" + change.upper(),
+                                      source_subject="SUBJECT-DRAIN-" + change.upper())
+            self.assertEqual(self.ingest(base, patient)[0], 201)
+            self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
+        original = worker.run_once
+        original_actor = self.creds[0]["actor"]
+        calls = []
+        def revoke_after_batch(*args, **kwargs):
+            result = original(*args, **kwargs)
+            calls.append(result)
+            if len(calls) == 1:
+                self.assertEqual(result["status"], "delivered")
+                if change == "grant":
+                    self.creds[0]["actions"].remove("source_read")
+                else:
+                    self.creds[0]["actor"] = "ACTOR-ROTATED"
+                self.write()
+            return result
+        try:
+            with patch.object(worker, "run_once", revoke_after_batch):
+                result = worker.run_bounded(self.settings, lambda: TOKEN, patient, CASE)
+            self.assertEqual(result, {"status": "blocked", "batches_attempted": 2,
+                                      "delivered_batches": 1, "continued_batches": 0})
+            scoped = [row for row in self.rows(DELIVERIES, "event_id") if row["patient_id"] == patient]
+            self.assertEqual(len(scoped), 1)
+            self.assertEqual(scoped[0]["state"], "delivered")
+        finally:
+            self.creds[0]["actor"] = original_actor
+            if "source_read" not in self.creds[0]["actions"]:
+                self.creds[0]["actions"].append("source_read")
+            self.write()
+
+    def test_bounded_drain_rechecks_revocation_between_batches(self):
+        self.assert_bounded_drain_authority_change("grant")
+
+    def test_bounded_drain_pins_identity_between_batches(self):
+        self.assert_bounded_drain_authority_change("actor")
+
     def drain(self, patient, *, case=CASE, token=TOKEN):
         outcomes = []
         for _ in range(20):
@@ -607,6 +672,95 @@ class SourceEventDeliveryPostgresTests(source_fixture.SourceVersionFixture):
         for claim in claims:
             self.assertEqual(self.fail_event(claim), "fenced")
 
+    def recover(self, patient, *, token=TOKEN, settings=None, **command):
+        from oi_api.event_worker import retry_delivery
+        return retry_delivery(settings or self.settings, lambda: token, patient, CASE, **command)
+
+    def failed_amendment(self, reason):
+        with running_server(create_app(self.settings)) as base:
+            patient, _, _, run = self.seeded_run(base)
+            self.drain(patient)
+            self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
+        claim = self.claim_event(patient)
+        self.assertEqual(self.fail_event(claim, reason), "dead_letter")
+        revision = self.delivery(claim["delivery_id"])["revision"]
+        return patient, run, claim, dict(delivery_id=claim["delivery_id"], expected_revision=revision)
+
+    def test_authorized_exact_retry_survives_response_loss_and_only_fresh_worker_changes_run(self):
+        patient, run, claim, command = self.failed_amendment("authority_unavailable")
+        self.assertEqual(self.recover(patient, **command), {"status": "blocked"})
+        self.creds[0]["actions"].append("source_delivery_retry")
+        self.write()
+        page = self.event_dead_letters(patient)
+        self.assertEqual(page["status"], "observed")
+        item, = page["items"]
+        self.assertEqual((item["delivery_id"], item["revision"], item["reason_code"]),
+                         (claim["delivery_id"], command["expected_revision"], "authority_unavailable"))
+        self.assertEqual(self.event_dead_letters(patient, after_event=claim["event_id"])["items"], [])
+        self.add_other_actor(patient)
+        self.assertEqual(self.event_dead_letters(patient, token=OTHER_TOKEN)["items"], [])
+        self.assertEqual(self.recover(patient, token=OTHER_TOKEN, **command), {"status": "blocked"})
+        self.assertEqual(self.recover(patient, delivery_id=claim["delivery_id"],
+                                      expected_revision=command["expected_revision"]-1), {"status": "conflict"})
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first, second = [f.result(timeout=10) for f in
+                             [pool.submit(self.recover, patient, **command) for _ in range(2)]]
+        self.assertEqual({first["duplicate"], second["duplicate"]}, {True, False})
+        self.assertEqual(first["audit_id"], second["audit_id"])
+        self.assertEqual(first["status"], "retry_authorized")
+        self.assertEqual(self.receipts(claim["delivery_id"]), [])
+        self.assertEqual(self.stored(run)[0]["state"], "queued")
+        self.creds[0]["actions"].remove("source_read")
+        self.write()
+        self.assertEqual(self.event_work(patient), {"status": "blocked"})
+        self.assertEqual(self.recover(patient, **command), {"status": "blocked"})
+        self.creds[0]["actions"].append("source_read")
+        self.write()
+        restarted = subprocess.run([sys.executable, "-m", "oi_api.event_worker", "--drain", "--max-batches", "2",
+                                    "--patient", patient, "--case", CASE], env=self.event_worker_env(),
+                                   text=True, capture_output=True, timeout=15)
+        self.assertEqual(restarted.returncode, 0, restarted.stderr)
+        self.assertEqual(json.loads(restarted.stdout), {"status": "idle", "batches_attempted": 2,
+                                                       "delivered_batches": 1, "continued_batches": 0})
+        self.assertEqual(self.delivery(claim["delivery_id"])["attempt_count"], 2)
+        again = self.recover(patient, **command)
+        self.assertEqual(again, {**first, "duplicate": True})
+        self.assertEqual(self.event_dead_letters(patient)["items"], [])
+        self.assertEqual(self.stored(run)[0]["state"], "stale")
+        self.assertEqual(len(self.receipts(claim["delivery_id"])), 1)
+        history = [row for row in self.rows(HISTORY, "revision") if row["delivery_id"] == claim["delivery_id"]]
+        self.assertEqual([row["reason_code"] for row in history],
+                         ["queued", "claimed", "authority_unavailable", "operator_retry", "claimed", "delivered"])
+        self.assertEqual(history[3]["retry_audit_id"], first["audit_id"])
+        self.assertEqual(self.fail_event(claim), "fenced")
+
+    def test_invalid_event_remains_visible_and_cannot_be_requeued(self):
+        patient, run, claim, command = self.failed_amendment("invalid_event")
+        self.creds[0]["actions"].append("source_delivery_retry")
+        self.write()
+        item, = self.event_dead_letters(patient)["items"]
+        self.assertEqual(item["reason_code"], "invalid_event")
+        before = self.snapshot()
+        self.assertEqual(self.recover(patient, **command), {"status": "conflict"})
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.stored(run)[0]["state"], "queued")
+
+    def test_recovery_grant_revocation_at_commit_rolls_back_audit_and_requeue(self):
+        patient, _, _, command = self.failed_amendment("authority_unavailable")
+        self.creds[0]["actions"].append("source_delivery_retry")
+        self.write()
+        before = self.snapshot()
+        original = PostgresPatientRegistry.append_event_with_id
+        def revoke(registry, pid, kind, **details):
+            audit_id = original(registry, pid, kind, **details)
+            if kind == "source.delivery.retry_authorized":
+                self.creds[0]["actions"].remove("source_delivery_retry")
+                self.write()
+            return audit_id
+        with patch.object(PostgresPatientRegistry, "append_event_with_id", revoke):
+            self.assertEqual(self.recover(patient, **command), {"status": "blocked"})
+        self.assertEqual(self.snapshot(), before)
+
     def test_three_retryable_failures_use_backoff_then_dead_letter(self):
         with running_server(create_app(self.settings)) as base:
             patient, _, _, run = self.seeded_run(base)
@@ -623,6 +777,15 @@ class SourceEventDeliveryPostgresTests(source_fixture.SourceVersionFixture):
                 time.sleep((2 ** failures) + 0.1)
         self.assertEqual(self.receipts(claim["delivery_id"]), [])
         self.assertEqual(self.stored(run)[0]["state"], "queued")
+
+        self.creds[0]["actions"].append("source_delivery_retry")
+        self.write()
+        failed = self.delivery(claim["delivery_id"])
+        authorized = self.recover(patient, delivery_id=claim["delivery_id"], expected_revision=failed["revision"])
+        self.assertEqual(authorized["status"], "retry_authorized")
+        resumed = self.claim_event(patient)
+        self.assertEqual((resumed["attempt_count"], resumed["failure_count"]), (4, 0))
+        self.assertEqual(self.deliver_event(resumed)["status"], "delivered")
 
     def test_scope_revocation_before_delivery_rolls_back_all_effects(self):
         with running_server(create_app(self.settings)) as base:
@@ -806,6 +969,44 @@ class SourceEventDeliveryPostgresTests(source_fixture.SourceVersionFixture):
                 "OI_API_ACCESS_FILE": str(self.access), "OI_API_EVENT_WORKER_TOKEN_FILE": str(token_path),
                 "OI_API_ENVIRONMENT": "synthetic"}
 
+    def test_killed_retry_transaction_leaves_failed_delivery_and_original_audit_intact(self):
+        patient, _, claim, command = self.failed_amendment("authority_unavailable")
+        self.creds[0]["actions"].append("source_delivery_retry")
+        self.write()
+        before = self.snapshot()
+        marker = Path(self.temp.name) / "retry-before-commit"
+        script = """
+import os, signal, sys
+from pathlib import Path
+from open_intelligence.postgres_registry import PostgresPatientRegistry
+from oi_api.event_worker import main
+original = PostgresPatientRegistry._execute
+def pause_after_history(registry, sql, params=()):
+    result = original(registry, sql, params)
+    if "INSERT INTO coordination.source_event_delivery_events" in sql and "operator_retry" in sql:
+        Path(sys.argv[1]).write_text("uncommitted")
+        os.kill(os.getpid(), signal.SIGSTOP)
+    return result
+PostgresPatientRegistry._execute = pause_after_history
+raise SystemExit(main(["--retry-delivery", sys.argv[2], "--expected-revision", sys.argv[3],
+                       "--patient", sys.argv[4], "--case", "CASE-ALPHA"]))
+"""
+        child = subprocess.Popen(
+            [sys.executable, "-c", script, str(marker), claim["delivery_id"],
+             str(command["expected_revision"]), patient], env=self.event_worker_env(),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            until = time.monotonic() + 10
+            while not marker.exists() and child.poll() is None and time.monotonic() < until:
+                time.sleep(0.05)
+            self.assertTrue(marker.exists(), "Retry did not reach its uncommitted history")
+        finally:
+            child.kill()
+            child.communicate(timeout=5)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.recover(patient, **command)["status"], "retry_authorized")
+        self.assertEqual(self.event_work(patient)["status"], "delivered")
+
     def test_killed_delivery_process_recovers_and_fences_its_original_claim(self):
         from oi_api.source_event_delivery import EventLeaseLost
         with running_server(create_app(self.settings)) as base:
@@ -853,6 +1054,12 @@ raise SystemExit(main(["--once", "--patient", sys.argv[2], "--case", "CASE-ALPHA
             self.deliver_event(claim)
 
     def test_populated_restore_retains_pending_running_completed_and_delivery_replay(self):
+        self.check_populated_restore()
+
+    def test_populated_restore_retains_authorized_retry_and_lost_response_receipt(self):
+        self.check_populated_restore(recovery=True)
+
+    def check_populated_restore(self, *, recovery=False):
         for binary in ("pg_dump", "pg_restore", "psql"):
             self.assertIsNotNone(shutil.which(binary), f"PostgreSQL acceptance needs {binary}")
             version = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=5)
@@ -866,7 +1073,15 @@ raise SystemExit(main(["--once", "--patient", sys.argv[2], "--case", "CASE-ALPHA
             self.assertEqual(self.claim(patient)["run_id"], running)
             queued = self.enqueue_as(base, patient, question, preflight, key="RUN-RESTORE-QUEUED")
             self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
-        claim = self.claim_event(patient, lease=1)
+        claim = self.claim_event(patient, lease=30 if recovery else 1)
+        if recovery:
+            self.assertEqual(self.fail_event(claim, "authority_unavailable"), "dead_letter")
+            self.creds[0]["actions"].append("source_delivery_retry")
+            self.write()
+            retry_intent = dict(delivery_id=claim["delivery_id"],
+                                expected_revision=self.delivery(claim["delivery_id"])["revision"])
+            authorization = self.recover(patient, **retry_intent)
+            self.assertEqual(authorization["status"], "retry_authorized")
         before = self.snapshot()
         original_runs = {run: self.stored(run) for run in (completed, running, queued)}
         url = make_url(self.admin.database_url)
@@ -884,6 +1099,14 @@ raise SystemExit(main(["--once", "--patient", sys.argv[2], "--case", "CASE-ALPHA
             restored = Settings(database_url=url.set(database=name).render_as_string(hide_password=False),
                                 access_file=str(self.access))
             self.assertEqual(self.snapshot(settings=restored), before)
+            if recovery:
+                retry = subprocess.run(
+                    [sys.executable, "-m", "oi_api.event_worker", "--retry-delivery", claim["delivery_id"],
+                     "--expected-revision", str(retry_intent["expected_revision"]), "--patient", patient,
+                     "--case", CASE], env=self.event_worker_env(restored),
+                    capture_output=True, text=True, timeout=15)
+                self.assertEqual(retry.returncode, 0, retry.stderr)
+                self.assertEqual(json.loads(retry.stdout), {**authorization, "duplicate": True})
             time.sleep(1.1)
             resumed = subprocess.run([sys.executable, "-m", "oi_api.event_worker", "--once", "--patient", patient,
                                       "--case", CASE], env=self.event_worker_env(restored),

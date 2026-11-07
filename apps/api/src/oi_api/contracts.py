@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_REVISION = "0027_source_event_purpose"
+SCHEMA_REVISION = "0028_source_delivery_retry"
 POSTGRES_MAJOR = 16
 
 

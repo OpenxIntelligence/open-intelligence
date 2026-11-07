@@ -13,8 +13,9 @@ class SourceEventGraphTests(unittest.TestCase):
     def test_single_successor_and_exact_readiness(self):
         script = ScriptDirectory.from_config(Config(str(Path(__file__).resolve().parents[1] / 'alembic.ini')))
         self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
-        self.assertEqual(SCHEMA_REVISION, "0027_source_event_purpose")
-        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0026_integrated_core")
+        self.assertEqual(SCHEMA_REVISION, "0028_source_delivery_retry")
+        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0027_source_event_purpose")
+        self.assertEqual(script.get_revision("0027_source_event_purpose").down_revision, "0026_integrated_core")
         self.assertEqual(set(script.get_revision("0026_integrated_core").down_revision), {
             "0025_clinical_source_events", "0023_composer_clinical_join", "0023_ehr_lab_ownership_join",
         })
@@ -194,6 +195,39 @@ class SourceEventMigrationTests(SourceVersionFixture):
         with self.engine.connect() as c:
             versions = c.execute(text(f'SELECT source_version FROM {OUTBOX} ORDER BY source_version')).scalars().all()
         self.assertEqual(versions, [1, 2])
+
+    def test_populated_integrated_head_keeps_failed_history_and_guards_authorized_retry_on_downgrade(self):
+        from oi_api.event_worker import retry_delivery
+        from test_patients import TOKEN_A
+        patient, _, _ = self.start_at("0027_source_event_purpose")
+        with self.engine.connect() as c:
+            envelope = dict(c.execute(text(f"SELECT * FROM {OUTBOX}")).mappings().one())
+        delivery = self.queued(envelope)
+        self.claim(delivery)
+        with self.engine.begin() as c:
+            c.execute(text(f"UPDATE {DELIVERIES} SET state='dead_letter',revision=revision+1,failure_count=1,"
+                           "lease_token=NULL,lease_expires_at=NULL WHERE delivery_id=:d"), {"d": delivery})
+            self.event(c, delivery, "authority_unavailable")
+        before = self.snapshot()
+        self.upgrade_preserving(before)
+        # The generic writer cannot reopen a failure without the exact authorization receipt.
+        for forged in (None, envelope["event_id"]):
+            with self.assertRaises(DBAPIError), self.engine.begin() as c:
+                c.execute(text(f"UPDATE {DELIVERIES} SET state='queued',revision=4,failure_count=0 "
+                               "WHERE delivery_id=:d"), {"d": delivery})
+                if forged is not None:
+                    c.execute(text(f"INSERT INTO {EVENTS}(delivery_id,revision,state,attempt_count,"
+                                   "failure_count,reason_code,retry_audit_id) "
+                                   "VALUES(:d,4,'queued',1,0,'operator_retry',:id)"), {"d": delivery, "id": forged})
+        self.creds[0]["actions"].extend(("source_brief_export", "source_delivery_retry"))
+        self.write()
+        receipt = retry_delivery(self.settings, lambda: TOKEN_A, patient, "CASE-ALPHA",
+                           delivery_id=delivery, expected_revision=3)
+        self.assertEqual(receipt["status"], "retry_authorized")
+        protected = self.snapshot()
+        with self.assertRaisesRegex(CommandError, "retry authorizations"):
+            migrate(self.admin, "downgrade", "0027_source_event_purpose")
+        self.assertEqual(self.snapshot(), protected)
 
     def test_populated_source_delivery_parent_resumes_queued_delivery_after_join(self):
         from oi_api.event_worker import run_once

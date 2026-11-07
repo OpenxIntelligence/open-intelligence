@@ -108,7 +108,7 @@ class PostgresPatientRegistry:
         if row is None or row[0] != "active":
             raise PatientRegistryDenied("unknown or inactive patient")
 
-    def _write_event(self, patient_id: str, kind: str, details: dict[str, object]) -> None:
+    def _write_event(self, patient_id: str, kind: str, details: dict[str, object]) -> int:
         if not self._transaction_active:
             raise PatientRegistryError("domain event requires caller transaction")
         _key(patient_id, "patient_id")
@@ -119,16 +119,20 @@ class PostgresPatientRegistry:
                 raise PatientRegistryError("event metadata must be primitive references")
             if isinstance(value, str) and len(value) > 128:
                 raise PatientRegistryError("event metadata must not contain narrative")
-        self._execute(
+        return self._fetchone(
             "INSERT INTO identity.identity_domain_events "
             "(patient_id,event_type,metadata_json,occurred_at) "
-            "VALUES (%s,%s,%s::jsonb,%s::timestamptz)",
+            "VALUES (%s,%s,%s::jsonb,%s::timestamptz) RETURNING id",
             (patient_id, kind, json.dumps(details, sort_keys=True), _now()),
-        )
+        )[0]
 
     def append_event(self, patient_id: str, kind: str, **details: object) -> None:
+        self.append_event_with_id(patient_id, kind, **details)
+
+    def append_event_with_id(self, patient_id: str, kind: str, **details: object) -> int:
+        """Return the canonical journal identity for a transaction-bound reference."""
         self.require_patient(patient_id)
-        self._write_event(patient_id, kind, details)
+        return self._write_event(patient_id, kind, details)
 
     def _created_receipt(self, organization: str, request_key: str, digest: str) -> dict:
         """Read after collision, preserving hash and organization semantics."""

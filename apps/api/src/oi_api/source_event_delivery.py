@@ -17,6 +17,8 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 CONSUMER = "composer-source-context/1"
+RECOVERY_ACTION = "source_delivery_retry"
+RETRYABLE_REASONS = frozenset({"lease_expired", "retryable_failure", "authority_unavailable"})
 FIELDS = (
     "delivery_id", "event_id", "consumer", "patient_id", "case_id", "origin_org",
     "actor", "purpose", "state", "revision", "attempt_count", "failure_count",
@@ -169,6 +171,59 @@ class PostgresSourceEventDelivery:
             recheck_authority()
             return {"status": "observed", "items": items,
                     "next_after_event_id": items[-1]["event_id"] if len(rows) > limit else None}
+
+    @staticmethod
+    def validate_retry(delivery_id, expected_revision):
+        if (type(delivery_id) is not str or re.fullmatch(r"DELIVERY-[0-9A-F]{32}", delivery_id) is None
+                or type(expected_revision) is not int or not 1 <= expected_revision < 2**31 - 1):
+            raise ValueError("Expected a delivery identity and its inspected failed revision")
+
+    def retry_failed(self, patient_id, case_id, *, organization, actor, purpose, delivery_id,
+                     expected_revision, recheck_authority):
+        """Authorize one fresh attempt at internal Composer reconciliation."""
+        self.validate_retry(delivery_id, expected_revision)
+        with self.registry.transaction():
+            self._scope(patient_id, case_id, organization, actor, purpose, recheck_authority)
+            self.registry._allow(actor, patient_id, RECOVERY_ACTION, purpose)
+            row = self._unpack(self.registry._fetchone(
+                SELECT_DELIVERY + "WHERE d.delivery_id=%s AND d.consumer=%s AND d.patient_id=%s "
+                "AND d.case_id=%s AND d.origin_org=%s AND d.actor=%s AND d.purpose=%s FOR UPDATE OF d",
+                (delivery_id, CONSUMER, patient_id, case_id, organization, actor, purpose)))
+            if row is None:
+                raise PatientRegistryDenied("Source delivery unavailable")
+            revision = expected_revision + 1
+            prior = self.registry._fetchone(
+                "SELECT retry_audit_id FROM coordination.source_event_delivery_events "
+                "WHERE delivery_id=%s AND revision=%s AND reason_code='operator_retry'",
+                (delivery_id, revision))
+            if prior:
+                audit_id = prior[0]
+                self.registry.append_event(patient_id, "source.delivery.retry_receipt_read", case_id=case_id,
+                                           actor=actor, purpose=purpose, delivery_id=delivery_id, retry_audit_id=audit_id)
+            else:
+                if row["state"] != "dead_letter" or row["revision"] != expected_revision:
+                    raise PatientRegistryConflict("Source delivery changed")
+                failure = self.registry._fetchone(
+                    "SELECT reason_code FROM coordination.source_event_delivery_events "
+                    "WHERE delivery_id=%s AND revision=%s", (delivery_id, expected_revision))
+                if failure is None or failure[0] not in RETRYABLE_REASONS:
+                    raise PatientRegistryConflict("Source event requires reconciliation")
+                audit_id = self.registry.append_event_with_id(
+                    patient_id, "source.delivery.retry_authorized", delivery_id=delivery_id,
+                    source_event_id=row["event_id"], consumer=CONSUMER, case_id=case_id,
+                    organization=organization, actor=actor, purpose=purpose,
+                    failed_revision=expected_revision, failure_reason=failure[0])
+                self.registry._execute(
+                    "UPDATE coordination.source_event_deliveries SET state='queued',revision=revision+1,"
+                    "failure_count=0 WHERE delivery_id=%s", (delivery_id,))
+                self.registry._execute(
+                    "INSERT INTO coordination.source_event_delivery_events "
+                    "(delivery_id,revision,state,attempt_count,failure_count,reason_code,retry_audit_id) "
+                    "VALUES (%s,%s,'queued',%s,0,'operator_retry',%s)",
+                    (delivery_id, revision, row["attempt_count"], audit_id))
+            recheck_authority()
+            return {"status": "retry_authorized", "delivery_id": delivery_id, "event_id": row["event_id"],
+                    "failed_revision": expected_revision, "audit_id": audit_id, "duplicate": prior is not None}
 
     def claim_next(self, patient_id: str, case_id: str, *, organization: str, actor: str,
                    purpose: str, recheck_authority: Callable[[], None], lease_seconds: int = 30):
