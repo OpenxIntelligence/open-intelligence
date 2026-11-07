@@ -59,3 +59,33 @@ def test_duplicate_concept_rejected():
     with pytest.raises(SemanticContractError) as error:
         SemanticRegistry((c, c), ())
     assert error.value.code == "duplicate_concept"
+
+
+@pytest.mark.parametrize("bad_version", [0, -1, True, 1.0, "1"])
+def test_reject_invalid_concept_versions(bad_version):
+    with pytest.raises(SemanticContractError) as error:
+        SemanticRegistry((Concept("oi:observation", bad_version, "Observation"),), ())
+    assert error.value.code == "invalid_concept"
+
+
+@pytest.mark.parametrize("bad_id", ["", ":observation", "oi:", " oi:observation", "oi:observation "])
+def test_reject_malformed_semantic_identifiers(bad_id):
+    with pytest.raises(SemanticContractError) as error:
+        SemanticRegistry((Concept(bad_id, 1, "Observation"),), ())
+    assert error.value.code == "invalid_semantic_id"
+
+
+@pytest.mark.parametrize("field", ["owner", "record_id", "source_version_id"])
+def test_reject_whitespace_only_provenance(field):
+    with pytest.raises(SemanticContractError) as error:
+        registry().validate_reference(reference(**{field: "  "}))
+    assert error.value.code == "missing_provenance"
+
+
+def test_reject_invalid_relationship_version():
+    with pytest.raises(SemanticContractError) as error:
+        SemanticRegistry(
+            (Concept("oi:observation", 1, "Observation"),),
+            (Relationship("oi:self", True, "oi:observation", "oi:observation"),),
+        )
+    assert error.value.code == "invalid_relationship"
