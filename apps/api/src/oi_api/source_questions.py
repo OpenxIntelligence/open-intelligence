@@ -341,9 +341,18 @@ class PostgresSourceQuestions:
                 "synthetic": True, "clinical_approval": False,
             }
 
+        patient_id = _key(patient_id, "patient_id")
+        case_id = _case_id(case_id)
+        organization = _key(organization, "organization")
+        actor = _key(actor, "actor")
         if purpose != "operations":
             raise PatientRegistryDenied("Question semantic snapshot unavailable")
         with self.registry.transaction():
+            # This internal entrypoint has no HTTP route-level gate. Require
+            # both source and question read grants before materializing the
+            # canonical source index, then defer final recheck to its owner.
+            self.registry._allow(actor, patient_id, "source_read", purpose)
+            self.registry._allow(actor, patient_id, "question_read", purpose)
             return PostgresSourceVersions(self.registry).list_locked(
                 patient_id, case_id, organization=organization, actor=actor,
                 purpose=purpose, prepare_response=prepare,
