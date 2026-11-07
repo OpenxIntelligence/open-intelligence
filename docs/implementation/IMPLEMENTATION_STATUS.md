@@ -1,3 +1,23 @@
+## Continuation: inspect current paired-report originals
+
+The dependent continuation of PR #614 adds direct original-report controls beside
+both recorded and current passages. Current-version requests must match the active,
+verified comparison and loaded review receipt, then pass a fresh source-index check
+for document identity, version and hash and the independent original-read endpoint.
+Dismissed comparisons cannot authorize new requests. The existing Records request
+generation prevents delayed reads from overriding newer navigation.
+
+Local validation: 724 client tests, production build and diff checks pass. Hosted
+Chromium validation is pending for this continuation; the browser journey now
+opens the exact amended consultation and then reopens its historical original.
+No backend, migration, grant or dependency changes. Synthetic data only.
+
+Resume priority: finish exact-head acceptance for #614 and this continuation;
+then implement durable reviewer disposition and reviewed episode associations
+through the existing questions-review and episode owners. Those capabilities
+remain unimplemented here. Keep full platform construction under the canonical
+backlog; this connected increment does not establish production or clinical use.
+
 # Implementation status — 5 November 2026
 
 ## Paired episode report reassessment — integration validation pending

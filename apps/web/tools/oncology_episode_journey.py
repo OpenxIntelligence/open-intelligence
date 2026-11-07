@@ -267,6 +267,13 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
         assert 'Line 9' in cd.evaluate(consult_side + '.textContent')
         assert 'Episode unassigned' in cd.evaluate(consult_side + '.textContent')
         assert 'Recorded version is current' in cd.evaluate(passages + '.textContent')
+        cd.evaluate(consult_side + '.querySelectorAll("button")[1].click()')
+        cd.wait(element('[data-testid=server-original]') + '?.textContent===' + json.dumps(amended_consult),
+                'comparison opens exact latest consult under fresh original-read authority')
+        navigate('Review')
+        cd.wait('Boolean(' + element('[data-testid=load-review-queue]') + ')', 'return to review')
+        cd.evaluate(element('[data-testid=load-review-queue]') + '.click()')
+        cd.wait(history + '?.textContent.includes(' + json.dumps(reason) + ')', 'history rechecked after current original')
         cd.evaluate(history + '.querySelectorAll("button")[1].click()')
         cd.wait(element('[data-testid=server-original]') + '?.textContent===' + json.dumps(consult),
                 'history reopens exact pre-amendment consult under original-read authority')
@@ -277,6 +284,7 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
             'historical_drafts_rechecked_original_read': True,
             'compared_consult_versions': [1, 2], 'latest_consult_line': 9,
             'paired_review_reassessment': True, 'consult_original_reopened': True,
+            'comparison_current_original_verified': True,
             'primary_episodes': ['EP-A', 'EP-B'], 'nodule_episode_history': [None, 'EP-B'],
             'nodule_reported_state': 'indeterminate', 'source_only_preflights': 2,
             'historical_original_verified': True, 'denied_read_cleared_records': True,

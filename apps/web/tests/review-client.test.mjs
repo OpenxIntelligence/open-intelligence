@@ -646,3 +646,24 @@ test('a delayed review-original lookup cannot override a newer Records selection
  held.resolve(response(index));await pending;
  assert.equal(reads,2);assert.equal(s.snapshot().original,null);
 });
+
+for(const mode of ['allowed','dismissed','wrong-document'])test('current comparison original: '+mode,async()=>{
+ const {q,r,packet}=reassessmentFixture();const target=packet.second.latest,calls=[];
+ const index={contract:'oi.synthetic-original-sources/1',patient_id:patientId,case_id:caseId,access_receipt_id:'ACCESS-'+'E'.repeat(32),
+  synthetic:true,clinical_interpretation:false,research_review_invalidation_integrated:false,
+  sources:[{source_id:target.source_id,document_id:mode==='wrong-document'?'DOC-OTHER':target.document_id,
+   version:target.source_version,sha256:target.source_sha256,kind:'pathology',event_date:'2026-01-10',
+   issued_at:'2026-01-11',received_at:'2026-11-03T10:00:00Z',specimen_id:'SPECIMEN-ONE',state:'current',supersedes_id:null}],
+  source_reported_assertions:[]};
+ const s=session(async url=>{
+  if(url===queuePath)return response(queue([q],[r]));
+  if(url.endsWith('/attribution-reassessment'))return response(packet);
+  calls.push(url);return url.endsWith('/sources')?response(index):response({detail:'Original grant withdrawn'},404);
+ });
+ await opened(s);await s.inspectAttribution(receiptId);
+ if(mode==='dismissed')s.dismissAttributionInspection();
+ await s.loadReviewOriginal(caseId,target.source_id,target.source_version,target.source_sha256);
+ assert.equal(calls.length,mode==='allowed'?2:mode==='dismissed'?0:1);
+ if(mode==='allowed')assert.ok(calls[1].includes(target.source_id));
+ assert.equal(s.snapshot().original,null,'No bytes survive a denied grant or inconsistent lineage');
+});
