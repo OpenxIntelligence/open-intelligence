@@ -134,6 +134,42 @@ class PostgresSourceEventDelivery:
             recheck_authority()
             return {"status": "observed", **result}
 
+    @staticmethod
+    def validate_page(limit, after_event):
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("Page size must be between 1 and 100")
+        if type(after_event) is not int or not 0 <= after_event <= 9223372036854775807:
+            raise ValueError("Event cursor must be a nonnegative PostgreSQL bigint")
+
+    def dead_letters(self, patient_id, case_id, *, organization, actor, purpose,
+                     recheck_authority, limit=20, after_event=0):
+        """Read bounded terminal metadata; the page cursor is not a delivery watermark."""
+        self.validate_page(limit, after_event)
+        with self.registry.transaction():
+            self._scope(patient_id, case_id, organization, actor, purpose, recheck_authority)
+            rows = self.registry._fetchall(
+                "SELECT d.delivery_id,d.event_id,d.revision,d.attempt_count,d.failure_count,"
+                "e.reason_code,d.updated_at FROM coordination.source_event_deliveries d "
+                "JOIN coordination.source_event_delivery_events e ON e.delivery_id=d.delivery_id "
+                "AND e.revision=d.revision AND e.state='dead_letter' "
+                "WHERE d.patient_id=%s AND d.case_id=%s AND d.origin_org=%s AND d.actor=%s "
+                "AND d.purpose=%s AND d.consumer=%s AND d.state='dead_letter' AND d.event_id>%s "
+                "ORDER BY d.event_id LIMIT %s",
+                (patient_id, case_id, organization, actor, purpose, CONSUMER, after_event, limit + 1))
+            fields = ("delivery_id", "event_id", "revision", "attempt_count", "failure_count",
+                      "reason_code", "failed_at")
+            items = [dict(zip(fields, row)) for row in rows[:limit]]
+            for item in items:
+                item["failed_at"] = item["failed_at"].isoformat()
+            recheck_authority()
+            self.registry.append_event(
+                patient_id, "source.delivery.dead_letters_read_authorized", case_id=case_id,
+                actor=actor, purpose=purpose, consumer=CONSUMER, limit=limit,
+                after_event_id=after_event, returned_count=len(items))
+            recheck_authority()
+            return {"status": "observed", "items": items,
+                    "next_after_event_id": items[-1]["event_id"] if len(rows) > limit else None}
+
     def claim_next(self, patient_id: str, case_id: str, *, organization: str, actor: str,
                    purpose: str, recheck_authority: Callable[[], None], lease_seconds: int = 30):
         """Claim one event for the current actor, or expose an exhausted lease.
