@@ -24,7 +24,7 @@ def test_fhir_observation_origin():
 
 
 @pytest.mark.parametrize("line,reference", [
-    (None, None), (1, "Observation/valid"), (0, None), (True, None),
+    (None, None), (1, "Observation/valid"), (0, None), (10001, None), (True, None),
     (-1, None), (None, "Patient/not-an-observation"),
     (None, "Observation/bad slash"), (None, "Observation/"),
 ])
@@ -68,3 +68,9 @@ def test_stored_text_question_rejects_unexpected_laboratory_child():
         classify_stored_question_origin(
             question_id=Q, source_id=S, source_line=1,
             observation_reference=None, anchor_source_id=S)
+
+
+def test_source_line_upper_bound_matches_assertion_schema():
+    value = classify_question_origin(question_id=Q, source_id=S,
+                                     source_line=10000, observation_reference=None)
+    assert value.line == 10000
