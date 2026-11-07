@@ -14,11 +14,25 @@ draft labels, schema heads and test counts are not current acceptance claims.
 
 ## Current integrated H1 checkpoint
 
+The recovery candidate in [#626](https://github.com/OpenxIntelligence/open-intelligence/pull/626)
+builds on #613 at `6dc77e52342bee6928866bbda7680319600baf77` and retains
+#625's bounded worker at `39f09ffabc6ce0246cb463e7e895210e2015475f`.
+It adds `0028_source_delivery_retry` after the published 0027, preserving all
+42 upstream migration files. Readiness requires 0028. An explicit current
+`source_delivery_retry` grant authorizes recovery of one exact eligible failed
+revision, with an immutable audit link; processing then rechecks authority and
+current source context through the existing Composer consumer. The PR records
+combined-source acceptance, including failures and skips. This candidate is
+unmerged and undeployed; the full foundation and domain scope remains open.
+
+### Preserved upstream composition checkpoint
+
 This dependent draft composes the published #565 foundation frozen at
 `462e6c25f805089fadcb290567045447e6d627b7`, the documentation-only successor of
 `14a189a949510c67903eaf354250223a2c587a8f`, and preserves its 42 migration files,
 including the original `0020_source_event_delivery` and the published
-`0027_source_event_purpose`. It introduces no 0028 migration. The canonical
+`0027_source_event_purpose`. That upstream composition introduced no 0028
+migration; the recovery successor above now does. The canonical
 clinical, laboratory, source, question, Composer, evidence, review and
 follow-through owners remain intact.
 
@@ -30,7 +44,7 @@ follow-through owners remain intact.
 | #569 | `d28f8dcb4124ccb52b42be28f996cc9e99a29c92` | Read-only assigned follow-up beside the exact selected laboratory result |
 | Accepted main | `16fa42781aa40e3899e36b5b441de8d920fced8e` | Reference Skeptic/reconciliation, evaluation harness, vertical interface and data-integration modules |
 
-The application requires `0027_source_event_purpose`, whose single parent is
+At this upstream checkpoint the application required `0027_source_event_purpose`, whose single parent is
 `0026_integrated_core`. The existing no-DDL 0026 join retains
 `0025_clinical_source_events`, `0023_composer_clinical_join`, and
 `0023_ehr_lab_ownership_join`. The published 0027 installs a binding resolver

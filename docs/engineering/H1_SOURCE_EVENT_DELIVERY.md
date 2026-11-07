@@ -157,8 +157,10 @@ records that boundary.
 
 Downgrading 0027 to 0026 restores the earlier capture/guard functions and removes
 the binding helper. Research history is retained, but later research imports can
-be refused until the explicit upgrade is applied again. The application requires
-0027 for readiness. The original populated-history downgrade guards remain.
+be refused until the explicit upgrade is applied again. This recovery candidate
+requires 0028 for readiness. Downgrade from 0028 refuses while any accepted retry
+authorization exists; otherwise it restores the published 0027 guards. The
+original populated-history downgrade guards remain.
 
 The original construction baseline remains
 `cd10a828e499bf65dbbe8eb4ca77207710a5f2b7`, joining worker source
