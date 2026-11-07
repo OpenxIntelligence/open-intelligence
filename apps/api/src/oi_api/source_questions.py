@@ -267,8 +267,19 @@ class PostgresSourceQuestions:
         if table[0] is None:
             revisions = self.registry._fetchall(
                 "SELECT version_num FROM public.alembic_version ORDER BY version_num")
-            if (not revisions or len(revisions) > 2
-                    or any(row[0] == "0018_laboratory_questions" for row in revisions)):
+            # Only known published pre-laboratory heads may lack this table.
+            historical_heads = frozenset({
+                "0009_question_followthrough", "0009_question_evidence",
+                "0009_image_review_merge", "0010_question_evidence",
+                "0010_authored_evidence_origin", "0011_evidence_convergence",
+                "0011_image_evidence_merge", "0012_image_report_convergence",
+                "0012_reviewed_documents", "0013_document_image_convergence",
+                "0014_question_passages", "0015_manual_report_context",
+                "0016_fhir_laboratory_sources", "0016_manual_task_dependency",
+                "0017_lab_manual_convergence",
+            })
+            if (not 1 <= len(revisions) <= 2
+                    or any(row[0] not in historical_heads for row in revisions)):
                 raise PatientRegistryError("Laboratory question anchor owner unavailable")
             # Historical text-only schemas cannot contain a laboratory child.
             child_columns = ",NULL::text,NULL::text"
