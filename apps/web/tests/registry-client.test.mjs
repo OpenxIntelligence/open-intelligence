@@ -54,6 +54,26 @@ const sourceIndex=()=>({
   }],synthetic:true,clinical_interpretation:false,
   research_review_invalidation_integrated:false,
 });
+test('permission management preserves a sending or uncertain source import',async()=>{
+  const wait=deferred();let writes=0;
+  const s=new RegistrySession(async(url,init)=>{
+    if(init.method==='POST'){writes++;return wait.promise;}
+    if(url.endsWith('/case-bindings'))return response(caseList());
+    if(url.endsWith('/sources'))return response(sourceIndex());
+    return response(patient());
+  });
+  s.connect(token);await s.read('PAT-EXAMPLE-001');await s.loadCases();await s.loadSources('CASE-ALPHA');
+  const original='OI-SYNTHETIC-REPORT/1\nPatient: CASE-ALPHA\nDocument: DOC-ONE\nType: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-11\nFinding: marker|pending|Independently fictional pending finding.\n';
+  const sending=s.importSource('CASE-ALPHA',original,true);
+  assert.equal(s.snapshot().importOutcome,'sending');
+  s.managePatientPermissions('PAT-EXAMPLE-001');assert.equal(s.currentPermissions(),null);
+  wait.resolve(response({},503));await sending;
+  assert.equal(s.snapshot().importOutcome,'unknown');
+  s.managePatientPermissions('PAT-EXAMPLE-001');assert.equal(s.currentPermissions(),null);
+  assert.equal(s.snapshot().patient.patient_id,'PAT-EXAMPLE-001');
+  assert.equal(s.snapshot().importOutcome,'unknown');assert.equal(writes,1);
+  assert.match(s.snapshot().message,/pending patient write/);
+});
 test('read-only Records requests use exact canonical patient/case URLs and no local clinical authority',async()=>{
   const seen=[];
   const s=new RegistrySession(async (url,init)=>{

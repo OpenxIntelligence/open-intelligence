@@ -74,6 +74,8 @@ class SourceEventPurposeUpgradeTests(SourceVersionFixture):
         # The connected-product join adds this independent owner. Normalize only
         # its absent, empty pre-migration state; populated rows and consumed
         # sequence values remain part of every preservation comparison.
+        tables.setdefault("identity.patient_access_grants", [])
+        tables.setdefault("identity.patient_access_revocations", [])
         tables.setdefault("ehr.encounter_source_links", [])
         sequences.setdefault("ehr.encounter_source_links_id_seq", (1, False))
         return tables, sequences

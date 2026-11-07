@@ -199,7 +199,8 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_record_request_origin()"))
             conn.execute(text("DROP FUNCTION IF EXISTS coordination.guard_record_request_update()"))
             conn.execute(text("DROP SCHEMA IF EXISTS coordination"))
-            for name in ("identity_domain_events", "identity_create_receipts", "identity_patients"):
+            for name in ("patient_access_revocations", "patient_access_grants",
+                         "identity_domain_events", "identity_create_receipts", "identity_patients"):
                 conn.execute(text(f"DROP TABLE IF EXISTS identity.{name}"))
             for name in ("guard_patient_identity_mutation", "guard_registration_receipt", "reject_registry_history_mutation"):
                 conn.execute(text(f"DROP FUNCTION IF EXISTS identity.{name}()"))

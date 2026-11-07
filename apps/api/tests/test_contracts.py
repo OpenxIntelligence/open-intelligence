@@ -135,6 +135,8 @@ class HTTPContractTests(unittest.TestCase):
                            "evidence-reports/{report_id}/runs/{run_id}/return-for-verification")
         self.assertEqual(set(schema["paths"]), {
             evidence_return,
+            "/v1/patients/{patient_id}/permissions",
+            "/v1/patients/{patient_id}/permissions/{grant_id}/revocations",
             "/v1/patients/{patient_id}/encounters",
             "/v1/patients/{patient_id}/encounters/events",
             "/v1/patients/{patient_id}/encounters/{encounter_id}/transitions",

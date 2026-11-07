@@ -23,6 +23,7 @@ from open_intelligence.postgres_registry import PostgresPatientRegistry
 REGISTRY_REVISION = SCHEMA_REVISION
 BASELINE_REVISION = "0001_h1_shell"
 TABLES = {"identity_patients", "identity_create_receipts", "identity_domain_events"}
+ACCESS_TABLES = {"patient_access_grants", "patient_access_revocations"}
 
 
 @unittest.skipUnless(os.environ.get("OI_API_RUN_DATABASE_TESTS") == "1",
@@ -154,6 +155,8 @@ class RegistryMigrationTests(unittest.TestCase):
             connection.execute(text("DROP FUNCTION IF EXISTS coordination.guard_record_request_update()"))
             connection.execute(text("DROP SCHEMA IF EXISTS coordination"))
             connection.execute(text("DROP TABLE IF EXISTS identity.oi_registry_unrelated_fixture"))
+            connection.execute(text("DROP TABLE IF EXISTS identity.patient_access_revocations"))
+            connection.execute(text("DROP TABLE IF EXISTS identity.patient_access_grants"))
             for name in ("identity_domain_events", "identity_create_receipts", "identity_patients"):
                 kind = connection.execute(text(
                     "SELECT c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
@@ -174,7 +177,7 @@ class RegistryMigrationTests(unittest.TestCase):
         migrate(self.settings, "upgrade", "head")
         # Missing migration must fail as an unmet contract, not as a later
         # undefined-table error in a registry method.
-        self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), TABLES,
+        self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), TABLES | ACCESS_TABLES,
                          "The canonical patient identity migration has not been applied")
 
     def _scalar(self, statement):
@@ -226,6 +229,8 @@ class RegistryMigrationTests(unittest.TestCase):
             self.assertEqual((patient["origin_org"], patient["status"], patient["revision"]), ("ORG-ONE", "active", 1))
         for name in TABLES:
             self.assertEqual(self._scalar(f"SELECT count(*) FROM identity.{name}"), 1)
+        for name in ACCESS_TABLES:
+            self.assertEqual(self._scalar(f"SELECT count(*) FROM identity.{name}"), 0)
         self.assertEqual(self._scalar("SELECT event_type FROM identity.identity_domain_events"), "identity.patient.created")
 
     def test_original_receipt_event_and_patient_origin_cannot_be_rewritten(self):
@@ -285,7 +290,7 @@ class RegistryMigrationTests(unittest.TestCase):
         self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), {"oi_registry_unrelated_fixture"})
         self.assertEqual(self._scalar("SELECT id FROM identity.oi_registry_unrelated_fixture"), 42)
         migrate(self.settings, "upgrade", "head")
-        self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), TABLES | {"oi_registry_unrelated_fixture"})
+        self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), TABLES | ACCESS_TABLES | {"oi_registry_unrelated_fixture"})
         self.assertEqual(self._scalar("SELECT id FROM identity.oi_registry_unrelated_fixture"), 42)
         with self._registry() as registry:
             self.assertFalse(self._create(registry)["duplicate"])
@@ -299,7 +304,7 @@ class RegistryMigrationTests(unittest.TestCase):
             ))
         with self.assertRaises(SQLAlchemyError):
             migrate(self.settings, "downgrade", BASELINE_REVISION)
-        self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), TABLES)
+        self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), TABLES | ACCESS_TABLES)
         self.assertEqual(self._scalar("SELECT version_num FROM public.alembic_version"), REGISTRY_REVISION)
         self.assertIn("oi_registry_external_reference", inspect(self.engine).get_table_names(schema="public"))
 

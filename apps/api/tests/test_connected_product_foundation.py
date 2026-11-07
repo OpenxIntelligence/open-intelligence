@@ -14,7 +14,7 @@ class ConnectedProductGraphTests(unittest.TestCase):
     def test_join_retains_both_published_heads(self):
         script = graph()
         self.assertEqual(script.get_heads(), [SCHEMA_REVISION])
-        self.assertEqual(set(script.get_revision(SCHEMA_REVISION).down_revision),
+        self.assertEqual(set(script.get_revision("0028_connected_product").down_revision),
                          {'0027_source_event_purpose', '0022_encounter_sources'})
         self.assertEqual(script.get_revision('0022_encounter_sources').down_revision,
                          '0021_lab_citation_freshness')

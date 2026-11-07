@@ -18,9 +18,12 @@ class Settings:
     database_url: str | None = field(default=None, repr=False)
     environment: str = "synthetic"
     connect_timeout_seconds: float = 2.0
+    require_persisted_grants: bool = False
     access_file: str | None = field(default=None, repr=False)
 
     def __post_init__(self):
+        if type(self.require_persisted_grants) is not bool:
+            raise ConfigurationError("Persisted grant policy must be boolean")
         if self.environment != "synthetic":
             raise ConfigurationError("Only the synthetic environment is enabled")
         if not math.isfinite(self.connect_timeout_seconds) or not 0.1 <= self.connect_timeout_seconds <= 10:
@@ -45,7 +48,10 @@ class Settings:
             timeout = float(values.get("OI_API_CONNECT_TIMEOUT_SECONDS", "2"))
         except (ValueError, TypeError):
             raise ConfigurationError("Database timeout must be numeric") from None
+        if values.get("OI_API_REQUIRE_PERSISTED_GRANTS", "0") not in {"0", "1"}:
+            raise ConfigurationError("Persisted grant policy must be 0 or 1")
         return cls(
+            require_persisted_grants=values.get("OI_API_REQUIRE_PERSISTED_GRANTS", "0") == "1",
             database_url=values.get("OI_API_DATABASE_URL"),
             environment=values.get("OI_API_ENVIRONMENT", "synthetic"),
             connect_timeout_seconds=timeout,

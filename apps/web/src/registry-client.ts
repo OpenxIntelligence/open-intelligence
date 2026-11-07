@@ -1,3 +1,4 @@
+import {PermissionConsole,PermissionHttpError} from './patient-permissions.js';
 import {createEncounterChart, EncounterHttpError, type EncounterChart} from './encounter-client.js';
 import {readLaboratoryCitationReport} from './laboratory-citation-report.js';
 import {emptySuspension,readSuspensionReceipt,type SuspensionState} from './patient-suspension.js';
@@ -231,6 +232,39 @@ export class RegistrySession {
       if(!current()||control.signal.aborted)throw Error('Report scope changed');
       return {report,generation};
     }finally{signal.removeEventListener('abort',stop);clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+  #permissions:PermissionConsole|null=null;
+  currentPermissions=()=>this.#permissions?.scope.active()?this.#permissions:null;
+  permissionChangePending=()=>Boolean(this.currentPermissions()?.pending||this.currentPermissions()?.busy);
+  #hasPendingPatientWrite(patientId:string|undefined){
+    return this.#creating||this.#uploading||this.#savingQuestion||this.#savingReview||
+       this.#savingFollowthrough||this.#savingEvidence||this.#laboratoryWriting||
+       this.#questionRetryKeys.size>0||Boolean(this.#labPending)||
+       [...this.#manualPassageIntents.keys()].some(key=>!patientId||JSON.parse(key)[0]===patientId)||
+       [this.#state.importOutcome,this.#state.laboratoryPhase,this.#state.reviewReturnPhase,
+        this.#state.followthroughWritePhase,this.#state.evidenceWritePhase,this.#state.evidenceLinkPhase,
+        this.#state.labQuestionWritePhase].some(p=>['sending','saving','unknown'].includes(p));
+  }
+  managePatientPermissions(patientId:string){
+    if(this.permissionChangePending()||!this.#token||!KEY.test(patientId)||this.#suspensionIntent)return;
+    if(this.#hasPendingPatientWrite(this.#state.patient?.patient_id)){
+      this.#publish({message:'Resolve the pending patient write before managing permissions. Its recovery request is preserved.'});return;
+    }
+    this.#clearPatientSessionData();
+    const scope=this.#scope;
+    const active=()=>scope===this.#scope&&this.#permissions!==null&&!!this.#token&&this.#state.connected;
+    this.#permissions=new PermissionConsole({patientId,active,request:async(suffix,body)=>{
+      if(!active()||!/^$|^\?after=GRANT-[A-F0-9]{32}$|^\/GRANT-[A-F0-9]{32}\/revocations$/.test(suffix))throw Error('Reopen permission management');
+      const control=new AbortController();this.#controllers.add(control);
+      const timer=setTimeout(()=>control.abort(),10000);
+      try{
+        const response=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/permissions'+suffix,this.#init(control,body));
+        if(!active()||control.signal.aborted){void response.body?.cancel().catch(()=>{});throw Error();}
+        if(response.status!==200){void response.body?.cancel().catch(()=>{});if(response.status===401)this.#httpError(401);throw new PermissionHttpError(response.status);}
+        const value=await json(response,131072);if(!active()||control.signal.aborted)throw Error();return value;
+      }finally{clearTimeout(timer);this.#controllers.delete(control);}
+    }},()=>this.#publish({}));
+    this.#publish({connected:true,phase:'idle',message:'Patient records cleared for permission management.'});
   }
   #encounterScope(patientId:string){
     const scope=this.#scope,read=this.#read,patient=this.#state.patient;
@@ -538,6 +572,7 @@ export class RegistrySession {
       sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
   };
   #clearPatientSessionData(preserveOtherManualIntents=false){
+    this.#permissions?.clear();this.#permissions=null;
     this.#suspensionIntent=null;
     this.#questionRetryKeys.clear();
     if(!preserveOtherManualIntents)this.#manualPassageIntents.clear();
@@ -566,6 +601,8 @@ export class RegistrySession {
     else this.#publish({phase:'error',patient:null,message:messages[status] || 'Unexpected API response. No patient information is displayed.'});
   }
   async read(id:string):Promise<void>{
+    if(this.permissionChangePending()){this.#publish({message:"Resolve the pending permission change first."});return;}
+    this.#permissions?.clear();this.#permissions=null;
     if(this.#suspensionIntent)return;
     this.#publish(emptySuspension());
     if(this.#state.patient?.patient_id!==id)this.#questionRetryKeys.clear();
@@ -611,6 +648,8 @@ export class RegistrySession {
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
   async create(requestKey:string,confirmed:boolean):Promise<void>{
+    if(this.permissionChangePending())return;
+    this.#permissions?.clear();this.#permissions=null;
     if(this.#suspensionIntent)return;
     if(this.#creating)return;
     if(!this.#token){this.#publish({message:'Connect an authorized synthetic credential first.'});return;}
@@ -636,13 +675,7 @@ export class RegistrySession {
     const target=this.#state.patient;
     if(this.#suspensionIntent||!this.#token||this.#state.phase!=='ready'||
        !target||target.status!=='active'||confirmed!==true)return;
-    if(this.#creating||this.#uploading||this.#savingQuestion||this.#savingReview||
-       this.#savingFollowthrough||this.#savingEvidence||this.#laboratoryWriting||
-       this.#questionRetryKeys.size>0||this.#labPending||
-       [...this.#manualPassageIntents.keys()].some(key=>JSON.parse(key)[0]===target.patient_id)||
-       [this.#state.importOutcome,this.#state.laboratoryPhase,this.#state.reviewReturnPhase,
-        this.#state.followthroughWritePhase,this.#state.evidenceWritePhase,this.#state.evidenceLinkPhase,
-        this.#state.labQuestionWritePhase].some(p=>['sending','saving','unknown'].includes(p))){
+    if(this.#hasPendingPatientWrite(target.patient_id)){
       this.#publish({suspensionPhase:'rejected',suspensionMessage:
         'Resolve the pending patient write before suspending access. Its recovery request is preserved.'});return;
     }

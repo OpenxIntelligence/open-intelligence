@@ -12,7 +12,7 @@ from . import __version__
 from .config import Settings
 from .contracts import Liveness, Readiness, VersionManifest
 from .database import Database
-from .access import Authentication, DenyAuthentication, SyntheticFileAuthentication
+from .access import Authentication, authentication_for_settings
 from .patients import patient_router
 from .request_limits import PatientRequestLimit
 
@@ -35,9 +35,7 @@ def create_app(settings: Settings | None = None, *, authentication: Authenticati
     database = Database(settings)
     authentication_kind = "trusted_provider" if authentication is not None else (
         "synthetic_fixture" if settings.access_file else "deny_all")
-    authentication = authentication if authentication is not None else (
-        SyntheticFileAuthentication(settings.access_file) if settings.access_file else DenyAuthentication()
-    )
+    authentication = authentication_for_settings(settings, authentication)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -81,7 +79,7 @@ def create_app(settings: Settings | None = None, *, authentication: Authenticati
 
     @app.get("/v1", response_model=VersionManifest, operation_id="version_v1")
     def version():
-        return VersionManifest(authentication=authentication_kind)
+        return VersionManifest(authentication=authentication_kind, patient_access_policy="persisted_grants" if settings.require_persisted_grants else "synthetic_fixture")
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, error):
