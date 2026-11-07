@@ -76,6 +76,10 @@ jobs:
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_review_convergence_migration.py'),
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_image_evidence_migration.py'),
               unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_image_review_migration.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_authored_evidence_origin.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_authored_evidence_authority.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_question_followthrough_storage.py'),
+              unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_read_authority.py'),
           ])
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           if result.skipped:

@@ -10,7 +10,8 @@ Earlier verified worker results do not qualify this addition automatically.
 This is the next bounded PF-06 / WS-08 / CMP-11 increment under
 [#104](https://github.com/OpenxIntelligence/open-intelligence/issues/104) and
 [#81](https://github.com/OpenxIntelligence/open-intelligence/issues/81). It records
-an obligation when the canonical source journal accepts `source.original.imported`
+an obligation when the canonical source journal accepts an operations-purpose
+`source.original.imported` event
 and lets a currently authorized worker reconcile affected pending Composer runs.
 The source, question, Composer, review and human follow-through owners remain
 canonical. The entire PF-01–PF-10 and PD-01–PD-16 objective remains unfinished.
@@ -39,8 +40,12 @@ PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade head
 Readiness requires exactly `0020_source_event_delivery`, extending
 `0019_composer_runs`. The migration captures new source-import events and
 strictly backfills selected historical source-import events against their
-canonical source/patient/case bindings. Malformed selected history fails the
-upgrade rather than being silently omitted or repaired. Existing originals and
+canonical source/patient/case bindings. Both existing source-owner purposes,
+`operations` and `research`, undergo the same strict lineage validation. Only
+operations events publish Composer delivery obligations; valid research imports
+and their original journal history remain supported without entering this queue.
+Malformed selected history, including research history, fails the upgrade
+rather than being silently omitted or repaired. Existing originals and
 run history are retained; populated delivery history cannot be discarded by
 downgrade.
 

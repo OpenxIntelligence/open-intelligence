@@ -33,6 +33,7 @@ from oi_api.followthrough_contracts import ManualTaskDependency
 from oi_api.composer_preflight import SOURCE_SNAPSHOT_CONTRACT
 from oi_api.migrate import migrate
 from http_support import running_server
+import test_evidence_convergence_migrations as existing_upgrades
 from test_canonical_review_flow import create_question
 from test_patients import TOKEN_A, request
 from test_source_versions import SourceVersionFixture, AMENDED
@@ -608,20 +609,44 @@ class FollowthroughPostgresTests(SourceVersionFixture):
             migrate(self.admin, "downgrade", "0008_review_convergence")
         self.assertEqual(self.rows(), before)
 
+
+class FollowthroughOwnerMigrationTests(SourceVersionFixture):
+    services = existing_upgrades.EvidenceConvergenceMigrationTests.services
+    start_at = existing_upgrades.EvidenceConvergenceMigrationTests.start_at
+    snapshot = existing_upgrades.EvidenceConvergenceMigrationTests.snapshot
+    upgrade_preserving = existing_upgrades.EvidenceConvergenceMigrationTests.upgrade_preserving
+
     def test_migration_refuses_competing_table_owner_and_preserves_existing_questions(self):
-        before_question_rows = self.rows()[2]
-        migrate(self.admin, "downgrade", "0008_review_convergence")
+        # Seed the genuine predecessor through existing owners while no source
+        # delivery history exists. Current-head imports cannot be downgraded
+        # past the later outbox guard merely to reach this original owner probe.
+        self.start_at("0008_review_convergence")
+        before = self.snapshot()
+        with self.engine.connect() as connection:
+            before_question_rows = connection.execute(text(
+                "SELECT * FROM investigation.source_questions ORDER BY 1"
+            )).all()
         with self.engine.begin() as connection:
             connection.execute(text("CREATE TABLE coordination.question_followthrough_tasks (foreign_owner text)"))
-        with self.assertRaises(CommandError):
+        conflicting_owner = self.snapshot()
+        with self.assertRaisesRegex(
+            CommandError, "Existing follow-through owner requires explicit reconciliation"
+        ):
             migrate(self.admin, "upgrade", "head")
+        self.assertEqual(self.snapshot(), conflicting_owner)
         with self.engine.begin() as connection:
+            self.assertEqual(connection.execute(text(
+                "SELECT version_num FROM public.alembic_version"
+            )).scalars().all(), ["0008_review_convergence"])
             self.assertIsNone(connection.execute(text(
                 "SELECT to_regclass('coordination.question_followthrough_events')"
             )).scalar_one())
             connection.execute(text("DROP TABLE coordination.question_followthrough_tasks"))
-        migrate(self.admin, "upgrade", "head")
-        self.assertEqual(self.rows()[2], before_question_rows)
+        self.upgrade_preserving(before)
+        with self.engine.connect() as connection:
+            self.assertEqual(connection.execute(text(
+                "SELECT * FROM investigation.source_questions ORDER BY 1"
+            )).all(), before_question_rows)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,8 @@ from sqlalchemy.exc import DBAPIError
 from alembic.util.exc import CommandError
 from oi_api.migrate import migrate
 from oi_api.sources import PostgresSourceVersions
+from oi_api.case_bindings import CanonicalCaseBindings
+from open_intelligence.postgres_registry import PostgresPatientRegistry
 import test_evidence_convergence_migrations as previous
 from test_source_versions import SourceVersionFixture, ORIGINAL, AMENDED, DIFFERENT
 
@@ -38,6 +40,26 @@ class SourceEventMigrationTests(SourceVersionFixture):
     start_at = previous.EvidenceConvergenceMigrationTests.start_at
     snapshot = previous.EvidenceConvergenceMigrationTests.snapshot
     upgrade_preserving = previous.EvidenceConvergenceMigrationTests.upgrade_preserving
+
+    def research_source(self):
+        pooled = self.engine.raw_connection()
+        try:
+            registry = PostgresPatientRegistry(pooled.driver_connection,
+                lambda actor, subject, action, purpose:
+                    actor == 'ACTOR-RESEARCH' and purpose == 'research')
+            common = dict(organization='ORG-ALPHA', actor='ACTOR-RESEARCH', purpose='research')
+            patient = registry.create_patient(**common, request_key='RESEARCH-PATIENT')['patient_id']
+            CanonicalCaseBindings(registry).bind(
+                patient, **common, case_id='CASE-RESEARCH', source_organization='ORG-INSTITUTION',
+                source_system='SYS-SYNTH', source_subject_ref='RESEARCH-SUBJECT',
+                review_ref='RESEARCH-REVIEW')
+            imported = PostgresSourceVersions(registry).import_original(
+                patient, 'CASE-RESEARCH', ORIGINAL.replace('CASE-ALPHA', 'CASE-RESEARCH').encode(),
+                **common, recheck_authority=lambda: None)
+            return patient, imported['source_id']
+        finally:
+            pooled.driver_connection.rollback()
+            pooled.close()
 
     def seed(self):
         patient, _, _ = self.start_at(PARENT)
@@ -88,6 +110,54 @@ class SourceEventMigrationTests(SourceVersionFixture):
         self.assertEqual(e['occurred_at'], journal['occurred_at'])
         self.assertEqual(e['contract'], 'oi.h1-source-context-event/1')
         self.assertNotIn('actor', e)
+
+    def test_live_research_import_preserves_custody_without_operations_delivery(self):
+        self.seed()
+        before = self.snapshot()[0][OUTBOX]
+        patient, source = self.research_source()
+        with self.engine.connect() as c:
+            self.assertEqual(c.execute(text(
+                "SELECT count(*) FROM identity.identity_domain_events "
+                "WHERE patient_id=:p AND event_type='source.original.imported' "
+                "AND metadata_json->>'source_id'=:s"), {'p': patient, 's': source}).scalar_one(), 1)
+            self.assertEqual(c.execute(text(
+                "SELECT raw FROM clinical_source.source_versions WHERE source_id=:s"),
+                {'s': source}).scalar_one(), ORIGINAL.replace('CASE-ALPHA', 'CASE-RESEARCH').encode())
+        self.assertEqual(self.snapshot()[0][OUTBOX], before)
+        committed = self.snapshot()[0]
+        with self.assertRaises(DBAPIError), self.engine.begin() as c:
+            c.execute(text("INSERT INTO identity.identity_domain_events(patient_id,event_type,metadata_json) "
+                           "VALUES(:p,'source.original.imported',CAST(:m AS jsonb))"),
+                {'p': patient, 'm': json.dumps({'case_id': 'CASE-RESEARCH', 'source_id': source,
+                                               'version': 999, 'actor': 'ACTOR-RESEARCH'})})
+        self.assertEqual(self.snapshot()[0], committed)
+
+    def test_backfill_validates_research_lineage_without_creating_operations_delivery(self):
+        patient, _, _ = self.start_at(PARENT)
+        research_patient, _ = self.research_source()
+        before = self.snapshot()
+        self.upgrade_preserving(before)
+        with self.engine.connect() as c:
+            self.assertEqual(c.execute(text(f'SELECT patient_id FROM {OUTBOX}')).scalars().all(), [patient])
+            self.assertEqual(c.execute(text(
+                "SELECT count(*) FROM identity.identity_domain_events "
+                "WHERE patient_id=:p AND event_type='source.original.imported'"),
+                {'p': research_patient}).scalar_one(), 1)
+
+    def test_malformed_research_history_is_not_silently_filtered_from_backfill(self):
+        self.start_at(PARENT)
+        patient, source = self.research_source()
+        with self.engine.begin() as c:
+            c.execute(text("INSERT INTO identity.identity_domain_events(patient_id,event_type,metadata_json) "
+                           "VALUES(:p,'source.original.imported',CAST(:m AS jsonb))"),
+                {'p': patient, 'm': json.dumps({'case_id': 'CASE-RESEARCH', 'source_id': source,
+                                               'version': 999, 'actor': 'ACTOR-RESEARCH'})})
+        before = self.snapshot()
+        with self.assertRaises(DBAPIError):
+            migrate(self.admin, 'upgrade', 'head')
+        self.assertEqual(self.snapshot(), before)
+        with self.engine.connect() as c:
+            self.assertIsNone(c.execute(text("SELECT to_regclass('coordination.source_event_outbox')")).scalar_one())
 
     def test_bad_historical_selected_metadata_aborts_upgrade_without_partial_schema(self):
         patient, _, _ = self.start_at(PARENT)

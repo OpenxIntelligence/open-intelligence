@@ -29,7 +29,7 @@ wire contract.
 
 ## Behavior to establish
 
-An accepted source import must durably record its delivery obligation in the
+An accepted operations-purpose source import must durably record its delivery obligation in the
 same transaction as the existing canonical journal event. A separately invoked,
 currently authorized worker reconciles that patient's current case context
 through the source/question owners and asks Composer to retire only outdated
@@ -87,7 +87,12 @@ cannot leave a transport obligation. Exact import replay must not manufacture
 another journal event or outbox record.
 
 Backfill selects existing `source.original.imported` journal rows and applies the
-same strict binding validation. A malformed selected historical event fails the
+same strict binding validation to both existing source-owner purposes, operations
+and research. Only validated operations events enter the Composer outbox. Valid
+research imports retain their canonical source custody and journal history
+without acquiring an operations delivery obligation. This purpose selection
+must occur after lineage validation, for both live capture and historical rows.
+A malformed selected historical event, including research history, fails the
 upgrade; it is not silently skipped, repaired or converted to a fabricated
 receipt. Unrelated event types do not enter this adapter. Existing originals,
 commands, history and retry receipts survive the additive upgrade. Downgrade
