@@ -14,6 +14,7 @@ from .contracts import Liveness, Readiness, VersionManifest
 from .database import Database
 from .access import Authentication, DenyAuthentication, SyntheticFileAuthentication
 from .patients import patient_router
+from .veterinary import veterinary_router
 from .request_limits import PatientRequestLimit
 
 
@@ -91,4 +92,5 @@ def create_app(settings: Settings | None = None, *, authentication: Authenticati
 
     app.include_router(patient_router(database, authentication, image_archive=image_archive))
 
+    app.include_router(veterinary_router(database, authentication))
     return app

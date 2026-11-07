@@ -60,6 +60,8 @@ class RegistryMigrationTests(unittest.TestCase):
         # unexpected dependent object must stop cleanup rather than be erased.
         with self.engine.begin() as connection:
             connection.execute(text("DROP TABLE IF EXISTS public.oi_registry_external_reference"))
+            connection.execute(text("DROP TABLE IF EXISTS coordination.veterinary_cases"))
+            connection.execute(text("DROP TABLE IF EXISTS identity.veterinary_animals"))
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_manual_dependencies"))
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_events"))
             connection.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_tasks"))
@@ -140,7 +142,7 @@ class RegistryMigrationTests(unittest.TestCase):
         migrate(self.settings, "upgrade", "head")
         # Missing migration must fail as an unmet contract, not as a later
         # undefined-table error in a registry method.
-        self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), TABLES,
+        self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), TABLES | {"veterinary_animals"},
                          "The canonical patient identity migration has not been applied")
 
     def _scalar(self, statement):
@@ -247,7 +249,7 @@ class RegistryMigrationTests(unittest.TestCase):
         self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), {"oi_registry_unrelated_fixture"})
         self.assertEqual(self._scalar("SELECT id FROM identity.oi_registry_unrelated_fixture"), 42)
         migrate(self.settings, "upgrade", "head")
-        self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), TABLES | {"oi_registry_unrelated_fixture"})
+        self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), TABLES | {"veterinary_animals"} | {"oi_registry_unrelated_fixture"})
         self.assertEqual(self._scalar("SELECT id FROM identity.oi_registry_unrelated_fixture"), 42)
         with self._registry() as registry:
             self.assertFalse(self._create(registry)["duplicate"])
@@ -261,7 +263,7 @@ class RegistryMigrationTests(unittest.TestCase):
             ))
         with self.assertRaises(SQLAlchemyError):
             migrate(self.settings, "downgrade", BASELINE_REVISION)
-        self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), TABLES)
+        self.assertEqual(set(inspect(self.engine).get_table_names(schema="identity")), TABLES | {"veterinary_animals"})
         self.assertEqual(self._scalar("SELECT version_num FROM public.alembic_version"), REGISTRY_REVISION)
         self.assertIn("oi_registry_external_reference", inspect(self.engine).get_table_names(schema="public"))
 

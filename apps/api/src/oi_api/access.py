@@ -10,7 +10,7 @@ import hmac
 import json
 import re
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Annotated, Literal, Protocol
 
 from fastapi import HTTPException, Request
 from pydantic import Field, ValidationError, field_validator, model_validator
@@ -24,12 +24,16 @@ class AccessUnavailable(Exception):
     """The trusted context provider is unavailable; details are not public."""
 
 
+AnimalId = Annotated[str, Field(pattern=r"^ANM-[0-9A-F]{32}$")]
+
+
 class Principal(Contract):
     actor: str
     organization: str
     purpose: Literal["operations", "research"]
-    actions: frozenset[Literal["patient_create", "patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "image_import", "image_read", "image_original_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update", "evidence_read", "evidence_link", "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess", "authored_evidence_withdraw", "authored_evidence_original_read", "evidence_report_export"]] = frozenset()
+    actions: frozenset[Literal["patient_create", "patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "image_import", "image_read", "image_original_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update", "evidence_read", "evidence_link", "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess", "authored_evidence_withdraw", "authored_evidence_original_read", "evidence_report_export", "animal_register", "animal_read", "veterinary_case_open", "veterinary_case_read"]] = frozenset()
     patient_ids: frozenset[str] = Field(default_factory=frozenset, max_length=256)
+    animal_ids: frozenset[AnimalId] = Field(default_factory=frozenset, max_length=256)
     expires_at: datetime
 
     @field_validator("actor", "organization")

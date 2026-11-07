@@ -58,6 +58,8 @@ def main():
                 cd.wait("document.body.textContent.includes('Credential present')",'in-memory synthetic session')
                 assert cd.evaluate("!document.querySelector('#credential')")
             def read():cd.evaluate("document.querySelector('#patient-id').form.requestSubmit()")
+            from veterinary_registry_journey import exercise as exercise_veterinary_registry
+            exercise_veterinary_registry(cd, value, credentials, tokens, write_grants)
             assert cd.evaluate("document.querySelector('#patient-id').disabled")
             connect()
             cd.evaluate("document.querySelector('.create-panel').open=true;document.querySelector('#synthetic-confirm').click();document.querySelector('#synthetic-confirm').form.requestSubmit()")
