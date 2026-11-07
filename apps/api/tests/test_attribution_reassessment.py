@@ -3,12 +3,27 @@ import hashlib
 from pathlib import Path
 import unittest
 
-from oi_api.attribution_reassessment import compare_versions
+from oi_api.attribution_reassessment import compare_versions, comparison_snapshot
 from open_intelligence.patient_registry import PatientRegistryError
 from open_intelligence.store import parse_report
 
 
 class ReassessmentTests(unittest.TestCase):
+    def test_snapshot_binds_scope_and_exact_content_without_mutable_aliases(self):
+        from copy import deepcopy
+        pair = {"recorded": {"finding": {"source_statement": "Fictional old passage"}},
+                "latest": {"finding": None}}
+        args = dict(patient_id="PAT-A", case_id="CASE-A", question_id="QUESTION-A",
+                    receipt_id="REVIEW-A", first=pair, second=deepcopy(pair))
+        original = comparison_snapshot(**args)
+        self.assertEqual(original, comparison_snapshot(**args))
+        for key in ("patient_id", "case_id", "question_id", "receipt_id"):
+            self.assertNotEqual(original["sha256"], comparison_snapshot(**dict(args, **{key: "OTHER"}))["sha256"])
+        pair["latest"]["finding"] = {"source_statement": "Fictional amended passage"}
+        self.assertIsNone(original["content"]["first"]["latest"]["finding"])
+        self.assertNotEqual(original["sha256"], comparison_snapshot(**args)["sha256"])
+        self.assertFalse(original["content"]["clinical_approval"])
+
     def setUp(self):
         directory = Path(__file__).resolve().parents[3] / "examples/synthetic"
         self.raw = (directory / "episode-origin-consult-v1.txt").read_text()

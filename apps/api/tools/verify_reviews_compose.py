@@ -261,6 +261,13 @@ def main():
             def comparison():
                 status, packet = request(comparison_url)
                 assert status == 200 and packet["clinical_approval"] is False
+                content = {"contract": "oi.synthetic-attribution-comparison-snapshot/1",
+                    "synthetic": True, "clinical_approval": False,
+                    "patient_id": packet["patient_id"], "case_id": packet["case_id"],
+                    "question_id": packet["question_id"], "review_receipt_id": packet["receipt_id"],
+                    "first": packet["first"], "second": packet["second"]}
+                assert packet["comparison_sha256"] == hashlib.sha256(
+                    json.dumps(content, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
                 access_id = packet.pop("access_receipt_id")
                 assert access_id.startswith("ACCESS-")
                 return packet
