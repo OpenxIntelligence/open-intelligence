@@ -65,7 +65,7 @@ class SourceEventRecoveryPostgresTests(source_fixture.SourceVersionFixture):
     def setUp(self):
         super().setUp()
         self.creds[0]["actions"].extend(("composer_context_read", "question_create",
-                                         "question_read", "source_brief_export"))
+                                         "question_read", "source_brief_export", "source_delivery_retry"))
         self.write()
 
     def snapshot(self, *, settings=None):
@@ -245,6 +245,11 @@ class SourceEventRecoveryPostgresTests(source_fixture.SourceVersionFixture):
     def test_current_credentials_and_audit_tail_recheck_roll_back_recovery(self):
         _, _, failed = self.terminal_amendment()
         before = self.snapshot()
+        self.creds[0]["actions"].remove("source_delivery_retry")
+        self.write()
+        self.assertEqual(self.recover(failed), {"status": "blocked"})
+        self.assertEqual(self.snapshot(), before)
+        self.creds[0]["actions"].append("source_delivery_retry")
         self.creds[0]["actions"].remove("source_read")
         self.write()
         self.assertEqual(self.recover(failed), {"status": "blocked"})
@@ -277,8 +282,12 @@ class SourceEventRecoveryPostgresTests(source_fixture.SourceVersionFixture):
             code, grant, _ = self.grant(base, patient, permission_fixture.grant_payload(
                 request_key="GRANT-RECOVERY", actions=sorted(delivery_fixture.ACTIONS)))
             self.assertEqual(code, 200, grant)
+            self.assertEqual(self.recover(failed, settings=governed), {"status": "blocked"})
+            code, retry_grant, _ = self.grant(base, patient, permission_fixture.grant_payload(
+                request_key="GRANT-EXPLICIT-RETRY", actions=["source_delivery_retry"]))
+            self.assertEqual(code, 200, retry_grant)
             self.assertEqual(self.recover(failed, settings=governed)["status"], "recovery_requested")
-            self.assertEqual(self.revoke(base, patient, grant["grant_id"])[0], 200)
+            self.assertEqual(self.revoke(base, patient, retry_grant["grant_id"])[0], 200)
         before = self.snapshot()
         self.assertEqual(self.recover(failed, settings=governed), {"status": "blocked"})
         self.assertEqual(self.snapshot(), before)

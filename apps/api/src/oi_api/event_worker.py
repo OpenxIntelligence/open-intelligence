@@ -15,7 +15,7 @@ from .composer_runs import ACTIONS, PostgresComposerRuns
 from .config import Settings
 from .database import Database
 from .registry_context import registry_for_principal
-from .source_event_delivery import EventLeaseLost, PostgresSourceEventDelivery
+from .source_event_delivery import EventLeaseLost, PostgresSourceEventDelivery, RECOVERY_ACTION
 from .worker import _token_reader
 
 
@@ -30,12 +30,13 @@ def _run(settings: Settings, token_provider: Callable[[], str], patient_id: str,
         PostgresSourceEventDelivery.validate_page(limit, after_event)
     if recovery is not None:
         PostgresSourceEventDelivery.validate_recovery(**recovery)
+    actions = (*ACTIONS, RECOVERY_ACTION) if recovery is not None else ACTIONS
     provider = authentication_for_settings(settings, authentication)
 
     def fresh():
         current = authenticate_token(token_provider(), provider)
         if (current.purpose != "operations" or patient_id not in current.patient_ids
-                or not set(ACTIONS).issubset(current.actions)):
+                or not set(actions).issubset(current.actions)):
             raise PatientRegistryDenied("Event worker scope unavailable")
         return current
 
@@ -54,7 +55,7 @@ def _run(settings: Settings, token_provider: Callable[[], str], patient_id: str,
                         initial.actor, initial.organization, initial.purpose):
                     raise PatientRegistryDenied("Event worker authority changed")
                 live = registry_for_principal(connection, current)
-                for action in ACTIONS:
+                for action in actions:
                     live._allow(current.actor, patient_id, action, current.purpose)
 
             deliveries = PostgresComposerRuns(registry).source_events()

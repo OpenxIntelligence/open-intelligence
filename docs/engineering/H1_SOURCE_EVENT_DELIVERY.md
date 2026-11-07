@@ -230,7 +230,8 @@ python -m oi_api.event_worker --recover DELIVERY-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 
 The identifiers above are fictional examples; use the freshly inspected receipt.
 The command requires the same independently supplied current worker authority and
-four grants as ordinary delivery. Persisted-grant mode applies to inspection,
+four grants as ordinary delivery, plus the explicit `source_delivery_retry` action
+introduced by concurrent owner candidate #626. Persisted-grant mode applies to inspection,
 recovery and later execution. The actor, organization, purpose, patient, case,
 consumer and source event retain their original identities. Changing actor does
 not recover another actor's delivery.
@@ -300,3 +301,15 @@ Temporal, DBOS, service-delegated authentication, production database roles,
 model execution or cloud deployment is installed. Clinical and scientific
 consumers, production identity/consent, real-PHI qualification and the remainder
 of the full platform remain separate construction and release work.
+
+### Concurrent recovery lineage
+
+Concurrent draft #626 at `0e91e084a1ad6dc2f83afc71e7c3697f56801052`
+introduces `0028_source_delivery_retry` from the older #613 foundation. This
+connected candidate adopts the same explicit permission name and retains current
+persisted-grant enforcement, but does not claim that its `0030_source_event_recovery`
+history is interchangeable with #626's audit-linked migration. Both source histories
+remain available for review. An explicit populated migration/contract convergence
+and one selected operational command are required before either path lands together.
+Do not apply one candidate's migration files over the other's populated database.
+The exact-head results here qualify this connected candidate alone.

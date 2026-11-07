@@ -17,6 +17,7 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 CONSUMER = "composer-source-context/1"
+RECOVERY_ACTION = "source_delivery_retry"
 FIELDS = (
     "delivery_id", "event_id", "consumer", "patient_id", "case_id", "origin_org",
     "actor", "purpose", "state", "revision", "attempt_count", "failure_count",
@@ -190,6 +191,7 @@ class PostgresSourceEventDelivery:
         self.validate_recovery(delivery_id, event_id, expected_revision)
         with self.registry.transaction():
             self._scope(patient_id, case_id, organization, actor, purpose, recheck_authority)
+            self.registry._allow(actor, patient_id, RECOVERY_ACTION, purpose)
             row = self._load(dict(delivery_id=delivery_id, event_id=event_id,
                                   patient_id=patient_id, case_id=case_id, origin_org=organization,
                                   actor=actor, purpose=purpose), lock=True)

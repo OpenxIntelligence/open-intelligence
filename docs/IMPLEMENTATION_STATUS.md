@@ -5,7 +5,7 @@
 Extends the connected patient-history/imaging/permission foundation #620 with
 #613's scoped relay status and failure inspection. The source-event worker can
 explicitly request recovery of an inspected terminal revision. A fresh same-actor
-permission check, immutable recovery receipt and queued lifecycle commit together.
+permission check including `source_delivery_retry`, immutable recovery receipt and queued lifecycle commit together.
 Exact retries recover their receipt without resetting later attempts. Ordinary
 worker execution retains the source/Composer owners and reconciliation checks.
 Invalid-event failures and delivered work cannot be reopened through this command.
