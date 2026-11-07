@@ -4,9 +4,12 @@ import type {SourceIndex} from './source-contracts';
 import type {SourceImagesState} from './source-images';
 import {groupSourceImages} from './image-study-groups';
 import {ImagingReportChronology} from './imaging-report-chronology-panel';
+import {browseDiagnosticReports} from './diagnostic-report-browser';
+import type {DiagnosticFilters} from './diagnostic-report-browser';
+import {DiagnosticReportControls,DiagnosticReportPagination} from './diagnostic-report-controls';
 
 export type ReadingView = 'patient' | 'clinical';
-export type SourceFilters = {query: string; versionState: string};
+export type SourceFilters = DiagnosticFilters;
 export const emptySourceFilters: SourceFilters = {query: '', versionState: 'all'};
 
 function ImagePreview({preview,onClose}:{preview:NonNullable<SourceImagesState['sourceImagePreview']>;onClose?:()=>void}) {
@@ -55,11 +58,22 @@ export function SourceReading({index, kind, view, filters, onFiltersChange, busy
   const input = useRef<HTMLInputElement>(null);
   const readingRoot = useRef<HTMLDivElement>(null);
   const selectedFromChronology = useRef<string|null>(null);
+  const pageFocus = useRef(false);
   const previewOpener = useRef<HTMLButtonElement>(null);
   const imageOpeners = useRef(new Map<string,HTMLButtonElement>());
+  const diagnosticKind = kind === 'pathology' || kind === 'molecular' ? kind : null;
+  const filterKey = JSON.stringify(filters);
+  const [pagination,setPagination] = useState({index,kind,filterKey,page:1});
+  const requestedPage = pagination.index === index && pagination.kind === kind && pagination.filterKey === filterKey ? pagination.page : 1;
+  const diagnostic = diagnosticKind ? browseDiagnosticReports(index,diagnosticKind,filters,requestedPage) : null;
+  useEffect(()=>{
+    if(!pageFocus.current)return;
+    pageFocus.current=false;
+    readingRoot.current?.querySelector<HTMLElement>('[data-testid="source-version"] h4')?.focus();
+  },[diagnostic?.page]);
   const search = filters.query.trim().toLowerCase();
   const reports = kind ? index.sources.filter(source => source.kind === kind) : index.sources;
-  const sources = reports.filter(source =>
+  const sources = diagnostic ? diagnostic.rows.map(row => row.source) : reports.filter(source =>
     (filters.versionState === 'all' || source.state === filters.versionState) &&
     (!search || [source.document_id, source.kind, source.event_date, source.issued_at,
       source.source_id, source.specimen_id ?? ''].join(' ').toLowerCase().includes(search)))
@@ -86,22 +100,25 @@ export function SourceReading({index, kind, view, filters, onFiltersChange, busy
     {kind==='imaging'&&<ImagingReportChronology sources={index.sources}
       selectedSourceId={reports.some(source=>source.source_id===filters.query)?filters.query:null}
       onSelect={sourceId=>{selectedFromChronology.current=sourceId;onFiltersChange({query:sourceId,versionState:'all'});}}/>}
+    {diagnostic&&diagnosticKind&&<DiagnosticReportControls kind={diagnosticKind} result={diagnostic} filters={filters} onChange={onFiltersChange}/>}
     <div className="source-filters" role="search" aria-label="Filter loaded source versions">
       <div><label htmlFor="source-filter">Filter loaded sources</label><input id="source-filter" ref={input} type="search"
         value={filters.query} onChange={e => onFiltersChange({...filters, query: e.target.value})}
-        placeholder="Document, type, date or source ID" aria-describedby="source-filter-help"/></div>
+        placeholder={diagnostic?'Statement, finding, document, date or source ID':'Document, type, date or source ID'} aria-describedby="source-filter-help"/></div>
       <div><label htmlFor="source-state">Version status</label><select id="source-state" value={filters.versionState}
         onChange={e => onFiltersChange({...filters, versionState: e.target.value})}>
         <option value="all">All versions</option><option value="current">Current</option><option value="superseded">Superseded</option>
       </select></div>
     </div>
     <div className="filter-summary"><p id="source-filter-help">Only filters sources already loaded for this case.</p>
-      <p role="status" aria-live="polite">{sources.length} of {reports.length} versions shown</p>
-      {(filters.query || filters.versionState !== 'all') && <button type="button" data-testid="clear-source-filters" onClick={clear}>Clear filters</button>}
+      <p role="status" aria-live="polite">{diagnostic?`${diagnostic.start}–${diagnostic.end} of ${diagnostic.matchedReports} matching versions · ${reports.length} loaded`:`${sources.length} of ${reports.length} versions shown`}</p>
+      {(filters.query || filters.versionState !== 'all' || filters.specimen !== undefined || filters.reportedState !== undefined) && <button type="button" data-testid="clear-source-filters" onClick={clear}>Clear filters</button>}
     </div>
+    {diagnostic&&<DiagnosticReportPagination result={diagnostic} onPage={page=>{pageFocus.current=true;setPagination({index,kind,filterKey,page});}}/>}
     {sources.length === 0 ? <div className="source-empty" data-testid="source-no-match"><h4>No sources match these filters</h4><p>The loaded records have not changed. Clear the filters to see all versions.</p></div> :
       <ol className="source-list">{sources.map(item => {
-        const findings = index.source_reported_assertions.filter(f => f.source_id === item.source_id);
+        const diagnosticRow = diagnostic?.rows.find(row=>row.source.source_id===item.source_id);
+        const findings = diagnosticRow?.findings ?? index.source_reported_assertions.filter(f => f.source_id === item.source_id);
         return <li key={item.source_id} data-testid="source-version" data-source-id={item.source_id} className={'source-row ' + item.state}>
           <div className="source-heading"><h4 tabIndex={-1}>{item.document_id} · v{item.version}</h4><span className="record-state">{item.state}</span></div>
           <dl className="source-metadata source-dates">
@@ -109,6 +126,7 @@ export function SourceReading({index, kind, view, filters, onFiltersChange, busy
             <div><dt>Issued</dt><dd><time dateTime={item.issued_at}>{item.issued_at}</time></dd></div><div><dt>Specimen</dt><dd>{item.specimen_id ?? 'Not recorded'}</dd></div>
           </dl>
           {findings.length > 0 && <div className="source-quotes"><p className="quote-label">{view === 'patient' ? 'What the report says' : 'Source-reported statements'}</p>
+            {diagnosticRow&&findings.length<diagnosticRow.totalFindings&&<p className="small" data-testid="diagnostic-filtered-statements">Showing {findings.length} of {diagnosticRow.totalFindings} quoted statements in this report. Clear filters for the full loaded context.</p>}
             <ul className="finding-list">{findings.map((finding, i) => <li key={finding.source_id + ':' + finding.source_line + ':' + i} data-testid="source-finding">
               <p><strong>{finding.finding_key}</strong> · reported state: {finding.reported_state} · line {finding.source_line}</p>
               <SourceOncologyLabel context={finding.oncology} state={finding.reported_state}/>

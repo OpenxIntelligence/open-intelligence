@@ -1,0 +1,29 @@
+.source-reading .diagnostic-report-controls {
+  margin: 1.25rem 0;
+  padding: 1rem;
+  border: 1px solid var(--line, #d6dfdf);
+  border-radius: 12px;
+  background: var(--surface, #f7faf9);
+  overflow-wrap: anywhere;
+}
+.source-reading .diagnostic-report-controls h3 { margin: 0 0 .5rem; }
+.source-reading .diagnostic-report-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+.source-reading .diagnostic-report-fields > div { min-width: 0; }
+.source-reading .diagnostic-report-fields label { display: block; margin-bottom: .4rem; }
+.source-reading .diagnostic-report-fields select { width: 100%; min-width: 0; max-width: 100%; }
+.source-reading .diagnostic-report-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin: 1rem 0;
+}
+@media (max-width: 600px) {
+  .source-reading .diagnostic-report-fields { grid-template-columns: minmax(0, 1fr); }
+}

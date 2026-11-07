@@ -407,6 +407,8 @@ def main():
             cd.wait(f"Boolean({alpha_row})",'pathology case mapping')
             cd.evaluate(f"{alpha_row}.querySelector('[data-testid=load-sources]').click()")
             cd.wait("document.querySelectorAll('[data-testid=source-version]').length>=2",'pathology report and amendment')
+            from diagnostic_report_journey import pathology as exercise_pathology, molecular as exercise_molecular
+            exercise_pathology(cd,value,original)
             cd.evaluate("document.querySelector('[data-testid=open-original]').click()")
             cd.wait("document.querySelector('[data-testid=server-original]')?.textContent.includes('Type: pathology')", 'exact pathology original')
             select_section('Molecular')
@@ -428,6 +430,7 @@ def main():
                     'molecular report follows its recorded type even with a misleading document name')
             cd.evaluate("document.querySelector('[data-testid=open-original]').click()")
             cd.wait("document.querySelector('[data-testid=server-original]')?.textContent==="+json.dumps(molecular),'molecular original round-trip')
+            exercise_molecular(cd,value,add_synthetic,root,diagnostic_case,molecular,out)
             select_section('Overview')
             credentials[0]['patient_ids']=[];write_grants();read()
             cd.wait("!document.querySelector('[data-testid=patient-card]') && document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'revoked read removes prior view')
