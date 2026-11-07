@@ -1,0 +1,73 @@
+{
+  "observed_main": "a5a5482f815ceb3c322cdfb32ab8b18c1c0e8709",
+  "parent": {
+    "commit": "eb944c0ab88e38630404b920c5aadcc445658125",
+    "matched_blobs": 647,
+    "missing": [],
+    "mismatched": [],
+    "tree_truncated": false
+  },
+  "repair": {
+    "head": "8ff6e9e5a0389a1142ca479a6705c599cbda88e7",
+    "artifact_sha256": "a3356bdd8f19f904928de90e220a691e9c650fddfc84b0f40c87a215033ef026",
+    "artifact_commit": "8ff6e9e5a0389a1142ca479a6705c599cbda88e7",
+    "matched_blobs": 652,
+    "missing": [],
+    "mismatched": [],
+    "tree_truncated": false
+  },
+  "parent_api_artifact": {
+    "id": 13335227114,
+    "size_bytes": 2933,
+    "sha256": "5cfa74cd0f2880198be99cd5e9cbb119618d655883ca5fe1169d73928d554061"
+  },
+  "parent_api_run": 41847274754,
+  "parent_browser_run": 41847274552,
+  "repair_api_run": 41883746990,
+  "repair_browser_run": 41883747065,
+  "limits": [
+    "Synthetic software evidence only",
+    "No clinical validation",
+    "No merge or deployment",
+    "No new dependencies"
+  ],
+  "verified_at_utc": "2026-11-04T18:36:05Z",
+  "repair_api_status": "success",
+  "repair_browser_status": "success",
+  "api_postgres_tests": 709,
+  "reference_tests": 765,
+  "client_tests": 484,
+  "frontend_rights_tests": 13,
+  "local_parser_tests": 8,
+  "repair_api_artifact": {
+    "id": 13351054557,
+    "size_bytes": 2943,
+    "sha256": "e4c946a1cb5e56cedb9d6a93c50dbc13b5f0ef5cac29b2cebd023ec59ec4ac65",
+    "contents": [
+      "evidence-recovery.json",
+      "source-document-recovery.json"
+    ]
+  },
+  "api_log_receipts": [
+    "2026-11-04T18:22:24.1548955Z Ran 709 tests in 917.920s",
+    "2026-11-04T18:22:24.1549267Z OK",
+    "2026-11-04T18:23:55.4636316Z Ran 765 tests in 89.945s",
+    "2026-11-04T18:23:55.4636696Z OK",
+    "2026-11-04T18:28:05.2272581Z PASS RESTORED DOCUMENT HTTP: text/PDF exact bytes, page anchors, immutable history, exact current/historical selection references and hashes, exact retries, independent grants and restarts; restored-only access receipts",
+    "2026-11-04T18:28:25.8933406Z PASS FHIR LABORATORY RECOVERY: exact JSON source versions, typed observations, explicit amendment, API/DB restart, pg_dump/pg_restore, exact retry and restored binding revocation; source-reported only, no clinical interpretation.",
+    "2026-11-04T18:32:21.1037117Z PASS FOLLOWTHROUGH COMPOSE: actual canonical HTTP lifecycle, acknowledgment gate, exact retry identity, immutable provenance after source amendment, independent rights, API/DB restarts, actual pg_dump/pg_restore, restored HTTP reads/replays and binding revocation; three synthetic tasks and nine durable task events; no clinical approval.",
+    "2026-11-04T18:32:21.1039522Z PASS EVIDENCE RECOVERY: fictional metadata, immutable citation, exact retry and append-only rights revocation survived API/DB restarts and actual pg_dump/pg_restore; restored HTTP withheld revoked title/URL and denied the revoked patient binding; no clinical appraisal.",
+    "2026-11-04T18:35:59.2263816Z PASS RESTORED READABLE HTTP: exact originals/report/retries; restored-only access receipts",
+    "2026-11-04T18:35:59.2264639Z PASS RESTORED MANUAL CONTEXT: exact passage revision/report bytes/retry and restored-only authority",
+    "2026-11-04T18:35:59.2266862Z PASS EVIDENCE RECOVERY: actual HTTP case evidence, immutable originals/comparisons/report, content-specific rights, exact retry after evidence/source amendment, historical withholding, API/DB restart, complete dump/restore equality and actual restored HTTP; readable/withheld reports, same-key recovery, independent grants and restored revoked binding; original database unchanged; no clinical/model execution."
+  ],
+  "recovery_stages_passed": [
+    "patient",
+    "source",
+    "fhir_laboratory",
+    "image",
+    "review",
+    "followthrough",
+    "evidence"
+  ]
+}

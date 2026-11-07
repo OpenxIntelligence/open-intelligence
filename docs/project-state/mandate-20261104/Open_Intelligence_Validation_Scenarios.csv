@@ -1,0 +1,21 @@
+id,scenario,status,existing_evidence,remaining_acceptance
+1,Wrong-patient records,Covered slice,test_laboratory_fhir_http.py; test_case_bindings.py,Quarantine/deny; no source or event written
+2,Ambiguous identity,Partial,test_registry_migrations.py; source ingress contracts,Add multi-issuer ambiguity and controlled merge/unmerge scenarios before real identity use
+3,Revoked caregiver access,Partial,test_case_bindings.py; test_projection_authority.py,Existing scoped revocation tests; real delegated caregiver lifecycle still required
+4,Conflicting clinical records,Partial,source_world_model.py and its projection tests,Preserve conflicting sources; broaden beyond bounded reported/negative comparison
+5,Amended laboratory results,Covered slice on #469,test_laboratory_fhir_http.py on #469,"Explicit predecessor, retained original, new projection and restored lab rows"
+6,Outdated evidence,Partial,test_question_evidence_postgres.py; review/report tests,Extend freshness to external publication updates/retractions
+7,Stale human approval,Partial,test_question_review_returns.py; test_authored_evidence_postgres.py,Operational review/proposal freshness is covered; signed clinical approval workflow remains unimplemented
+8,Prompt injection in uploads,Unverified end-to-end,Untrusted-source boundary specified; no validated model execution demonstrated,Test malicious text against actual tool-enabled worker before admission
+9,Expired content rights,Partial,test_question_evidence_postgres.py; rights broker tests,Existing revocation/unknown-rights cases; timed expiry across all derived uses still required
+10,Missing trial eligibility,Planned,OI-017 research contracts,Unknown criterion remains unknown; no eligibility or enrollment claim
+11,Failed external referral,Planned,Internal follow-through does not cover delivery,"Failure receipt, escalation and human reconciliation; never mark sent from a local task"
+12,Appointment timeout,Planned,No scheduling connector qualified,Unknown state; query recipient using same intent before retry
+13,Duplicate event processing,Partial,Exact-request retries and intent-conflict tests,Add actual outbox/inbox consumer replay and external side-effect deduplication
+14,Database recovery,Covered slice,#463 six real HTTP/restart/pg_dump/pg_restore probes,Add every new owner to backup/restore and revocation assertions
+15,Projection rebuilding,Partial,Derived projections and integrity tests,Full rebuild manifest/hash equivalence and amendment replay benchmark required
+16,Unauthorized exports,Covered slice,test_question_source_brief_postgres.py; test_authored_evidence_postgres.py,Read permission never implies export; current rights required
+17,Cross-patient search isolation,Partial,Scoped question/evidence/source retrieval tests,Test any future global/vector index before context assembly
+18,Model execution failure,Planned,No admitted production model worker,"Timeout, invalid schema, provider failure and resource exhaustion leave no approved result"
+19,Missing provenance,Covered slice,test_source_integrity.py; forged-anchor evidence tests,Reject broken source anchor/hash; no clinical promotion
+20,Unavailable external service,Partial,Metadata adapter exists but failure modes were not exhaustively audited; no complete care connectors,"Define circuit breaker, stale labeling, reconciliation and no unsafe fallback"
