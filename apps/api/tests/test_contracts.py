@@ -192,6 +192,7 @@ class HTTPContractTests(unittest.TestCase):
             "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images/{image_id}",
             "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images/{image_id}/preview",
             "/v1/patients/{patient_id}/cases/{case_id}/world-model",
+            "/v1/patients/{patient_id}/cases/{case_id}/world-model/history",
             "/v1/patients/{patient_id}/record-requests",
             "/v1/patients/{patient_id}/record-requests/{request_id}/cancel",
             "/v1/patients/{patient_id}/record-requests/{request_id}/receive",

@@ -277,6 +277,23 @@ def main():
                 assert cd.evaluate("document.querySelector('[data-testid=world-reported-state]').textContent==='negative'")
                 assert cd.evaluate("document.querySelector('[data-testid=world-fingerprint]').textContent") != initial_world_fingerprint
                 assert cd.evaluate(f"document.querySelector('[data-testid=world-projection]').textContent.includes({json.dumps(original_id)})")
+                cd.evaluate("document.querySelector('[data-testid=history-load]').click()")
+                cd.wait("Boolean(document.querySelector('[data-testid=history-result]'))", 'historical source context after amendment')
+                assert cd.evaluate("document.querySelector('[data-testid=history-fingerprint]').textContent") == initial_world_fingerprint
+                assert cd.evaluate("document.querySelector('[data-testid=history-result]').textContent.includes('not-reported')")
+                assert cd.evaluate("document.querySelector('[data-testid=history-result]').textContent.includes('<script>literal</script>')")
+                assert cd.evaluate("document.querySelectorAll('[data-testid=history-result] script').length===0")
+                assert cd.evaluate("document.querySelectorAll('[data-testid=history-result] [data-testid=choose-question-draft]').length===0")
+                assert cd.evaluate("document.querySelector('[data-testid=world-reported-state]').textContent==='negative'")
+                history_viewport = cd.evaluate("({width:innerWidth,height:innerHeight})")
+                for width in (390, 1280):
+                    cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':900,'deviceScaleFactor':1,'mobile':False})
+                    cd.wait(f'innerWidth==={width}', 'history viewport')
+                    cd.evaluate("document.querySelector('[data-testid=source-history]').scrollIntoView({block:'center'})")
+                    assert cd.evaluate('document.documentElement.scrollWidth<=innerWidth+1'), 'historical context reflows'
+                    png = cd.command('Page.captureScreenshot', {'format':'png'})
+                    (out/f'h1-source-history-{width}.png').write_bytes(base64.b64decode(png['data']))
+                cd.command('Emulation.setDeviceMetricsOverride', {**history_viewport,'deviceScaleFactor':1,'mobile':False})
                 questions.finish(new_receipt['source_id'],credentials,write_grants,
                     Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')))
                 # Actual brief responses identify the three already-persisted

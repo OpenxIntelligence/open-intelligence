@@ -142,6 +142,31 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         assert payload['synthetic'] is True and payload['source_identity_verified'] is False
         assert len(payload['images']) == expected_count
         assert cd.evaluate("document.querySelectorAll('[data-testid=source-image-row]').length") == expected_count
+        # Compare the actual rendered hierarchy with the exact authorized HTTP response,
+        # not fixture-only names or the metadata supplied by another source.
+        expected_studies = {}
+        for item in payload['images']:
+            expected_studies.setdefault(item['study_uid'], {}).setdefault(item['series_uid'], []).append(item['image_id'])
+        expected_groups = [
+            {'study_uid': study_uid, 'series': [
+                {'series_uid': series_uid, 'image_ids': image_ids}
+                for series_uid, image_ids in series.items()
+            ]}
+            for study_uid, series in expected_studies.items()
+        ]
+        rendered_groups = cd.evaluate("""Array.from(document.querySelectorAll('[data-testid=source-image-study]'))
+            .map(study => ({
+                study_uid: study.querySelector('h6 code')?.textContent,
+                series: Array.from(study.querySelectorAll('[data-testid=source-image-series]'))
+                    .map(series => ({
+                        series_uid: series.querySelector('h6 code')?.textContent,
+                        image_ids: Array.from(series.querySelectorAll('[data-testid=source-image-row]'))
+                            .map(row => row.dataset.imageId)
+                    }))
+            }))""")
+        assert rendered_groups == expected_groups, 'rendered DICOM study/series structure must match the fresh authorized response'
+        assert cd.evaluate("document.querySelectorAll('[data-testid=source-image-preview-open]').length") == expected_count
+        assert cd.evaluate("document.querySelectorAll('[data-testid=source-image-download]').length") == expected_count
         return payload
 
     def download_image(source_id, label, *, denied=False):

@@ -269,3 +269,17 @@ footer a { color: #285b49; min-height: 44px; display: inline-flex; align-items: 
   .diagnostic-nav { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; gap: 2px; padding-top: 6px; }
   .diagnostic-nav > span { grid-column: 1 / -1; padding-inline: 8px; }
 }
+
+/* Presentation-only DICOM study/series grouping; original image actions unchanged. */
+.source-image-studies,.source-image-series{list-style:none;padding:0;margin:12px 0;display:grid;gap:14px}
+.source-image-study{padding:16px;border:1px solid #c6d8c9;border-radius:8px;background:#f8fbf8;min-width:0}
+.source-image-study>h6,.source-image-series>li>h6{font-size:14px;margin:0 0 8px;overflow-wrap:anywhere}
+.source-image-study>.small{margin:0 0 12px}
+.source-image-series>li{border-left:3px solid #91b0a3;padding:8px 0 8px 15px;min-width:0}
+.source-image-study code{overflow-wrap:anywhere;word-break:break-word}
+@media(max-width:600px){.source-image-study{padding:12px}.source-image-series>li{padding-left:9px}}
+/* Historical context keeps long original identifiers within the workspace. */
+.source-history { margin: 1.5rem 0; padding: 1rem; border: 1px solid #cbd5e1; border-radius: .75rem; }
+.source-history select { display: block; max-width: 100%; margin: .5rem 0; }
+.source-history code, .source-history blockquote { overflow-wrap: anywhere; }
+.source-history li { margin-block: 1rem; }

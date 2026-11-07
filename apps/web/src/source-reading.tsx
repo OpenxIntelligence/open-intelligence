@@ -2,6 +2,7 @@ import {SourceOncologyLabel} from './source-oncology-label';
 import {useEffect,useRef,useState} from 'react';
 import type {SourceIndex} from './source-contracts';
 import type {SourceImagesState} from './source-images';
+import {groupSourceImages} from './image-study-groups';
 
 export type ReadingView = 'patient' | 'clinical';
 export type SourceFilters = {query: string; versionState: string};
@@ -125,7 +126,12 @@ export function SourceReading({index, kind, view, filters, onFiltersChange, busy
               {sourceImagesPhase==='ready'&&sourceImages&&<>
                 <p className="small">Image metadata access receipt: <code data-testid="source-images-receipt">{sourceImages.access_receipt_id}</code></p>
                 {sourceImages.images.length===0?<p data-testid="source-images-empty">No originals are linked to this current report.</p>:
-                  <ul className="source-image-list">{sourceImages.images.map(image=><li key={image.image_id}
+                  <ul className="source-image-studies">{groupSourceImages(sourceImages.images).map(study=><li key={study.study_uid} className="source-image-study" data-testid="source-image-study">
+                    <h6>Study <code>{study.study_uid}</code></h6>
+                    <p className="small">{study.series.length} series · {study.series.reduce((count,series)=>count+series.images.length,0)} {study.series.reduce((count,series)=>count+series.images.length,0)===1?'original image':'original images'}</p>
+                    <ul className="source-image-series">{study.series.map(series=><li key={series.series_uid} data-testid="source-image-series">
+                    <h6>Series <code>{series.series_uid}</code> · {series.images.length} {series.images.length===1?'original':'originals'}</h6>
+                    <ul className="source-image-list">{series.images.map(image=><li key={image.image_id}
                     data-testid="source-image-row" data-image-id={image.image_id}>
                     <p><strong>{image.modality} original</strong> · <time dateTime={image.study_date}>{image.study_date}</time> · {image.byte_count.toLocaleString()} bytes</p>
                     <details><summary>Original integrity and identifiers</summary><dl className="source-metadata">
@@ -145,6 +151,8 @@ export function SourceReading({index, kind, view, filters, onFiltersChange, busy
                         onDismissImagePreview?.();
                         if(previewOpener.current?.isConnected)previewOpener.current.focus();
                       }}/>}
+                  </li>)}</ul>
+                  </li>)}</ul>
                   </li>)}</ul>}
                 {sourceImagePreviewPhase!=='idle'&&<p role="status" aria-live="polite" data-testid="source-image-preview-status">{sourceImagePreviewMessage}</p>}
               </>}

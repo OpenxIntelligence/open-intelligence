@@ -39,8 +39,8 @@ function results(large=false){
   const key=r=>r.source_id+':'+r.observation_reference,byKey=new Map(model.laboratory_observations.map(r=>[key(r),r]));
   return model.laboratory_timeline.map(t=>byKey.get(key(t)));
 }
-const page=(results,filters={},n=0)=>renderToStaticMarkup(createElement(LaboratoryResultPage,{
-  filters:{code:'',context:'',status:'',...filters},page:n,change(){},setPage(){},
+const page=(results,filters={},n=0,layout='cards')=>renderToStaticMarkup(createElement(LaboratoryResultPage,{
+  filters:{code:'',context:'',status:'',...filters},page:n,change(){},setPage(){},layout,setLayout(){},
 },results.map(result=>createElement(LaboratoryResultRow,{result,key:result.source_id+':'+result.observation_reference}))));
 const rows=html=>html.match(/<li data-testid="world-laboratory-observation">[\s\S]*?<\/li>/g)??[];
 
@@ -73,4 +73,45 @@ test('a large timeline renders bounded pages without dropping or duplicating any
   assert.match(first,/Showing 1–25 of 26/);assert.match(second,/Showing 26–26 of 26/);
   const shown=[...rows(first),...rows(second)];assert.equal(shown.length,data.length);
   data.forEach((entry,i)=>{assert.ok(shown[i].includes(entry.observation_reference));assert.ok(shown[i].includes(entry.source_id));});
+});
+
+
+const tableRows=html=>html.match(/<tr data-testid="world-laboratory-observation">[\s\S]*?<\/tr>/g)??[];
+
+test('compact table preserves the same chronological originals, literal values and absence reasons as cards',()=>{
+  const data=results(),html=page(data,{},0,'table'),shown=tableRows(html);
+  assert.equal(shown.length,data.length);
+  data.forEach((entry,i)=>{
+    assert.ok(shown[i].includes(entry.observation_reference));
+    assert.ok(shown[i].includes(entry.source_id));
+    assert.ok(shown[i].includes(entry.source_sha256));
+  });
+  assert.match(shown[0],/<strong>0\.00<\/strong> <code>mg\/L<\/code>/);
+  assert.match(html,/Result absent · source reason: <strong>not-performed<\/strong>/);
+  assert.ok(!html.includes('<script>plasma</script>'));
+  assert.ok(html.includes('&lt;script&gt;plasma&lt;/script&gt;'));
+});
+
+test('table exposes a caption, scoped headers, named scroll region and explicit pressed layout',()=>{
+  const html=page(results(),{},0,'table');
+  assert.match(html,/<caption>Current source-reported laboratory results · not clinically reviewed<\/caption>/);
+  assert.equal((html.match(/scope="col"/g)??[]).length,5);
+  assert.equal((html.match(/scope="row"/g)??[]).length,4);
+  assert.match(html,/role="region" aria-label="Laboratory results table" aria-describedby="laboratory-table-help" tabindex="0"/);
+  assert.match(html,/aria-pressed="true">Table<\/button>/);
+});
+
+test('empty table matches show the existing filter reset and do not render a misleading empty table',()=>{
+  const html=page(results(),{code:'777'},0,'table');
+  assert.match(html,/No results match these filters/);
+  assert.match(html,/Clear laboratory filters/);
+  assert.equal(tableRows(html).length,0);
+  assert.ok(!html.includes('<table'));
+});
+
+test('both layouts clamp a stale page after results shrink',()=>{
+  const data=results();
+  assert.equal(rows(page(data,{},8)).length,4);
+  assert.equal(tableRows(page(data,{},8,'table')).length,4);
+  assert.match(page(data,{},8,'table'),/Showing 1–4 of 4/);
 });

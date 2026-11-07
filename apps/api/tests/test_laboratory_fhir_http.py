@@ -242,6 +242,27 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
             self.assertEqual(world["laboratory_timeline"][0]["clinical_interpretation"],
                              "not_performed")
 
+    def test_historical_laboratory_values_are_selected_by_original_receipt_not_current_state(self):
+        from urllib.parse import quote
+        with running_server(self.app) as base:
+            patient = self.make_patient(base)
+            first = self.import_source(base, patient)
+            self.assertEqual(first[0], 201, first)
+            route = f"/v1/patients/{patient}/cases/CASE-LAB-A/world-model"
+            before = request(base, route, token=TOKEN_A)[1]
+            changed = example()
+            resource(changed, "Observation")["valueQuantity"]["value"] = 5
+            status, amended, _ = self.import_source(base, patient, changed,
+                request_key="LAB-HISTORY-AMEND", expected_previous_source_id=first[1]["source_id"])
+            self.assertEqual(status, 201, amended)
+            status, historical, _ = request(base, route + "/history?received_through=" +
+                quote(before["as_of_received_at"], safe=""), token=TOKEN_A)
+            self.assertEqual(status, 200, historical)
+            for key in ("laboratory_observations", "laboratory_timeline", "snapshot_fingerprint", "summary"):
+                self.assertEqual(historical["world_model"][key], before[key], key)
+            self.assertNotEqual(request(base, route, token=TOKEN_A)[1]["laboratory_observations"],
+                                historical["world_model"]["laboratory_observations"])
+
     def test_exact_retry_and_changed_bundle_require_explicit_amendment(self):
         with running_server(self.app) as base:
             patient = self.make_patient(base)

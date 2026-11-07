@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {RegistrySession} from '../.test-dist/registry-client.js';
-import {parseSourceWorldModel} from '../.test-dist/source-world-model.js';
+import {parseSourceWorldModel,parseSourceHistory,compareSourceReceiptTimes} from '../.test-dist/source-world-model.js';
 
 const token='fictional_test_credential_000000000001';
 const patientId='PAT-EXAMPLE-001', caseId='CASE-ALPHA', sourceId='SRC-'+'A'.repeat(32);
@@ -292,3 +292,60 @@ for(const action of ['opening','closing']){
     }
   });
 }
+
+const history=(cutoff=source().received_at)=>({contract:'oi.pg-source-history/1',received_through:cutoff,
+ selection_basis:'received_at_inclusive',current_authority_required:true,historical_only:true,world_model:world()});
+test('historical wrapper requires exact cutoff, current authority and no post-cutoff sources',()=>{
+ const cutoff=source().received_at;
+ assert.equal(parseSourceHistory(history(),patientId,caseId,cutoff).world_model.observations[0].reported_state,'not-reported');
+ for(const mutate of [x=>x.historical_only=false,x=>x.current_authority_required=false,
+  x=>x.received_through='2026-11-02T10:00:00.000001Z',
+  x=>x.world_model.current_sources[0].received_at='2026-11-02T10:00:00.000001Z',
+  x=>x.world_model.patient_id='PAT-FOREIGN']){
+  const value=history();mutate(value);assert.throws(()=>parseSourceHistory(value,patientId,caseId,cutoff));
+ }
+});
+async function historySession(historyRead){
+ const session=new RegistrySession(async url=>{
+  if(url.includes('/world-model/history?'))return historyRead(url);
+  if(url.endsWith('/case-bindings'))return response(caseList());
+  if(url.endsWith('/world-model'))return response(world());
+  return response(patient());
+ });
+ session.connect(token);await session.read(patientId);await session.loadCases();await session.loadWorldModel(caseId);return session;
+}
+test('history stays separate from the current model and cannot select unknown cutoffs',async()=>{
+ let calls=0;
+ const session=await historySession(url=>{calls++;assert.ok(url.endsWith(encodeURIComponent(source().received_at)));return response(history());});
+ const current=session.snapshot().worldModel;
+ await session.loadSourceHistory('2000-01-01T00:00:00Z');assert.equal(calls,0);
+ await session.loadSourceHistory(source().received_at);
+ assert.equal(session.snapshot().historyPhase,'ready');assert.equal(session.snapshot().worldModel,current);
+ session.dismissSourceHistory();assert.equal(session.snapshot().sourceHistory,null);
+});
+test('history denial clears current and historical sources',async()=>{
+ let denied=false;const session=await historySession(()=>response(denied?{}:history(),denied?404:200));
+ await session.loadSourceHistory(source().received_at);assert.ok(session.snapshot().sourceHistory);
+ denied=true;await session.loadSourceHistory(source().received_at);
+ assert.equal(session.snapshot().sourceHistory,null);assert.equal(session.snapshot().worldModel,null);
+});
+test('late historical reply cannot restore data after current refresh or disconnect',async()=>{
+ for(const invalidate of [s=>s.disconnect(),s=>s.loadWorldModel(caseId),s=>s.dismissSourceHistory()]){
+  let resolve;const session=await historySession(()=>new Promise(r=>resolve=r));
+  const pending=session.loadSourceHistory(source().received_at);await invalidate(session);
+  resolve(response(history()));await pending;
+  assert.equal(session.snapshot().sourceHistory,null);assert.notEqual(session.snapshot().historyPhase,'loading');
+ }
+});
+test('invalid history clears earlier results and provides retry state',async()=>{
+ let valid=true;const session=await historySession(()=>response(valid?history():{...history(),historical_only:false}));
+ await session.loadSourceHistory(source().received_at);valid=false;
+ await session.loadSourceHistory(source().received_at);
+ assert.equal(session.snapshot().historyPhase,'error');assert.equal(session.snapshot().sourceHistory,null);
+});
+
+test('receipt ordering handles exact seconds, microseconds and equivalent offsets',()=>{
+ const values=['2026-11-02T10:00:00.000002Z','2026-11-02T10:00:00Z','2026-11-02T10:00:00.000001Z'];
+ assert.deepEqual(values.sort(compareSourceReceiptTimes),['2026-11-02T10:00:00Z','2026-11-02T10:00:00.000001Z','2026-11-02T10:00:00.000002Z']);
+ assert.equal(compareSourceReceiptTimes('2026-11-02T10:00:00.000001Z','2026-11-02T06:00:00.000001-04:00'),0);
+});
