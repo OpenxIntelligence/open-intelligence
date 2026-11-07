@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {RegistrySession} from '../.test-dist/registry-client.js';
+import {decodePassageReviewPreparation} from '../.test-dist/question-evidence-view.js';
 
 // Original fictional metadata and sources. Only the network boundary is replaced.
 const token='fictional_evidence_credential_000000000001';
@@ -274,4 +275,52 @@ test('evidence envelopes enforce content type and streaming size before showing 
   const s=session(async(url)=>url.endsWith('/evidence-search')?reply():basic(url));
   await ready(s);await s.searchQuestionEvidence(qid,'fictional');assert.equal(s.snapshot().evidenceSearch,null);
   assert.equal(s.snapshot().evidenceSearchPhase,'error');}
+});
+
+test('passage review-preparation packet preserves exact original, refuses stale or promoted science and redacts rights',()=>{
+ const anchor='e'.repeat(64),questionText='Which fictional marker needs independent verification?';
+ const selection={
+  source_id:sid,document_id:'DOC-MANUAL',source_version:1,original_sha256:sha,
+  annotation_revision_id:'ANN-'+'F'.repeat(32),annotation_revision:1,review_sha256:metadata,
+  selected_by:'ACTOR-FICTIONAL',selected_at:'2026-11-03T10:00:00Z',selected_state:'pending',
+  quote:'Marker pending.',line:2,page:2,classification_origin:'user_selected',
+  clinical_review:'not_performed',anchor_sha256:anchor,selection_state:'current_unreviewed_selection'
+ };
+ const packet={...envelope(),contract:'oi.pg-passage-review-preparation/1',
+  source_id:sid,question_text:questionText,selection,links:[linked()],
+  human_review_state:'not_performed',next_step:'independent_verification_required',
+  packet_sha256:'f'.repeat(64)};
+ const decode=value=>decodePassageReviewPreparation(value,pid,cid,sid,qid,anchor,questionText,
+  selection.quote,selection.line,selection.annotation_revision);
+ const current=decode(packet);
+ assert.equal(current.selection.quote,'Marker pending.');
+ assert.equal(current.links[0].record.availability,'metadata_only');
+ assert.equal(current.content_appraised,false);
+ assert.equal(current.clinical_approval,false);
+ assert.equal(current.human_review_state,'not_performed');
+ assert.equal(Object.isFrozen(current.links),true);
+ for(const altered of [
+  {...packet,question_text:'A different question'},
+  {...packet,source_id:'SRC-'+'A'.repeat(32)},
+  {...packet,packet_sha256:'invalid'},
+  {...packet,clinical_approval:true},
+  {...packet,content_appraised:true},
+  {...packet,model_executed:true},
+  {...packet,human_review_state:'approved'},
+  {...packet,next_step:'source_reassessment_required'},
+  {...packet,selection:{...selection,quote:'Different unverified quotation.'}},
+  {...packet,selection:{...selection,line:3}},
+  {...packet,selection:{...selection,annotation_revision:2}},
+  {...packet,selection:{...selection,classification_origin:'model_inferred'}},
+  {...packet,links:[{...linked(),status:'rights_restricted'}]},
+ ])assert.throws(()=>decode(altered),'forged or stale preparation must not render');
+ const historical={...packet,source_context_state:'source_reassessment_required',
+  selection:{...selection,selection_state:'selection_reassessment_required'},
+  next_step:'source_reassessment_required',
+  links:[{...linked(),status:'rights_restricted',record:null}]};
+ const resumed=decode(historical);
+ assert.equal(resumed.selection.quote,selection.quote);
+ assert.equal(resumed.links[0].record,null);
+ assert.equal(resumed.next_step,'source_reassessment_required');
+ assert.throws(()=>decode({...historical,next_step:'independent_verification_required'}));
 });
