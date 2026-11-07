@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from oi_api.access import Principal
 from oi_api.config import Settings
@@ -96,7 +97,9 @@ class SourceEventWorkerTests(unittest.TestCase):
                                                     "PATIENT-ONE", "CASE-ALPHA", **{key: value})
 
     def test_cli_rejects_ambiguous_modes_and_invalid_pagination(self):
-        for flags in (("--once", "--dead-letters"), ("--status", "--dead-letters"),
+        for flags in (("--drain", "--once"), ("--status", "--max-batches", "2"),
+                      ("--drain", "--max-batches", "101"), ("--drain", "--limit", "1"),
+                      ("--once", "--dead-letters"), ("--status", "--dead-letters"),
                       ("--status", "--limit", "1"), ("--once", "--after-event", "0"),
                       ("--dead-letters", "--after-event", "-1"),
                       ("--dead-letters", "--after-event", "9223372036854775808"),
@@ -108,6 +111,35 @@ class SourceEventWorkerTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertEqual(result.stdout, "")
                 self.assertIn("error:", result.stderr)
+
+    def test_bounded_drain_stops_at_budget_and_retains_batch_counts(self):
+        worker = self.worker()
+        with patch.object(worker, "run_once", side_effect=[
+                {"status": "queued", "invalidated_count": 7},
+                {"status": "delivered", "invalidated_count": 1}]) as execute:
+            self.assertEqual(worker.run_bounded(Settings(), lambda: TOKEN, "PATIENT-ONE", "CASE-ALPHA",
+                                                max_batches=2),
+                             {"status": "limit_reached", "batches_attempted": 2,
+                              "delivered_batches": 1, "continued_batches": 1})
+            self.assertEqual(execute.call_count, 2)
+
+    def test_bounded_drain_stops_without_retrying_failure_or_fence(self):
+        worker = self.worker()
+        for status in ("idle", "queued", "blocked", "unavailable", "dead_letter", "fenced"):
+            with self.subTest(status=status), patch.object(worker, "run_once", side_effect=[
+                    {"status": "delivered", "invalidated_count": 0}, {"status": status}]) as execute:
+                result = worker.run_bounded(Settings(), lambda: TOKEN, "PATIENT-ONE", "CASE-ALPHA")
+                self.assertEqual(result, {"status": status, "batches_attempted": 2,
+                                          "delivered_batches": 1, "continued_batches": 0})
+                self.assertEqual(execute.call_count, 2)
+
+    def test_bounded_drain_rejects_invalid_budget_before_reading_credentials(self):
+        def forbidden_read():
+            raise AssertionError("Invalid budget must not read credentials")
+        for value in (0, -1, 101, True, "20", 1.5):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.worker().run_bounded(Settings(), forbidden_read, "PATIENT-ONE", "CASE-ALPHA",
+                                          max_batches=value)
 
     def test_cli_does_not_reuse_composer_worker_credential_file(self):
         self.worker()
