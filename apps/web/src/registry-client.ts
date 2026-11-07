@@ -1,5 +1,6 @@
 import {createEncounterChart, EncounterHttpError, type EncounterChart} from './encounter-client.js';
 import {readLaboratoryCitationReport} from './laboratory-citation-report.js';
+import {emptySuspension,readSuspensionReceipt,type SuspensionState} from './patient-suspension.js';
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 export {patientContinuity} from './patient-continuity.js';
 import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
@@ -9,7 +10,8 @@ import type {CaseBinding, SourceIndex} from './source-contracts.js';
 import {prepareSource,parseImportReceipt,verifyOriginal} from './source-intake.js';
 import type {ImportReceipt,OriginalSource} from './source-intake.js';
 import {emptyLaboratory,prepareLaboratoryFile,parseLaboratoryReceipt} from './laboratory-fhir.js';
-import type {LaboratoryImportState,LaboratoryIntent} from './laboratory-fhir.js';
+import {LABORATORY_PREVIEW_REJECTED,LaboratoryPreviewRejected,readLaboratoryPreview} from './laboratory-preview.js';
+import type {LaboratoryFile,LaboratoryImportState,LaboratoryIntent} from './laboratory-fhir.js';
 import {readLabPreparation,validLabQuestion,emptyLabQuestions,readLabQuestionList} from './laboratory-question.js';
 import type {LabPreparation,LabQuestionView} from './laboratory-question.js';
 import {parseSourceWorldModel} from './source-world-model.js';
@@ -18,13 +20,15 @@ import {decodeComposerPreflight,DEFAULT_SOURCE_QUESTION} from './composer-prefli
 import type {ComposerPreflight} from './composer-preflight-view.js';
 import {decodeSavedQuestion,decodeSourceQuestions,questionSaveBlocksSourceChange} from './source-questions-view.js';
 import type {SavedQuestion,SourceQuestion} from './source-questions-view.js';
-import {decodeReviewQueue,decodeReviewReturnResult,validReturnReason,FICTIONAL_RETURN_REASON} from './review-queue-view.js';
+import {decodeReviewQueue,decodeReviewReturnResult,decodeEvidenceRunReturn,openedReviewArtifacts,validReturnReason,FICTIONAL_RETURN_REASON,type ReviewArtifacts} from './review-queue-view.js';
 import type {ReviewQueue,ReviewReturnResult} from './review-queue-view.js';
 import {canPrepareSourceBrief,decodeSourceBrief} from './source-brief.js';
 import type {SourceBrief} from './source-brief.js';
-import {canCreateFollowthrough,decodeFollowthrough,decodeFollowthroughReceipt,
+import {canRetryRun, readRunReceipt, readRunResult, readRunStatus} from './background-brief.js';
+import type {BackgroundBrief, RunAction} from './background-brief.js';
+import {projectFollowthroughAttention,currentFollowthroughQuestion,followthroughLaboratoryAnchor,matchesFollowthroughDraft,FOLLOWTHROUGH_V2_MEDIA,decodeFollowthrough,decodeFollowthroughReceipt,
   validFollowthroughDraft,validFollowthroughTransition,followthroughTransitionContext,FOLLOWTHROUGH_TRANSITIONS} from './followthrough-view.js';
-import type {FollowthroughDraft,FollowthroughUnsentDraft,FollowthroughIntent,FollowthroughList,
+import type {FollowthroughTask,FollowthroughFamily,FollowthroughDraft,FollowthroughUnsentDraft,FollowthroughIntent,FollowthroughList,
   FollowthroughReceipt,FollowthroughTransition,FollowthroughTransitionFields,FollowthroughUnsentTransition} from './followthrough-view.js';
 import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,decodeQuestionEvidenceReceipt,
   laboratoryEvidenceAnchor,matchesLaboratoryEvidenceAnchor,unwrapLaboratoryEvidence,validEvidenceQuery} from './question-evidence-view.js';
@@ -41,7 +45,7 @@ export type Patient = Readonly<{
 }>;
 export type CreatedPatient = Readonly<{patient_id: string; duplicate: boolean}>;
 export type ReviewReturnIntent=Readonly<{
-  patient_id:string;case_id:string;question_id:string;queue_fingerprint:string;reason:string;
+  patient_id:string;case_id:string;question_id:string;queue_fingerprint:string;reason:string;artifacts?:ReviewArtifacts;
 }>;
 export type QuestionDraft = Readonly<{case_id:string;source_id:string;source_line:number;
   snapshot_fingerprint:string;question:string}>;
@@ -50,7 +54,7 @@ function questionCommand(prepared:ComposerPreflight){
     source_line:prepared.selected_source.line,expected_source_snapshot_sha256:prepared.source_snapshot_sha256,
     expected_preflight_sha256:prepared.preflight_sha256};
 }
-export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryImportState & LabQuestionView & {
+export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryImportState & LabQuestionView & SuspensionState & {
   manualPassageDraftQuestionIds:readonly string[];
   connected: boolean; phase: 'disconnected' | 'idle' | 'reading' | 'creating' | 'ready' | 'error';
   patient: Patient | null; created: CreatedPatient | null; message: string;
@@ -71,6 +75,7 @@ export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryI
   reviewQueue:ReviewQueue|null;reviewPhase:'idle'|'loading'|'ready'|'error';reviewMessage:string;
   reviewReturn:ReviewReturnResult|null;reviewReturnPhase:'idle'|'saving'|'saved'|'unknown'|'error';
   reviewReturnMessage:string;reviewReturnIntent:ReviewReturnIntent|null;
+  backgroundBrief:BackgroundBrief|null;
   sourceBrief:SourceBrief|null;briefPhase:'idle'|'loading'|'ready'|'error';briefMessage:string;
   followthrough:FollowthroughList|null;followthroughCaseId:string|null;
   followthroughDrafts:Readonly<Record<string,FollowthroughUnsentDraft>>;
@@ -105,7 +110,7 @@ const emptyReview=()=>({reviewQueue:null,reviewPhase:'idle' as const,
   reviewMessage:'Open the current patient case to inspect saved questions and verification returns.',
   reviewReturn:null,reviewReturnPhase:'idle' as const,reviewReturnIntent:null,
   reviewReturnMessage:'No return action is in progress.'});
-const emptyBrief=()=>({sourceBrief:null,briefPhase:'idle' as const,
+const emptyBrief=()=>({backgroundBrief:null,sourceBrief:null,briefPhase:'idle' as const,
   briefMessage:'Prepare a source-linked brief from a current saved question. Each download checks permission again.'});
 const emptyFollowthrough=()=>({followthrough:null,followthroughCaseId:null,followthroughPhase:'idle' as const,
   followthroughDrafts:Object.freeze({}) as Readonly<Record<string,FollowthroughUnsentDraft>>,
@@ -130,15 +135,17 @@ const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerP
 const unconfirmedLabQuestion = {labQuestionWritePhase:'unknown',labQuestionWriteMessage:
   'The earlier save is unconfirmed. Retry its unchanged request after reopening this case.'} as const;
 
-const fresh = (): ViewState => Object.freeze({evidenceGeneration:0,...emptyLabQuestions(),manualPassageDraftQuestionIds:Object.freeze([]),connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
+const fresh = (): ViewState => Object.freeze({evidenceGeneration:0,...emptySuspension(),...emptyLabQuestions(),manualPassageDraftQuestionIds:Object.freeze([]),connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
 const emptyRecords=()=>({...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptySourceImages(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
     Object.keys(value).length===fields.length && fields.every(k=>Object.hasOwn(value,k));
 }
 function boundedKey(value: unknown): value is string { return typeof value==='string' && KEY.test(value); }
-async function json(response: Response, limit=65536): Promise<unknown> {
-  if(!/^application\/json(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '')) throw Error('contract');
+async function json(response: Response, limit=65536, alternateMediaType?:string): Promise<unknown> {
+  const type=response.headers.get('Content-Type')??'';
+  if(!/^application\/json(?:\s*;|$)/i.test(type)&&
+     (!alternateMediaType||type.split(';',1)[0].trim().toLowerCase()!==alternateMediaType))throw Error('contract');
   return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await boundedBytes(response,limit)));
 }
 async function boundedBytes(response:Response,limit:number):Promise<Uint8Array>{
@@ -296,10 +303,14 @@ export class RegistrySession {
       this.#state.questionListPhase==='ready'&&this.#state.questionsCaseId===caseId&&this.#state.worldPhase==='ready'&&this.#state.worldModel?.case_id===caseId&&
        Boolean(this.#state.questions?.some(q=>q.question_id===questionId&&q.case_id===caseId&&q.patient_id===patient)):
       this.#state.sourceIndex?.case_id===caseId;
-    const current=()=>scope===this.#scope&&read===this.#read&&records===this.#records&&patient===this.#state.patient?.patient_id&&caseContext();
+    const labPreview=path==='/laboratory/fhir-r4/preview';
+    const selectedIndex=this.#state.sourceIndex;
+    // Closing an unrelated original must not suppress a denial for the selected case.
+    const current=()=>scope===this.#scope && read===this.#read && patient===this.#state.patient?.patient_id &&
+      (labPreview ? selectedIndex===this.#state.sourceIndex : records===this.#records) && caseContext();
     if(!patient||!this.#token||!current())throw Error('Recheck patient and case access');
     const control=new AbortController();this.#controllers.add(control);
-    const timeout=questionId!==undefined?setTimeout(()=>control.abort(),10000):undefined;
+    const timeout=questionId!==undefined||labPreview?setTimeout(()=>control.abort(),10000):undefined;
     try{
       const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+path,this.#init(control,body));
       if(!current()){
@@ -310,7 +321,7 @@ export class RegistrySession {
       // Status is authoritative even when a proxy returns a non-JSON body.
       if([401,403,404].includes(response.status)){
         if(response.status===401)this.#httpError(401);
-        else this.#publish(this.#resetDeniedCaseSources('Document access unavailable or mapping changed. Reload case permissions.'));
+        else this.#publish(this.#resetDeniedCaseSources(labPreview?'Laboratory preview access unavailable. Reload case permissions.':'Document access unavailable or mapping changed. Reload case permissions.'));
         void response.body?.cancel().catch(()=>{});
         return{status:response.status,body:null,headers:response.headers};
       }
@@ -321,7 +332,7 @@ export class RegistrySession {
         // 64 revisions × 30 quotes × 1200 code points × at most 12 JSON bytes
         // (escaped surrogate pairs), plus bounded findings metadata and 64 KiB rendition.
         // 32 MiB covers the complete permitted history; streaming still limits bad peers.
-        value=await json(response,32*1024*1024);
+        value=await json(response,labPreview?65536:32*1024*1024);
       }
       if(!current())throw Error('Patient or case changed');
       const contentScope=path.includes('/selections/')&&value&&typeof value==='object'?(value as {anchor?:unknown}).anchor:value;
@@ -331,6 +342,7 @@ export class RegistrySession {
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
   #token=''; #scope=0; #read=0; #records=0; #state:ViewState=fresh();
+  #suspensionIntent:{target:Patient;body:string;uncertain:boolean}|null=null;
   #worldRead=0; #composerRead=0; #questionRead=0; #questionWrite=0; #briefRead=0;
   #questionKey=''; #questionFingerprint=''; #savingQuestion=false;
   // An interrupted write may already have committed. Only a freshly authorized,
@@ -525,9 +537,10 @@ export class RegistrySession {
     this.#publish({sourceQuotePacket:null,sourceQuotePhase:'idle',
       sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
   };
-  #clearPatientSessionData(){
+  #clearPatientSessionData(preserveOtherManualIntents=false){
+    this.#suspensionIntent=null;
     this.#questionRetryKeys.clear();
-    this.#manualPassageIntents.clear();
+    if(!preserveOtherManualIntents)this.#manualPassageIntents.clear();
     this.#laboratoryWrite++;this.#laboratoryWriting=false;
     this.#scope++;this.#read++;this.#records++;this.#creating=false;this.#uploading=false;
     this.#resetInvestigation();
@@ -553,6 +566,8 @@ export class RegistrySession {
     else this.#publish({phase:'error',patient:null,message:messages[status] || 'Unexpected API response. No patient information is displayed.'});
   }
   async read(id:string):Promise<void>{
+    if(this.#suspensionIntent)return;
+    this.#publish(emptySuspension());
     if(this.#state.patient?.patient_id!==id)this.#questionRetryKeys.clear();
     const scope=this.#scope, request=++this.#read;
     const lab=this.#state.laboratoryIntent;
@@ -596,6 +611,7 @@ export class RegistrySession {
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
   async create(requestKey:string,confirmed:boolean):Promise<void>{
+    if(this.#suspensionIntent)return;
     if(this.#creating)return;
     if(!this.#token){this.#publish({message:'Connect an authorized synthetic credential first.'});return;}
     if(confirmed!==true || !boundedKey(requestKey)){this.#publish({phase:'error',message:'Confirm fictional identity creation and use a valid request key.'});return;}
@@ -603,7 +619,7 @@ export class RegistrySession {
     this.#read++;this.#records++;
     const scope=this.#scope,control=new AbortController();this.#controllers.add(control);this.#creating=true;
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({phase:'creating',patient:null,created:null,...emptyRecords(),...this.#resetInvestigation(),message:'Creating a fictional identity; reading it will still need an explicit grant…'});
+    this.#publish({phase:'creating',patient:null,created:null,...emptySuspension(),...emptyRecords(),...this.#resetInvestigation(),message:'Creating a fictional identity; reading it will still need an explicit grant…'});
     try{
       const res=await this.transport('/v1/patients',this.#init(control,JSON.stringify({synthetic:true,request_key:requestKey})));
       if(scope!==this.#scope)return;
@@ -612,6 +628,73 @@ export class RegistrySession {
       this.#publish({phase:'idle',created:value,message:value.duplicate?'Original creation receipt recovered. No duplicate identity was created.':'Identity created. Ask the operator for its exact read grant before opening it.'});
     }catch(_){if(scope===this.#scope)this.#publish({phase:'error',message:'Creation outcome is unknown. Retry with the same request key to avoid duplication.'});}
     finally{clearTimeout(timeout);this.#controllers.delete(control);if(scope===this.#scope)this.#creating=false;}
+  }
+
+  /** The canonical registry owns suspension and its receipt. Clear every clinical
+   * reader before sending; even a lost response may mean access is suspended. */
+  async suspendPatient(confirmed:boolean):Promise<void>{
+    const target=this.#state.patient;
+    if(this.#suspensionIntent||!this.#token||this.#state.phase!=='ready'||
+       !target||target.status!=='active'||confirmed!==true)return;
+    if(this.#creating||this.#uploading||this.#savingQuestion||this.#savingReview||
+       this.#savingFollowthrough||this.#savingEvidence||this.#laboratoryWriting||
+       this.#questionRetryKeys.size>0||this.#labPending||
+       [...this.#manualPassageIntents.keys()].some(key=>JSON.parse(key)[0]===target.patient_id)||
+       [this.#state.importOutcome,this.#state.laboratoryPhase,this.#state.reviewReturnPhase,
+        this.#state.followthroughWritePhase,this.#state.evidenceWritePhase,this.#state.evidenceLinkPhase,
+        this.#state.labQuestionWritePhase].some(p=>['sending','saving','unknown'].includes(p))){
+      this.#publish({suspensionPhase:'rejected',suspensionMessage:
+        'Resolve the pending patient write before suspending access. Its recovery request is preserved.'});return;
+    }
+    if(!Number.isSafeInteger(target.revision+1))return;
+    const intent={target,body:JSON.stringify({synthetic:true,request_key:crypto.randomUUID(),
+      expected_revision:target.revision}),uncertain:false};
+    this.#clearPatientSessionData(true);
+    this.#suspensionIntent=intent;
+    this.#publish({connected:true,phase:'idle',suspensionTarget:{patient_id:target.patient_id,revision:target.revision},
+      message:'Patient content and unsaved drafts cleared for the suspension request.'});
+    await this.#sendSuspension();
+  }
+  retryPatientSuspension=async():Promise<void>=>{
+    if(this.#state.suspensionPhase==='unknown')await this.#sendSuspension();
+  };
+  leaveSuspensionRecovery=()=>{
+    if(this.#state.suspensionPhase!=='unknown')return;
+    this.#clearPatientSessionData(true);
+    this.#publish({connected:!!this.#token,phase:'idle',message:
+      'Local recovery cleared. This does not reverse or cancel a suspension. Recheck the patient registry before continuing.'});
+  };
+  async #sendSuspension():Promise<void>{
+    const intent=this.#suspensionIntent;
+    if(!intent||!this.#token||this.#state.suspensionPhase==='sending')return;
+    const scope=this.#scope,control=new AbortController();this.#controllers.add(control);
+    const current=()=>scope===this.#scope&&this.#suspensionIntent===intent;
+    const uncertain=()=>{intent.uncertain=true;this.#publish({suspensionPhase:'unknown',suspensionReceipt:null,
+      suspensionMessage:'Suspension outcome is unknown. Patient content remains cleared. Retry the unchanged request to recover its receipt.'});};
+    this.#publish({suspensionPhase:'sending',suspensionMessage:'Checking authority and suspending patient access…'});
+    const timeout=setTimeout(()=>control.abort(),10000);
+    try{
+      const response=await this.transport('/v1/patients/'+encodeURIComponent(intent.target.patient_id)+'/suspensions',
+        this.#init(control,intent.body));
+      if(!current())return;
+      if(response.status===401){this.#httpError(401);return;}
+      if([403,404,409,422].includes(response.status)){
+        // A refusal of the retry cannot tell us whether an earlier request committed.
+        if(intent.uncertain){uncertain();return;}
+        this.#suspensionIntent=null;
+        this.#publish({suspensionPhase:'rejected',suspensionMessage:response.status===409?
+          'The registry revision changed. Reopen the patient before making a new decision.':
+          'Suspension was refused. Check current patient access and the independent suspension grant.'});return;
+      }
+      if(response.status!==200){uncertain();return;}
+      const receipt=readSuspensionReceipt(await json(response),intent.target);
+      if(!current())return;
+      this.#suspensionIntent=null;
+      this.#publish({patient:Object.freeze({...intent.target,...receipt}),phase:'ready',suspensionPhase:'confirmed',
+        suspensionReceipt:receipt,suspensionMessage:'Suspension confirmed by the registry. Patient content remains cleared.',
+        message:'Patient access is suspended. Historical records and work remain in the canonical services.'});
+    }catch{if(current())uncertain();}
+    finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
 
   /** Explicit, permission-checked metadata read; never create a second patient/case ledger. */
@@ -660,7 +743,13 @@ export class RegistrySession {
         recordMessage:'Case response failed validation or the service is unavailable. No records are shown.'});
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
-  async loadSources(caseId:string):Promise<void>{
+  async loadSources(caseId:string,taskOriginal?:FollowthroughTask):Promise<void>{
+    if(taskOriginal&&(taskOriginal.case_id!==caseId||taskOriginal.source_line!==null||
+       !projectFollowthroughAttention(this.#state)?.list.tasks.includes(taskOriginal))){
+      this.#records++;
+      this.#publish({original:null,recordsPhase:'error',recordMessage:'Refresh recorded work before inspecting its original laboratory report.'});
+      return;
+    }
     const patientId=this.#state.patient?.patient_id;
     if(!patientId || !this.#token || this.#state.phase!=='ready' ||
        !this.#state.cases?.some(item=>item.case_id===caseId && item.status==='active')){
@@ -690,8 +779,15 @@ export class RegistrySession {
       }
       const index=parseSourceIndex(await json(res),patientId,caseId);
       if(!current())return;
+      if(taskOriginal&&!index.sources.some(source=>source.kind==='laboratory'&&source.source_id===taskOriginal.source_id&&
+         source.version===taskOriginal.source_version&&source.sha256===taskOriginal.source_sha256)){
+        this.#publish({sourceIndex:index,recordsPhase:'error',
+          recordMessage:'The source versions available for this case do not match the laboratory report recorded on this task.'});
+        return;
+      }
       this.#publish({sourceIndex:index,recordsPhase:'ready',
         recordMessage:'Exact original source metadata read. Extracted statements are not clinical assessments.'});
+      if(taskOriginal&&current())await this.loadOriginal(taskOriginal.source_id,taskOriginal.observation_reference);
     }catch(_){
       if(current())this.#publish({cases:null,sourceIndex:null,recordsPhase:'error',
         recordMessage:'Source response failed validation or the service is unavailable. No sources are shown.'});
@@ -751,16 +847,16 @@ export class RegistrySession {
   async retryReviewReturn():Promise<void>{
     const intent=this.#state.reviewReturnIntent;
     if(this.#state.reviewReturnPhase!=='unknown'||!intent)return;
-    await this.returnReviewQuestion(intent.question_id,intent.queue_fingerprint,intent.reason);
+    await this.returnReviewQuestion(intent.question_id,intent.queue_fingerprint,intent.reason,Boolean(intent.artifacts));
   }
 
   async returnReviewQuestion(questionId:string,fingerprint:string,
-                             reason:string=FICTIONAL_RETURN_REASON):Promise<void>{
+                             reason:string=FICTIONAL_RETURN_REASON,includeArtifacts=false):Promise<void>{
     if(this.#savingReview)return;
     const patientId=this.#state.patient?.patient_id;
     const previous=this.#state.reviewReturnIntent;
     const recovering=this.#state.reviewReturnPhase==='unknown'&&previous!==null&&this.#reviewKey!=='';
-    if(recovering&&(previous.question_id!==questionId||previous.queue_fingerprint!==fingerprint||previous.reason!==reason)){
+    if(recovering&&(previous.question_id!==questionId||previous.queue_fingerprint!==fingerprint||previous.reason!==reason||Boolean(previous.artifacts)!==includeArtifacts)){
       this.#publish({reviewReturnMessage:'Resolve the earlier uncertain return with its exact reason and source context before starting a different return.'});
       return;
     }
@@ -780,10 +876,15 @@ export class RegistrySession {
         'Select a current source question and a visible 10–600 character verification reason.'});
       return;
     }
-    const intent=JSON.stringify([patientId,caseId,questionId,fingerprint,reason]);
+    const artifacts=recovering?previous.artifacts:includeArtifacts&&item?
+      openedReviewArtifacts(item,this.#state.backgroundBrief,this.#state.evidenceReport):null;
+    if(includeArtifacts&&!artifacts){
+      this.#publish({reviewReturnPhase:'error',reviewReturnMessage:'Reopen the completed brief and current comparison report for this question.'});return;
+    }
+    const intent=JSON.stringify([patientId,caseId,questionId,fingerprint,reason,artifacts??null]);
     if(this.#reviewIntent!==intent||!this.#reviewKey){this.#reviewKey=crypto.randomUUID();this.#reviewIntent=intent;}
     const requestKey=this.#reviewKey,query=++this.#reviewWrite,scope=this.#scope,selection=this.#read;
-    const captured=Object.freeze({patient_id:patientId,case_id:caseId,question_id:questionId,queue_fingerprint:fingerprint,reason});
+    const captured=Object.freeze({patient_id:patientId,case_id:caseId,question_id:questionId,queue_fingerprint:fingerprint,reason,...(artifacts?{artifacts}:{})});
     const current=()=>query===this.#reviewWrite&&scope===this.#scope&&selection===this.#read&&
       this.#state.patient?.patient_id===patientId&&this.#reviewIntent===intent;
     const uncertain=()=>{
@@ -799,19 +900,32 @@ export class RegistrySession {
         'Rechecking the source fingerprint and separate return permission before recording…'});
     try{
       const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+
-        '/questions/'+encodeURIComponent(questionId)+'/return-for-verification';
+        '/questions/'+encodeURIComponent(questionId)+(artifacts?'/evidence-reports/'+encodeURIComponent(artifacts.report_id)+
+          '/runs/'+encodeURIComponent(artifacts.run_id):'')+'/return-for-verification';
       const res=await this.transport(url,this.#init(control,JSON.stringify({synthetic:true,
-        request_key:requestKey,expected_queue_fingerprint:fingerprint,reason})));
+        request_key:requestKey,expected_queue_fingerprint:fingerprint,reason,...(artifacts?{
+          expected_result_sha256:artifacts.result_sha256,expected_report_snapshot_sha256:artifacts.report_snapshot_sha256}:{})})));
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status===408||res.status>=500){uncertain();return;}
       if(res.status!==200&&res.status!==201){
+        if(artifacts){
+          this.#briefRead++;
+          const message=res.status===409?'The selected brief, comparison or review request changed. Reopen both documents before returning them.':
+            'The brief and comparison report were closed because the return could not be authorized.';
+          this.#publish({...emptyBrief(),...this.#evidenceSession.reset(caseId),briefPhase:'error',briefMessage:message});
+          if(recovering){
+            this.#publish({...this.#resetReview(caseId),reviewReturnMessage:
+              'The earlier return is still uncertain. Its original request can be retried after access is restored.'});return;
+          }
+        }
         this.#publish({...this.#resetReview(),reviewReturnPhase:'error',reviewReturnMessage:res.status===409?
           'The source or return intent is no longer current. Refresh the inbox; no new request was created.':
           'Return permission or source context is unavailable. Prior review content is cleared.'});
         return;
       }
-      const saved=decodeReviewReturnResult(await json(res),questionId);
+      const value=await json(res);
+      const saved=artifacts?decodeEvidenceRunReturn(value,questionId,artifacts,res.status):decodeReviewReturnResult(value,questionId);
       if(!current())return;
       this.#publish({reviewReturn:saved,reviewReturnPhase:'saved',reviewReturnMessage:saved.duplicate?
         'Original verification-return receipt recovered. The same request was not recorded twice.':
@@ -1094,7 +1208,11 @@ export class RegistrySession {
       if(response.status===403||response.status===404){this.#denyLaboratoryQuestionAccess('history');return;}
       if(response.status!==200)throw Error('unavailable');
       const history=readLabQuestionList(await json(response,1048576),model);if(!current())return;
-      this.#publish({labQuestionHistory:history,labQuestionListPhase:'ready',labQuestionListMessage:'Saved questions checked against current access.'});
+      this.#publish({labQuestionHistory:history,labQuestionListPhase:'ready',
+        followthroughDrafts:Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughDrafts)
+          .filter(([id,draft])=>draft.patient_id===model.patient_id&&draft.case_id===model.case_id&&
+            (!draft.laboratoryAnchor||history.questions.some(row=>row.question_id===id&&matchesFollowthroughDraft(draft,row)))))),
+        labQuestionListMessage:'Saved questions checked against current access.'});
     }catch{if(current())this.#publish({...this.#resetLabQuestions(),labQuestionListPhase:'error',labQuestionListMessage:'Saved questions are unavailable or the source changed. Refresh Journey and check access again.'});}
     finally{clearTimeout(timer);this.#controllers.delete(control);}
   }
@@ -1343,9 +1461,8 @@ export class RegistrySession {
       const pendingEvidence=this.#state.evidenceLinkIntent;
       this.#publish({questions:history.questions,questionsAccessReceiptId:history.access_receipt_id,
         followthroughDrafts:Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughDrafts)
-          .filter(([id,draft])=>draft.patient_id===patientId&&draft.case_id===caseId&&history.questions.some(item=>
-            item.question_id===id&&item.preflight_sha256===draft.preflight_sha256&&
-            item.source_snapshot_sha256===draft.source_snapshot_sha256&&item.source_context_state==='current_unreviewed_question')))),
+          .filter(([id,draft])=>draft.patient_id===patientId&&draft.case_id===caseId&&
+            (draft.laboratoryAnchor||history.questions.some(item=>item.question_id===id&&matchesFollowthroughDraft(draft,item)))))),
         ...(pendingEvidence&&!pendingEvidence.laboratoryAnchor&&!history.questions.some(item=>item.question_id===pendingEvidence.question_id)?this.#resetEvidence():{}),
         questionsCaseId:caseId,questionListPhase:'ready',
         questionListMessage:history.questions.length?
@@ -1572,7 +1689,8 @@ export class RegistrySession {
     this.#publish({followthroughPhase:'loading',followthroughMessage:'Checking separate task, question and source permissions…'});
     try{
       const url='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+'/followthrough';
-      const res=await this.transport(url,this.#init(control));
+      const init=this.#init(control);init.headers={...init.headers,Accept:FOLLOWTHROUGH_V2_MEDIA+', application/json;q=0.9'};
+      const res=await this.transport(url,init);
       if(!current())return;
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){
@@ -1580,7 +1698,7 @@ export class RegistrySession {
           followthroughPhase:'error',followthroughMessage:'Recorded work is unavailable under current permissions. Prior task content is cleared.'});return;
       }
       if(control.signal.aborted)throw Error('task timeout');
-      const value=decodeFollowthrough(await json(res,4194304),patientId,caseId);
+      const value=decodeFollowthrough(await json(res,4194304,FOLLOWTHROUGH_V2_MEDIA),patientId,caseId);
       if(!current())return;if(control.signal.aborted)throw Error('task timeout');
       this.#publish({followthrough:value,followthroughPhase:'ready',
         followthroughTransitionDrafts:Object.freeze(Object.fromEntries(Object.entries(this.#state.followthroughTransitionDrafts)
@@ -1604,16 +1722,13 @@ export class RegistrySession {
   }
 
   /** Memory only; no command or request key is allocated until explicit submission. */
-  editFollowthroughDraft(questionId:string,fields:FollowthroughDraft):void{
+  editFollowthroughDraft(questionId:string,fields:FollowthroughDraft,family:FollowthroughFamily='text'):void{
     if(this.#followthroughBlocked())return;
-    const patientId=this.#state.patient?.patient_id,model=this.#state.worldModel;
-    const question=this.#state.questions?.find(item=>item.question_id===questionId);
-    if(!this.#token||!patientId||this.#state.phase!=='ready'||this.#uploading||
-       this.#state.worldPhase!=='ready'||this.#state.questionListPhase!=='ready'||!model||!question||
-       this.#state.questionsCaseId!==model.case_id||!canCreateFollowthrough(question,model)||
-       !this.#state.cases?.some(row=>row.case_id===model.case_id&&row.status==='active'))return;
-    const draft=Object.freeze({patient_id:patientId,case_id:model.case_id,
+    const model=this.#state.worldModel,question=currentFollowthroughQuestion(this.#state,questionId,family);
+    if(!this.#token||this.#uploading||!model||!question)return;
+    const draft=Object.freeze({patient_id:model.patient_id,case_id:model.case_id,
       source_snapshot_sha256:question.source_snapshot_sha256,preflight_sha256:question.preflight_sha256,
+      ...('observation_reference' in question?{laboratoryAnchor:followthroughLaboratoryAnchor(question)}:{}),
       fields:Object.freeze({...fields})});
     this.#publish({followthroughCaseId:model.case_id,
       followthroughDrafts:Object.freeze({...this.#state.followthroughDrafts,[questionId]:draft})});
@@ -1625,15 +1740,10 @@ export class RegistrySession {
     this.#publish({followthroughDrafts:Object.freeze(drafts)});
   }
 
-  async createFollowthrough(questionId:string,draft:FollowthroughDraft):Promise<void>{
+  async createFollowthrough(questionId:string,draft:FollowthroughDraft,family:FollowthroughFamily='text'):Promise<void>{
     if(this.#followthroughBlocked())return;
-    const patientId=this.#state.patient?.patient_id,model=this.#state.worldModel;
-    const question=this.#state.questions?.find(item=>item.question_id===questionId);
-    if(!patientId||!this.#token||this.#state.phase!=='ready'||this.#uploading||
-       this.#state.worldPhase!=='ready'||this.#state.questionListPhase!=='ready'||
-       !model||!question||this.#state.questionsCaseId!==model.case_id||
-       !canCreateFollowthrough(question,model)||!validFollowthroughDraft(draft)||
-       !this.#state.cases?.some(row=>row.case_id===model.case_id&&row.status==='active')){
+    const model=this.#state.worldModel,question=currentFollowthroughQuestion(this.#state,questionId,family);
+    if(!this.#token||this.#uploading||!model||!question||!validFollowthroughDraft(draft)){
       this.#publish({followthroughWritePhase:'error',followthroughReceipt:null,followthroughWriteMessage:
         'Use a current saved question, a 3–160 character title, a 3–600 character reason, and a valid due date or review trigger.'});return;
     }
@@ -1641,7 +1751,7 @@ export class RegistrySession {
       detail:draft.detail,owner_label:draft.owner_label,due_date:draft.due_date,review_trigger:draft.review_trigger,
       reason:draft.reason,source_snapshot_contract:'oi.pg-source-world-model/1' as const,
       expected_source_snapshot_sha256:question.source_snapshot_sha256,expected_preflight_sha256:question.preflight_sha256});
-    await this.#writeFollowthrough(Object.freeze({kind:'create',patient_id:patientId,case_id:model.case_id,question_id:questionId,body}));
+    await this.#writeFollowthrough(Object.freeze({kind:'create',patient_id:model.patient_id,case_id:model.case_id,question_id:questionId,body}));
   }
 
   editFollowthroughTransitionDraft(taskId:string,fields:FollowthroughTransitionFields):void{
@@ -1741,6 +1851,92 @@ export class RegistrySession {
     }catch(_){if(current())uncertain();}
     finally{clearTimeout(timeout);this.#controllers.delete(control);
       if(query===this.#followWrite&&scope===this.#scope)this.#savingFollowthrough=false;}
+  }
+
+  async backgroundBriefAction(questionId: string, action: RunAction): Promise<void> {
+    this.#focusSavedQuestion(questionId);
+    const world = this.#state.worldModel;
+    const question = this.#state.questions?.find(item => item.question_id === questionId);
+    const view = this.#state.backgroundBrief;
+    const previous = view?.questionId === questionId ? view.status : null;
+    if (!world || !question || !this.#token || this.#state.phase !== 'ready' || this.#state.worldPhase !== 'ready' ||
+        this.#state.questionListPhase !== 'ready' || this.#state.questionsCaseId !== world.case_id ||
+        this.#state.patient?.patient_id !== world.patient_id || question.patient_id !== world.patient_id ||
+        question.case_id !== world.case_id || question.source_snapshot_contract !== 'oi.pg-source-world-model/1' ||
+        view?.busy || this.#uploading || this.#savingQuestion) return;
+    const enqueue = action === 'enqueue' || action === 'retry';
+    if ((action !== 'enqueue' && action !== 'latest' && !previous) ||
+        (action === 'retry' && (!previous || !canRetryRun(previous.state))) ||
+        (action === 'cancel' && previous?.state !== 'queued' && previous?.state !== 'running') ||
+        (action === 'result' && previous?.state !== 'completed') ||
+        ((action === 'result' || enqueue) && !canPrepareSourceBrief(question, world))) return;
+
+    const query = ++this.#briefRead;
+    const scope = this.#scope;
+    const patientRead = this.#read;
+    const current = () => query === this.#briefRead && scope === this.#scope && patientRead === this.#read &&
+      this.#state.worldModel === world && this.#state.questions?.find(q => q.question_id === questionId) === question;
+    const control = new AbortController();
+    this.#controllers.add(control);
+    const timeout = setTimeout(() => control.abort(), 10000);
+    const pending = {questionId, status: previous, result: null, busy: true, message: 'Checking current access…'};
+    this.#publish({...emptyBrief(), backgroundBrief: pending});
+    try {
+      const base = '/v1/patients/' + encodeURIComponent(question.patient_id) + '/cases/' +
+        encodeURIComponent(question.case_id) + '/questions/' + encodeURIComponent(questionId) + '/runs';
+      // The server scopes this key to the actor, organization and purpose. Reopening after a
+      // lost response or reload repeats the exact intent without retaining any patient data locally.
+      let path = base;
+      let body: string | undefined;
+      if (enqueue) {
+        body = JSON.stringify({synthetic: true, request_key: 'web-brief-v1-' +
+          (action === 'retry' ? previous!.run_id : questionId),
+          source_snapshot_contract: question.source_snapshot_contract,
+          expected_source_snapshot_sha256: question.source_snapshot_sha256,
+          expected_preflight_sha256: question.preflight_sha256});
+      } else if (action !== 'latest') {
+        path += '/' + previous!.run_id;
+        if (action === 'cancel') { path += '/cancel'; body = JSON.stringify({synthetic: true}); }
+        if (action === 'result') path += '/result';
+      }
+      const response = await this.transport(path, this.#init(control, body));
+      if (!current()) { void response.body?.cancel().catch(() => {}); return; }
+      if (response.status === 401) { this.#httpError(401); return; }
+      if (response.status === 403 || response.status === 404) {
+        if (action === 'latest') {
+          await this.#recheckQuestionDenial(world.case_id, control, 'questions', {
+            briefPhase: 'error', briefMessage: 'No previous background run is visible under current access.'});
+        } else {
+          await this.#recheckQuestionDenial(world.case_id, control, 'case', {
+            briefPhase: 'error', briefMessage: 'Background brief unavailable under current access. Reopen the case to check again.'});
+        }
+        return;
+      }
+      if (response.status === 409) {
+        this.#resetWorld(world.case_id);
+        this.#publish({briefPhase: 'error', briefMessage: 'The source or run changed. Refresh the case before reopening the brief.'});
+        return;
+      }
+      if (control.signal.aborted || (enqueue ? ![200, 201].includes(response.status) : response.status !== 200))
+        throw Error('Run unavailable');
+      const value = await json(response, 73728);
+      const result = action === 'result' ? await readRunResult(value, previous!, world, question) : null;
+      const status = enqueue ? readRunReceipt(value, response.status, question) :
+        result ? previous! : readRunStatus(value, question, action === 'latest' ? undefined : previous!);
+      if (action === 'cancel' && (status.state === 'queued' || status.state === 'running'))
+        throw Error('Cancellation returned active work');
+      if (action === 'retry' && status.run_id === previous!.run_id) throw Error('Replacement returned its predecessor');
+      if (!current()) return;
+      if (control.signal.aborted) throw Error('Run request timed out');
+      this.#publish({backgroundBrief: {questionId, status, result, busy: false, message: ''}});
+    } catch {
+      if (current()) this.#publish({backgroundBrief: {...pending, busy: false, message: enqueue ?
+        'Queue outcome unknown. Repeat the same action to recover its receipt.' :
+        'The latest response could not be verified. Check the run again.'}});
+    } finally {
+      clearTimeout(timeout);
+      this.#controllers.delete(control);
+    }
   }
 
   /** Fresh export of one persisted source question; no model, evidence synthesis or review. */
@@ -1917,7 +2113,7 @@ export class RegistrySession {
     this.#records++;
     this.#publish({...(this.#state.worldPhase==='loading'?emptyWorld():{}),original:null,recordsPhase:'ready'});
   };
-  async loadOriginal(sourceId:string):Promise<void>{
+  async loadOriginal(sourceId:string,expectedObservation?:string):Promise<void>{
     const patientId=this.#state.patient?.patient_id,index=this.#state.sourceIndex;
     const source=index?.sources.find(s=>s.source_id===sourceId);
     this.#publish({original:null});
@@ -1936,11 +2132,22 @@ export class RegistrySession {
       if(res.status!==200){this.#publish({original:null,recordsPhase:'error',recordMessage:'Original unavailable or permission denied. No previously opened text is retained.'});return;}
       // A 64 KiB original can expand under JSON escaping. Keep the envelope bounded too.
       const subject=this.#state.cases?.find(item=>item.case_id===caseId&&item.status==='active')?.source_subject_ref;
-      const original=await verifyOriginal(await json(res,524288),caseId,source,subject?'Patient/'+subject:undefined);
+      const original=await verifyOriginal(await json(res,524288),caseId,source,subject?'Patient/'+subject:undefined,expectedObservation);
       if(!current())return;
       this.#publish({original,recordsPhase:'ready',recordMessage:'Exact original bytes verified against the selected source hash. Clinical review remains not established.'});
     }catch(_){if(current())this.#publish({original:null,recordsPhase:'error',recordMessage:'Original failed verification or service unavailable. Reload metadata before trying again.'});}
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+  async previewLaboratory(caseId:string,file:LaboratoryFile) {
+    const index=this.#state.sourceIndex;
+    const binding=this.#state.cases?.find(row=>row.case_id===caseId && row.status==='active');
+    if(!index || index.case_id!==caseId || !binding || binding.patient_id!==this.#state.patient?.patient_id ||
+       index.patient_id!==binding.patient_id) throw Error('Recheck patient and case access');
+    const reply=await this.#caseContentRequest(caseId,'/laboratory/fhir-r4/preview',
+      JSON.stringify({synthetic:true,bundle_json:file.text}));
+    if(reply.status===422) throw new LaboratoryPreviewRejected(LABORATORY_PREVIEW_REJECTED);
+    if(reply.status!==200 || this.#state.sourceIndex!==index) throw Error('Laboratory preview unavailable.');
+    return readLaboratoryPreview(reply.body,file,binding);
   }
   /** Preserve one exact in-memory command until its receipt is known or this patient/case is withdrawn. */
   async importLaboratory(caseId:string,text:string,confirmed:boolean,previousSourceId:string|null=null):Promise<void>{

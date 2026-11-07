@@ -29,7 +29,10 @@ def migrate(settings: Settings, operation: str, revision: str | None = None):
         or not (make_url(settings.database_url).database or "").startswith("oi_api_test_")
     ):
         raise ConfigurationError("Downgrades require explicit test mode and an oi_api_test_ database")
-    engine = make_engine(settings)
+    # pg8000 uses its socket timeout for reads as well as connection setup.
+    # Give administrative DDL time to receive PostgreSQL's own bounded error.
+    statement_seconds = 30
+    engine = make_engine(settings, transport_timeout=statement_seconds + 5)
     try:
         with engine.begin() as connection:
             version = int(connection.execute(text("SELECT current_setting('server_version_num')")).scalar_one())
@@ -38,7 +41,8 @@ def migrate(settings: Settings, operation: str, revision: str | None = None):
             # Bound waiting for locks/SQL in this baseline; extend deliberately for
             # future reviewed data migrations rather than waiting indefinitely.
             connection.execute(text("SELECT set_config('lock_timeout', '5000', true)"))
-            connection.execute(text("SELECT set_config('statement_timeout', '30000', true)"))
+            connection.execute(text("SELECT set_config('statement_timeout', :budget, true)"),
+                               {"budget": f"{statement_seconds}s"})
             config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
             config.attributes["connection"] = connection
             if operation == "current":

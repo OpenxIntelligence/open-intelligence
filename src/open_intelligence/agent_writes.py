@@ -34,9 +34,11 @@ slices land; the contract shape itself is final):
   their own roles; this bridge mapping is recorded here, not in the
   investigation module, so there is exactly one place to change it.
 - ``routeId`` is deterministic: ``route:<case_id>:<template>:<question_id>``.
-  No ``route.decided`` record exists yet (that is pipeline work); the
-  id is derived from the route decision's inputs, so a replay can
-  recover the template and question from the contract alone.
+  A ``route.decided`` record for it is written by the orchestrator
+  (slice C3, ``orchestrator.py``) before any agent event; replay
+  fails a run whose route was never decided. The id is derived from
+  the route decision's inputs, so a replay can recover the template
+  and question from the contract alone.
 - ``snapshotAt`` is ``{"as_of": <ISO-8601 UTC>, "event_id": <latest
   ledger event id for the case, or None>}``. The event id is the L1
   as-of anchor; the per-input content hashes are what a replay
@@ -133,6 +135,17 @@ REJECTION_REASONS = frozenset({
     "missing_input",
     "inputs_changed",
     "claims_not_reproducible",
+    # Slice 3 assignment (program plan C3): "missing_route" when no
+    # route.decided record exists for the run's route; "unassigned_agent"
+    # when the writing role was not assigned to the route; "lease_expired"
+    # when the assignment's lease had lapsed at write time;
+    # "invalid_route" for a malformed route record;
+    # "invalid_authority" for a role that may not authorize a run.
+    "missing_route",
+    "unassigned_agent",
+    "lease_expired",
+    "invalid_route",
+    "invalid_authority",
 })
 
 
@@ -427,7 +440,10 @@ def check_replay(store, case_id: str, investigation_id: int) -> dict:
     Re-reads every recorded input from the ledger and requires an exact
     content-hash match with the source version still current, then
     re-validates the stored claims against the recorded input ids and
-    requires the identical kept claims. Returns
+    requires the identical kept claims. The run's route must also have
+    been decided before the run (a ``route.decided`` record for the
+    contract's route id, with the writing role among its agents);
+    a run with no route record is not reproducible. Returns
     ``{"reproducible": True, ...}`` or ``{"reproducible": False,
     "reason": <typed>}``; never raises for a stored-contract problem.
     """
@@ -461,6 +477,20 @@ def check_replay(store, case_id: str, investigation_id: int) -> dict:
             detail=f"Contract route {normalized['routeId']} does not match "
             f"investigation {investigation['template']} "
             f"question {investigation['question_id']}.",
+        )
+    # Slice 3 assignment (program plan C3): a run is reproducible only
+    # if its route was decided before the run and the writing role was
+    # assigned to it. The lease is not checked here: it bounds the
+    # run's execution window, not the historical record.
+    from .orchestrator import check_assignment
+    try:
+        check_assignment(
+            store, case_id, normalized["routeId"], normalized["agentRole"],
+            check_lease=False,
+        )
+    except WriteContractRejected as error:
+        return _replay_failure(
+            error.reason, investigation_id=investigation_id, detail=str(error)
         )
     if normalized["modelId"] != investigation["model"]:
         return _replay_failure(

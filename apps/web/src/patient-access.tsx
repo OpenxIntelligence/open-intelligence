@@ -54,7 +54,7 @@ export function PatientAccess({session, state, busy, patientId, onPatientIdChang
           <p id="patient-id-help">{state.connected ? 'Enter the exact fictional ID supplied for this patient.' : 'Connect your credential to enable patient lookup.'}</p>
           <input ref={patientInput} id="patient-id" value={patientId} onChange={event => onPatientIdChange(event.target.value)}
             aria-describedby="patient-id-help" autoComplete="off" autoCapitalize="none" spellCheck={false}
-            disabled={!state.connected || state.phase === 'creating'} required maxLength={128}/>
+            disabled={!state.connected || state.phase === 'creating' || state.suspensionPhase === 'sending' || state.suspensionPhase === 'unknown'} required maxLength={128}/>
           <button type="submit" className="primary" disabled={!state.connected || busy}>
             {state.phase === 'reading' ? 'Opening patient…' : 'Open patient'}
           </button>

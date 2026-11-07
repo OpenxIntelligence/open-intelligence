@@ -6,6 +6,9 @@ remain in the [first-principles plan](docs/FIRST_PRINCIPLES_PLAN.md).
 
 ## Run the connected fictional application
 
+Current connected-product candidate requires `0028_connected_product`, a no-DDL join of `0027_source_event_purpose` and `0022_encounter_sources`. It preserves the diagnostic interface, visit/source links, shared event processing, durable execution and access controls. Combined acceptance and remaining foundations: [construction record](docs/engineering/CONNECTED_PRODUCT_FOUNDATION.md).
+
+
 Start with the [persistent demo guide](docs/H1_DEMO.md). The connected H1 application
 uses React/Vite/TypeScript and FastAPI/PostgreSQL 16. It brings fictional records,
 source-anchored questions, evidence comparisons, preserved reports and recorded
@@ -15,9 +18,28 @@ patient/case/source; repeated setup and stop/resume retain its saved work.
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. This revision requires `0022_encounter_sources` for
-[encounters and draft notes](apps/api/README.md#connected-encounter-and-note-service) and [laboratory questions and citations](docs/engineering/H1_LABORATORY_CITATIONS.md).
-The Python/SQLite application is retained as a separate reference implementation.
+the retained contributions. This integration candidate requires
+`0027_source_event_purpose`, the successor of the existing `0026_integrated_core`
+join, retaining the published migration owner from upstream #565 at `462e6c2`.
+The [upgrade contract](docs/implementation/SOURCE_EVENT_PURPOSE_REPAIR.md)
+covers fresh and published 0026 databases; older research-history adoption
+remains held. It retains [encounters and draft notes](apps/api/README.md#connected-encounter-and-note-service),
+[laboratory questions and citations](docs/engineering/H1_LABORATORY_CITATIONS.md),
+and the [durable source-question brief worker](docs/engineering/H1_DURABLE_EXECUTION.md).
+The [source-event worker](docs/engineering/H1_SOURCE_EVENT_DELIVERY.md) reconciles
+pending runs after a source changes. The workspace can reopen an amended
+question's existing run and show recorded follow-up beside the selected
+laboratory result, through their existing authorized readers.
+
+[Foundation #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565)
+remains the upstream owner. This dependent draft's PR records its exact combined
+source, verification and landing status. Combined verification is pending at
+this source-publication checkpoint; the verified
+[#529 foundation](https://github.com/OpenxIntelligence/open-intelligence/pull/529)
+and other donor receipts keep their original scope. The
+[implementation status](docs/IMPLEMENTATION_STATUS.md#current-integrated-h1-checkpoint)
+pins the retained inputs and remaining work. The Python/SQLite application
+remains a separate reference implementation.
 
 Use independently authored fictional data only. This application does not establish
 production identity/consent, professional clinical approval, model qualification,
@@ -134,9 +156,114 @@ reason; a stored run can be replay-checked from its route, snapshot, and
 recorded inputs, and a superseded source version invalidates the replay.
 Local suite at the slice branch: 796 tests, with the same 17 pre-existing
 `test_pdf_intake` failures as main (missing local `pypdf`) and zero new
-failures. Not yet a clinical claim: K-checks, the Skeptic, and parallel
-role agents are later slices; the single existing model call writes as A1
-until the roster is wired.
+failures.
+
+**Deterministic K-checks K1–K7 (Slice 2, 5 November 2026):** every kept
+investigation claim runs the deterministic checks of program plan C2 —
+K1 identifier format; K2 slot–field match against the cited facets;
+K3 temporal (cite only versions recorded at or before the snapshot);
+K4 contradiction (the later of two contradicting claims drops);
+K5 staleness (superseded or out-of-snapshot citations drop); K6 scope
+guard; K7 support (every number, identifier, and named-substance token
+must appear in the cited evidence; low-tier support must carry the
+fixed limits phrase); K7+ injection. The checker
+(`src/open_intelligence/kchecks.py`) is domain-free — the vertical's
+predicates arrive as parameters — and a test scans it for vertical
+literals. Failures go to `dropped` with a typed reason, never silently
+repaired. Local suite at the slice branch: 889 tests, with the same 17
+pre-existing `test_pdf_intake` failures as main (823 tests) and zero
+new failures.
+
+**Skeptic (A6) + one repair round + T6 reconciliation (Slice 4,
+5 November 2026):** every kept claim gets an independent machine
+second opinion from the Skeptic (same `muse-spark-1.3`, separate
+prompt `skeptic:1`, no shared context beyond the claim and its cited
+evidence — it catches a planted misstatement the K-checks miss, such
+as "31 cm" against evidence "31 mm"); a failing claim gets exactly
+one repair round (only content failures a restatement can fix;
+contradictions, scope, and tainted content are never repaired);
+contradictions and gaps are grouped deterministically (T6) with both
+sides listed and the resolving evidence named, never merged or voted
+on; conflicts surface as typed `AB-CONFLICT` codes with an origin,
+alongside `AB-STALE` (which leaves the question open), `AB-BUDGET`,
+`AB-MODEL`, and `AB-ALL-DROPPED`. The verification record (Skeptic
+verdicts, repair record, T6 groups, abstention codes) is stored with
+each run and returned in the response. Local suite at the slice
+branch: 947 tests, with the same 17 pre-existing `test_pdf_intake`
+failures as main (916 tests) and zero new failures. Unproven: the live
+Skeptic run — the Meta Model API returned HTTP 402 (billing issue on
+the key's team), so the prompt is verified only through the
+stub-driven test suite; a live run is pending that billing fix.
+Not yet a clinical claim: the parallel role agents are a later slice;
+the single existing model call writes as A1 until the roster is wired.
+
+**Evaluation harness (Slice 5, 5 November 2026):** verification
+quality is measured by code, not asserted in prose — a deterministic,
+offline harness (`src/open_intelligence/evaluation.py`, no live model
+call) runs the planted-defect fixtures from C2/C4 through the real
+checks and computes the M-metrics of OI-09 §9.2 that are measurable
+offline: M5 temporal-defect recall, M6 contradiction recall and
+precision (surfaced as a T6 group plus `AB-CONFLICT`), M7 staleness
+recall, M8 advice-language leakage (target 0), M10 hypothesis
+support, M16 replay determinism (one intact run replayed three times,
+identical, plus tamper probes that must fail replay), M27 routing
+record completeness, and M28 hypothesis citation recall (a prose-
+attribution check over numbers, substances, temporal words, relation
+verbs, and entities — it catches what K7 cannot, such as an
+unsupported relation verb on a supported number). Each metric is
+reported with value, n, target, and pass/fail; the human spot-check
+(≥30 items) is recorded, not performed; model-dependent metrics
+(M25, M26, M29) are listed as not measured. The harness measures; it
+never gates. Local suite at the slice branch: 972 tests, with the
+same 17 pre-existing `test_pdf_intake` failures as the branch
+baseline (947 tests) and zero new failures. Unproven: the live-model
+half of the metrics (M25/M26/M29 need live runs; the Skeptic's live
+proof is pending the same Meta billing fix).
+
+**Vertical interface (Slice V1, 5 November 2026):** the core holds no
+oncology knowledge — oncology lives behind a vertical interface
+(`src/open_intelligence/vertical.py`: a registry; a vertical
+registers its domain rules, scope patterns, ruleset version, and
+evidence bindings). The oncology predicates moved verbatim out of
+`investigation.py` into `vertical_oncology.py`; the live path and the
+evaluation harness resolve them through the registry. A minimal
+synthetic cardiology vertical (`vertical_cardiology.py`) proves the
+core is domain-free: it runs the same pipeline — route, K-checks,
+Skeptic, T6 — end to end, with the cardiology predicates selecting
+different behavior (a cardiology synonym resolves where oncology's
+does not; "you have heart failure" trips the scope guard under
+cardiology and passes under oncology). A tripwire test scans core
+imports and fails the suite if any core module imports a vertical
+definition module. Local suite at the slice branch: 986 tests, with
+the same 17 pre-existing `test_pdf_intake` failures as the branch
+baseline (972 tests) and zero new failures. Unproven: the live-model
+half is unchanged (Meta billing fix still pending); the cardiology
+run uses stub verdicts.
+
+**Data-integration dimension (Slice D1, 5 November 2026):** arriving
+records become anchored, checkable evidence. A1 Intake & Extraction
+(`src/open_intelligence/extraction.py`) is the one deterministic
+anchor checker every extraction proposal passes before its fields
+become stored assertions: the source version must exist, belong to
+the case, and be current, and each field must name a valid finding
+key, a known certainty, a verbatim quote, and an exact source line —
+anything else drops with a typed reason, never stored. The
+report-import path routes its parsed findings through the checker.
+T3 specimen chain (`src/open_intelligence/specimen_chain.py`) is the
+deterministic chain-of-custody walker: it walks a biological asset's
+parent lineage root-first, each link carrying its assay/specimen
+context and anchor basis, and reports every break as a typed record
+(missing asset/parent, cycle, unknown specimen, specimen mismatch,
+superseded anchor, episode mismatch, kind violation) — never silent,
+never a crash. Dimension modules never import each other
+(cross-dimension interaction happens only through the ledger and
+`route.decided`); the import-graph tripwire now lists the two D1
+modules and stays green. Local suite at the slice branch: 1006
+tests, with the same 17 pre-existing `test_pdf_intake` failures as
+the branch baseline (986 tests) and zero new failures. Unproven:
+nothing in the slice needs a live model call (Meta billing fix
+still pending); the first live caller of the chain validator is
+D3's comparison toolsets.
 
 ## Development boundaries
 

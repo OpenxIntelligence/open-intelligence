@@ -145,3 +145,92 @@ class EncounterHTTPTests(SourceVersionFixture):
                 self.assertEqual(conn.execute(text(f"SELECT count(*) FROM ehr.{table}")).scalar_one(), 0)
             self.assertEqual(conn.execute(text("SELECT count(*) FROM identity.identity_domain_events "
                 "WHERE event_type='clinical_encounter_scheduled'")).scalar_one(), 0)
+
+
+class EncounterActivityDeliveryTests(SourceVersionFixture):
+    def test_committed_encounter_to_independent_receiver_and_revoked_grant(self):
+        from contextlib import closing
+        from pathlib import Path
+        import sqlite3
+        from urllib.parse import urlsplit
+        import signal
+        from oi_api.encounter_relay import FeedUnavailable, receive_once, verify_history
+        from test_encounter_relay import interrupt_receiver
+
+        self.creds[0]["actions"].extend(["encounter.read", "encounter.schedule", "encounter.transition",
+                                        "note.read", "note.write", "encounter.events.read"])
+        self.write()
+        receiver = Path(self.temp.name) / "activity.sqlite"
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            url = f"/v1/patients/{patient}/encounters"
+            port = urlsplit(base).port
+
+            def deliver(token=TOKEN_A, **operation):
+                return receive_once(receiver, port, patient, lambda: token, **operation)
+
+            def post(path, body):
+                code, data, _ = request(base, path, token=TOKEN_A, body=body)
+                self.assertEqual(code, 200, data)
+                return data
+
+            self.assertEqual(deliver()["counts"], {})
+            first = post(url, EncounterHTTPTests.schedule)
+            self.assertEqual(post(url, EncounterHTTPTests.schedule), first)
+            visit = f'{url}/{first["encounter_id"]}'
+            post(visit + "/transitions", {"synthetic": True, "request_key": "START-ONE",
+                 "target": "in_progress", "expected_revision": 1})
+            draft = {"synthetic": True, "request_key": "WRITE-ONE", "expected_version": 0,
+                     "body": "Fictional note text stays with the EHR.", "note_kind": "consultation"}
+            note = visit + "/notes/NOTE-ONE/versions"
+            post(note, draft)
+            expected = {"clinical_encounter_scheduled": 1, "clinical_encounter_state_changed": 1,
+                        "clinical_note_draft_saved": 1}
+            token_file = Path(self.temp.name) / "relay-token"
+            token_file.write_text(TOKEN_A)
+            interrupted = interrupt_receiver(receiver, patient, port, token_file)
+            self.assertEqual(interrupted.returncode, -signal.SIGKILL, interrupted.stderr)
+            with closing(sqlite3.connect(receiver)) as db:
+                self.assertEqual(db.execute("SELECT count(*) FROM activity_receipts").fetchone(), (0,))
+                self.assertEqual(db.execute("SELECT count(*) FROM activity_totals").fetchone(), (0,))
+            result = deliver()
+            self.assertEqual((result["applied"], result["counts"]), (3, expected))
+            self.assertEqual(deliver()["applied"], 0)
+            def workload():
+                return receive_once(receiver, port, patient, lambda: TOKEN_A, visit_workload=True)
+            self.assertEqual(workload()["visit_workload"], {"in_progress": 1})
+
+            verification = verify_history(receiver, port, patient, lambda: TOKEN_A)
+            self.assertEqual(verification["verified_events"], 3)
+            item, = deliver(inbox_after=0)["pending_drafts"]
+            self.assertEqual((item["encounter_id"], item["note_version"]), (first["encounter_id"], 1))
+            self.assertEqual(deliver(acknowledge=item["event_id"])["acknowledged_event"], item["event_id"])
+            self.assertEqual(deliver(inbox_after=0)["pending_drafts"], [])
+            post(note, dict(draft, request_key="WRITE-TWO", expected_version=1, body="Fictional revision."))
+            with self.assertRaises(FeedUnavailable):
+                deliver(TOKEN_B, inbox_after=0)
+            self.creds[0]["actions"].remove("note.read")
+            self.write()
+            with self.assertRaises(FeedUnavailable):
+                deliver(acknowledge=item["event_id"])
+            with self.assertRaises(FeedUnavailable):
+                workload()
+            with self.assertRaises(FeedUnavailable):
+                verify_history(receiver, port, patient, lambda: TOKEN_A)
+            with closing(sqlite3.connect(receiver)) as db:
+                self.assertEqual(db.execute("SELECT count(*) FROM activity_receipts").fetchone()[0], 3)
+            self.creds[0]["actions"].append("note.read")
+            self.write()
+            stale = deliver(acknowledge=item["event_id"])
+            self.assertEqual((stale["applied"], stale["status"]), (1, "superseded_or_unknown"))
+            revised, = deliver(inbox_after=0)["pending_drafts"]
+            self.assertEqual(revised["note_version"], 2)
+            self.assertGreater(revised["event_id"], item["event_id"])
+            verification = verify_history(receiver, port, patient, lambda: TOKEN_A)
+            self.assertEqual(verification["verified_events"], 4)
+            self.assertEqual(verification["local_acknowledgements"]["count"], 1)
+            post(visit + "/transitions", {"synthetic": True, "request_key": "FINISH-ONE",
+                 "target": "completed", "expected_revision": 2})
+            self.assertEqual(workload()["visit_workload"], {"completed": 1})
+            self.assertEqual(workload()["applied"], 0)
+            self.assertNotIn(draft["body"].encode(), receiver.read_bytes())

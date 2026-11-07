@@ -74,7 +74,7 @@ class HTTPContractTests(unittest.TestCase):
             self.assertEqual(body["authentication"], "deny_all")
             self.assertFalse(body["patient_data_enabled"])
             self.assertTrue(body["synthetic_registry_enabled"])
-            self.assertEqual(body["capabilities"], ["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel", "synthetic_record_request_receive", "synthetic_case_binding_create", "synthetic_case_binding_list", "synthetic_case_binding_revoke", "synthetic_source_import", "synthetic_source_list", "synthetic_source_original_read", "synthetic_source_world_model_read", "synthetic_source_composer_preflight", "synthetic_source_question_create", "synthetic_source_question_list", "synthetic_image_import", "synthetic_image_list", "synthetic_image_original_read", "synthetic_source_review_queue_read", "synthetic_source_review_return", "synthetic_source_question_brief", "synthetic_source_review_packet_read", "synthetic_question_followthrough_read", "synthetic_question_followthrough_create", "synthetic_question_followthrough_update", "synthetic_question_evidence_search", "synthetic_question_evidence_link", "synthetic_question_evidence_list", "synthetic_question_evidence_read", "synthetic_question_evidence_import", "synthetic_question_evidence_assess", "synthetic_question_evidence_withdraw", "synthetic_question_evidence_original_read", "synthetic_question_evidence_report", "synthetic_laboratory_question_preflight", "synthetic_laboratory_question_save", "synthetic_laboratory_question_history", "synthetic_laboratory_question_evidence_metadata", "synthetic_laboratory_source_citation_report", "synthetic_ehr_encounters", "synthetic_ehr_note_drafts", "synthetic_ehr_encounter_source_links"])
+            self.assertEqual(body["capabilities"], ["synthetic_patient_create", "synthetic_patient_read", "synthetic_record_request_create", "synthetic_record_request_list", "synthetic_record_request_cancel", "synthetic_record_request_receive", "synthetic_case_binding_create", "synthetic_case_binding_list", "synthetic_case_binding_revoke", "synthetic_source_import", "synthetic_source_list", "synthetic_source_original_read", "synthetic_source_world_model_read", "synthetic_source_composer_preflight", "synthetic_source_question_create", "synthetic_source_question_list", "synthetic_image_import", "synthetic_image_list", "synthetic_image_original_read", "synthetic_source_review_queue_read", "synthetic_source_review_return", "synthetic_source_question_brief", "synthetic_source_review_packet_read", "synthetic_question_followthrough_read", "synthetic_question_followthrough_create", "synthetic_question_followthrough_update", "synthetic_question_evidence_search", "synthetic_question_evidence_link", "synthetic_question_evidence_list", "synthetic_question_evidence_read", "synthetic_question_evidence_import", "synthetic_question_evidence_assess", "synthetic_question_evidence_withdraw", "synthetic_question_evidence_original_read", "synthetic_question_evidence_report", "synthetic_laboratory_question_preflight", "synthetic_laboratory_question_save", "synthetic_laboratory_question_history", "synthetic_laboratory_question_evidence_metadata", "synthetic_laboratory_source_citation_report", "synthetic_ehr_encounters", "synthetic_ehr_note_drafts", "synthetic_ehr_encounter_source_links", "synthetic_source_brief_run_enqueue", "synthetic_source_brief_run_read", "synthetic_source_brief_run_cancel", "synthetic_source_brief_run_result"])
 
     def test_missing_database_is_unready_not_a_fake_pass(self):
         with running_server(create_app(Settings.from_env({}))) as base:
@@ -131,7 +131,10 @@ class HTTPContractTests(unittest.TestCase):
                 missing_status, _, _ = get_json(base, path)
                 self.assertEqual(missing_status, 404)
         self.assertEqual(status, 200)
+        evidence_return = ("/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/"
+                           "evidence-reports/{report_id}/runs/{run_id}/return-for-verification")
         self.assertEqual(set(schema["paths"]), {
+            evidence_return,
             "/v1/patients/{patient_id}/encounters",
             "/v1/patients/{patient_id}/encounters/events",
             "/v1/patients/{patient_id}/encounters/{encounter_id}/transitions",
@@ -143,6 +146,7 @@ class HTTPContractTests(unittest.TestCase):
             "/v1",
             "/v1/patients",
             "/v1/patients/{patient_id}",
+            "/v1/patients/{patient_id}/suspensions",
             "/v1/patients/{patient_id}/case-bindings",
             "/v1/patients/{patient_id}/case-bindings/{case_id}/revoke",
             "/v1/patients/{patient_id}/cases/{case_id}/composer/source-preflight",
@@ -164,6 +168,10 @@ class HTTPContractTests(unittest.TestCase):
             "/v1/patients/{patient_id}/cases/{case_id}/questions",
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/manual-passages",
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/brief",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/runs",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/runs/{run_id}",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/runs/{run_id}/cancel",
+            "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/runs/{run_id}/result",
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence",
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-assessments",
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/evidence-links",
@@ -198,6 +206,10 @@ class HTTPContractTests(unittest.TestCase):
         self.assertEqual(schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/world-model"]["get"]["security"], [{"SyntheticFixture": []}])
         queue = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/review-queue"]["get"]
         returning = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/return-for-verification"]["post"]
+        governed = schema["paths"][evidence_return]["post"]
+        self.assertEqual(governed["operationId"], "return_evidence_run_for_verification_v1")
+        self.assertEqual(governed["security"], [{"SyntheticFixture": []}])
+        self.assertTrue({"200", "201", "404", "409", "503"}.issubset(governed["responses"]))
         self.assertEqual(queue["operationId"], "list_source_question_review_queue_v1")
         self.assertEqual(returning["operationId"], "return_source_question_for_verification_v1")
         self.assertEqual(queue["security"], [{"SyntheticFixture": []}])
@@ -210,6 +222,11 @@ class HTTPContractTests(unittest.TestCase):
         self.assertIn("503", image_preview["responses"])
         self.assertIn("image/png", image_preview["responses"]["200"]["content"])
         self.assertIn("503", schema["paths"]["/health/ready"]["get"]["responses"])
+        suspension = schema["paths"]["/v1/patients/{patient_id}/suspensions"]["post"]
+        self.assertEqual(suspension["security"], [{"SyntheticFixture": []}])
+        self.assertEqual(suspension["operationId"], "suspend_patient_access_v1")
+        for status in ("401", "404", "409", "422", "503"):
+            self.assertIn(status, suspension["responses"])
         self.assertFalse(schema["components"]["schemas"]["Readiness"]["additionalProperties"])
         for suffix, method in (("evidence-search", "post"), ("evidence-links", "post"), ("evidence-links", "get")):
             operation = schema["paths"]["/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/" + suffix][method]

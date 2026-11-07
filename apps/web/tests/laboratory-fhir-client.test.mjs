@@ -74,8 +74,10 @@ test('uncertain import retains exact command across same-case metadata refresh a
 });
 test('concurrent imports submit only once and malformed/failed success remains uncertain',async()=>{
  for(const response of [reply({},201),reply({},503),reply({...RECEIPT,original_sha256:'0'.repeat(64)},201)]){
-  const hold=deferred();const{session,calls}=await ready(()=>hold.promise);
-  const first=session.importLaboratory(CID,RAW,true);await new Promise(r=>setTimeout(r,10));
+  const hold=deferred(),started=deferred();
+  const{session,calls}=await ready(()=>{started.resolve();return hold.promise;});
+  const first=session.importLaboratory(CID,RAW,true);
+  await Promise.race([started.promise,first.then(()=>{throw Error('First import ended before transport');})]);
   await session.importLaboratory(CID,RAW,true);assert.equal(calls.filter(x=>x[1].method==='POST').length,1);
   hold.resolve(response);await first;assert.equal(session.snapshot().laboratoryPhase,'unknown');
  }
@@ -94,15 +96,17 @@ test('profile rejection is distinct from an unknown outcome and permits a correc
 });
 test('different case and disconnect clear pending original and prevent late resurrection',async()=>{
  for(const change of [s=>s.loadSources('CASE-OTHER'),s=>s.disconnect()]){
-  const hold=deferred();const{session}=await ready(()=>hold.promise);
-  const pending=session.importLaboratory(CID,RAW,true);await new Promise(r=>setTimeout(r,10));
+  const hold=deferred(), started=deferred();
+  const{session}=await ready(()=>{started.resolve();return hold.promise;});
+  const pending=session.importLaboratory(CID,RAW,true);await started.promise;
   await change(session);hold.resolve(reply(RECEIPT,201));await pending;
   assert.equal(session.snapshot().laboratoryReceipt,null);assert.equal(session.snapshot().laboratoryIntent,null);
  }
 });
 test('a same-case refresh during sending retains unknown command and suppresses old success',async()=>{
- const hold=deferred();const{session}=await ready(()=>hold.promise);
- const pending=session.importLaboratory(CID,RAW,true);await new Promise(r=>setTimeout(r,10));
+ const hold=deferred(), started=deferred();
+ const{session}=await ready(()=>{started.resolve();return hold.promise;});
+ const pending=session.importLaboratory(CID,RAW,true);await started.promise;
  await session.loadSources(CID);assert.equal(session.snapshot().laboratoryPhase,'unknown');
  hold.resolve(reply(RECEIPT,201));await pending;assert.equal(session.snapshot().laboratoryPhase,'unknown');
  assert.equal(session.snapshot().laboratoryReceipt,null);assert.ok(session.snapshot().laboratoryIntent);
@@ -140,9 +144,12 @@ test('explicit patient, source or case denial clears uncertain laboratory custod
  }
 });
 test('same-patient recheck during sending retains unknown request and late old reply cannot overwrite recovered success',async()=>{
- const hold=deferred();let attempt=0;
- const{session,calls}=await ready(()=>++attempt===1?hold.promise:reply({...RECEIPT,duplicate:true},200));
- const old=session.importLaboratory(CID,RAW,true);await new Promise(r=>setTimeout(r,10));
+ const hold=deferred(), started=deferred();let attempt=0;
+ const{session,calls}=await ready(()=>{
+  if(++attempt===1){started.resolve();return hold.promise;}
+  return reply({...RECEIPT,duplicate:true},200);
+ });
+ const old=session.importLaboratory(CID,RAW,true);await started.promise;
  const original=session.snapshot().laboratoryIntent.body;
  await session.read(PID);await session.loadCases();await session.loadSources(CID);
  assert.equal(session.snapshot().laboratoryPhase,'unknown');await session.retryLaboratoryImport();
@@ -152,8 +159,9 @@ test('same-patient recheck during sending retains unknown request and late old r
 });
 
 test('a blocked World Model read cannot strand an in-flight import without receipt or recovery',async()=>{
- const hold=deferred();const{session}=await ready(()=>hold.promise);
- const pending=session.importLaboratory(CID,RAW,true);await new Promise(r=>setTimeout(r,10));
+ const hold=deferred(), started=deferred();
+ const{session}=await ready(()=>{started.resolve();return hold.promise;});
+ const pending=session.importLaboratory(CID,RAW,true);await started.promise;
  await session.loadWorldModel(CID);hold.resolve(reply(RECEIPT,201));await pending;
  assert.equal(session.snapshot().laboratoryPhase,'saved');assert.equal(session.snapshot().laboratoryReceipt.source_id,SID);
 });
@@ -173,4 +181,93 @@ test('an overlapping text import cannot leave the laboratory preflight mutex stu
   assert.equal(session.snapshot().laboratoryPhase,'saved');
   assert.equal(calls.filter(x=>x[0].endsWith('/laboratory/fhir-r4/sources')).length,1);
  }finally{crypto.subtle.digest=digest;}
+});
+
+const previewRow = {
+ reference:'Observation/FICTIONAL-OBS-A', loinc_code:'777-3',
+ effective_at:'2026-04-03T09:05:00-04:00', issued_at:'2026-04-04T12:00:00Z',
+ source_reported:true, clinical_review:'not_performed', status:'reported_value',
+ value_text:'4.20', unit_code:'10*9/L', absent_reason:null,
+};
+const previewResponse = {
+ contract:'oi.fhir-r4-laboratory-preview/1', patient_id:PID, case_id:CID,
+ source_organization:'FICT-ORG', source_system:'FICT-SYS', mapped_subject_reference:'Patient/FICTIONAL-PATIENT-A',
+ original_sha256:HASH, original_byte_count:bytes(RAW).length, specimen_reference:'Specimen/FICTIONAL-SPECIMEN-A',
+ specimen_type_text:'Fictional plasma sample', specimen_collected_at:previewRow.effective_at,
+ report_reference:'DiagnosticReport/FICTIONAL-REPORT-A', observations:[previewRow],
+ synthetic:true, persisted:false, clinical_review:'not_performed', verified_identity:false, source_version_created:false,
+};
+
+test('explicit structured preview sends only the original to the read-only route and preserves decimal spelling',async()=>{
+ const file=await prepareLaboratoryFile(bytes(RAW),'lab.json');
+ const {session,calls}=await ready(()=>reply(previewResponse));
+ const result=await session.previewLaboratory(CID,file);
+ assert.deepEqual(result.observations,[previewRow]);
+ assert.equal(result.specimen_reference,previewResponse.specimen_reference);
+ assert.equal(calls.length,1);
+ const [url,request]=calls[0];
+ assert.equal(url,`/v1/patients/${PID}/cases/${CID}/laboratory/fhir-r4/preview`);
+ assert.equal(request.method,'POST');
+ assert.deepEqual(JSON.parse(request.body),{synthetic:true,bundle_json:RAW});
+ assert.equal(session.snapshot().laboratoryIntent,null);
+ assert.equal(session.snapshot().laboratoryReceipt,null);
+});
+
+test('preview rejects mismatched source, binding, review claims and ambiguous observations',async()=>{
+ const file=await prepareLaboratoryFile(bytes(RAW),'lab.json');
+ for(const patch of [
+  {patient_id:'PATIENT-OTHER'},{case_id:'CASE-OTHER'},{mapped_subject_reference:'Patient/other'},
+  {source_organization:'OTHER'},{source_system:'OTHER'},{original_sha256:'0'.repeat(64)},
+  {original_byte_count:file.byteCount+1},{persisted:true},{clinical_review:'approved'},
+  {verified_identity:true},{source_version_created:true},{clinical_advice:'unrequested'},
+  {specimen_reference:'Observation/A'},{specimen_collected_at:'2026-11-05T12:00:00+14:01'},{observations:[]},{observations:[previewRow,previewRow]},
+  ...[{value_text:4.2},{unit_code:null},{absent_reason:'masked'},{source_reported:false},
+   {reference:'Specimen/A'},{issued_at:'2026-11-05T12:00:00-15:00'},{effective_at:'2026-02-31T12:00:00Z'},{clinical_review:'approved'},
+   {status:'reported_absent',value_text:null,unit_code:null,absent_reason:'unsupported'}]
+   .map(change=>({observations:[{...previewRow,...change}]})),
+ ]){
+  const {session}=await ready(()=>reply({...previewResponse,...patch}));
+  await assert.rejects(()=>session.previewLaboratory(CID,file),/preview/i);
+ }
+});
+
+test('preview accepts an absent result and a missing optional diagnostic report, with no save',async()=>{
+ const file=await prepareLaboratoryFile(bytes(RAW),'lab.json');
+ const row={...previewRow,effective_at:'2026-04-03T09:05:00+14:00',status:'reported_absent',value_text:null,unit_code:null,absent_reason:'not-performed'};
+ const {session}=await ready(()=>reply({...previewResponse,report_reference:null,observations:[row]}));
+ const preview=await session.previewLaboratory(CID,file);
+ assert.equal(preview.report_reference,null);
+ assert.deepEqual(preview.observations,[row]);
+});
+
+test('preview rechecks case scope on return, clears denied access, and cannot submit a write',async()=>{
+ const file=await prepareLaboratoryFile(bytes(RAW),'lab.json');
+ for(const status of [401,403,404]){
+  const {session}=await ready(()=>new Response('denied',{status}));
+  await assert.rejects(()=>session.previewLaboratory(CID,file));
+  assert.equal(session.snapshot().sourceIndex,null);
+ }
+ const hold=deferred(),{session,calls}=await ready(()=>hold.promise);
+ await assert.rejects(()=>session.previewLaboratory('CASE-OTHER',file));
+ assert.equal(calls.length,0);
+ const pending=session.previewLaboratory(CID,file);
+ await session.loadSources('CASE-OTHER');
+ hold.resolve(reply(previewResponse));
+ await assert.rejects(()=>pending);
+ assert.equal(session.snapshot().sourceIndex.case_id,'CASE-OTHER');
+ assert.equal(calls.filter(([url,init])=>url.endsWith('/sources')&&init.method==='POST').length,0);
+});
+
+test('dismissing another original cannot mask a preview denial on the same patient and case',async()=>{
+ const file=await prepareLaboratoryFile(bytes(RAW),'lab.json');
+ for(const status of [401,403,404]){
+  const hold=deferred();
+  const {session}=await ready(()=>hold.promise);
+  const pending=session.previewLaboratory(CID,file);
+  session.dismissOriginal();
+  hold.resolve(new Response('Denied',{status}));
+  await assert.rejects(()=>pending);
+  assert.equal(session.snapshot().sourceIndex,null);
+  if(status===401) assert.equal(session.snapshot().connected,false);
+ }
 });

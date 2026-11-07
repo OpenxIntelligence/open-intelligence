@@ -15,13 +15,13 @@ from open_intelligence.store import InvalidInput
 from .access import Principal
 from .contracts import Contract
 from .encounter_sources import PostgresEncounterSources
+from .encounter_event_contract import EncounterEvents, VisitEvents, VisitState
 
 Identifier = Annotated[int, Path(gt=0, le=2**63-1)]
 NoteKey = Annotated[str, Path(pattern=r"^[A-Z][A-Z0-9-]{1,39}$")]
 Cursor = Annotated[int, Query(ge=0, le=2**63-1)]
 PageSize = Annotated[int, Query(ge=1, le=25)]
 Kind = Literal["outpatient", "inpatient", "telehealth", "telephone", "procedure", "other"]
-VisitState = Literal["scheduled", "in_progress", "completed", "cancelled"]
 NoteKind = Literal["history_and_physical", "consultation", "progress", "procedure", "operative",
                    "discharge", "referral", "nursing", "other"]
 
@@ -145,25 +145,6 @@ class NoteHistory(Contract):
     access_receipt_id: str
 
 
-class EncounterEvent(Contract):
-    id: int
-    event_type: Literal["clinical_encounter_scheduled", "clinical_encounter_state_changed",
-                        "clinical_note_draft_saved"]
-    occurred_at: str
-    encounter_id: int
-    encounter_revision: int | None
-    note_key: str | None
-    note_version: int | None
-
-
-class EncounterEvents(Contract):
-    patient_id: str
-    events: list[EncounterEvent]
-    resume_after_id: int
-    has_more: bool
-    access_receipt_id: str
-
-
 class NoteHeader(Contract):
     id: int
     note_key: str
@@ -281,15 +262,17 @@ def register_encounter_routes(router, *, principal, registry, authorize, refresh
         return run(request, context, patient_id, "encounter.read", EncounterPage, page,
                    read_refs={"after_id": after_id, "page_size": limit})
 
-    @router.get(prefix+"/events", response_model=EncounterEvents, responses=errors)
+    @router.get(prefix+"/events", response_model=EncounterEvents | VisitEvents, responses=errors)
     def read_encounter_events(patient_id: str, request: Request, after_id: Cursor = 0, limit: PageSize = 25,
-                              context: Principal = Depends(principal)):
+                              context: Principal = Depends(principal), include_visit_state: bool = False):
         def page(service, args):
-            rows = service.changes(patient_id, after_id=after_id, limit=limit+1, **args)
+            rows = service.changes(patient_id, after_id=after_id, limit=limit+1,
+                                   include_visit_state=include_visit_state, **args)
             events = rows[:limit]
             return {"patient_id": patient_id, "events": events, "has_more": len(rows)>limit,
                     "resume_after_id": events[-1]["id"] if events else after_id}
-        return run(request, context, patient_id, "encounter.events.read", EncounterEvents, page,
+        return run(request, context, patient_id, "encounter.events.read",
+                   VisitEvents if include_visit_state else EncounterEvents, page,
                    read_refs={"after_id": after_id, "page_size": limit},
                    extra_actions=("encounter.read", "note.read"))
 

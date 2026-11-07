@@ -1,5 +1,6 @@
 import type {ReactNode} from 'react';
 import {SourceOncologyLabel} from './source-oncology-label';
+import type {FollowthroughTask} from './followthrough-view';
 import type {WorldObservation} from './source-world-model';
 import {LaboratoryResultBrowser,LaboratoryResultRow} from './laboratory-result-browser';
 import {LaboratoryQuestionPanel,SavedLaboratoryQuestions} from './laboratory-question-panel';
@@ -16,7 +17,7 @@ type Props={
   labsOnly?:boolean;
   onInvestigations?:()=>void;
   onReview?:()=>void;
-  onRecords?:(caseId:string)=>void;
+  onRecords?:(caseId:string,taskOriginal?:FollowthroughTask)=>void;
 };
 
 /** First-party PG read-only Patient World Model view.
@@ -82,7 +83,7 @@ export function WorldModelView({session,state,patientAccess,busy,showQuestions=f
           })}</LaboratoryResultBrowser>
           {state.worldPhase==='ready'&&<LaboratoryQuestionPanel key={model.access_receipt_id} session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
         </section>}
-        {state.worldPhase==='ready'&&<SavedLaboratoryQuestions session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
+        {state.worldPhase==='ready'&&<SavedLaboratoryQuestions onFollowthrough={showQuestions?undefined:onInvestigations} session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
   </>;
   if(labsOnly)return <section className="panel source-world" data-testid="labs-workspace" aria-labelledby="labs-heading">
     <h2 id="labs-heading" data-workspace-anchor="Case selection">Lab results by case</h2>
@@ -100,7 +101,7 @@ export function WorldModelView({session,state,patientAccess,busy,showQuestions=f
     <p>This is a fresh read of the existing PostgreSQL original-source owner. It organizes reported observations, chronology, unresolved statements and source disagreements. It does not interpret cancer, authorize AI research, or replace clinician review.</p>
 
     {caseChoices}
-      {showQuestions&&<SourceQuestionPanel session={session} state={state} busy={busy} onReview={onReview}/>}
+      {showQuestions&&<SourceQuestionPanel session={session} state={state} busy={busy} onReview={onReview} onTaskOriginal={onRecords?task=>onRecords(task.case_id,task):undefined}/>}
       {model&&<div data-testid="world-projection">
         <p><strong>Case:</strong> <code>{model.case_id}</code> · Source statements unreviewed · Context checked at last read</p>
         <div className="world-summary" aria-label="Source context summary">

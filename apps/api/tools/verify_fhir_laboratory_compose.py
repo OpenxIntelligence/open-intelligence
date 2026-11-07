@@ -16,6 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 import uuid
 
+from laboratory_followthrough_recovery import LaboratoryTaskRecovery, V2
 from oi_api.contracts import SCHEMA_REVISION
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -73,7 +74,8 @@ def main():
         token = secrets.token_urlsafe(32)
         actions = ["patient_create", "patient_read", "case_binding_create", "case_binding_read",
                    "case_binding_revoke", "source_import", "source_read", "source_original_read",
-                   "composer_context_read", "question_create", "question_read", "evidence_read", "evidence_link"]
+                   "composer_context_read", "question_create", "question_read", "evidence_read", "evidence_link",
+                   "followthrough_read", "followthrough_create", "followthrough_update"]
         credential = {
             "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
             "actor": "ACTOR-FHIR-LAB-PROOF", "organization": "ORG-FHIR-LAB-PROOF",
@@ -91,8 +93,9 @@ def main():
             return subprocess.run(compose + args, cwd=ROOT, env=env, check=check,
                                   timeout=240, **kwargs)
 
-        def request(path, body=None, *, authenticated=True):
+        def request(path, body=None, *, authenticated=True, accept=None):
             headers = {"Authorization":"Bearer " + token} if authenticated else {}
+            if accept is not None: headers["Accept"] = accept
             if body is not None: headers["Content-Type"] = "application/json"
             req = Request(BASE + path, headers=headers,
                           data=None if body is None else json.dumps(body).encode())
@@ -102,6 +105,8 @@ def main():
                 response = exc
             with response:
                 assert response.headers.get("Cache-Control") == "no-store"
+                if accept == V2 and response.status == 200:
+                    assert response.headers.get_content_type() == V2
                 return response.status, json.load(response)
 
         def ready():
@@ -127,7 +132,7 @@ def main():
         def snapshot(database="oi_api_synthetic"):
             return query("""SELECT json_build_object(
               'revision',(SELECT version_num FROM public.alembic_version),
-              'sources',(SELECT COALESCE(json_agg(x ORDER BY x.version),'[]'::json) FROM (
+              'sources',(SELECT COALESCE(json_agg(x ORDER BY x.document_id,x.version,x.source_id),'[]'::json) FROM (
                 SELECT source_id,case_id,document_id,version,sha256,encode(sha256(raw),'hex') raw_sha256,
                        octet_length(raw) byte_count,kind,event_date,issued_at,specimen_id,state,supersedes_id
                   FROM clinical_source.source_versions WHERE case_id='CASE-FHIR-LAB') x),
@@ -144,6 +149,14 @@ def main():
               'question_events',(SELECT COALESCE(json_agg(x ORDER BY x.id),'[]'::json)
                 FROM (SELECT * FROM identity.identity_domain_events
                        WHERE event_type='investigation.question.created') x),
+              'source_import_events',(SELECT COALESCE(json_agg(x ORDER BY x.id),'[]'::json)
+                FROM (SELECT * FROM identity.identity_domain_events
+                       WHERE event_type='source.original.imported'
+                         AND metadata_json->>'case_id'='CASE-FHIR-LAB') x),
+              'sequence_state',(SELECT COALESCE(json_agg(x ORDER BY x.schemaname,x.sequencename),'[]'::json)
+                FROM (SELECT schemaname,sequencename,start_value,min_value,max_value,
+                             increment_by,cycle,cache_size,last_value FROM pg_sequences
+                       WHERE schemaname IN ('identity','clinical_source','investigation','coordination')) x),
               'citations',(SELECT COALESCE(json_agg(x ORDER BY x.link_id),'[]'::json)
                 FROM investigation.question_evidence_links x),
               'citation_anchors',(SELECT COALESCE(json_agg(x ORDER BY x.link_id),'[]'::json)
@@ -155,6 +168,13 @@ def main():
               'citation_events',(SELECT COALESCE(json_agg(x ORDER BY x.id),'[]'::json)
                 FROM (SELECT * FROM identity.identity_domain_events
                        WHERE event_type='evidence.citation.linked') x),
+              'tasks',(SELECT COALESCE(json_agg(x ORDER BY x.task_id),'[]'::json)
+                FROM coordination.question_followthrough_tasks x),
+              'task_events',(SELECT COALESCE(json_agg(x ORDER BY x.task_id,x.revision),'[]'::json)
+                FROM coordination.question_followthrough_events x),
+              'task_audit',(SELECT COALESCE(json_agg(x ORDER BY x.id),'[]'::json)
+                FROM (SELECT * FROM identity.identity_domain_events
+                       WHERE event_type IN ('coordination.followthrough.created','coordination.followthrough.transitioned')) x),
               'bindings',(SELECT COALESCE(json_agg(x ORDER BY x.case_id),'[]'::json)
                 FROM (SELECT * FROM coordination.patient_case_bindings) x)
             )""", database)
@@ -322,6 +342,12 @@ finally:
                                          "What does the first fictional source report?")
             verify_questions(questions, [(first, cmd1, saved1, "current_unreviewed_question")], patient)
 
+            tasks = LaboratoryTaskRecovery(request, case_path)
+            historical_task = tasks.create(first, saved1, cmd1, "LAB-TASK-ORIGINAL")
+            tasks.transition(historical_task, "assigned")
+            tasks.transition(historical_task, "acknowledged")
+            tasks.verify_history(stale=set())
+
             first_cite = cite(questions, saved1, first, cmd1, "continuity", "FICT-RECORD-CONTINUITY@1", "CITE-V1")
             assert request(endpoint,body(FHIR_V2,"FHIR-LAB-AMEND-WRONG"))[0] == 409
             status, second = request(endpoint,body(FHIR_V2,"FHIR-LAB-AMEND-1",first_id))
@@ -338,11 +364,18 @@ finally:
             verify_questions(questions, versions, patient)
             assert request(endpoint,body(FHIR_V1,"FHIR-LAB-STALE-REPLAY"))[0] == 409
 
+            current_task = tasks.create(second, saved2, cmd2, "LAB-TASK-AMENDED")
+            for status in ("assigned", "acknowledged", "completed"):
+                tasks.transition(current_task, status)
+            tasks.verify_history(stale={historical_task})
+            tasks.reject_stale(historical_task)
+
             second_cite = cite(questions, saved2, second, cmd2, "trial", "FICT-TRIAL-PREPARATION@1", "CITE-V2")
             verify_citation(first_cite, "source_reassessment_required")
             verify_citation(second_cite, "current_unreviewed_question")
 
             state=snapshot()
+            tasks.verify_storage(state)
             assert state["revision"] == SCHEMA_REVISION
             assert len(state["sources"])==2 and len(state["fhir_sources"])==2
             assert len(state["observations"])==2 and len(state["commands"])==2
@@ -364,6 +397,13 @@ finally:
                     (second_cite["receipt"]["link_id"], saved2["question_id"], second_id, OBSERVATION)}
 
             assert len(state["questions"]) == len(state["question_events"]) == len(state["question_anchors"]) == 2
+            assert {event["metadata_json"]["source_id"] for event in state["source_import_events"]} == {
+                first_id, second_id}
+            assert len(state["source_import_events"]) == 2
+            for event in state["question_events"]:
+                prior_imports = {item["metadata_json"]["source_id"]
+                                 for item in state["source_import_events"] if item["id"] < event["id"]}
+                assert event["metadata_json"]["source_id"] in prior_imports
             assert {(a["question_id"], a["source_id"], a["observation_reference"])
                     for a in state["question_anchors"]} == {
                         (saved1["question_id"], first_id, OBSERVATION),
@@ -380,6 +420,8 @@ finally:
                 verify_original(patient_path,second_id,FHIR_V2,2,"current")
                 verify_world(patient_path,second_id,"5.00",1)
                 verify_questions(questions, versions, patient)
+                tasks.verify_history(stale={historical_task})
+                tasks.replay()
 
                 verify_citation(first_cite, "source_reassessment_required")
                 verify_citation(second_cite, "current_unreviewed_question")
@@ -397,6 +439,10 @@ finally:
             receipts_sql = """SELECT COALESCE(json_agg(metadata_json->>'receipt_id'),'[]'::json)
                              FROM identity.identity_domain_events WHERE event_type='source.read_authorized'"""
             assert receipt in query(receipts_sql, RESTORED) and receipt not in query(receipts_sql)
+            task_read = tasks.verify_history(stale={historical_task})
+            assert task_read in query(receipts_sql, RESTORED) and task_read not in query(receipts_sql)
+            tasks.replay()
+            tasks.reject_stale(historical_task)
             first_read = verify_citation(first_cite, "source_reassessment_required")
             second_read = verify_citation(second_cite, "current_unreviewed_question", restricted=True)
             assert {first_read, second_read} <= set(query(receipts_sql, RESTORED))
@@ -412,7 +458,49 @@ finally:
             for _, saved_command, saved, _ in versions:
                 assert request(questions, saved_command) == (200, {**saved, "duplicate": True})
             assert request(questions, {**cmd1, "request_key": "STALE-RESTORED-CONTEXT"})[0] == 409
-            assert snapshot(RESTORED) == before_restore == snapshot()
+            after_reads = snapshot(RESTORED)
+            assert {k: v for k, v in after_reads.items() if k != "sequence_state"} == {
+                k: v for k, v in before_restore.items() if k != "sequence_state"}
+            assert snapshot() == before_restore, "Restored HTTP changed the original database"
+
+            # A new question/link exercises INSERT guards on the restored copy;
+            # replaying an existing citation alone would bypass those guards.
+            restored_cmd, restored_question = save_question(
+                case_path, second, second_fingerprint, "LAB-QUESTION-RESTORED-NEW",
+                "Which source supports this newly saved fictional laboratory question?")
+            restored_cite = cite(questions, restored_question, second, restored_cmd,
+                                 "continuity", "FICT-RECORD-CONTINUITY@1", "CITE-RESTORED-NEW")
+            restored_task = tasks.create(second, restored_question, restored_cmd, "LAB-TASK-RESTORED-NEW")
+            tasks.transition(restored_task, "assigned")
+            tasks.transition(restored_task, "acknowledged")
+            tasks.verify_history(stale={historical_task})
+            inserted = snapshot(RESTORED)
+            tasks.verify_storage(inserted)
+            assert len(inserted["citations"]) == len(inserted["citation_anchors"]) == 3
+            assert inserted["source_import_events"] == before_restore["source_import_events"]
+            new_question_event, = [event for event in inserted["question_events"]
+                                  if event["metadata_json"]["question_id"] == restored_question["question_id"]]
+            assert new_question_event["id"] > max(event["id"] for event in before_restore["question_events"])
+            independent = ("OI-SYNTHETIC-REPORT/1\nPatient: " + CASE +
+                           "\nDocument: RESTORED-INDEPENDENT\nType: pathology\n"
+                           "Event-Date: 2026-05-04\nIssued-At: 2026-05-05\n"
+                           "Specimen: RESTORED-FICTIONAL-SPECIMEN\n"
+                           "Finding: marker|pending|An independent fictional assay is pending.\n")
+            status, imported = request(case_path + "/sources", {
+                "synthetic": True, "original_text": independent})
+            assert status == 201 and imported["duplicate"] is False
+            changed = snapshot(RESTORED)
+            new_import, = [event for event in changed["source_import_events"]
+                           if event["metadata_json"]["source_id"] == imported["source_id"]]
+            assert new_import["id"] > new_question_event["id"]
+            assert request(restored_cite["path"] + "/evidence-links", {
+                **restored_cite["payload"], "request_key": "CITE-RESTORED-STALE-NEW"})[0] == 409
+            assert snapshot(RESTORED) == changed, "Rejected stale citation committed state or a receipt"
+            tasks.reject_stale(restored_task)
+            assert snapshot(RESTORED) == changed, "Refused stale task write committed state or a receipt"
+            tasks.verify_history(stale={historical_task, current_task, restored_task})
+            verify_citation(restored_cite, "source_reassessment_required")
+            assert snapshot() == before_restore, "Restored writes changed the original database"
 
             status, revoked = request(patient_path+"/case-bindings/"+CASE+"/revoke",{
                 "synthetic":True,"reason":"Fictional FHIR mapping withdrawn after restore"})
@@ -432,10 +520,36 @@ finally:
                 (endpoint,body(FHIR_V2,"FHIR-LAB-AFTER-REVOKE",second_id)),
             ):
                 assert request(path,payload)[0] == 404
+            tasks.verify_revoked()
             assert snapshot(REVOKED_RESTORE) == banned
             assert sorted(query(receipts_sql, REVOKED_RESTORE)) == sorted(before_receipts)
+            output = os.environ.get("OI_LABORATORY_TASK_ACCEPTANCE_FILE")
+            if output:
+                summary = {
+                    "contract": "oi.laboratory-followthrough-recovery/1", "synthetic": True,
+                    "schema_revision": banned["revision"], "case_id": CASE,
+                    "original_task_count": len(before_restore["tasks"]),
+                    "restored_task_count": len(banned["tasks"]),
+                    "restored_event_count": len(banned["task_events"]),
+                    "restored_task_audit_count": len(banned["task_audit"]),
+                    "fresh_task_created_after_restore": restored_task,
+                    "restored_binding_status": banned["bindings"][0]["status"],
+                    "source_anchors": [
+                        {key: row[key] for key in ("task_id", "question_id", "source_id", "source_version",
+                                                   "source_sha256", "observation_reference", "source_snapshot_sha256")}
+                        for row in banned["tasks"]
+                    ],
+                }
+                destination = Path(output)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_text(json.dumps(summary, indent=2) + "\n")
+            print("PASS LABORATORY FOLLOWTHROUGH RECOVERY: task origins, observation references and full "
+                  "attributed history survived API/DB restarts and pg_dump/pg_restore. Both HTTP list versions, "
+                  "exact retries, restored-only reads and new writes, stale completion refusal and revoked "
+                  "binding denial verified on the databases actually served.")
             print("PASS LABORATORY CITATION RECOVERY: two immutable observation-bound citations, "
                   "permitted historical replay with the same link ID, restricted title withheld, "
+                  "restored new citation insert and independent-import stale refusal, import receipts and sequences, "
                   "and revoked restored binding denied citation search, history and replay.")
             print("PASS FHIR LABORATORY RECOVERY: exact source versions, typed observations and "
                   "both durable question anchors survived API/DB restart and pg_dump/pg_restore; "

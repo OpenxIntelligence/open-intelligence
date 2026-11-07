@@ -28,7 +28,7 @@ class Principal(Contract):
     actor: str
     organization: str
     purpose: Literal["operations", "research"]
-    actions: frozenset[Literal["patient_create", "patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "image_import", "image_read", "image_original_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update", "evidence_read", "evidence_link", "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess", "authored_evidence_withdraw", "authored_evidence_original_read", "evidence_report_export", "encounter.schedule", "encounter.read", "encounter.events.read", "encounter.transition", "encounter.source.link", "note.write", "note.read"]] = frozenset()
+    actions: frozenset[Literal["patient_create", "patient_suspend", "patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "image_import", "image_read", "image_original_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update", "evidence_read", "evidence_link", "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess", "authored_evidence_withdraw", "authored_evidence_original_read", "evidence_report_export", "encounter.schedule", "encounter.read", "encounter.events.read", "encounter.transition", "encounter.source.link", "note.write", "note.read"]] = frozenset()
     patient_ids: frozenset[str] = Field(default_factory=frozenset, max_length=256)
     expires_at: datetime
 
@@ -83,7 +83,15 @@ def authenticate_request(request: Request, authentication: Authentication) -> Pr
         raise HTTPException(401, "Authentication required",
                             headers={"WWW-Authenticate": "Bearer"})
     scheme, _, token = values[0].partition(" ")
-    if scheme.lower() != "bearer" or re.fullmatch(r"[A-Za-z0-9._~-]{32,256}", token) is None:
+    if scheme.lower() != "bearer":
+        raise HTTPException(401, "Authentication required",
+                            headers={"WWW-Authenticate": "Bearer"})
+    return authenticate_token(token, authentication)
+
+
+def authenticate_token(token: str, authentication: Authentication) -> Principal:
+    """Recheck a supplied bearer using the current trusted authentication provider."""
+    if re.fullmatch(r"[A-Za-z0-9._~-]{32,256}", token) is None:
         raise HTTPException(401, "Authentication required",
                             headers={"WWW-Authenticate": "Bearer"})
     try:

@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {RegistrySession} from './registry-client';
 import {createEncounterScope, EncounterChart} from './encounter-chart';
 import {EncounterSourceLinks} from './encounter-source-links-view';
+import {PatientSuspension} from './patient-suspension-view';
 import {SourceIntake} from './source-intake-view';
 import {RecordImportDisclosure} from './record-import-disclosure';
 import {ReviewedDocumentDisclosure} from './reviewed-documents-view';
@@ -102,6 +103,7 @@ function App(){
   }
  },[section,state.patient?.patient_id,state.phase,state.evidencePhase,state.evidencePacket]);
  const originalHeading=useRef<HTMLHeadingElement>(null),sourcesHeading=useRef<HTMLHeadingElement>(null);
+ const taskOriginal=useRef<string|null>(null);
  const sourceEntry=useRef<{patientId:string;caseId:string;trigger:HTMLButtonElement}|null>(null);
  const originalReturn=useRef<{sourceId:string;trigger:HTMLButtonElement;pending:boolean}|null>(null);
  useEffect(()=>{
@@ -117,7 +119,7 @@ function App(){
   }
  },[state.sourceIndex,state.recordsPhase,state.patient?.patient_id,section]);
  function inspectSources(caseId:string,trigger:HTMLButtonElement){
-  originalReturn.current=null;
+  taskOriginal.current=null;originalReturn.current=null;
   sourceEntry.current=state.patient?{patientId:state.patient.patient_id,caseId,trigger}:null;
   void session.loadSources(caseId);
  }
@@ -125,11 +127,15 @@ function App(){
  useEffect(()=>{
   const requested=originalReturn.current;
   if(state.recordsPhase==='error'){originalReturn.current=null;return;}
+  if(recordsSection&&state.original&&taskOriginal.current===state.original.source_id){
+   originalHeading.current?.focus();return;
+  }
   if(recordsSection&&requested?.pending&&state.original?.source_id===requested.sourceId){
    requested.pending=false;originalHeading.current?.focus();
   }
  },[state.original,state.recordsPhase,section]);
  function closeOriginal(){
+  taskOriginal.current=null;
   const trigger=originalReturn.current?.trigger;originalReturn.current=null;
   session.dismissOriginal();
   if(trigger?.isConnected&&!trigger.disabled)trigger.focus();
@@ -145,16 +151,17 @@ function App(){
  useEffect(()=>{if(state.created) setPatientId(state.created.patient_id)},[state.created]);
  useEffect(()=>{if(!state.connected){setPatientId('');setConfirmed(false)}},[state.connected]);
  useEffect(()=>{const clear=()=>session.disconnect();window.addEventListener('pagehide',clear);return()=>window.removeEventListener('pagehide',clear)},[]);
-  const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||state.evidenceWritePhase==='saving';
+  const busy=state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||state.evidenceWritePhase==='saving'||state.suspensionPhase==='sending'||state.suspensionPhase==='unknown';
  function navigate(nextSection:string,discardVisit=false){
   if(section==='Visits'&&nextSection!==section&&visitDirty.current&&encounterScope&&!discardVisit){setLeaveFor({section:nextSection,scopeKey:encounterScope.key});return;}
+  if(taskOriginal.current){taskOriginal.current=null;session.dismissOriginal();}
   entryFocus.current=null;
   if(nextSection!==section){
    setRecordsVisit(null);
    if((reportKind||reportKinds[nextSection])&&(state.original||state.recordsPhase==='loading-original'))session.dismissOriginal();
   }
   passageResume.current=null;sourceEntry.current=null;originalReturn.current=null;session.dismissSourceQuotePacket();session.dismissSourceBrief();session.dismissEvidenceMetadata();session.dismissQuestionEvidence();session.dismissSourceImages();if(nextSection===section){heading.current?.focus();return}moveFocus.current=true;setSection(nextSection);}
- function disconnect(){passageResume.current=null;sourceEntry.current=null;entryFocus.current=null;session.disconnect();setPatientId('');setConfirmed(false);}
+ function disconnect(){taskOriginal.current=null;passageResume.current=null;sourceEntry.current=null;entryFocus.current=null;session.disconnect();setPatientId('');setConfirmed(false);}
  const patientAccess=<PatientAccess key={section} session={session} state={state} busy={busy}
   patientId={patientId} onPatientIdChange={setPatientId} onDisconnect={disconnect}
   onRead={form=>{
@@ -188,7 +195,7 @@ function App(){
     <div className="boundary" role="note"><strong>Synthetic workspace.</strong> Use fictional records and operator-issued credentials only. Clinical sign-off is unavailable.</div>
     {state.patient&&<PageContents key={section}/>}
     {section==='Visits'?(encounterScope?<EncounterChart key={encounterScope.key} scope={encounterScope} dirtyRef={visitDirty}
-      onRecords={id=>{navigate('Records');setRecordsVisit({id,patient:state.patient});}}/>:<div data-testid="visits-no-patient">{state.patient?.status==='suspended'&&<p role="status">This identity is suspended. Open an active patient to see visits.</p>}{patientAccess}</div>):section==='Journey'||section==='Investigations'||section==='Labs'?<WorldModelView labsOnly={section==='Labs'} session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onRecords={caseId=>{navigate('Records');void session.loadSources(caseId);}} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')}/>:recordsSection&&!state.patient?<section data-testid="records-workspace" aria-label={section}><div data-testid="records-no-patient">{patientAccess}</div></section>:recordsSection&&state.patient?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
+      onRecords={id=>{navigate('Records');setRecordsVisit({id,patient:state.patient});}}/>:<div data-testid="visits-no-patient">{state.patient?.status==='suspended'&&<p role="status">This identity is suspended. Open an active patient to see visits.</p>}{patientAccess}</div>):section==='Journey'||section==='Investigations'||section==='Labs'?<WorldModelView labsOnly={section==='Labs'} session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onRecords={(caseId,task)=>{navigate('Records');taskOriginal.current=task?.source_id??null;void session.loadSources(caseId,task);}} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')}/>:recordsSection&&!state.patient?<section data-testid="records-workspace" aria-label={section}><div data-testid="records-no-patient">{patientAccess}</div></section>:recordsSection&&state.patient?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
      <h2 id="records-heading" data-workspace-anchor={reportKind?'Case selection':'Records'}>{reportKind?section+' reports':view==='patient'?'Records available to you':'Original source records'}</h2>
      <p>{reportKind?'Choose a case to read its structured reports. Text and PDF uploads have their own reader in Records.':'Select a case to inspect reported findings, original files and version history.'}</p>
      <div>
@@ -241,7 +248,7 @@ function App(){
         onDismissImagePreview={session.dismissSourceImagePreview}
         onDownloadImage={(sourceId,imageId)=>void session.downloadSourceImage(sourceId,imageId)}
         onDismissImages={session.dismissSourceImages}
-        onOpenOriginal={(sourceId,trigger)=>{originalReturn.current={sourceId,trigger,pending:true};void session.loadOriginal(sourceId)}}
+        onOpenOriginal={(sourceId,trigger)=>{taskOriginal.current=null;originalReturn.current={sourceId,trigger,pending:true};void session.loadOriginal(sourceId)}}
         onAskQuestion={(sourceId,line)=>{const caseId=state.sourceIndex!.case_id;
           navigate('Investigations');
           void session.beginQuestionFromSourceReading(caseId,sourceId,line);}}/>
@@ -253,9 +260,10 @@ function App(){
      </div>
     </section>:section!=='Overview'?<section className="panel"><h2>{section} is not connected</h2><p>The existing reference application retains this workflow. No placeholder patient data, generated conclusions or clinical actions are shown here.</p><p>The source, evidence and review owners must be integrated with the same scoped patient API before this becomes available.</p><button onClick={()=>navigate('Overview')}>Return to overview</button></section>:<>
     <PatientContinuity state={state} onNavigate={navigate} busy={busy} onRefreshFollowthrough={caseId=>void session.loadFollowthrough(caseId)}/>
-    <SecondOpinionPreparation state={state} onNavigate={navigate} onResumeQuestion={questionId=>{navigate('Investigations');if(state.patient)passageResume.current={patientId:state.patient.patient_id,questionId};void session.loadQuestionEvidence(questionId);}} onCheckEvidence={questionId=>void session.loadQuestionEvidence(questionId)}/>
+    <SecondOpinionPreparation session={session} busy={busy} state={state} onNavigate={navigate} onResumeQuestion={questionId=>{navigate('Investigations');if(state.patient)passageResume.current={patientId:state.patient.patient_id,questionId};void session.loadQuestionEvidence(questionId);}} onCheckEvidence={questionId=>void session.loadQuestionEvidence(questionId)}/>
     {patientAccess}
     {state.patient&&<section className="panel patient" data-testid="patient-card"><span className="step">LATEST SUCCESSFUL REGISTRY RESPONSE</span><h2>Patient identity</h2><dl><div><dt>Patient ID</dt><dd>{state.patient.patient_id}</dd></div><div><dt>Organization</dt><dd>{state.patient.origin_org}</dd></div><div><dt>Registry status</dt><dd>{state.patient.status}</dd></div><div><dt>Revision</dt><dd>{state.patient.revision}</dd></div><div><dt>Created</dt><dd>{state.patient.created_at}</dd></div></dl><p className="muted">Identity metadata only, authorized at the last successful request. Recheck access for current permissions. {state.sourceIndex||state.worldModel?'Source information is loaded separately; it does not establish a reviewed clinical conclusion.':'No clinical record or conclusion has been loaded.'}</p><button disabled={busy} onClick={()=>void session.read(state.patient!.patient_id)}>Recheck current access</button></section>}
+    <PatientSuspension session={session} state={state} busy={busy}/>
     <details className="panel create-panel"><summary>Create a fictional patient identity</summary><p>This uses the existing canonical registry. No names or clinical details are accepted. Your credential needs a separate create action.</p><form onSubmit={e=>{e.preventDefault();keyForReceipt.current=requestKey;void session.create(requestKey,confirmed)}}><label htmlFor="request-key">Creation request key</label><input id="request-key" value={requestKey} readOnly/><p className="muted small">Keep the same key when retrying an uncertain response. The server prevents duplicate identities.</p><label className="check"><input id="synthetic-confirm" type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} disabled={!state.connected||busy}/>This is an independently fictional identity, not a real person.</label><div className="actions"><button disabled={!state.connected||!confirmed||busy} className="primary">Create fictional identity</button><button type="button" disabled={busy||!state.created||keyForReceipt.current!==requestKey} onClick={()=>{setRequestKey(crypto.randomUUID());setConfirmed(false)}}>Start a different creation</button></div></form>{state.created&&<p data-testid="created-id">{state.created.duplicate?'Existing identity recovered: ':'Identity created: '}<code>{state.created.patient_id}</code><br/>The operator must separately grant access to this ID before it can be read.</p>}</details>
     </>}
 

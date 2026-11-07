@@ -11,7 +11,7 @@ from pydantic import Field, StrictBool, StrictInt, field_validator, model_valida
 from open_intelligence.patient_registry import _key
 from open_intelligence.rights import normalize_permissions, permitted
 from .contracts import Contract
-from .patients import QuestionSourceState, SelectedComposerSource
+from .source_question_contracts import QuestionSourceState, SelectedComposerSource
 from .evidence_report import canonical_hash, packet_hash, quote_offset, visible_line
 from .question_passage_contracts import ManualContext
 
@@ -65,6 +65,30 @@ class WriteEvidence(Contract):
     @classmethod
     def opaque(cls, value):
         return _key(value, "request_key")
+
+
+class ReturnEvidenceRun(WriteEvidence):
+    expected_queue_fingerprint: Digest
+    expected_result_sha256: Digest
+    expected_report_snapshot_sha256: Digest
+    reason: str = Field(min_length=10, max_length=600)
+
+    @field_validator("reason")
+    @classmethod
+    def visible_reason(cls, value):
+        return visible_line(value, "Return reason")
+
+
+class EvidenceRunReturnReceipt(Contract):
+    receipt_id: str = Field(pattern=r"^REVIEW-[0-9A-F]{32}$")
+    question_id: QID
+    run_id: str = Field(pattern=r"^RUN-[0-9A-F]{32}$")
+    result_sha256: Digest
+    report_id: RID
+    report_snapshot_sha256: Digest
+    duplicate: StrictBool
+    verification: Literal["matched_current_source_and_evidence"]
+    clinical_approval: Literal[False]
 
 
 class ImportEvidence(WriteEvidence):

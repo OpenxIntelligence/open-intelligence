@@ -215,22 +215,59 @@ class PostgresPatientRegistry:
         return [dict(zip(("patient_id", "status", "revision"), row)) for row in rows]
 
     def suspend_patient(self, patient_id: str, *, actor: str, purpose: str,
-                        expected_revision: int) -> dict:
+                        expected_revision: int, request_key: str | None = None,
+                        recheck_authority: Callable[[], None] | None = None,
+                        prepare_response: Callable[[dict], Any] | None = None):
         patient_id = _key(patient_id, "patient_id")
         self._allow(actor, patient_id, "patient_suspend", purpose)
         if type(expected_revision) is not int or expected_revision < 1:
             raise PatientRegistryError("expected_revision must be positive integer")
+        if request_key is not None:
+            request_key = _key(request_key, "request_key")
+        fingerprint = _digest({"patient_id": patient_id, "actor": actor,
+                               "purpose": purpose, "expected_revision": expected_revision})
         with self.transaction():
-            changed = self._fetchone(
-                "UPDATE identity.identity_patients SET status='suspended',revision=revision+1 "
-                "WHERE patient_id=%s AND revision=%s AND status='active' RETURNING revision",
-                (patient_id, expected_revision),
+            # Serialize commands and exact retries on the canonical patient.
+            # The immutable journal retains the receipt even after suspension.
+            current = self._fetchone(
+                "SELECT status,revision FROM identity.identity_patients "
+                "WHERE patient_id=%s FOR UPDATE", (patient_id,),
             )
-            if changed is None:
-                raise PatientRegistryConflict("patient state/revision conflict")
-            # A suspension event is legitimate even though patient is now inactive.
-            self._write_event(
-                patient_id, "identity.patient.suspended",
-                {"actor": actor, "revision": changed[0]},
-            )
-            return {"patient_id": patient_id, "revision": changed[0], "status": "suspended"}
+            if current is None:
+                raise PatientRegistryDenied("unknown patient")
+            self._allow(actor, patient_id, "patient_suspend", purpose)
+            if recheck_authority is not None:
+                recheck_authority()
+            previous = None
+            if request_key is not None:
+                previous = self._fetchone(
+                    "SELECT metadata_json->>'request_digest',metadata_json->>'revision' "
+                    "FROM identity.identity_domain_events WHERE patient_id=%s "
+                    "AND event_type='identity.patient.suspended' "
+                    "AND metadata_json->>'request_key'=%s", (patient_id, request_key),
+                )
+            if previous is not None:
+                if previous[0] != fingerprint:
+                    raise PatientRegistryConflict("request key reused with different intent")
+                revision = int(previous[1])
+                if tuple(current) != ("suspended", revision) or revision != expected_revision + 1:
+                    raise PatientRegistryConflict("suspension receipt does not match patient state")
+            else:
+                if tuple(current) != ("active", expected_revision):
+                    raise PatientRegistryConflict("patient state/revision conflict")
+                revision = expected_revision + 1
+                self._execute(
+                    "UPDATE identity.identity_patients SET status='suspended',revision=%s "
+                    "WHERE patient_id=%s", (revision, patient_id),
+                )
+                details = {"actor": actor, "revision": revision}
+                if request_key is not None:
+                    details.update(request_key=request_key, request_digest=fingerprint,
+                                   purpose=purpose)
+                self._write_event(patient_id, "identity.patient.suspended", details)
+            result = {"patient_id": patient_id, "revision": revision, "status": "suspended"}
+            response = prepare_response(result) if prepare_response is not None else result
+            if recheck_authority is not None:
+                recheck_authority()
+            self._allow(actor, patient_id, "patient_suspend", purpose)
+            return response

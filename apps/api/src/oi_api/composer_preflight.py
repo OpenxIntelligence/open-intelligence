@@ -20,6 +20,7 @@ from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from .case_bindings import _case_id
 from .source_anchor import selected_observation_anchor
+from .question_anchors import anchor_from_preflight
 from .sources import PostgresSourceVersions, _source_id
 from .source_world_model import project_source_world_model
 
@@ -162,6 +163,7 @@ class PostgresSourceComposerPreflight:
                 "mounted on the PostgreSQL source owner."
             ),
         }
+        anchor_from_preflight(prepared)
         raw = json.dumps(prepared, sort_keys=True, ensure_ascii=False,
                          separators=(",", ":"), allow_nan=False).encode("utf-8")
         prepared["preflight_sha256"] = hashlib.sha256(raw).hexdigest()
@@ -253,6 +255,7 @@ def laboratory_preflight_payload(patient_id: str, case_id: str, question: str, s
         "clinical_interpretation": "not_performed", "terminology_validation": "not_performed",
         "reassessment_policy": "revalidate_source_and_authority_before_any_future_write",
     }
+    anchor_from_preflight(prepared)
     raw = json.dumps(prepared, sort_keys=True, ensure_ascii=False,
                      separators=(",", ":"), allow_nan=False).encode("utf-8")
     prepared["preflight_sha256"] = hashlib.sha256(raw).hexdigest()

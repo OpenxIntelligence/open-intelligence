@@ -6,7 +6,7 @@ from pathlib import Path
 import unittest
 
 spec = importlib.util.spec_from_file_location(
-    "registry_proof", Path(__file__).resolve().parents[1] / "tools/verify_registry_compose.py")
+    "registry_proof", Path(__file__).resolve().parents[1] / "tools/verify_connected_chart_compose.py")
 probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
 

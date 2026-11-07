@@ -23,6 +23,7 @@ from .composer_preflight import PostgresSourceComposerPreflight, SHA256, SOURCE_
 from .sources import PostgresSourceVersions, _source_id
 from .source_world_model import project_source_world_model
 from .source_brief import render_source_brief
+from .question_anchors import legacy_text_question_anchor
 
 LEGACY_SNAPSHOT_CONTRACT = "oi.synthetic-postgres-world-model-sources/1"
 QUESTION_LIST_CONTRACT = "oi.synthetic-source-questions/2"
@@ -40,6 +41,48 @@ class PostgresSourceQuestions:
         if not isinstance(registry, PostgresPatientRegistry):
             raise TypeError("Canonical PostgreSQL patient registry required")
         self.registry = registry
+
+    def authorize_run_scope_locked(self, patient_id: str, case_id: str, *,
+                                   organization: str, actor: str, purpose: str) -> None:
+        """Reuse question/export authority for scoped execution bookkeeping.
+
+        No source content is read here. This keeps cancellation available after
+        a source amendment while retaining the existing patient/binding locks.
+        The caller owns its transaction and refreshes the external credential.
+        """
+        if not self.registry._transaction_active or purpose != "operations":
+            raise PatientRegistryDenied("Composer run scope unavailable")
+        _key(patient_id, "patient_id")
+        _case_id(case_id)
+        _key(organization, "organization")
+        _key(actor, "actor")
+        for action in ("patient_read", "question_read", "source_read", "source_brief_export"):
+            self.registry._allow(actor, patient_id, action, purpose)
+        PostgresSourceVersions(self.registry)._binding(patient_id, case_id, organization, purpose)
+
+    def prepare_run_context_locked(self, patient_id: str, case_id: str, *,
+                                   organization: str, actor: str, purpose: str,
+                                   recheck_authority: Callable[[], None],
+                                   prepare_response: Callable[[dict], PreparedResponse]) -> PreparedResponse:
+        """Prepare current execution pins through the existing source owner.
+
+        The caller owns the transaction. Source content stays within its owner
+        and this projection; the consumer receives only contract/fingerprint.
+        The source owner's final audit and authority checks enclose all effects.
+        """
+        self.authorize_run_scope_locked(patient_id, case_id, organization=organization,
+                                        actor=actor, purpose=purpose)
+
+        def prepare(index):
+            world = project_source_world_model(index)
+            return prepare_response({
+                "source_snapshot_contract": SOURCE_SNAPSHOT_CONTRACT,
+                "source_snapshot_sha256": world["snapshot_fingerprint"],
+            })
+
+        return PostgresSourceVersions(self.registry).list_locked(
+            patient_id, case_id, organization=organization, actor=actor, purpose=purpose,
+            recheck_authority=recheck_authority, prepare_response=prepare)
 
     @staticmethod
     def _intent(patient_id: str, case_id: str, organization: str,
@@ -60,11 +103,16 @@ class PostgresSourceQuestions:
         """One projection for saved-question history and its readable brief."""
         (qid, pid, cid, question, sid, line, digest, version,
          old_fingerprint, preflight_sha, created_at, snapshot_contract) = row
+        identity = legacy_text_question_anchor({
+            "patient_id": pid, "case_id": cid, "source_id": sid,
+            "source_line": line, "source_sha256": digest, "source_version": version,
+        })
         anchors = {(item["source_id"], item["source_line"]):
                    (item["source_sha256"], item["document_version"])
                    for item in world["observations"]}
         current = (snapshot_contract == SOURCE_SNAPSHOT_CONTRACT
-                   and anchors.get((sid, line)) == (digest, version)
+                   and anchors.get((identity.source_id, identity.source_line))
+                       == (identity.source_sha256, identity.source_version)
                    and hmac.compare_digest(old_fingerprint, world["snapshot_fingerprint"]))
         return {
             "question_id": qid, "patient_id": pid, "case_id": cid,
@@ -268,29 +316,7 @@ class PostgresSourceQuestions:
         )
         if len(rows) > 250:
             raise PatientRegistryError("Question list exceeds bounded read limit")
-        anchors = {(item["source_id"], item["source_line"]):
-                   (item["source_sha256"], item["document_version"])
-                   for item in world["observations"]}
-        results = []
-        for (qid, pid, cid, question, sid, line, digest, version,
-             old_fingerprint, preflight_sha, created_at, snapshot_contract) in rows:
-            current = (snapshot_contract == SOURCE_SNAPSHOT_CONTRACT
-                       and anchors.get((sid, line)) == (digest, version)
-                       and hmac.compare_digest(old_fingerprint, world["snapshot_fingerprint"]))
-            results.append({
-                "question_id": qid, "patient_id": pid, "case_id": cid,
-                "question": question, "source_id": sid, "source_line": line,
-                "source_sha256": digest, "source_version": version,
-                "source_snapshot_sha256": old_fingerprint,
-                "source_snapshot_contract": snapshot_contract,
-                "preflight_sha256": preflight_sha,
-                "created_at": created_at.isoformat() if isinstance(created_at, datetime) else str(created_at),
-                "source_context_state": ("current_unreviewed_question" if current
-                                         else "source_reassessment_required"),
-                "human_review_state": "not_submitted",
-                "clinical_approval": False, "model_executed": False,
-            })
-        return results
+        return [self._question_state(row, world) for row in rows]
 
     def list(self, patient_id: str, case_id: str, *, organization: str,
              actor: str, purpose: str, recheck_authority: Callable[[], None],

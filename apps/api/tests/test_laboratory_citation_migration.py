@@ -15,6 +15,7 @@ import test_lab_manual_convergence as joined
 import test_laboratory_question_migration as previous
 from test_source_versions import SourceVersionFixture
 
+CITATIONS = "0019_laboratory_citations"
 PREVIOUS = previous.QUESTION_REVISION
 
 
@@ -29,12 +30,12 @@ class LaboratoryCitationMigrationTests(SourceVersionFixture):
         with self.services() as registry:
             seed_fictional_records(registry, fictional_records(), recorded_by="FICTIONAL-AUTHOR")
         before = self.snapshot()
-        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        migrate(self.admin, "upgrade", CITATIONS)
         self.assertEqual(self.snapshot(before[0]), before)
         self.assertEqual(self.snapshot()[0]["investigation.laboratory_citation_anchors"], [])
         migrate(self.admin, "downgrade", PREVIOUS)
         self.assertEqual(self.snapshot(), before)
-        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        migrate(self.admin, "upgrade", "0024_clinical_execution_join")
 
         qid = saved["question_id"]
         scope = (patient, "CASE-ALPHA", qid)
@@ -112,4 +113,6 @@ class LaboratoryCitationMigrationTests(SourceVersionFixture):
         self.assertEqual(self.snapshot(), preserved)
         with self.engine.connect() as conn:
             self.assertEqual(conn.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(),
-                             SCHEMA_REVISION)
+                             "0024_clinical_execution_join")
+        migrate(self.admin, "upgrade", SCHEMA_REVISION)
+        joined.LabManualPopulatedMigrationTests.assert_existing_history_preserved(self, preserved)

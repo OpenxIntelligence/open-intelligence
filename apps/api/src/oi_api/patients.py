@@ -2,14 +2,12 @@
 
 from contextlib import contextmanager
 from datetime import datetime
-import hashlib
-import hmac
 from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import Field, StrictBool, field_validator, model_validator
+from pydantic import Field, StrictBool, field_validator
 
 from open_intelligence.patient_registry import (
     PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError, _key,
@@ -17,7 +15,10 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from .access import Authentication, Principal, authenticate_request
+from .registry_context import registry_for_principal
 from .contracts import Contract
+from .source_contracts import ReportedOncologyContext, SourceOncologyFields
+from .source_question_contracts import QuestionSourceState, SelectedComposerSource, SourceQuestionBrief
 from .database import Database
 from .record_requests import PostgresRecordRequests
 from .case_bindings import CanonicalCaseBindings
@@ -27,7 +28,7 @@ from .laboratory_fhir_store import PostgresLaboratoryFHIR
 from .composer_preflight import PostgresSourceComposerPreflight, SHA256
 from .source_questions import PostgresSourceQuestions
 from .question_review_returns import PostgresQuestionReviewReturns
-from .source_brief import MAX_ENVELOPE_BYTES, check_brief_size
+from .source_brief import MAX_ENVELOPE_BYTES
 from .question_source_review_packet import PostgresQuestionSourcePacket
 from .images import PostgresSourceImages
 from .dicom_integrity import render_dicom_preview
@@ -53,6 +54,16 @@ class CreatePatient(Contract):
 class CreatedPatient(Contract):
     patient_id: str
     duplicate: bool
+
+
+class SuspendPatient(CreatePatient):
+    expected_revision: int = Field(strict=True, ge=1, le=9_223_372_036_854_775_806)
+
+
+class SuspendedPatient(Contract):
+    patient_id: str
+    revision: int = Field(ge=2)
+    status: Literal["suspended"]
 
 
 class Patient(Contract):
@@ -246,22 +257,6 @@ class SourceVersion(Contract):
     supersedes_id: str | None
 
 
-class ReportedOncologyContext(Contract):
-    role: Literal["primary", "metastasis"]
-    episode_id: str | None = Field(pattern=r"^EP-[A-Z0-9][A-Z0-9-]{0,35}$")
-
-
-class SourceOncologyFields(Contract):
-    oncology: ReportedOncologyContext | None = Field(default=None, exclude_if=lambda value: value is None)
-
-    @field_validator("oncology", mode="before")
-    @classmethod
-    def require_context_if_present(cls, value):
-        if value is None:
-            raise ValueError("Omit oncology when the original has no attribution")
-        return value
-
-
 class SourceFinding(SourceOncologyFields):
     source_id: str
     finding_key: str
@@ -410,21 +405,6 @@ class PrepareSourceComposer(Contract):
         return value
 
 
-class SelectedComposerSource(SourceOncologyFields):
-    source_id: str
-    document_id: str
-    version: int = Field(ge=1)
-    sha256: str
-    line: int = Field(ge=1)
-    finding_key: str
-    reported_state: str
-    statement: str
-    kind: str
-    event_date: str
-    issued_at: str
-    specimen_id: str | None
-
-
 class PreparedSourceComposer(Contract):
     contract: Literal["oi.synthetic-source-composer-preflight/2"]
     patient_id: str
@@ -466,26 +446,6 @@ class SaveSourceQuestion(Contract):
 class SavedSourceQuestion(Contract):
     question_id: str
     duplicate: bool
-
-
-class QuestionSourceState(Contract):
-    question_id: str
-    patient_id: str
-    case_id: str
-    question: str
-    source_id: str
-    source_line: int = Field(ge=1)
-    source_sha256: str
-    source_version: int = Field(ge=1)
-    source_snapshot_contract: Literal["oi.pg-source-world-model/1",
-                                      "oi.synthetic-postgres-world-model-sources/1"]
-    source_snapshot_sha256: str
-    preflight_sha256: str
-    created_at: datetime
-    source_context_state: Literal["current_unreviewed_question", "source_reassessment_required"]
-    human_review_state: Literal["not_submitted"]
-    clinical_approval: Literal[False]
-    model_executed: Literal[False]
 
 
 class SourceQuestionsList(Contract):
@@ -629,54 +589,6 @@ class PrepareSourceQuestionBrief(Contract):
         return value
 
 
-class SourceQuestionBrief(Contract):
-    contract: Literal["oi.synthetic-source-brief/2"]
-    synthetic: Literal[True]
-    patient_id: str
-    case_id: str
-    source_snapshot_contract: Literal["oi.pg-source-world-model/1"]
-    source_snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    access_receipt_id: str = Field(pattern=r"^ACCESS-[0-9A-F]{32}$")
-    question: QuestionSourceState
-    selected_source: SelectedComposerSource
-    prepared_at: datetime
-    media_type: Literal["text/plain;charset=utf-8"]
-    body: str = Field(min_length=1)
-    body_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    clinical_approval: Literal[False]
-    model_executed: Literal[False]
-    biomedical_evidence_included: Literal[False]
-
-    @field_validator("prepared_at")
-    @classmethod
-    def aware_preparation(cls, value):
-        if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("Preparation time requires a timezone")
-        return value
-
-    @model_validator(mode="after")
-    def exact_question_and_body(self):
-        question = self.question
-        source = self.selected_source
-        if (question.patient_id != self.patient_id or question.case_id != self.case_id
-                or question.source_snapshot_contract != self.source_snapshot_contract
-                or question.source_snapshot_sha256 != self.source_snapshot_sha256
-                or question.source_context_state != "current_unreviewed_question"
-                or (question.source_id, question.source_line,
-                    question.source_sha256, question.source_version)
-                != (source.source_id, source.line, source.sha256, source.version)):
-            raise ValueError("Brief must retain its current canonical question and source")
-        if not hmac.compare_digest(self.body_sha256, hashlib.sha256(self.body.encode("utf-8")).hexdigest()):
-            raise ValueError("Brief body digest does not match")
-        try:
-            # This is the complete JSON-mode DTO the HTTP response serializes,
-            # including nested source/question references and UTC timestamps.
-            check_brief_size(self.model_dump(mode="json"))
-        except PatientRegistryError:
-            raise ValueError("Source brief exceeds bounded response size") from None
-        return self
-
-
 class QuestionReviewSourceAnchor(Contract):
     source_id: str
     source_line: int = Field(ge=1,le=10000)
@@ -746,22 +658,7 @@ def patient_router(database: Database, authentication: Authentication, *, image_
     def registry(context: Principal):
         try:
             with database.registry_connection() as connection:
-                def authorize(actor, subject, action, purpose):
-                    if actor != context.actor or purpose != context.purpose or action not in context.actions:
-                        return False
-                    if action == "patient_create":
-                        return subject == context.organization
-                    if action not in {"patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "image_import", "image_read", "image_original_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update", "evidence_read", "evidence_link", "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess", "authored_evidence_withdraw", "authored_evidence_original_read", "evidence_report_export", "encounter.schedule", "encounter.read", "encounter.events.read", "encounter.transition", "encounter.source.link", "note.write", "note.read"} or subject not in context.patient_ids:
-                        return False
-                    cursor = connection.cursor()
-                    try:
-                        cursor.execute("SELECT origin_org FROM identity.identity_patients WHERE patient_id=%s", (subject,))
-                        row = cursor.fetchone()
-                        return row is not None and row[0] == context.organization
-                    finally:
-                        cursor.close()
-
-                yield PostgresPatientRegistry(connection, authorize)
+                yield registry_for_principal(connection, context)
         except PatientRegistryDenied:
             raise
         except PatientRegistryConflict:
@@ -950,6 +847,26 @@ def patient_router(database: Database, authentication: Authentication, *, image_
             raise PatientRegistryDenied("Source authority changed")
         # Both patient grant and operation grant are independently enforced.
         records_authorized(patients, current, patient_id, action)
+
+    @router.post("/{patient_id}/suspensions", response_model=SuspendedPatient,
+                 responses=errors, operation_id="suspend_patient_access_v1")
+    def suspend_patient(patient_id: str, payload: SuspendPatient, request: Request,
+                        context: Principal = Depends(principal)):
+        if context.purpose != "operations":
+            raise HTTPException(404, "Patient unavailable")
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "patient_suspend")
+                return patients.suspend_patient(
+                    patient_id, actor=context.actor, purpose=context.purpose,
+                    expected_revision=payload.expected_revision, request_key=payload.request_key,
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "patient_suspend"),
+                    prepare_response=lambda value: JSONResponse(
+                        SuspendedPatient(**value).model_dump(mode="json")),
+                )
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Patient unavailable") from None
 
     def final_question_authority(request: Request, initial: Principal,
                                  patients: PostgresPatientRegistry,
@@ -1262,6 +1179,11 @@ def patient_router(database: Database, authentication: Authentication, *, image_
     from .question_passage_routes import register_question_passage_routes
     register_question_passage_routes(router, principal=principal, registry=registry,
         records_authorized=records_authorized, final_authority=final_question_authority)
+    from .composer_run_routes import register_composer_run_routes
+    register_composer_run_routes(
+        router, principal=principal, registry=registry, records_authorized=records_authorized,
+        final_question_authority=final_question_authority, errors=errors,
+    )
     from .followthrough_routes import register_followthrough_routes
     register_followthrough_routes(
         router, principal=principal, registry=registry,

@@ -107,8 +107,13 @@ class SourceQuestionChecks:
         write_grants()
         count = self.cd.evaluate('window.__oiBriefChecks.reads.length')
         blobs = self.cd.evaluate('window.__oiBriefChecks.blobs')
-        downloads = sorted(path for path in self.artifacts.glob('source-brief-downloads/**/*')
-                           if not path.name.endswith('.crdownload'))
+        # Observe the denied action in its own fresh directory. Chromium may still
+        # remove bookkeeping files from the earlier successful download directory.
+        denied_destination = self.artifacts/'denied-source-brief-downloads'/self.original_question_id
+        denied_destination.mkdir(parents=True, exist_ok=False)
+        self.cd.command('Browser.setDownloadBehavior', {
+            'behavior': 'allow', 'downloadPath': str(denied_destination.resolve()),
+        })
         self.cd.evaluate("document.querySelector('[data-testid=brief-download]').click()")
         self.cd.wait("document.querySelector('[data-testid=brief-status]').textContent.includes('unavailable under current authority')",
                      'fresh download denies withdrawn export permission')
@@ -116,20 +121,12 @@ class SourceQuestionChecks:
         assert self.cd.evaluate('window.__oiBriefChecks.reads.at(-1).status') == 404
         assert self.cd.evaluate('window.__oiBriefChecks.blobs') == blobs
         assert not self.cd.evaluate("Boolean(document.querySelector('[data-testid=source-brief-preview]'))")
-        # Wait for any in-progress Chromium download marker to settle before
-        # snapshotting, and compare completed artifacts only: a *.crdownload
-        # is a download still being written, not an artifact the revoked
-        # export produced.
-        wait_for(lambda: not list(self.artifacts.glob('source-brief-downloads/**/*.crdownload')),
-                 'denied export leaves no in-progress download')
-        after_downloads = sorted(path for path in self.artifacts.glob('source-brief-downloads/**/*')
-                                 if not path.name.endswith('.crdownload'))
-        assert after_downloads == downloads, (
-            'Revoked export changed the exact source-brief artifact inventory: '
-            f"before={[str(path.relative_to(self.artifacts)) for path in downloads]!r}, "
-            f"after={[str(path.relative_to(self.artifacts)) for path in after_downloads]!r}"
-        )
+        denied_files = list(denied_destination.iterdir())
+        assert not denied_files, f'Revoked export produced files: {denied_files!r}'
         assert self.original_download.read_bytes() == self.original_download_bytes
+        self.cd.command('Browser.setDownloadBehavior', {
+            'behavior': 'allow', 'downloadPath': str(self.original_download.parent.resolve()),
+        })
         credentials[0]['actions'].append('source_brief_export')
         write_grants()
         self.cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
@@ -220,7 +217,55 @@ class SourceQuestionChecks:
             assert self.original_source_id in self.cd.evaluate(
                 "document.querySelector('[data-testid=source-quote-packet]').textContent")
 
-    def start(self, credentials, write_grants):
+    def background_brief(self, run_worker, credentials, write_grants):
+        row = f'li[data-question-id="{self.original_question_id}"]'
+
+        def click(test_id):
+            selector = json.dumps(f'{row} [data-testid={test_id}]')
+            self.cd.wait(f'document.querySelector({selector})?.disabled === false', test_id)
+            self.cd.evaluate(f'document.querySelector({selector}).click()')
+
+        def read_status(expected):
+            panel = f'document.querySelector({json.dumps(row + " [data-testid=run-status]")})'
+            self.cd.wait(f'{panel}?.dataset.state === {json.dumps(expected)}', expected)
+            return self.cd.evaluate(f'{panel}.dataset.runId')
+
+        click('run-open')
+        initial = read_status('queued')
+        self.history('Current source context')
+        click('run-open')
+        assert read_status('queued') == initial
+        click('run-cancel')
+        assert read_status('cancelled') == initial
+        click('run-retry')
+        replacement = read_status('queued')
+        assert replacement != initial
+        run_worker()
+        click('run-refresh')
+        assert read_status('completed') == replacement
+        click('run-result')
+        body = "document.querySelector('[data-testid=run-result-body]')"
+        self.cd.wait(f'{body}?.textContent.includes({json.dumps(self.original_question_id)})',
+                     'stored background brief disclosed under a fresh grant')
+        assert 'Fictional café <script>literal</script>.' in self.cd.evaluate(f'{body}.textContent')
+        assert self.cd.evaluate(f'{body}.querySelectorAll("script").length') == 0
+        credentials[0]['actions'].remove('source_brief_export')
+        write_grants()
+        try:
+            click('run-result')
+            self.cd.wait("document.querySelector('[data-testid=brief-status]')?.textContent.includes('unavailable under current access')",
+                         'denied background result recheck')
+            assert not self.cd.evaluate(f'Boolean({body})')
+        finally:
+            credentials[0]['actions'].append('source_brief_export')
+            write_grants()
+        self.cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
+        self.cd.wait("Boolean(document.querySelector('[data-testid=world-projection]'))", 'reopen source context')
+        self.history('Current source context')
+        print('PASS BACKGROUND BRIEF: same run after question-history refresh; cancel and replace; separate worker; '
+              'completed source-bound result; withdrawn export clears the displayed result.')
+
+    def start(self, credentials, write_grants, run_worker):
         self.navigate('Investigations')
         assert self.cd.evaluate("!document.querySelector('[data-testid=composer-context]')")
         self.prepare(self.original_source_id, 8)
@@ -229,6 +274,7 @@ class SourceQuestionChecks:
         assert self.original_question_id in history and self.original_source_id in history
         assert 'Clinical approval: none' in history
         self.overview_counts(current=1, reassessment=0)
+        self.background_brief(run_worker, credentials, write_grants)
         preview = self.prepare_brief(self.original_question_id)
         assert 'Fictional café <script>literal</script>.' in preview['body']
         self.original_download, self.original_download_bytes = self.download_brief(self.original_question_id)
@@ -236,12 +282,25 @@ class SourceQuestionChecks:
         self.inspect_quote(self.original_question_id,current=True,
             expected_text='Fictional café <script>literal</script>.')
 
-    def after_amendment(self, replacement_source_id):
+    def after_amendment(self, replacement_source_id, stale_run):
         self.navigate('Investigations')
         history = self.history('Source changed')
         assert self.original_question_id in history and self.original_source_id in history
         assert replacement_source_id not in history
         self.overview_counts(current=0, reassessment=1)
+        row = f'.question-items li[data-question-id="{self.original_question_id}"]'
+        check = f'document.querySelector({json.dumps(row + " [data-testid=run-latest]")})'
+        self.cd.wait(f'{check}?.disabled === false', 'read-only historical run lookup')
+        self.cd.evaluate(f'{check}.click()')
+        panel = f'document.querySelector({json.dumps(row + " [data-testid=run-status]")})'
+        self.cd.wait(f'{panel}?.dataset.state === "stale"', 'relay marked the previous run stale')
+        assert self.cd.evaluate(f'{panel}.dataset.runId') == stale_run
+        assert 'reassessment required' in self.cd.evaluate(f'{panel}.textContent')
+        for control in ('run-open', 'run-result', 'run-result-body', 'run-retry'):
+            assert not self.cd.evaluate(f'Boolean(document.querySelector({json.dumps(row + " [data-testid=" + control + "]")}))')
+        print('PASS AMENDED BACKGROUND BRIEF: browser reopened the exact stale run after SIGKILL and relay restart; '
+              'one receipt and one stale transition after replaying the amendment; a second patient completed while the relay was down.')
+
         assert self.original_download.read_bytes() == self.original_download_bytes
         assert not self.cd.evaluate("Boolean(document.querySelector('[data-testid=source-brief-preview]'))")
         stale = f'.question-items li[data-question-id="{self.original_question_id}"] [data-testid=brief-prepare]'
@@ -442,7 +501,7 @@ class SourceQuestionChecks:
 
 
 @contextmanager
-def exercise(cd, source_id, credentials, write_grants):
+def exercise(cd, source_id, credentials, write_grants, run_worker):
     previous_actions = list(credentials[0]['actions'])
     try:
         credentials[0]['actions'] = sorted(set(previous_actions) |
@@ -450,7 +509,7 @@ def exercise(cd, source_id, credentials, write_grants):
         write_grants()
         cd.evaluate(f'({_OBSERVE_BRIEFS})()')
         checks = SourceQuestionChecks(cd, source_id)
-        checks.start(credentials, write_grants)
+        checks.start(credentials, write_grants, run_worker)
         yield checks
     finally:
         try:

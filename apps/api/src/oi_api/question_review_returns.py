@@ -8,6 +8,7 @@ No signed review, clinical approval, external dispatch or evidence assessment.
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import nullcontext
 from datetime import datetime
 import hmac
 from typing import TypeVar
@@ -174,6 +175,7 @@ class PostgresQuestionReviewReturns:
                                 organization: str, actor: str, purpose: str,
                                 request_key: str, expected_queue_fingerprint: str, reason: str,
                                 recheck_authority: Callable[[], None],
+                                execution_evidence: dict | None = None,
                                 prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
@@ -187,7 +189,12 @@ class PostgresQuestionReviewReturns:
         if (type(expected_queue_fingerprint) is not str
                 or SHA256.fullmatch(expected_queue_fingerprint) is None):
             raise PatientRegistryError("Invalid queue fingerprint")
+        # Only an already authorized report transaction can bind execution/evidence.
+        if execution_evidence is not None and not self.registry._transaction_active:
+            raise PatientRegistryError("A locked evidence report is required")
+        basis = {"execution_evidence": execution_evidence} if execution_evidence is not None else {}
         intent = _digest({
+            **basis,
             "patient_id": patient_id, "case_id": case_id, "question_id": question_id,
             "organization": organization, "actor": actor, "purpose": purpose,
             "request_key": request_key, "queue_fingerprint": expected_queue_fingerprint,
@@ -257,10 +264,11 @@ class PostgresQuestionReviewReturns:
                 source_snapshot_sha256=item["source_snapshot_sha256"],
                 source_snapshot_contract=SOURCE_SNAPSHOT_CONTRACT,
                 queue_fingerprint_contract=FINGERPRINT_CONTRACT, actor=actor,
+                **(execution_evidence or {}),
             )
             return response(receipt_id, False)
 
-        with self.registry.transaction():
+        with nullcontext() if execution_evidence is not None else self.registry.transaction():
             return PostgresSourceVersions(self.registry).list_locked(
                 patient_id, case_id, organization=organization, actor=actor, purpose=purpose,
                 prepare_response=save, recheck_authority=recheck_authority,

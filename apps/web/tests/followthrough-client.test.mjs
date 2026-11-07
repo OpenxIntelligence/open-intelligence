@@ -1,8 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {RegistrySession} from '../.test-dist/registry-client.js';
-import {projectFollowthroughAttention} from '../.test-dist/followthrough-view.js';
+import {decodeFollowthrough,projectFollowthroughAttention,laboratoryQuestionFollowthrough} from '../.test-dist/followthrough-view.js';
 import {secondOpinionPreparation} from '../.test-dist/second-opinion-preparation.js';
+import {projection as laboratoryWorld} from './laboratory-projection-fixture.mjs';
 
 // Independently authored fictional task and source context; transport is the only mock.
 const token='fictional_test_credential_000000000001';
@@ -683,4 +686,215 @@ test('merged question and task workflows preserve both exact unknown writes thro
  unavailable=false;await s.loadCases();await s.retryReviewReturn();await s.retryFollowthroughWrite();
  assert.equal(reviewBodies[1],reviewBodies[0]);assert.equal(taskBodies[1],taskBodies[0]);
  assert.equal(s.snapshot().reviewReturn.duplicate,true);assert.equal(s.snapshot().followthroughReceipt.duplicate,true);
+});
+
+const mediaV2='application/vnd.open-intelligence.followthrough.v2+json';
+const labId='QUESTION-'+'D'.repeat(32),labTask='TASK-'+'E'.repeat(32);
+function mixedWorld(){
+ const w=world(),lab=laboratoryWorld();
+ return {...lab,patient_id:pid,case_id:cid,snapshot_fingerprint:snapshot,
+  current_sources:[...lab.current_sources,...w.current_sources],observations:w.observations,unresolved_refs:w.unresolved_refs,
+  summary:{...lab.summary,current_sources:2,current_observations:4,unresolved_observations:2}};
+}
+const observation=mixedWorld().laboratory_observations[0];
+function savedLab(){
+ return {question_id:labId,question:'Which fictional record confirms the reported result?',source_id:observation.source_id,
+  source_version:1,source_sha256:observation.source_sha256,observation_reference:observation.observation_reference,
+  source_snapshot_sha256:snapshot,preflight_sha256:'8'.repeat(64),source_context_state:'current_unreviewed_question'};
+}
+function labRow(statuses=['created'],extra={}){
+ const q=savedLab();
+ return taskRow(statuses,{task_id:labTask,question_id:labId,source_id:q.source_id,source_line:null,
+  source_sha256:q.source_sha256,observation_reference:q.observation_reference,
+  preflight_sha256:q.preflight_sha256,history:history(statuses).map((e,i)=>({...e,event_id:eventId(10+i)})),...extra});
+}
+const mixedProjection=rows=>projection(rows,{contract:'oi.pg-question-followthrough/2'});
+function mixedTransport({questionList=()=>[savedLab()],list=()=>response(projection([])),post=()=>assert.fail('Unexpected write')}={}){
+ return session(async(url,init)=>{
+  if(init.method==='POST')return post(url,init);
+  if(url.endsWith('/world-model'))return response(mixedWorld());
+  if(url.endsWith('/composer/laboratory-questions')){
+   const rows=questionList();
+   return rows instanceof Response?rows:response({patient_id:pid,case_id:cid,access_receipt_id:'ACCESS-'+'F'.repeat(32),questions:rows});
+  }
+  if(url.endsWith('/followthrough'))return list(init);
+  return basic(url);
+ });
+}
+
+test('mixed task reads negotiate v2, retain both original anchors and block historical laboratory completion',async()=>{
+ const reads=[],posts=[];
+ const lab=labRow(['created','assigned','acknowledged'],{source_context_state:'source_reassessment_required',needs_recheck:true});
+ const s=mixedTransport({list:init=>{
+  reads.push(new Headers(init.headers).get('Accept'));return new Response(JSON.stringify(mixedProjection([taskRow(),lab])),
+   {headers:{'Content-Type':mediaV2+'; charset=utf-8'}});
+ },post:(url,init)=>{posts.push(JSON.parse(init.body));return response({});}});
+ await open(s);await s.loadFollowthrough(cid);
+ assert.ok(reads[0].includes(mediaV2));
+ const rows=s.snapshot().followthrough?.tasks;assert.ok(rows,s.snapshot().followthroughMessage);
+ assert.equal(rows[0].source_line,8);assert.equal(Object.hasOwn(rows[0],'observation_reference'),false);
+ assert.equal(rows[1].observation_reference,observation.observation_reference);assert.equal(rows[1].source_line,null);
+ assert.equal(rows[1].history.length,3);assert.equal(projectFollowthroughAttention(s.snapshot()).counts.recheck,1);
+ await s.transitionFollowthrough(labTask,{status:'completed',owner_label:'',reason:'Work previously acknowledged.'});
+ assert.equal(posts.length,0);
+ await s.transitionFollowthrough(labTask,{status:'deferred',owner_label:'',reason:'Recheck original observation.'});
+ assert.equal(posts[0].status,'deferred');
+});
+
+test('v2 lab identity rejects fake lines, malformed Observation references, unsupported manual and legacy contexts',()=>{
+ const lab=labRow();
+ for(const changes of [{source_line:1},{observation_reference:undefined},{observation_reference:'Observation/record/other'},
+  {observation_reference:'Observation/x\n'},{manual_dependency_revision_id:'PASSAGES-'+'A'.repeat(32),manual_context_state:'current_unreviewed'},
+  {source_snapshot_contract:'oi.synthetic-postgres-world-model-sources/1',source_context_state:'source_reassessment_required',needs_recheck:true}]){
+  assert.throws(()=>decodeFollowthrough(mixedProjection([{...lab,...changes}]),pid,cid));
+ }
+ assert.throws(()=>decodeFollowthrough(projection([lab]),pid,cid));
+ assert.doesNotThrow(()=>decodeFollowthrough(projection([taskRow()]),pid,cid));
+});
+
+test('a saved Journey question uses the same task writer and preserves its exact uncertain command',async()=>{
+ const writes=[];const s=mixedTransport({post:(url,init)=>{
+  writes.push([url,init.body]);return writes.length===1?response({},503):response(receipt(1,true,{question_id:labId,task_id:labTask}));
+ }});
+ await ready(s);await s.loadLabQuestions(s.snapshot().worldModel);
+ const textDraft=fields(),labDraft={...fields(),title:'Trace the reported laboratory result'};
+ s.editFollowthroughDraft(qid,textDraft);s.editFollowthroughDraft(labId,labDraft,'laboratory');
+ await s.loadSavedQuestions(cid);await s.loadLabQuestions(s.snapshot().worldModel);
+ assert.deepEqual(s.snapshot().followthroughDrafts[qid]?.fields,textDraft);
+ assert.deepEqual(s.snapshot().followthroughDrafts[labId]?.fields,labDraft);
+ await s.createFollowthrough(labId,labDraft,'laboratory');
+ assert.equal(writes[0][0],path+'/questions/'+labId+'/followthrough');
+ const {request_key,...body}=JSON.parse(writes[0][1]);assert.match(request_key,/^[\w-]{36}$/);
+ assert.deepEqual(body,{...labDraft,synthetic:true,source_snapshot_contract:contract,
+  expected_source_snapshot_sha256:snapshot,expected_preflight_sha256:savedLab().preflight_sha256});
+ assert.equal(s.snapshot().followthroughWritePhase,'unknown');await s.createFollowthrough(qid,textDraft);
+ await s.loadWorldModel(cid);await s.retryFollowthroughWrite();assert.deepEqual(writes,[writes[0],writes[0]]);
+ assert.equal(s.snapshot().followthroughReceipt.question_id,labId);assert.equal(s.snapshot().followthroughReceipt.duplicate,true);
+ assert.equal(s.snapshot().followthroughDrafts[labId],undefined);assert.deepEqual(s.snapshot().followthroughDrafts[qid]?.fields,textDraft);
+});
+
+test('an unchecked, historical, removed or denied laboratory question cannot create work or revive a draft',async()=>{
+ for(const change of ['historical','missing','rebound','denied']){
+  let rows=[savedLab()];const writes=[];
+  const s=mixedTransport({questionList:()=>rows,post:()=>{writes.push(1);return response({},403);}});
+  await ready(s);const w=s.snapshot().worldModel;
+  await s.createFollowthrough(labId,fields(),'laboratory');assert.deepEqual(writes,[]);
+  s.editFollowthroughDraft(qid,fields());await s.loadLabQuestions(w);s.editFollowthroughDraft(labId,fields(),'laboratory');
+  assert.ok(s.snapshot().followthroughDrafts[labId]);
+  rows=change==='denied'?response({},403):change==='missing'?[]:[{...savedLab(),...(change==='historical'?
+   {source_context_state:'source_reassessment_required'}:{observation_reference:w.laboratory_observations[1].observation_reference})}];
+  await s.loadLabQuestions(w);assert.equal(s.snapshot().followthroughDrafts[labId],undefined,change);
+  if(change!=='denied')assert.deepEqual(s.snapshot().followthroughDrafts[qid]?.fields,fields());
+  if(change!=='rebound')await s.createFollowthrough(labId,fields(),'laboratory');
+  assert.deepEqual(writes,[],change);
+ }
+});
+
+test('an original laboratory transition draft clears when a refreshed task anchor changes',async()=>{
+ let lab=labRow();const s=mixedTransport({list:()=>response(mixedProjection([lab]))});
+ await open(s);await s.loadFollowthrough(cid);
+ s.editFollowthroughTransitionDraft(labTask,{owner_label:'Fictional coordinator',reason:'Check the original source.'});
+ await s.loadFollowthrough(cid);assert.ok(s.snapshot().followthroughTransitionDrafts[labTask]);
+ lab={...lab,observation_reference:mixedWorld().laboratory_observations[1].observation_reference};
+ await s.loadFollowthrough(cid);assert.deepEqual(s.snapshot().followthroughTransitionDrafts,{});
+});
+
+const originalLabBytes=readFileSync(new URL('../../../examples/synthetic/fictional-fhir-r4-lab-bundle.json',import.meta.url),'utf8')
+ .replaceAll('FICTIONAL-PATIENT-A','FICT-SUBJECT-0');
+const originalLabHash=createHash('sha256').update(originalLabBytes).digest('hex');
+async function taskReport({historical=false,failure,hold}={}){
+ const meta={...mixedWorld().current_sources[0],sha256:originalLabHash,state:historical?'superseded':'current'};
+ const replacement={...meta,source_id:'SRC-'+'F'.repeat(32),version:2,state:'current',supersedes_id:meta.source_id,sha256:'e'.repeat(64)};
+ const row=labRow(['created'],{source_sha256:originalLabHash,observation_reference:failure==='observation'?'Observation/OTHER':'Observation/FICTIONAL-OBS-A',
+  ...(historical?{source_context_state:'source_reassessment_required',needs_recheck:true}:{})});
+ const original={source_id:meta.source_id,case_id:cid,document_id:meta.document_id,version:1,state:meta.state,sha256:originalLabHash,
+  access_receipt_id:'ACCESS-'+'D'.repeat(32),original_text:originalLabBytes,synthetic:true,clinical_review_state:'not_established'};
+ const reads=[];
+ const s=session(async(url,init)=>{
+  assert.equal(init.method,'GET');
+  if(url.endsWith('/followthrough'))return response(mixedProjection([row,taskRow()]));
+  reads.push(url);
+  if(url===path+'/sources'){
+   if(hold)await hold.promise;
+   if(failure==='index denied')return response({},403);
+   const sources=failure==='replacement only'?[replacement]:[historical?replacement:null,
+    {...meta,...(failure==='wrong version'?{version:2}:failure==='wrong hash'?{sha256:'e'.repeat(64)}:{})}].filter(Boolean);
+   return response({contract:'oi.synthetic-original-sources/1',patient_id:failure==='wrong patient'?'PAT-OTHER':pid,
+    case_id:failure==='wrong case'?otherCase:cid,access_receipt_id:'ACCESS-'+'E'.repeat(32),sources,source_reported_assertions:[],
+    synthetic:true,clinical_interpretation:false,research_review_invalidation_integrated:false});
+  }
+  assert.equal(url,path+'/sources/'+meta.source_id);
+  return failure==='original denied'?response({},404):response({...original,...(failure==='changed bytes'?{original_text:originalLabBytes+' '}: {})});
+ });
+ await open(s);await s.loadFollowthrough(cid);
+ return {s,task:s.snapshot().followthrough.tasks[0],reads,sourcePath:path+'/sources/'+meta.source_id};
+}
+
+test('a laboratory task in either source state opens its exact, freshly authorized Records original on each visit',async()=>{
+ for(const historical of [false,true]){
+  const {s,task,reads,sourcePath}=await taskReport({historical});
+  await s.loadSources(cid,task);
+  assert.deepEqual(reads,[path+'/sources',sourcePath]);
+  assert.equal(s.snapshot().original?.original_text,originalLabBytes);
+  assert.equal(s.snapshot().original?.state,historical?'superseded':'current');
+  await s.loadFollowthrough(cid);
+  const reopen=s.loadSources(cid,s.snapshot().followthrough.tasks[0]);
+  assert.equal(s.snapshot().original,null);
+  await reopen;assert.deepEqual(reads,[path+'/sources',sourcePath,path+'/sources',sourcePath]);
+ }
+});
+
+test('task original inspection withholds changed, missing, mismatched or denied report versions',async()=>{
+ for(const failure of ['replacement only','wrong hash','wrong version','wrong patient','wrong case','index denied','original denied','changed bytes','observation']){
+  const {s,task,reads,sourcePath}=await taskReport({historical:true,failure});
+  await s.loadSources(cid,task);
+  assert.equal(s.snapshot().original,null,failure);assert.equal(s.snapshot().recordsPhase,'error',failure);
+  assert.deepEqual(reads,['original denied','changed bytes','observation'].includes(failure)?
+   [path+'/sources',sourcePath]:[path+'/sources'],failure);
+ }
+});
+
+test('a task replaced by a newer read or a dismissed handoff cannot open an original',async()=>{
+ const hold=deferred(),{s,task,reads}=await taskReport({hold});
+ await s.loadFollowthrough(cid);
+ await s.loadSources(cid,task);assert.deepEqual(reads,[]);
+ const pending=s.loadSources(cid,s.snapshot().followthrough.tasks[0]);s.dismissOriginal();
+ hold.resolve();await pending;
+ assert.deepEqual(reads,[path+'/sources']);assert.equal(s.snapshot().original,null);
+});
+
+
+test('laboratory preparation distinguishes a checked empty task list from missing permission or legacy text-only coverage',async()=>{
+ const other={...savedLab(),question_id:'QUESTION-'+'9'.repeat(32)};
+ let result=mixedProjection([labRow(),taskRow()]);
+ const s=mixedTransport({questionList:()=>[savedLab(),other],list:()=>result instanceof Response?result:response(result)});
+ await ready(s);await s.loadLabQuestions(s.snapshot().worldModel);
+ const [selected,unrelated]=s.snapshot().labQuestionHistory.questions;
+ const read=q=>laboratoryQuestionFollowthrough(s.snapshot(),q);
+ assert.equal(read(selected),null);
+ await s.loadFollowthrough(cid);
+ assert.deepEqual(read(selected).tasks.map(t=>t.task_id),[labTask]);
+ assert.deepEqual(read(unrelated).tasks,[]);
+ result=projection([]);await s.loadFollowthrough(cid);assert.equal(read(unrelated),null);
+ result=response({},404);await s.loadFollowthrough(cid);assert.equal(read(selected),null);
+ assert.equal(s.snapshot().labQuestionHistory.questions[0],selected);
+});
+
+test('a colliding question ID with inconsistent origin or independent read scope withholds all task details',async()=>{
+ const s=mixedTransport({list:()=>response(mixedProjection([labRow()]))});
+ await ready(s);await s.loadLabQuestions(s.snapshot().worldModel);await s.loadFollowthrough(cid);
+ const state=s.snapshot(),q=state.labQuestionHistory.questions[0],row=state.followthrough.tasks[0];
+ assert.equal(laboratoryQuestionFollowthrough(state,q).tasks.length,1);
+ for(const patch of [{source_line:1},{observation_reference:'Observation/OTHER'},
+   {source_id:sid},{source_version:2},{source_sha256:'f'.repeat(64)},
+   {source_snapshot_sha256:'e'.repeat(64)},{preflight_sha256:'d'.repeat(64)},
+   {source_context_state:'source_reassessment_required'},{case_id:otherCase}]){
+  const changed={...state,followthrough:{...state.followthrough,tasks:[{...row,...patch}]}};
+  assert.equal(laboratoryQuestionFollowthrough(changed,q),null,JSON.stringify(patch));
+ }
+ for(const patch of [{labQuestionListPhase:'loading'},{worldPhase:'error'},
+   {labQuestionHistory:{...state.labQuestionHistory,checked_source_snapshot_sha256:'d'.repeat(64)}},
+   {labQuestionHistory:{...state.labQuestionHistory,case_id:otherCase}}]){
+  assert.equal(laboratoryQuestionFollowthrough({...state,...patch},q),null);
+ }
 });

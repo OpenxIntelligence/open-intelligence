@@ -69,7 +69,10 @@ If startup fails, inspect the Docker output and retry the same command/state dir
 
 In Records, open the source versions for `CASE-DEMO`. Select
 [the fictional FHIR bundle](../examples/synthetic/fictional-fhir-r4-lab-bundle.json),
-confirm the file, and import it as a new report. In Journey, inspect that case and
+then choose **Preview results without importing**. Check the specimen and the reported
+value of `4.20 10*9/L`. The preview sends the original to the case service for a
+patient-mapping check. Saving requires a separate confirmation. Confirm the file
+and import it as a new report. In Journey, inspect that case and
 select `Observation/FICTIONAL-OBS-A`. Write a question, check it against the
 report, then explicitly save it. Reopen the saved laboratory questions to see
 the original question, report version, file digest and Observation reference.
@@ -100,8 +103,31 @@ to inspect the original measured value or absence reason, specimen, dates and
 currently permitted citation metadata together. The catalog supplies independently
 authored fictional metadata for this workflow.
 
+## Record follow-up work for the same laboratory question
+
+In Journey, reopen the saved laboratory question. Select **Record follow-up work
+for this question**. Enter a title, a reason, and a revisit date or review
+trigger. For example, record a task to request the amended fictional report
+before the next visit. Saving records an operational task with the question,
+original source version and exact Observation reference.
+
+Open Investigations and refresh **Follow-up work**. Assign or acknowledge the
+task to record responsibility. After importing an amended report in Records,
+reopen the case and refresh the tasks. The task retains its earlier Observation
+and history. Choose **Inspect original laboratory report** to reopen those exact
+bytes in Records, including when a newer report is available. The application flags it for reassessment and prevents completion
+against that stale basis. A newly prepared question can anchor work on the
+amended report.
+
 ## Verification boundary
 
 `apps/web/tools/demo_journey.py` exercises these exact fixtures through a real built browser and a separately owned Docker/PostgreSQL application, then checks repeated setup and persistence after stopping and resuming. It deletes only its own newly created disposable test project. The ordinary launcher never deletes volumes.
 
 The full integration workflow separately exercises wrong-scope and revoked access, text/PDF passages, immutable reports, uncertain saves, images, laboratory sources, keyboard/mobile flows, migration history, and seven backup/recovery stages. Final acceptance belongs to the exact candidate revision and its CI receipts in the PR; this guide alone is not a passing test or a deployment claim.
+
+
+### Check laboratory follow-up when preparing for a second opinion
+
+Open the fictional case's source view, then go to second-opinion preparation on Overview. Select **Check laboratory questions** and choose the saved question by its wording, report, version and Observation. **Inspect result and citations together** reopens the original result. **Check follow-up** reads the recorded tasks under their separate permission. For each open task, the screen shows its recorded action, owner, status, revisit date when supplied, and review trigger. Completed and deferred work is available under its own disclosure.
+
+In the synthetic browser scenario, two questions have identical wording. Only the earlier result has an acknowledged task. When its report is amended, the original question and assignment remain inspectable with a reassessment notice. Withdrawing task access hides the assignment on refresh while the independently permitted result remains available. Use Investigations to change a task's recorded status.
