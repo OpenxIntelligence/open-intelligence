@@ -473,3 +473,15 @@ test('Records history denial clears source metadata, original text and history',
  assert.equal(s.snapshot().sourceHistory,null);assert.equal(s.snapshot().sourceIndex,null);
  assert.equal(s.snapshot().original,null);s.disconnect();
 });
+
+
+test('original denial does not disable independently authorized Records history browsing',async()=>{
+ const f=unifiedHistoryFixture();
+ const {s}=await unifiedHistorySession('records',{original:()=>response({},404),history:url=>
+  response(url.endsWith(encodeURIComponent(f.first.received_at))?f.historical:{...history(f.second.received_at),world_model:f.current})});
+ await s.loadSourceHistory(f.first.received_at,'records');await s.openHistoricalOriginal(sourceId);
+ assert.equal(s.snapshot().recordsPhase,'error');
+ await s.loadSourceHistory(f.second.received_at,'records');
+ assert.equal(s.snapshot().historyPhase,'ready');assert.equal(s.snapshot().sourceHistory.received_through,f.second.received_at);
+ assert.equal(s.snapshot().original,null);s.disconnect();
+});

@@ -1089,14 +1089,15 @@ export class RegistrySession {
     const model=this.#state.worldModel,index=this.#state.sourceIndex;
     const context=basis==='world'?model:index;
     const sources=basis==='world'?(model?[...model.current_sources,...model.history]:[]):index?.sources??[];
-    if(!context||(basis==='world'?this.#state.worldPhase:this.#state.recordsPhase)!=='ready'||
+    const recordsReady=()=>['ready','error'].includes(this.#state.recordsPhase);
+    if(!context||(basis==='world'?this.#state.worldPhase!=='ready':!recordsReady())||
        !this.#token||this.#uploading||!sources.some(s=>s.received_at===cutoff))return;
     this.#historyController?.abort();
     const scope=this.#scope,read=this.#read,generation=++this.#historyRead,records=this.#records;
     const control=new AbortController();this.#historyController=control;this.#controllers.add(control);
     const current=()=>scope===this.#scope&&read===this.#read&&generation===this.#historyRead&&
       !control.signal.aborted&&(basis==='world'?model===this.#state.worldModel&&this.#state.worldPhase==='ready':
-        records===this.#records&&index===this.#state.sourceIndex&&this.#state.recordsPhase==='ready');
+        records===this.#records&&index===this.#state.sourceIndex&&recordsReady());
     const timeout=setTimeout(()=>control.abort(),10000);
     this.#publish({...emptyHistory(),historyBasis:basis,historyPhase:'loading',historyMessage:'Checking historical sources and current access…'});
     try{
