@@ -91,7 +91,9 @@ class PostgresQuestionEvidence:
                 prepared = encode({"source_context_state": "current_unreviewed_question" if current
                                    else "source_reassessment_required",
                                    "source_snapshot_sha256": selection["anchor_sha256"],
-                                   "preflight_sha256": passage_fingerprint([selection["anchor_sha256"],question["question"]])}, receipt)
+                                   "preflight_sha256": passage_fingerprint([selection["anchor_sha256"],question["question"]]),
+                                   "question_text": question["question"],
+                                   "selection": selection}, receipt)
                 owner._read_receipt(patient_id, case_id, actor=actor, purpose=purpose,
                     binding_revision=binding, event="source.document_question_access_authorized",
                     receipt_id=receipt, source_id=reviewed_source, sha256=selection["anchor"]["original_sha256"],
@@ -162,7 +164,9 @@ class PostgresQuestionEvidence:
                          recheck_authority=recheck_authority, prepare_response=prepare_response, reviewed_source=reviewed_source)
 
     def links(self, patient_id, case_id, question_id, *, organization, actor, purpose,
-              recheck_authority, prepare_response=None, reviewed_source=None):
+              recheck_authority, prepare_response=None, reviewed_source=None, prepare_review=False):
+        if prepare_review and reviewed_source is None:
+            raise PatientRegistryError("Review preparation requires an exact reviewed source")
         def operation(question, scope, rights_versions):
             rows = self.registry._fetchall(
                 "SELECT link_id,record_id,version,metadata_sha256,created_at,actor "
@@ -193,6 +197,39 @@ class PostgresQuestionEvidence:
             self.registry.append_event(patient_id, "evidence.links.read_authorized",
                                        question_id=question_id, case_id=case_id, actor=actor,
                                        link_count=len(links))
+            if prepare_review:
+                # The reviewed document is already source-bound, original-verified
+                # and authorization-checked inside this same transaction.
+                selected = question["selection"]
+                anchor = selected["anchor"]
+                fields = ("source_id", "document_id", "source_version",
+                          "original_sha256", "annotation_revision_id",
+                          "annotation_revision", "review_sha256",
+                          "selected_by", "selected_at", "selected_state",
+                          "quote", "line", "page")
+                prepared_source = {key: anchor[key] for key in fields}
+                prepared_source["anchor_sha256"] = selected["anchor_sha256"]
+                prepared_source["selection_state"] = selected["selection_state"]
+                state = scope["source_context_state"]
+                packet = {
+                    **scope,
+                    "contract": "oi.pg-passage-review-preparation/1",
+                    "source_id": reviewed_source,
+                    "question_text": question["question_text"],
+                    "selection": prepared_source,
+                    "links": links,
+                    "human_review_state": "not_performed",
+                    "next_step": ("independent_verification_required"
+                                  if state == "current_unreviewed_question"
+                                  else "source_reassessment_required"),
+                }
+                # Access receipt is deliberately excluded: a fresh authorized
+                # read of unchanged content has the same review-preparation hash.
+                packet["packet_sha256"] = _digest({
+                    key: value for key, value in packet.items()
+                    if key != "source_access_receipt_id"
+                })
+                return packet
             return {**scope, "contract": "oi.pg-question-evidence-links/1", "links": links}
 
         return self._run(patient_id, case_id, question_id, organization=organization,
