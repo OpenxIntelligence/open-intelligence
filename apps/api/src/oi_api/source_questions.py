@@ -19,6 +19,7 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from .case_bindings import _case_id
+from .question_origin import classify_stored_question_origin
 from .composer_preflight import PostgresSourceComposerPreflight, SHA256, SOURCE_SNAPSHOT_CONTRACT
 from .sources import PostgresSourceVersions, _source_id
 from .source_world_model import project_source_world_model
@@ -257,13 +258,44 @@ class PostgresSourceQuestions:
         if (source_index.get("patient_id"), source_index.get("case_id")) != (patient_id, case_id):
             raise PatientRegistryDenied("Question source context unavailable")
         world = project_source_world_model(source_index)
+        # Published pre-0018 migration fixtures have no laboratory child table.
+        # At the current head, its absence is a schema-integrity failure.
+        table = self.registry._fetchone(
+            "SELECT to_regclass('investigation.laboratory_question_anchors')")
+        if table is None:
+            raise PatientRegistryError("Question anchor schema status unavailable")
+        if table[0] is None:
+            revisions = self.registry._fetchall(
+                "SELECT version_num FROM public.alembic_version ORDER BY version_num")
+            # Only known published pre-laboratory heads may lack this table.
+            historical_heads = frozenset({
+                "0009_question_followthrough", "0009_question_evidence",
+                "0009_image_review_merge", "0010_question_evidence",
+                "0010_authored_evidence_origin", "0011_evidence_convergence",
+                "0011_image_evidence_merge", "0012_image_report_convergence",
+                "0012_reviewed_documents", "0013_document_image_convergence",
+                "0014_question_passages", "0015_manual_report_context",
+                "0016_fhir_laboratory_sources", "0016_manual_task_dependency",
+                "0017_lab_manual_convergence",
+            })
+            if (not 1 <= len(revisions) <= 2
+                    or any(row[0] not in historical_heads for row in revisions)):
+                raise PatientRegistryError("Laboratory question anchor owner unavailable")
+            # Historical text-only schemas cannot contain a laboratory child.
+            child_columns = ",NULL::text,NULL::text"
+            child_join = ""
+        else:
+            child_columns = ",a.source_id,a.observation_reference"
+            child_join = (" LEFT JOIN investigation.laboratory_question_anchors a"
+                          " ON a.question_id=q.question_id")
         rows = self.registry._fetchall(
-            "SELECT question_id,patient_id,case_id,question,source_id,"
-            "source_line,source_sha256,source_version,source_snapshot_sha256,"
-            "preflight_sha256,created_at,source_snapshot_contract "
-            "FROM investigation.source_questions "
-            "WHERE patient_id=%s AND case_id=%s AND origin_org=%s AND source_line IS NOT NULL "
-            "ORDER BY created_at,question_id LIMIT 251",
+            "SELECT q.question_id,q.patient_id,q.case_id,q.question,q.source_id,"
+            "q.source_line,q.source_sha256,q.source_version,q.source_snapshot_sha256,"
+            "q.preflight_sha256,q.created_at,q.source_snapshot_contract"
+            + child_columns + " FROM investigation.source_questions q"
+            + child_join
+            + " WHERE q.patient_id=%s AND q.case_id=%s AND q.origin_org=%s"
+            " AND q.source_line IS NOT NULL ORDER BY q.created_at,q.question_id LIMIT 251",
             (patient_id, case_id, organization),
         )
         if len(rows) > 250:
@@ -273,7 +305,15 @@ class PostgresSourceQuestions:
                    for item in world["observations"]}
         results = []
         for (qid, pid, cid, question, sid, line, digest, version,
-             old_fingerprint, preflight_sha, created_at, snapshot_contract) in rows:
+             old_fingerprint, preflight_sha, created_at, snapshot_contract, anchor_sid, anchor_ref) in rows:
+            try:
+                origin = classify_stored_question_origin(question_id=qid, source_id=sid,
+                                                         source_line=line, observation_reference=anchor_ref,
+                                                         anchor_source_id=anchor_sid)
+            except ValueError as exc:
+                raise PatientRegistryError("Stored source-line question origin is invalid") from exc
+            if origin.kind != "source_line":
+                raise PatientRegistryError("Stored source-line question origin is inconsistent")
             current = (snapshot_contract == SOURCE_SNAPSHOT_CONTRACT
                        and anchors.get((sid, line)) == (digest, version)
                        and hmac.compare_digest(old_fingerprint, world["snapshot_fingerprint"]))
