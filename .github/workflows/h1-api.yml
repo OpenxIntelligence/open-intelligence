@@ -20,9 +20,9 @@ concurrency:
 jobs:
   synthetic-postgres-contract:
     runs-on: ubuntu-24.04
-    # Verified #469 run 41883746990 took nearly 30 minutes with all seven
-    # recovery gates. Preserve them and allow populated migration acceptance.
-    timeout-minutes: 40
+    # The integrated suite now exceeds 24 minutes before reference/browser
+    # regressions and seven recovery gates. Retain every gate and allow runner variance.
+    timeout-minutes: 50
     env:
       PYTHONDONTWRITEBYTECODE: '1'
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
