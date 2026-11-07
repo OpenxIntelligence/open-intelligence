@@ -534,10 +534,41 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
                    '2026-11-12','When the laboratory issues a correction','Bring the original laboratory report'))
         assert cd.evaluate('Boolean(document.querySelector('+json.dumps(recheck)+'))') == expected_recheck
 
+    def enter_preparation_task(status=200):
+        reads = cd.evaluate('window.__oiPrepTaskReads.length')
+        mutations = cd.evaluate('window.__oiLabMutations')
+        click(cd, '[data-testid=preparation-lab-open-task]')
+        cd.wait('window.__oiPrepTaskReads.length>'+str(reads), 'task handoff requests fresh permission')
+        calls = cd.evaluate('window.__oiPrepTaskReads.slice('+str(reads)+')')
+        assert len(calls) == 1 and calls[0]['status'] == status and task_media in calls[0]['accept']
+        cd.wait("Boolean(document.querySelector('[data-testid=followthrough-entry]'))",
+                'selected result opens the canonical follow-up workspace')
+        if status == 200:
+            cd.wait(task_dom + ' && document.activeElement.id===' + json.dumps('followthrough-task-'+task_id),
+                    'keyboard focus reaches the freshly authorized exact task')
+            assert cd.evaluate("document.querySelectorAll('[data-testid=followthrough-task]').length") == 1
+            assert committed['observation_reference'] in cd.evaluate(task_dom + '.textContent')
+        else:
+            cd.wait("document.querySelector('[data-testid=followthrough-status]')?.dataset.phase==='error'",
+                    'task handoff denial completes')
+            assert not cd.evaluate("Boolean(document.querySelector('[data-testid=followthrough-task]'))")
+            assert task_title not in cd.evaluate("document.querySelector('[data-testid=followthrough-panel]').textContent")
+        assert cd.evaluate('window.__oiLabMutations') == mutations
+
+    def return_to_preparation():
+        navigate('Overview')
+        choose_preparation_question(question_id)
+        check_preparation_tasks(200)
+
     before = task_at_revision(1)
     assert before['status'] == 'created' and not before['needs_recheck']
     assert committed['observation_reference'] in cd.evaluate(task_dom + '.textContent')
     assert operator(task_list_path)['tasks'] == [], 'legacy text-only list preserves its contract'
+    navigate('Overview')
+    click(cd, '[data-testid=preparation-lab-refresh]')
+    choose_preparation_question(question_id)
+    check_preparation_tasks(200)
+    enter_preparation_task()
     for action, revision in [('assign', 2), ('acknowledge', 3)]:
         if action == 'assign':
             fill(cd, task_card + ' [data-testid=followthrough-transition-owner]', 'Fictional coordinator')
@@ -655,6 +686,17 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
                 assert catalog_record['title'] not in contents and 'not-performed' not in contents
             else:
                 assert 'not-performed' in contents and CITATION not in contents and first['sha256'] not in contents
+        enter_preparation_task()
+        assert cd.evaluate(task_dom + '?.dataset.revision') == '3'
+        assert 'Source context changed' in cd.evaluate(task_dom + '.textContent')
+        fill(cd, task_card + ' [data-testid=followthrough-transition-reason]', 'Review the original before changing this task.')
+        assert cd.evaluate(task_dom + '.querySelector("[data-testid=followthrough-complete]").matches(":disabled")')
+        return_to_preparation()
+        enter_preparation_task()
+        assert cd.evaluate(task_dom + '.querySelector("[data-testid=followthrough-transition-reason]").value') == 'Review the original before changing this task.'
+        return_to_preparation()
+        click(cd, action)
+        cd.wait('Boolean(document.querySelector('+json.dumps(report)+'))', 'permitted report reopens after task navigation')
         cd.command('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
         cd.evaluate('document.querySelector('+json.dumps(report)+').scrollIntoView({block:"center"})')
         assert cd.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
@@ -676,6 +718,19 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
             credentials[0]['actions'].append('followthrough_read');write_grants()
         check_preparation_tasks(200)
         inspect_recorded_task(True)
+        credentials[0]['actions'].remove('followthrough_read');write_grants()
+        try:
+            enter_preparation_task(404)
+        finally:
+            credentials[0]['actions'].append('followthrough_read');write_grants()
+        return_to_preparation()
+        enter_preparation_task()
+        click(cd, '[data-testid=followthrough-entry-clear]')
+        cd.wait("!document.querySelector('[data-testid=followthrough-entry]') && Boolean(document.querySelector('[data-testid=followthrough-filter-all]'))",
+                'explicitly return to all authorized follow-up work')
+        return_to_preparation()
+        click(cd, action)
+        cd.wait('Boolean(document.querySelector('+json.dumps(report)+'))', 'report stays independently available after restored task handoff')
         confirmed = operator(task_list_path,accept=task_media)['tasks']
         assert len(confirmed) == 1 and confirmed[0]['task_id'] == task_id and confirmed[0]['revision'] == 3
         inspection_writes = cd.evaluate('window.__oiLabMutations') - inspection_writes_before
@@ -687,6 +742,9 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
             'recheck_after_amendment':confirmed[0]['needs_recheck'],'other_result_empty':True,
             'task_denial_withheld_owner':True,'permitted_report_survived_task_denial':True,
             'inspection_mutation_requests':inspection_writes,'task_access_http':[200,404,200],
+            'direct_task_handoff':True,'fresh_handoff_access_http':[200,404,200],
+            'exact_task_focused':True,'canonical_status_controls_used':True,
+            'unsent_reason_retained_on_matching_task':True,'amended_completion_disabled':True,
         },indent=2)+'\n')
         credentials[0]['actions'].remove('review_packet_read');write_grants()
         try:

@@ -131,3 +131,18 @@ The full integration workflow separately exercises wrong-scope and revoked acces
 Open the fictional case's source view, then go to second-opinion preparation on Overview. Select **Check laboratory questions** and choose the saved question by its wording, report, version and Observation. **Inspect result and citations together** reopens the original result. **Check follow-up** reads the recorded tasks under their separate permission. For each open task, the screen shows its recorded action, owner, status, revisit date when supplied, and review trigger. Completed and deferred work is available under its own disclosure.
 
 In the synthetic browser scenario, two questions have identical wording. Only the earlier result has an acknowledged task. When its report is amended, the original question and assignment remain inspectable with a reassessment notice. Withdrawing task access hides the assignment on refresh while the independently permitted result remains available. Use Investigations to change a task's recorded status.
+
+
+## Open the selected laboratory follow-up task
+
+On Overview, check laboratory questions, choose a result and check its recorded
+follow-up. Choose **Open task history and actions**. Investigations requests fresh
+permission, opens only that exact task and moves keyboard focus to its title.
+The existing form records attributed status changes and preserves their history.
+If the original result needs reassessment, completion remains unavailable.
+A denied or mismatched read shows that the selected task is unavailable. Use
+**Refresh recorded work** to recheck or **Show all follow-up work** to return to the
+current authorized case list. Opening a task sends no status change.
+
+See [the handoff contract](engineering/LABORATORY_FOLLOWUP_TASK_HANDOFF.md) for
+scope and verification. This uses independently fictional patient data only.

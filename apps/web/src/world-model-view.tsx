@@ -1,6 +1,6 @@
 import type {ReactNode} from 'react';
 import {SourceOncologyLabel} from './source-oncology-label';
-import type {FollowthroughTask} from './followthrough-view';
+import type {FollowthroughEntry,FollowthroughTask} from './followthrough-view';
 import type {WorldObservation} from './source-world-model';
 import {LaboratoryResultBrowser,LaboratoryResultRow} from './laboratory-result-browser';
 import {LaboratoryQuestionPanel,SavedLaboratoryQuestions} from './laboratory-question-panel';
@@ -15,6 +15,8 @@ type Props={
   patientAccess:ReactNode;
   busy:boolean;
   showQuestions?:boolean;
+  followthroughEntry?:FollowthroughEntry|null;
+  onClearFollowthroughEntry?:()=>void;
   labsOnly?:boolean;
   onInvestigations?:()=>void;
   onReview?:()=>void;
@@ -26,7 +28,7 @@ type Props={
  * separate client-owned patient/source ledger. All clinical claims remain
  * attributed to the original fictional source and explicitly unreviewed.
  */
-export function WorldModelView({session,state,patientAccess,busy,showQuestions=false,labsOnly=false,onInvestigations,onReview,onRecords}:Props){
+export function WorldModelView({session,state,patientAccess,busy,showQuestions=false,labsOnly=false,onInvestigations,onReview,onRecords,followthroughEntry,onClearFollowthroughEntry}:Props){
   const loading=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
   const model=state.worldModel;
   const laboratoryByRef=new Map(model?.laboratory_observations.map(item=>[item.source_id+':'+item.observation_reference,item])??[]);
@@ -102,7 +104,7 @@ export function WorldModelView({session,state,patientAccess,busy,showQuestions=f
     <p>This is a fresh read of the existing PostgreSQL original-source owner. It organizes reported observations, chronology, unresolved statements and source disagreements. It does not interpret cancer, authorize AI research, or replace clinician review.</p>
 
     {caseChoices}
-      {showQuestions&&<SourceQuestionPanel session={session} state={state} busy={busy} onReview={onReview} onTaskOriginal={onRecords?task=>onRecords(task.case_id,task):undefined}/>}
+      {showQuestions&&<SourceQuestionPanel session={session} state={state} busy={busy} onReview={onReview} followthroughEntry={followthroughEntry} onClearFollowthroughEntry={onClearFollowthroughEntry} onTaskOriginal={onRecords?task=>onRecords(task.case_id,task):undefined}/>}
       {model&&<div data-testid="world-projection">
         <p><strong>Case:</strong> <code>{model.case_id}</code> · Source statements unreviewed · Context checked at last read</p>
         <div className="world-summary" aria-label="Source context summary">

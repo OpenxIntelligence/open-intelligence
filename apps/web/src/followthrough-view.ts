@@ -272,6 +272,32 @@ export function laboratoryQuestionFollowthrough(state:ViewState,question:SavedLa
  return sameOrigin?{evaluatedOn:list.evaluated_on,tasks}:null;
 }
 
+/** Ephemeral navigation references only. Never carries a task body or grants access. */
+export type FollowthroughEntry=Readonly<{
+ patient_id:string;case_id:string;task_id:string;question_id:string;
+ origin:string;prior_access_receipt_id:string;
+}>;
+function taskOrigin(task:FollowthroughTask):string{
+ return JSON.stringify([task.source_id,task.source_version,task.source_sha256,task.source_line,
+  task.observation_reference,task.source_snapshot_contract,task.source_snapshot_sha256,task.preflight_sha256]);
+}
+export function laboratoryFollowthroughEntry(state:ViewState,question:SavedLabQuestion,taskId:string):FollowthroughEntry|null{
+ if(state.followthroughWritePhase==='saving'||state.followthroughWritePhase==='unknown')return null;
+ const task=laboratoryQuestionFollowthrough(state,question)?.tasks.find(row=>row.task_id===taskId);
+ if(!task||!state.followthrough)return null;
+ return Object.freeze({patient_id:task.patient_id,case_id:task.case_id,task_id:task.task_id,
+  question_id:task.question_id,origin:taskOrigin(task),prior_access_receipt_id:state.followthrough.access_receipt_id});
+}
+/** Reopen only from a fresh canonical read, allowing newer status and reassessment. */
+export function followthroughEntryTask(state:ViewState,entry:FollowthroughEntry|null):FollowthroughTask|null{
+ if(!entry)return null;
+ const list=projectFollowthroughAttention(state)?.list;
+ if(!list||list.contract!=='oi.pg-question-followthrough/2'||list.patient_id!==entry.patient_id||
+    list.case_id!==entry.case_id||list.access_receipt_id===entry.prior_access_receipt_id)return null;
+ return list.tasks.find(task=>task.task_id===entry.task_id&&task.question_id===entry.question_id&&
+  task.source_line===null&&taskOrigin(task)===entry.origin)??null;
+}
+
 /** Derive the reset during render; an effect would briefly show a new read under an old filter. */
 export function followthroughFilterForRead(selection:FollowthroughFilterSelection|null,
  attention:FollowthroughAttention|null):FollowthroughFilter{

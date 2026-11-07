@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
-import type {LabQuestionList} from './laboratory-question';
+import type {LabQuestionList,SavedLabQuestion} from './laboratory-question';
 import {PreparationLaboratoryFollowup} from './preparation-laboratory-followup';
 import {LaboratoryCitationReportPanel} from './laboratory-citation-report-panel';
 import {questionSaveBlocksSourceChange} from './source-questions-view';
@@ -16,8 +16,10 @@ const summary={
  inputs_prepared:'The currently loaded records and questions are organized for preparation.',
 } as const;
 
-function PreparationLaboratoryQuestions({history,session,state,busy}:{
- history:LabQuestionList; session:RegistrySession; state:ViewState; busy:boolean;
+type OpenLaboratoryTask=(question:SavedLabQuestion,taskId:string)=>void;
+
+function PreparationLaboratoryQuestions({history,session,state,busy,onOpenTask}:{
+ history:LabQuestionList; session:RegistrySession; state:ViewState; busy:boolean;onOpenTask?:OpenLaboratoryTask;
 }){
  const [questionId,setQuestionId]=useState('');
  const selected=history.questions.find(row=>row.question_id===questionId);
@@ -41,14 +43,14 @@ function PreparationLaboratoryQuestions({history,session,state,busy}:{
      'Needs reassessment. Review the original result.':'Source context current at last check. Unreviewed.'}</p>
    <LaboratoryCitationReportPanel key={selected.question_id} session={session} state={state} question={selected}
     busy={busy}/>
-   <PreparationLaboratoryFollowup session={session} state={state} question={selected} caseId={history.case_id} busy={busy}/>
+   <PreparationLaboratoryFollowup session={session} state={state} question={selected} caseId={history.case_id} busy={busy} onOpenTask={onOpenTask}/>
   </div>}
  </section>;
 }
 
-export function SecondOpinionPreparation({state,session,busy,onNavigate,onResumeQuestion,onCheckEvidence}:{
+export function SecondOpinionPreparation({state,session,busy,onNavigate,onResumeQuestion,onCheckEvidence,onOpenLaboratoryTask}:{
  state:ViewState;session:RegistrySession;busy:boolean;onNavigate:(section:string)=>void;onResumeQuestion:(questionId:string)=>void;
- onCheckEvidence:(questionId:string)=>void;
+ onCheckEvidence:(questionId:string)=>void;onOpenLaboratoryTask?:OpenLaboratoryTask;
 }){
  const view=secondOpinionPreparation(state);
  if(!view)return null;
@@ -86,7 +88,7 @@ export function SecondOpinionPreparation({state,session,busy,onNavigate,onResume
   </dl>
   {view.laboratoryQuestions&&state.labQuestionHistory&&state.labQuestionHistory.questions.length>0&&
    <PreparationLaboratoryQuestions key={state.labQuestionHistory.access_receipt_id} history={state.labQuestionHistory}
-    session={session} state={state} busy={laboratoryBusy}/>}
+    session={session} state={state} busy={laboratoryBusy} onOpenTask={onOpenLaboratoryTask}/>}
   <section className="second-opinion-agenda" aria-labelledby="second-opinion-agenda-heading" data-testid="second-opinion-agenda">
    <h3 id="second-opinion-agenda-heading" data-workspace-anchor="Discussion questions">Text-source questions for discussion</h3>
    <p>Each saved question below refers to a line in a record. Source status reflects the last authorized read.</p>

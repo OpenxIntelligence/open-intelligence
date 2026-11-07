@@ -1,9 +1,9 @@
-import {useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
 import {currentFollowthroughQuestion,matchesFollowthroughDraft,FOLLOWTHROUGH_TRANSITIONS,validFollowthroughDraft,
   validFollowthroughTransition,projectFollowthroughAttention,FOLLOWTHROUGH_FILTERS,
-  followthroughFilterForRead,matchesFollowthroughFilter,followthroughTransitionContext} from './followthrough-view';
-import type {FollowthroughQuestion,FollowthroughDraft,FollowthroughTask,FollowthroughStatus,FollowthroughFilterSelection,FollowthroughUnsentTransition} from './followthrough-view';
+  followthroughFilterForRead,matchesFollowthroughFilter,followthroughTransitionContext,followthroughEntryTask} from './followthrough-view';
+import type {FollowthroughEntry,FollowthroughQuestion,FollowthroughDraft,FollowthroughTask,FollowthroughStatus,FollowthroughFilterSelection,FollowthroughUnsentTransition} from './followthrough-view';
 
 type Props={state:ViewState;session:RegistrySession;busy:boolean};
 const blankDraft=():FollowthroughDraft=>({title:'',detail:'',owner_label:'',due_date:null,review_trigger:'',reason:''});
@@ -71,7 +71,7 @@ function TaskCard({task,session,disabled,hidden,draft,onTaskOriginal}:{onTaskOri
  const testIds:Partial<Record<FollowthroughStatus,string>>={assigned:'assign',acknowledged:'acknowledge',completed:'complete',deferred:'defer'};
  return <li className="followthrough-task" data-testid="followthrough-task" data-task-id={task.task_id}
    data-status={task.status} data-revision={task.revision} hidden={hidden}>
-  <div className="question-status-title"><h4>{task.title}</h4><span className="question-status">{labels[task.status]}</span></div>
+  <div className="question-status-title"><h4 id={'followthrough-task-'+task.task_id} tabIndex={-1}>{task.title}</h4><span className="question-status">{labels[task.status]}</span></div>
   {task.detail&&<p>{task.detail}</p>}
   <p><strong>Recorded owner:</strong> {task.owner_label||'Unassigned'} · <strong>Revisit date:</strong> {task.due_date??'Not set'}</p>
   {task.review_trigger&&<p><strong>Review trigger:</strong> {task.review_trigger}</p>}
@@ -122,11 +122,21 @@ function TaskCard({task,session,disabled,hidden,draft,onTaskOriginal}:{onTaskOri
  </li>;
 }
 
-export function FollowthroughPanel({state,session,busy,onTaskOriginal}:Props&{onTaskOriginal?:(task:FollowthroughTask)=>void}){
+export function FollowthroughPanel({state,session,busy,onTaskOriginal,entry=null,onClearEntry}:Props&{
+ onTaskOriginal?:(task:FollowthroughTask)=>void;entry?:FollowthroughEntry|null;onClearEntry?:()=>void;
+}){
  const intent=state.followthroughIntent;
  const caseId=state.worldModel?.case_id??intent?.case_id??state.followthroughCaseId??'';
  const attention=projectFollowthroughAttention(state);
  const list=attention?.list??null;
+ const selected=followthroughEntryTask(state,entry);
+ const visibleTasks=entry?(selected?[selected]:[]):list?.tasks??[];
+ const focused=useRef<FollowthroughEntry|null>(null);
+ useEffect(()=>{
+  if(!entry||!selected||focused.current===entry)return;
+  const target=document.getElementById('followthrough-task-'+selected.task_id);
+  if(target){target.focus();target.scrollIntoView({block:'center'});focused.current=entry;}
+ },[entry,selected]);
  const [selection,setSelection]=useState<FollowthroughFilterSelection|null>(null);
  const filter=followthroughFilterForRead(selection,attention);
  const saving=state.followthroughWritePhase==='saving',unknown=state.followthroughWritePhase==='unknown';
@@ -142,6 +152,13 @@ export function FollowthroughPanel({state,session,busy,onTaskOriginal}:Props&{on
    className={'status '+(state.followthroughPhase==='error'?'error':'')}>{state.followthroughMessage}</p>
   <p role="status" aria-live="polite" data-testid="followthrough-write-status" data-phase={state.followthroughWritePhase}
    className={'status '+(state.followthroughWritePhase==='error'?'error':'')}>{state.followthroughWriteMessage}</p>
+  {entry&&<section data-testid="followthrough-entry" aria-label="Follow-up from the selected laboratory result">
+   <p role="status" data-testid="followthrough-entry-status">{selected?
+    'Opened the recorded task for your selected laboratory result. Its status and history come from a fresh permission check.':
+    state.followthroughPhase==='loading'?'Checking access to the selected task…':
+    'The selected task is unavailable in the current read. Refresh recorded work to recheck access and its original reference.'}</p>
+   <button type="button" data-testid="followthrough-entry-clear" onClick={onClearEntry}>Show all follow-up work</button>
+  </section>}
   {receipt&&<p data-testid="followthrough-receipt" className="review-result" data-duplicate={receipt.duplicate}>
    {receipt.duplicate?'Original receipt recovered':'Work recorded'} · <code>{receipt.task_id}</code> · revision {receipt.revision} · <code>{receipt.event_id}</code>
   </p>}
@@ -163,7 +180,7 @@ export function FollowthroughPanel({state,session,busy,onTaskOriginal}:Props&{on
    {unknown&&<p className="muted">Abandoning recovery does not undo a committed write. Inspect current task history before recording new work.</p>}
   </section>}
   {list&&attention&&<>
-   <div data-testid="followthrough-attention">
+   {!entry&&<div data-testid="followthrough-attention">
     <h4>Find recorded work that needs attention</h4>
     <div className="actions" role="group" aria-label="Filter recorded follow-up work">
      {FOLLOWTHROUGH_FILTERS.map(({key,label})=><button key={key} type="button"
@@ -177,15 +194,15 @@ export function FollowthroughPanel({state,session,busy,onTaskOriginal}:Props&{on
      Showing {attention.counts[filter]} of {attention.counts.all} recorded tasks.
     </p>
     <p className="muted">Filters can overlap. Counts describe the last successful read, not clinical urgency or an assessment of all care needs. Refreshing resets to All work.</p>
-   </div>
+   </div>}
    <p><strong>Case:</strong> <code>{list.case_id}</code> · Date flags evaluated {list.evaluated_on} (UTC).</p>
    <details><summary>Access receipt for this read</summary><code>{list.access_receipt_id}</code>
     <p>Access is checked separately for each read and write. Owner labels are not authorization.</p></details>
-   {list.tasks.length===0?<p id="followthrough-items">No recorded work is visible. Start from a current saved question.</p>:
+   {!entry&&list.tasks.length===0?<p id="followthrough-items">No recorded work is visible. Start from a current saved question.</p>:
     <>
-     {attention.counts[filter]===0&&<p data-testid="followthrough-filter-empty">No recorded tasks match this filter in the last successful read.</p>}
-     <ul id="followthrough-items" className="followthrough-items">{list.tasks.map(task=><TaskCard key={task.task_id+':'+task.revision}
-      task={task} session={session} onTaskOriginal={onTaskOriginal} hidden={!matchesFollowthroughFilter(task,filter)}
+     {!entry&&attention.counts[filter]===0&&<p data-testid="followthrough-filter-empty">No recorded tasks match this filter in the last successful read.</p>}
+     <ul id="followthrough-items" className="followthrough-items">{visibleTasks.map(task=><TaskCard key={task.task_id+':'+task.revision}
+      task={task} session={session} onTaskOriginal={onTaskOriginal} hidden={!entry&&!matchesFollowthroughFilter(task,filter)}
       draft={state.followthroughTransitionDrafts[task.task_id]}
       disabled={busy||saving||unknown||state.followthroughPhase!=='ready'}/>)}</ul>
     </>}
