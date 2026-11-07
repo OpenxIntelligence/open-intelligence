@@ -77,9 +77,9 @@ class H1SemanticBridgeTests(unittest.TestCase):
         q, source = projections()
         q["source_context_state"] = "source_reassessment_required"
         questions = dict(contract="oi.synthetic-source-questions/2",
-                         patient_id="P1", case_id="CASE-1", questions=[q])
+                         patient_id="P1", case_id="CASE-1", questions=[q],\n                         access_receipt_id="ACCESS-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", synthetic=True,\n                         clinical_approval=False, clinical_review_connected=False)
         sources = dict(contract="oi.synthetic-original-sources/1",
-                       patient_id="P1", case_id="CASE-1", sources=[source])
+                       patient_id="P1", case_id="CASE-1", sources=[source],\n                       access_receipt_id="ACCESS-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", synthetic=True,\n                       clinical_interpretation=False)
         result = bind_authorized_h1_question_list(
             registry=registry(), question_list=questions, source_index=sources,
             authorized_patient_id="P1", authorized_case_id="CASE-1",
@@ -90,10 +90,40 @@ class H1SemanticBridgeTests(unittest.TestCase):
     def test_full_snapshot_rejects_duplicate_source(self):
         q, source = projections()
         questions = dict(contract="oi.synthetic-source-questions/2",
-                         patient_id="P1", case_id="CASE-1", questions=[q])
+                         patient_id="P1", case_id="CASE-1", questions=[q],\n                         access_receipt_id="ACCESS-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", synthetic=True,\n                         clinical_approval=False, clinical_review_connected=False)
         sources = dict(contract="oi.synthetic-original-sources/1",
-                       patient_id="P1", case_id="CASE-1", sources=[source, dict(source)])
+                       patient_id="P1", case_id="CASE-1", sources=[source, dict(source)],\n                       access_receipt_id="ACCESS-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", synthetic=True,\n                       clinical_interpretation=False)
         self.assert_rejected("duplicate_or_invalid_source", lambda: bind_authorized_h1_question_list(
+            registry=registry(), question_list=questions, source_index=sources,
+            authorized_patient_id="P1", authorized_case_id="CASE-1",
+        ))
+
+    def test_full_snapshot_rejects_different_source_receipt(self):
+        q, source = projections()
+        questions = dict(contract="oi.synthetic-source-questions/2",
+                         patient_id="P1", case_id="CASE-1", questions=[q],
+                         access_receipt_id="ACCESS-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", synthetic=True,
+                         clinical_approval=False, clinical_review_connected=False)
+        sources = dict(contract="oi.synthetic-original-sources/1",
+                       patient_id="P1", case_id="CASE-1", sources=[source],
+                       access_receipt_id="ACCESS-" + "D" * 32, synthetic=True,
+                       clinical_interpretation=False)
+        self.assert_rejected("snapshot_receipt_mismatch", lambda: bind_authorized_h1_question_list(
+            registry=registry(), question_list=questions, source_index=sources,
+            authorized_patient_id="P1", authorized_case_id="CASE-1",
+        ))
+
+    def test_full_snapshot_rejects_clinical_approval_claim(self):
+        q, source = projections()
+        questions = dict(contract="oi.synthetic-source-questions/2",
+                         patient_id="P1", case_id="CASE-1", questions=[q],
+                         access_receipt_id="ACCESS-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", synthetic=True,
+                         clinical_approval=True, clinical_review_connected=False)
+        sources = dict(contract="oi.synthetic-original-sources/1",
+                       patient_id="P1", case_id="CASE-1", sources=[source],
+                       access_receipt_id="ACCESS-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", synthetic=True,
+                       clinical_interpretation=False)
+        self.assert_rejected("unsupported_owner_claim", lambda: bind_authorized_h1_question_list(
             registry=registry(), question_list=questions, source_index=sources,
             authorized_patient_id="P1", authorized_case_id="CASE-1",
         ))
@@ -101,9 +131,9 @@ class H1SemanticBridgeTests(unittest.TestCase):
     def test_full_snapshot_rejects_foreign_case(self):
         q, source = projections()
         questions = dict(contract="oi.synthetic-source-questions/2",
-                         patient_id="P1", case_id="CASE-1", questions=[q])
+                         patient_id="P1", case_id="CASE-1", questions=[q],\n                         access_receipt_id="ACCESS-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", synthetic=True,\n                         clinical_approval=False, clinical_review_connected=False)
         sources = dict(contract="oi.synthetic-original-sources/1",
-                       patient_id="P1", case_id="CASE-OTHER", sources=[source])
+                       patient_id="P1", case_id="CASE-OTHER", sources=[source],\n                       access_receipt_id="ACCESS-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", synthetic=True,\n                       clinical_interpretation=False)
         self.assert_rejected("scope_mismatch", lambda: bind_authorized_h1_question_list(
             registry=registry(), question_list=questions, source_index=sources,
             authorized_patient_id="P1", authorized_case_id="CASE-1",
