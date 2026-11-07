@@ -149,6 +149,8 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
                 assert f'DOC-ALPHA v1 · line {line}' in row['body'] and selected_ids[0] in row['body']
                 expected_basis = 'Current source basis' if version == 1 else 'Reassessment required'
                 assert expected_basis in row['body']
+                expected_comparison = 'The originating report is unchanged.' if version == 1 else 'The originating finding is unchanged in this version.'
+                assert expected_comparison in row['body']
             cd.evaluate("document.querySelector('[data-testid=episode-open-original]').click()")
             cd.wait('document.querySelector("[data-testid=server-original]")?.textContent===' + json.dumps(originals[0]),
                     'episode opens its exact original without another source selection')
@@ -277,6 +279,33 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
         cd.evaluate(history + '.querySelectorAll("button")[1].click()')
         cd.wait(element('[data-testid=server-original]') + '?.textContent===' + json.dumps(consult),
                 'history reopens exact pre-amendment consult under original-read authority')
+
+        # A new amendment changes one primary and removes the other key. The
+        # original draft IDs and quotes remain, without inferring a negative result.
+        changed_origin = originals[-1].replace('Amends: DOC-ALPHA@1', 'Amends: DOC-ALPHA@2')
+        changed_origin = changed_origin.replace('breast|primary|EP-A|reported|Fictional breast primary.',
+            'breast|primary|EP-C|indeterminate|Fictional amended breast statement; attribution uncertain.')
+        changed_origin = '\n'.join(line for line in changed_origin.splitlines()
+                                  if not line.startswith('Oncology-Finding: colon|')) + '\n'
+        amended_origin = operator(source_path, {'synthetic': True, 'original_text': changed_origin})
+        select_case('Journey', 'world-load-cases', '.world-cases li', 'world-load')
+        click_draft('Open saved episode drafts')
+        cd.wait('document.querySelectorAll("[data-testid=saved-episode-draft]").length===2',
+                'original draft identities survive a changed and removed primary')
+        rows = read_drafts()
+        assert {row['label']:row['id'] for row in rows} == draft_ids
+        first = next(row for row in rows if row['label'] == 'EP-A')
+        removed = next(row for row in rows if row['label'] == 'EP-B')
+        assert first['statement'] == 'Fictional breast primary.'
+        assert 'EP-C' in first['body'] and 'indeterminate' in first['body']
+        assert 'The originating finding has changed.' in first['body']
+        assert 'The finding key colon is absent from this version.' in removed['body']
+        assert all('Reassessment required' in row['body'] and 'Unreviewed draft' in row['body'] for row in rows)
+        comparison = element('[data-testid=episode-origin-comparison]')
+        cd.evaluate(comparison + '.open=true')
+        cd.evaluate(comparison + '.querySelector("[data-testid=episode-open-latest]").click()')
+        cd.wait(element('[data-testid=server-original]') + '?.textContent===' + json.dumps(changed_origin),
+                'saved episode comparison opens exact latest origin document')
         (artifacts / 'oncology-episodes.json').write_text(json.dumps({
             'synthetic': True, 'case_id': CASE, 'source_ids': selected_ids,
             'source_sha256': [hashlib.sha256(s.encode()).hexdigest() for s in originals],
@@ -285,6 +314,9 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
             'compared_consult_versions': [1, 2], 'latest_consult_line': 9,
             'paired_review_reassessment': True, 'consult_original_reopened': True,
             'comparison_current_original_verified': True,
+            'draft_origin_comparison': {'latest_source_id': amended_origin['source_id'], 'latest_version': 3,
+                'changed_key': 'breast', 'removed_key': 'colon', 'draft_ids_preserved': True,
+                'latest_original_verified': True, 'clinical_review_unchanged': True},
             'primary_episodes': ['EP-A', 'EP-B'], 'nodule_episode_history': [None, 'EP-B'],
             'nodule_reported_state': 'indeterminate', 'source_only_preflights': 2,
             'historical_original_verified': True, 'denied_read_cleared_records': True,

@@ -1,5 +1,14 @@
 # Release acceptance
 
+For the saved episode-origin comparison continuation, qualification must show both
+original keys returned after amendment, version-chain and cross-document refusal,
+changed/untyped/unassigned/missing findings, and unchanged draft/reassessment state.
+The real Chromium journey must reopen the exact third-version original after one
+primary changes and the second key disappears. Existing source-original revocation,
+concurrent creation, populated migration and restore gates remain mandatory. The
+draft PR records the exact head and successful runs; local counts alone are not
+PostgreSQL or browser acceptance.
+
 This register applies to one candidate revision, use and deployment profile at a time. A draft pull request is inspectable source. Passing software checks authorizes no clinical use. Keep the commit, tree, dependency artifacts, check results, reviewer, decision date, use scope and open exceptions with every release record.
 
 | Gate | Evidence required | Owner and decision |

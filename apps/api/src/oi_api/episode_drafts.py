@@ -51,6 +51,7 @@ class EpisodeDraft(Contract):
     created_at: datetime
     source_id: str
     source_line: int
+    finding_key: str
     source_version: int
     source_sha256: str
     document_id: str
@@ -148,7 +149,7 @@ def _history(registry, world, require_historical_access):
             raise SourceIntegrityError("Episode draft origin unavailable")
         drafts.append(EpisodeDraft(
             episode_id=episode_id, created_by=actor, created_at=created_at, source_id=source_id,
-            source_line=line, source_version=source["version"], source_sha256=source["sha256"],
+            source_line=line, finding_key=finding.key, source_version=source["version"], source_sha256=source["sha256"],
             document_id=source["document_id"], source_label=finding.oncology.episode_id, statement=finding.quote,
             event_date=source["event_date"], issued_at=source["issued_at"], source_state=source["state"],
             basis_sha256=basis, basis_state="current" if basis == world["snapshot_fingerprint"] else "reassessment_required"))

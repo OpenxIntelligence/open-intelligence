@@ -1,5 +1,14 @@
 # Testing and evaluation
 
+Saved episode-origin comparison extends `episode-drafts.test.mjs` with moved-line,
+changed attribution/state, missing-key, untyped/unassigned and broken-lineage cases.
+It rejects same-key/label substitution from another document and keeps unchanged
+origin text separate from whole-snapshot reassessment. `test_episode_drafts.py`
+verifies original keys across real HTTP amendment/restart. The existing oncology
+browser journey adds a third source version, verifies both stable draft IDs and
+opens the exact current original. These are synthetic software checks; durable
+reviewer disposition and clinical association acceptance remain separate work.
+
 Every result belongs to a specific source tree and environment. Use independently authored fictional fixtures, persist failed results, and retain the source commit, dependency receipts and test command. The [implementation status](IMPLEMENTATION_STATUS.md) names the tested versions and distinguishes local limitations from hosted qualification.
 
 | Layer | Run or inspect | Failure modes that matter |

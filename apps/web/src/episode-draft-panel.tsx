@@ -1,7 +1,28 @@
 import {useRef,useState} from 'react';
 import type {RegistrySession} from './registry-client';
 import type {SourceWorldModel} from './source-world-model';
-import {draftCommand,isDraftOrigin,readDraftReceipt,readDrafts,type Draft} from './episode-drafts';
+import {compareDraftOrigin,draftCommand,isDraftOrigin,readDraftReceipt,readDrafts,type Draft} from './episode-drafts';
+
+function OriginComparison({draft,world,disabled,onOriginal}:{
+  draft:Draft;world:SourceWorldModel;disabled:boolean;onOriginal?:(sourceId:string)=>void;
+}){
+  const comparison=compareDraftOrigin(draft,world),{source,finding,change}=comparison;
+  return <details data-testid="episode-origin-comparison">
+    <summary>Compare originating finding with latest report</summary>
+    {change==='same_version'?<p>The originating report is unchanged.</p>:<>
+      <p><strong>Latest report · {source.document_id} v{source.version}</strong></p>
+      {finding?<>
+        <p>{finding.finding_key} · line {finding.source_line} · {finding.reported_state} · {finding.oncology?
+          finding.oncology.role+' · '+(finding.oncology.episode_id??'Episode unassigned'):'No episode attribution on this line'}</p>
+        <blockquote>{finding.source_statement}</blockquote>
+        <p>{change==='unchanged'?'The originating finding is unchanged in this version.':'The originating finding has changed. Review both statements.'}</p>
+      </>:<p>The finding key {draft.finding_key} is absent from this version. This does not establish a negative result.</p>}
+      {onOriginal&&<button type="button" data-testid="episode-open-latest" disabled={disabled}
+        onClick={()=>onOriginal(source.source_id)}>Inspect latest original · {source.document_id} v{source.version}</button>}
+    </>}
+    <p>The saved draft retains its original statement and review status. Compare the rest of the source context before reassessment.</p>
+  </details>;
+}
 
 export function EpisodeDraftPanel({session,world,busy,onRecords,onOriginal}:{session:RegistrySession;world:SourceWorldModel;busy:boolean;onRecords?:()=>void;onOriginal?:(sourceId:string)=>void}){
   const [drafts,setDrafts]=useState<Draft[]|null>(null);
@@ -50,6 +71,7 @@ export function EpisodeDraftPanel({session,world,busy,onRecords,onOriginal}:{ses
       <p>{d.document_id} v{d.source_version} · line {d.source_line} · {d.source_state} original</p>
       {onOriginal&&<button type="button" data-testid="episode-open-original" disabled={busy||pending}
         onClick={()=>onOriginal(d.source_id)}>Inspect {d.document_id} v{d.source_version} original</button>}
+      <OriginComparison draft={d} world={world} disabled={busy||pending} onOriginal={onOriginal}/>
       <details><summary>Draft and source identifiers</summary><p>Draft <code>{d.episode_id}</code> · created by {d.created_by} at {d.created_at}</p>
         <p>Source <code>{d.source_id}</code> · SHA-256 <code>{d.source_sha256}</code></p></details>
     </li>)}</ul>}
