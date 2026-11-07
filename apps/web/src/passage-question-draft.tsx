@@ -6,8 +6,8 @@ import type {RegistrySession} from './registry-client';
 import {decodeQuestionEvidenceSearch,decodeQuestionEvidenceLinks,decodePassageReviewPreparation,validEvidenceQuery} from './question-evidence-view';
 import type {QuestionEvidenceSearch,QuestionEvidenceLinks,QuestionEvidenceRecord,PassageReviewPreparation} from './question-evidence-view';
 
-function PassageEvidenceSearch({patient,caseId,source,id,anchor,question,current,session}:{
- patient:string;caseId:string;source:string;id:string;anchor:string;question:string;current:boolean;session:RegistrySession;
+function PassageEvidenceSearch({patient,caseId,source,id,anchor,question,quote,line,revision,current,session}:{
+ patient:string;caseId:string;source:string;id:string;anchor:string;question:string;quote:string;line:number;revision:number;current:boolean;session:RegistrySession;
 }){
  const [query,setQuery]=useState('');
  const [result,setResult]=useState<QuestionEvidenceSearch|null>(null);
@@ -72,7 +72,7 @@ function PassageEvidenceSearch({patient,caseId,source,id,anchor,question,current
   try{
    const reply=await session.documentRequest(caseId,'/'+source+'/questions/'+id+'/review-preparation');
    if(reply.status!==200)throw Error();
-   const data=decodePassageReviewPreparation(reply.body,patient,caseId,source,id,anchor,question);
+   const data=decodePassageReviewPreparation(reply.body,patient,caseId,source,id,anchor,question,quote,line,revision);
    if(request===generation.current){setReview(data);setStatus('');}
   }catch{if(request===generation.current)setStatus('Review preparation unavailable. Recheck record and citation permissions.');}
  }
@@ -195,7 +195,7 @@ export function PassageQuestionDraft({doc,session,patientId,caseId}:{
   </>:pending?<button type="button" disabled={busy} onClick={()=>void save()}>Retry exact save</button>:doc.state==='current'&&revision.findings.map(item=><button type="button" key={item.key}
    disabled={busy} onClick={()=>void start(item)}>Draft a question about “{item.quote}” (line {item.line})</button>)}
   {!finding&&<button type="button" disabled={busy} onClick={()=>void reopen()}>Open saved passage questions</button>}
-  {history&&<div data-testid="saved-passage-questions">{history.length===0?'No saved passage questions.':history.map(row=><article key={row.id}><h5>{row.text}</h5><blockquote>{row.quote}</blockquote><p>Selection revision {row.revision} · line {row.line} · {row.state==='current_unreviewed_selection'?'Current selection':'Source or selection changed'}</p><PassageEvidenceSearch patient={patientId} caseId={caseId} source={doc.source_id} id={row.id} anchor={row.anchor} question={row.text} current={row.state==='current_unreviewed_selection'} session={session}/></article>)}</div>}
+  {history&&<div data-testid="saved-passage-questions">{history.length===0?'No saved passage questions.':history.map(row=><article key={row.id}><h5>{row.text}</h5><blockquote>{row.quote}</blockquote><p>Selection revision {row.revision} · line {row.line} · {row.state==='current_unreviewed_selection'?'Current selection':'Source or selection changed'}</p><PassageEvidenceSearch patient={patientId} caseId={caseId} source={doc.source_id} id={row.id} anchor={row.anchor} question={row.text} quote={row.quote} line={row.line} revision={row.revision} current={row.state='current_unreviewed_selection'} session={session}/></article>)}</div>}
   {message&&<p role="status">{message}</p>}
  </section>;
 }
