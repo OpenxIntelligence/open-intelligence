@@ -243,7 +243,7 @@ export class RegistrySession {
   #hasPendingPatientWrite(patientId:string|undefined){
     return this.#creating||this.#uploading||this.#savingQuestion||this.#savingReview||
        this.#savingFollowthrough||this.#savingEvidence||this.#laboratoryWriting||
-       this.#questionRetryKeys.size>0||Boolean(this.#labPending)||
+       this.#questionRetryKeys.size>0||Boolean(this.#labPending)||Boolean(this.#state.amendment.command)||
        [...this.#manualPassageIntents.keys()].some(key=>!patientId||JSON.parse(key)[0]===patientId)||
        [this.#state.importOutcome,this.#state.laboratoryPhase,this.#state.reviewReturnPhase,
         this.#state.followthroughWritePhase,this.#state.evidenceWritePhase,this.#state.evidenceLinkPhase,

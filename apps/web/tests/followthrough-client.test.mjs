@@ -709,6 +709,33 @@ function labRow(statuses=['created'],extra={}){
   preflight_sha256:q.preflight_sha256,history:history(statuses).map((e,i)=>({...e,event_id:eventId(10+i)})),...extra});
 }
 const mixedProjection=rows=>projection(rows,{contract:'oi.pg-question-followthrough/2'});
+
+test('permission management and suspension preserve an unresolved amendment request until explicit recovery',async()=>{
+ const lab=labRow(['created','assigned','acknowledged'],{source_context_state:'source_reassessment_required',needs_recheck:true});
+ const reported={loinc_code:'777-3',status:'reported_value',value_text:'4.20',unit_code:'10*9/L',absent_reason:null,
+  specimen_reference:'Specimen/DEMO',effective_at:'2026-04-03T12:00:00Z',issued_at:'2026-04-04T12:00:00Z'};
+ const original={source_id:lab.source_id,version:1,sha256:lab.source_sha256,document_id:'LAB-DEMO',observation:reported};
+ const comparison={contract:'oi.laboratory-amendment-review/1',patient_id:pid,case_id:cid,task_id:lab.task_id,
+  question_id:lab.question_id,observation_reference:lab.observation_reference,clinical_approval:false,entries:[],original,
+  latest:{...original,source_id:'SRC-'+'F'.repeat(32),version:2,sha256:'f'.repeat(64)}};
+ let writes=0;
+ const s=session(async(url,init)=>{
+  if(init.method==='POST'){writes++;throw Error('Uncertain committed write');}
+  if(url.endsWith('/laboratory-amendment-review'))return response(comparison);
+  if(url.endsWith('/followthrough'))return new Response(JSON.stringify(mixedProjection([lab])),{headers:{'Content-Type':mediaV2}});
+  return basic(url);
+ });
+ await open(s);await s.loadFollowthrough(cid);await s.amendments.openTask(s.snapshot().followthrough.tasks[0]);
+ await s.amendments.submit(s.snapshot().amendment.detail,'Please check this fictional transcription.');
+ const pending=s.snapshot().amendment.command;assert.ok(pending);assert.equal(s.snapshot().amendment.phase,'unknown');
+ s.managePatientPermissions(pid);
+ assert.equal(s.currentPermissions(),null);assert.equal(s.snapshot().amendment.command,pending);
+ await s.suspendPatient(true);
+ assert.equal(s.snapshot().amendment.command,pending);assert.equal(writes,1);
+ s.amendments.abandon();s.managePatientPermissions(pid);
+ assert.equal(s.currentPermissions().scope.patientId,pid);assert.equal(s.snapshot().amendment.command,null);
+});
+
 function mixedTransport({questionList=()=>[savedLab()],list=()=>response(projection([])),post=()=>assert.fail('Unexpected write')}={}){
  return session(async(url,init)=>{
   if(init.method==='POST')return post(url,init);

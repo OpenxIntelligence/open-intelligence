@@ -34,8 +34,11 @@ precision remain distinct.
 
 ## Verification at construction checkpoint
 
-Local checks pass 828 client cases, the TypeScript/Vite build, 10 API surface
-checks and 8 demo setup checks. Actual PostgreSQL acceptance and the live
+Local checks pass 829 client cases, the TypeScript/Vite build, 13 dependency-rights
+checks, 1,038 reference tests, 10 API surface checks and 8 demo setup checks.
+An integration regression reproduced loss of an uncertain amendment command
+when opening permission management. The existing pending-write guard now
+preserves it before permission management or patient suspension. Actual PostgreSQL acceptance and the live
 browser/recovery journeys are pending on this combined candidate. Local database
 skips are not passes. The executor lacks PostgreSQL 16 and rejects the inherited
 Unix-socket archive tests. No runtime dependency was added.

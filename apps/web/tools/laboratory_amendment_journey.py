@@ -1,5 +1,6 @@
 """Live Chromium proof: two different authorized actors inspect the same amended Observation."""
 from datetime import datetime
+import base64
 import hashlib
 import json
 import re
@@ -167,6 +168,15 @@ def exercise(cd, patient, case, task, original, latest, token, credentials, writ
         cd.wait(f'{text_of("review-history")}?.includes({json.dumps(response_reason)})',
                 'requesting actor sees the distinct reviewer’s response on the original task')
         assert task_at_revision(3) == task
+        viewport = cd.evaluate('({width:innerWidth,height:innerHeight})')
+        for width, height in ((1440, 1100), (390, 844)):
+            cd.command('Emulation.setDeviceMetricsOverride', {
+                'width': width, 'height': height, 'deviceScaleFactor': 1, 'mobile': False})
+            cd.evaluate('document.querySelector("[data-testid=amendment-review-panel]").scrollIntoView()')
+            assert cd.evaluate('document.documentElement.scrollWidth<=innerWidth+1'), 'amendment view overflows'
+            (artifacts / f'laboratory-amendment-review-{width}.png').write_bytes(base64.b64decode(
+                cd.command('Page.captureScreenshot', {'format': 'png'})['data']))
+        cd.command('Emulation.setDeviceMetricsOverride', {**viewport, 'deviceScaleFactor': 1, 'mobile': False})
         transitions = cd.evaluate('window.__amendmentProof.packets.filter(r=>r.path===' + json.dumps(transition) + ')')
         assert transitions == [] and task['needs_recheck'] and task['status'] == 'acknowledged'
         (artifacts / 'laboratory-amendment-human-review.json').write_text(json.dumps({
