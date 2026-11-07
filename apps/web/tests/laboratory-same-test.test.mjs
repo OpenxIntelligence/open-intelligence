@@ -79,3 +79,72 @@ test('bounded display keeps full totals rather than claiming to show every sourc
  assert.ok(group.rows.length<=20);
  assert.equal(group.hidden_result_count,group.result_count-group.rows.length);
 });
+
+test('same-code source groups explicitly distinguish source context differences, not clinical comparability',async()=>{
+ const g=(await reader())(parsed(twoReports())).groups[0];
+ assert.deepEqual(g.context_differences,[
+   'specimen_descriptions','result_kinds','numeric_units',
+ ]);
+ assert.ok(Object.isFrozen(g.context_differences));
+ assert.ok(!JSON.stringify(g).includes('comparable'));
+ assert.ok(!JSON.stringify(g).includes('trend_value'));
+});
+
+test('no reported source-field difference never becomes a claim of clinical comparability',async()=>{
+ const model=structuredClone(parsed(twoReports()));
+ const specimen=model.laboratory_observations[0].specimen_type_text;
+ for(const row of model.laboratory_observations){
+   row.specimen_type_text=specimen;
+   row.status='reported_value';row.value_text='1.00';
+   row.unit_code='10*9/L';row.absent_reason=null;
+ }
+ const result=(await reader())(model);
+ assert.deepEqual(result.groups[0].context_differences,[]);
+ assert.ok(!Object.hasOwn(result.groups[0],'clinically_comparable'));
+});
+
+test('differences hidden past the displayed row cap still appear in the context inventory',async()=>{
+ const model=structuredClone(parsed(twoReports()));
+ const specimen=model.laboratory_observations[0].specimen_type_text;
+ for(const row of model.laboratory_observations){
+   row.specimen_type_text=specimen;
+   row.status='reported_value';row.value_text='1.00';
+   row.unit_code='10*9/L';row.absent_reason=null;
+ }
+ const template=model.laboratory_observations.at(-1);
+ for(let i=0;i<22;i++){
+   const row={...template,observation_reference:'Observation/FICT-OVERFLOW-'+i,
+     unit_code:i===21?'mg/L':'10*9/L'};
+   model.laboratory_observations.push(row);
+   model.laboratory_timeline.push({source_id:row.source_id,observation_reference:row.observation_reference,
+     loinc_code:row.loinc_code,effective_at:row.effective_at,issued_at:row.issued_at,
+     specimen_reference:row.specimen_reference,status:row.status,clinical_interpretation:'not_performed'});
+ }
+ const group=(await reader())(model).groups[0];
+ assert.equal(group.rows.length,20);
+ assert.ok(group.hidden_result_count>0);
+ assert.deepEqual(group.context_differences,['numeric_units']);
+});
+
+test('coded answer and version differences remain literal rather than numeric deltas',async()=>{
+ const model=structuredClone(parsed(twoReports(true)));
+ const coded=model.laboratory_observations.filter(row=>row.status==='reported_coded');
+ assert.equal(coded.length,2);
+ coded[1].coded_result={...coded[1].coded_result,code:'FIC.b-02',version:'V2-fixture'};
+ const group=(await reader())(model).groups[0];
+ assert.ok(group.context_differences.includes('coded_system_versions'));
+ assert.ok(group.context_differences.includes('coded_answer_codes'));
+ assert.ok(!Object.hasOwn(group,'numeric_delta'));
+});
+
+test('distinct absence reasons are preserved as an explicit context difference',async()=>{
+ const model=structuredClone(parsed(twoReports()));
+ const absent=model.laboratory_observations.filter(row=>row.status==='reported_absent');
+ assert.equal(absent.length,1);
+ const original=model.laboratory_observations.at(-1);
+ original.status='reported_absent';original.value_text=null;original.unit_code=null;
+ original.absent_reason='masked';
+ const group=(await reader())(model).groups[0];
+ assert.ok(group.context_differences.includes('absence_reasons'));
+ assert.ok(group.context_differences.includes('result_kinds'));
+});

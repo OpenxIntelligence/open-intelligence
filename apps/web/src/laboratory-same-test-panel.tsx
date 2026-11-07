@@ -1,8 +1,17 @@
 import {codedResultLabel,CodingProvenance} from './laboratory-coding-view';
 import {sameTestReportGroups} from './laboratory-same-test.js';
+import type {ReportedContextDifference} from './laboratory-same-test.js';
 import type {SourceWorldModel,WorldLaboratoryObservation} from './source-world-model';
 
 type Props={model:SourceWorldModel;onRecords?:()=>void;busy?:boolean};
+const contextText:Readonly<Record<ReportedContextDifference,string>>={
+  specimen_descriptions:'source-reported specimen descriptions differ',
+  result_kinds:'numbered, coded or absent results differ',
+  numeric_units:'reported numeric units differ',
+  absence_reasons:'reported absence reasons differ',
+  coded_system_versions:'coded-result system versions differ',
+  coded_answer_codes:'literal coded-result answers differ',
+};
 
 function LiteralResult({result}:{result:WorldLaboratoryObservation}){
   if(result.status==='reported_value')return <><strong>{result.value_text}</strong> <code>{result.unit_code}</code> (source UCUM)</>;
@@ -22,6 +31,14 @@ export function LaboratorySameTestPanel({model,onRecords,busy=false}:Props){
       <p role="status" data-testid="laboratory-same-test-summary">{view.group_count} test {view.group_count===1?'code':'codes'} across independently stored current originals; showing {view.groups.length} groups.</p>}
     {view.groups.map(group=><section key={group.loinc_code} aria-label={'Source reports for LOINC '+group.loinc_code}>
       <h5>LOINC {group.loinc_code} · {group.source_count} original reports · {group.result_count} result entries</h5>
+      <p data-testid="laboratory-same-test-context" role="note">
+        {group.context_differences.length>0? <>
+          Source context differences: {group.context_differences.map(kind=>contextText[kind]).join('; ')}.
+          These literals are not a numeric or clinical trend; no conversion or medical comparison was performed.
+        </>:<>
+          No difference detected in these listed source fields. Clinical comparability remains unverified even when reported labels match.
+        </>}
+      </p>
       {group.hidden_result_count>0&&<p data-testid="laboratory-same-test-partial">Showing the first {group.rows.length} in the source timeline; {group.hidden_result_count} additional result entries remain in the complete laboratory list above. This is a partial display, not a complete comparison.</p>}
       <ol className="laboratory-same-test-rows">{group.rows.map(item=><li key={item.source_id+':'+item.observation_reference} data-testid="laboratory-same-test-row">
         <p><time dateTime={item.effective_at}>{item.effective_at}</time> · <strong>{item.document_id}</strong> v{item.document_version}</p>
