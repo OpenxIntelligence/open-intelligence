@@ -77,6 +77,9 @@ class SourceEventPurposeUpgradeTests(SourceVersionFixture):
         tables.setdefault("identity.patient_access_grants", [])
         tables.setdefault("identity.patient_access_revocations", [])
         tables.setdefault("ehr.encounter_source_links", [])
+        # Passage convergence adds this empty child table, without rewriting
+        # any existing question or event history. Populated rows still compare.
+        tables.setdefault("investigation.reviewed_question_anchors", [])
         sequences.setdefault("ehr.encounter_source_links_id_seq", (1, False))
         return tables, sequences
 
