@@ -108,6 +108,75 @@ def exercise(cd, token, credentials, write_grants, api, restart_api, artifacts):
         cd.evaluate("document.querySelector('#credential').form.requestSubmit()")
         cd.wait("!document.querySelector('#credential')", 'synthetic operator credential connected')
         open_patient(victim)
+        # Workspace status and decision writes are independently granted and sourced from real PG.
+        def inspect_restriction(expected):
+            nav('Overview')
+            cd.evaluate("document.querySelector('[data-testid=data-use-panel]').open=true")
+            click(cd, '[data-testid=data-use-panel] button')
+            cd.wait("document.querySelector('[data-testid=data-use-panel]')?.textContent.includes("
+                    + json.dumps(expected) + ")", 'purpose restriction: ' + expected)
+        inspect_restriction('Status unavailable')
+        credential['actions'].extend(['data_use_read', 'data_use_manage'])
+        write_grants()
+        inspect_restriction('No restriction decision recorded')
+        root = '/v1/patients/' + victim
+        cd.evaluate(r"""(() => {
+          const original=window.fetch;
+          const state={writes:[],loseNext:true,restore:()=>{window.fetch=original;delete window.__oiDataUseChecks;}};
+          window.__oiDataUseChecks=state;
+          window.fetch=async(input,init)=>{
+            const path=new URL(input instanceof Request?input.url:input,location.href).pathname;
+            const response=await original.call(window,input,init);
+            if(!path.endsWith('/data-use')||init?.method!=='POST')return response;
+            const payload=await response.clone().json();
+            state.writes.push({path,body:init.body,status:response.status,payload});
+            if(state.loseNext&&response.status===200){state.loseNext=false;throw new TypeError('Synthetic lost decision response');}
+            return response;
+          };
+        })()""")
+        assert cd.evaluate("document.querySelector('[data-testid=data-use-submit]').disabled")
+        click(cd, '[data-testid=data-use-confirm]')
+        click(cd, '[data-testid=data-use-submit]')
+        cd.wait("document.querySelector('[data-testid=data-use-write-status]')?.dataset.phase==='unknown'", 'uncertain restriction')
+        first = cd.evaluate('window.__oiDataUseChecks.writes[0]')
+        assert first['status'] == 200
+        restricted = first['payload']
+        restriction_command = json.loads(first['body'])
+        assert restricted['state'] == 'restricted' and restricted['consent_established'] is False
+        assert cd.evaluate("!document.querySelector('[data-testid=patient-card]')")
+        assert cd.evaluate("document.querySelector('#patient-id').disabled")
+        nav('Records')
+        assert cd.evaluate("!document.querySelector('[data-testid=source-index]')")
+        nav('Overview')
+        assert cd.evaluate("document.querySelector('[data-testid=data-use-panel]').open")
+        source_denied(root + '/cases/' + case + '/sources/' + source_id)
+        assert api(control_path)[0] == 200
+        restart_api()
+        assert api(root + '/data-use/operations')[1] == restricted
+        click(cd, '[data-testid=data-use-retry]')
+        cd.wait("document.querySelector('[data-testid=data-use-write-status]')?.dataset.phase==='confirmed'", 'recovered decision receipt')
+        replay = cd.evaluate('window.__oiDataUseChecks.writes[1]')
+        assert replay['body'] == first['body'] and replay['payload'] == restricted
+        open_patient(victim)
+        inspect_restriction('Restricted · Decision revision 1')
+        cd.evaluate("const select=document.querySelector('[data-testid=data-use-next]');select.value='unrestricted';select.dispatchEvent(new Event('change',{bubbles:true}));")
+        click(cd, '[data-testid=data-use-confirm]')
+        click(cd, '[data-testid=data-use-submit]')
+        cd.wait("document.querySelector('[data-testid=data-use-write-status]')?.dataset.phase==='confirmed'", 'lifting decision receipt')
+        lifted = cd.evaluate('window.__oiDataUseChecks.writes.at(-1).payload')
+        assert lifted['state'] == 'unrestricted' and lifted['revision'] == 2
+        assert api(root + '/data-use', restriction_command)[1] == restricted
+        assert api(root + '/data-use/operations')[1] == lifted
+        cd.evaluate('window.__oiDataUseChecks.restore()')
+        open_patient(victim)
+        inspect_restriction('Restriction lifted; independent access grants still required')
+        (artifacts / 'data-use-restriction.json').write_text(json.dumps({
+            'synthetic': True, 'patient_id': victim, 'restricted': restricted,
+            'lifted': lifted, 'api_restart_preserved_decision': True,
+            'exact_retry': True, 'lost_response_recovered_in_workspace': True, 'other_patient_readable': True,
+            'independent_status_grant': True, 'consent_established': False}, indent=2))
+        print('PASS DATA USE: separate status grant, real restriction and source denial, '
+              'purpose receipt after API restart, unchanged retry, lifting and control patient.')
         load_sources(case)
         assert cd.evaluate("document.querySelector('[data-testid=source-statement]').textContent.includes('suspension target marker')")
 
@@ -207,6 +276,7 @@ def exercise(cd, token, credentials, write_grants, api, restart_api, artifacts):
               'source access denied; separate fictional patient unchanged.')
     finally:
         cd.evaluate('window.__oiSuspensionChecks?.restore()')
+        cd.evaluate('window.__oiDataUseChecks?.restore()')
         credential['actions'] = saved_actions
         credential['patient_ids'] = saved_patients
         write_grants()

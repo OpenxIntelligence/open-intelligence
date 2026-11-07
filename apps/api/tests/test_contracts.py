@@ -146,6 +146,8 @@ class HTTPContractTests(unittest.TestCase):
             "/v1/patients",
             "/v1/patients/{patient_id}",
             "/v1/patients/{patient_id}/suspensions",
+            "/v1/patients/{patient_id}/data-use",
+            "/v1/patients/{patient_id}/data-use/{target_purpose}",
             "/v1/patients/{patient_id}/case-bindings",
             "/v1/patients/{patient_id}/case-bindings/{case_id}/revoke",
             "/v1/patients/{patient_id}/cases/{case_id}/composer/source-preflight",

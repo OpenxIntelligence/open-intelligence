@@ -363,3 +363,33 @@ test('same-patient mapping refresh clears a draft when its case is no longer act
  omit=true;await session.loadCases();omit=false;await session.loadCases();await session.loadWorldModel(caseId);await session.loadSavedQuestions(caseId);
  assert.equal(session.manualPassageDraftStore(scope).read(),null);
 });
+
+test('purpose decision preserves an unresolved manual-passage request and patient context',async()=>{
+ const session=await sessionFor(()=>response(context(true)));
+ const store=session.manualPassageIntentStore(scope),exact=JSON.stringify({request_key:'FICTIONAL-RESTRICTION-MANUAL-RETRY'});
+ store.write(exact);const before=session.snapshot().patient;
+ await session.decideDataUse({patient_id:patientId,target_purpose:'operations',state:'unrecorded',revision:0,consent_established:false},'restricted',true);
+ assert.equal(session.snapshot().dataUsePhase,'rejected');
+ assert.equal(session.snapshot().patient,before);assert.equal(store.read(),exact);
+ assert.match(session.snapshot().dataUseMessage,/pending patient write/);
+});
+
+test('restricting another patient preserves unrelated manual recovery until disconnect',async()=>{
+ const fallback=transportFor(()=>response(packet()));
+ const other='PAT-RESTRICTION-CONTROL';
+ const session=new RegistrySession((url,init)=>{
+  if(url==='/v1/patients/'+other)return response({patient_id:other,origin_org:'ORG-FICTIONAL',status:'active',revision:1,created_at:'2026-11-05T12:00:00Z'});
+  if(url.endsWith('/data-use'))return response({patient_id:other,target_purpose:'operations',state:'restricted',revision:1,consent_established:false});
+  return fallback(url,init);
+ });
+ await ready(session);const exact='{"request_key":"FICTIONAL-RESTRICTION-MANUAL-RETRY"}';
+ session.manualPassageIntentStore(scope).write(exact);
+ await session.read(other);
+ await session.decideDataUse({patient_id:other,target_purpose:'operations',state:'unrecorded',revision:0,consent_established:false},'restricted',true);
+ assert.equal(session.snapshot().dataUsePhase,'confirmed');
+ await session.read(patientId);await session.loadCases();
+ await session.loadWorldModel(caseId);await session.loadSavedQuestions(caseId);
+ assert.equal(session.manualPassageIntentStore(scope).read(),exact);
+ session.disconnect();await ready(session);
+ assert.equal(session.manualPassageIntentStore(scope).read(),null);
+});

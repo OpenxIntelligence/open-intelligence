@@ -125,6 +125,43 @@ class ComposerRunsPostgresTests(source_fixture.SourceVersionFixture):
             body={'synthetic': True, 'request_key': 'SUSPEND-WORKER', 'expected_revision': 1})
         self.assertEqual(code, 200, result)
 
+    def restrict_data_use(self, base, patient):
+        self.creds[0]['actions'].append('data_use_manage')
+        self.write()
+        code, result, _ = patient_fixture.request(
+            base, f'/v1/patients/{patient}/data-use', token=TOKEN,
+            body={'synthetic': True, 'request_key': 'RESTRICT-WORKER',
+                  'expected_revision': 0, 'target_purpose': 'operations', 'state': 'restricted'})
+        self.assertEqual(code, 200, result)
+
+    def test_data_use_restriction_blocks_queued_worker(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, question, preflight, run = self.seeded_run(base)
+            self.restrict_data_use(base, patient)
+            before = self.stored(run)
+            self.assertEqual(self.work(patient), {'status': 'blocked'})
+            self.assertEqual(self.enqueue(base, patient, question, preflight)[0], 404)
+            self.assertEqual(self.stored(run), before)
+
+    def test_data_use_restriction_fences_claimed_result(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, question, _, run = self.seeded_run(base)
+            claim = self.claim(patient)
+            self.restrict_data_use(base, patient)
+            before = self.stored(run)
+            with self.assertRaises(PatientRegistryDenied):
+                self.complete(claim)
+            self.assertEqual(self.stored(run), before)
+
+    def test_data_use_restriction_withholds_completed_result(self):
+        with running_server(create_app(self.settings)) as base:
+            patient, question, _, run = self.seeded_run(base)
+            self.assertEqual(self.work(patient)['status'], 'completed')
+            self.restrict_data_use(base, patient)
+            before = self.stored(run)
+            self.assertEqual(self.status(base, patient, question, run, '/result')[0], 404)
+            self.assertEqual(self.stored(run), before)
+
     def test_patient_suspension_blocks_queued_worker_without_changing_intent(self):
         with running_server(create_app(self.settings)) as base:
             patient, question, preflight, run = self.seeded_run(base)
