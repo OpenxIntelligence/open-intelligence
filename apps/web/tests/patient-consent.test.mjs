@@ -45,3 +45,21 @@ test('duplicate clicks and initial definitive refusal have distinct outcomes',as
   await c.command(command());await c.retry();assert.equal(calls,1);resolve(response({},409));await first;
   assert.equal(c.pending,null);assert.match(c.message,/refused/);
 });
+
+
+test('unknown purpose decisions survive attempts to open consent or permission administration',async()=>{
+  for(const open of ['managePatientConsent','managePatientPermissions']){
+    const bodies=[];
+    const s=new RegistrySession(async(url,init)=>{
+      if(init.method==='POST'){bodies.push(init.body);throw Error('lost response');}
+      return response({patient_id:id,origin_org:'ORG-ONE',status:'active',revision:1,created_at:'2026-01-01T00:00:00Z'});
+    });
+    s.connect(token);await s.read(id);
+    await s.decideDataUse({patient_id:id,target_purpose:'operations',state:'unrecorded',revision:0,consent_established:false},'restricted',true);
+    assert.equal(s.snapshot().dataUsePhase,'unknown');
+    s[open](id);
+    assert.equal(s.snapshot().dataUsePhase,'unknown');
+    assert.equal(s.currentConsent(),null);assert.equal(s.currentPermissions(),null);
+    await s.retryDataUse();assert.equal(bodies.length,2);assert.equal(bodies[0],bodies[1]);
+  }
+});

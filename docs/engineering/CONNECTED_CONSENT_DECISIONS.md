@@ -3,7 +3,7 @@
 Continues #98 / OI-013 / PF-02 on the single connected product. Composition retains
 #624 at `631c3e0cea30d4b859a2e428d200d352c97c6567` (permissions, historical World
 Model, diagnostic workspaces, Imaging chronology and Composer snapshot binding)
-and #629 at `0b3f554cf32c177df02ef043550de130827d74eb` (purpose restrictions).
+and #629 at `46dde7adc56fb48ac647e9a0bd7c4bcfef4ae027` (purpose restrictions, working decision UI and recovery).
 It does not overwrite their branches or import unrelated pending candidates.
 
 ## Operational contract
@@ -64,7 +64,10 @@ Overview adds a consent console next to permissions. It can be opened by patient
 ID without a clinical read grant. Opening clears patient records but refuses to
 erase an unresolved clinical or policy write. The console shows history, declared
 authority, validity, action scope and revision, and supports recording/withdrawal.
-Unknown outcomes preserve the exact in-memory request through diagnostic navigation
+Unresolved purpose restrictions also block opening permission/consent management;
+a reproduced integration failure (opening another console erased recovery) is
+covered by a regression. Opening a console also preserves unrelated patients’
+manual-source retry requests; both permission and consent paths have regression checks. Unknown outcomes preserve the exact in-memory request through diagnostic navigation
 and refused retries. Another patient, permission console or new command cannot
 replace that pending intent. Credentials/session replacement clears transient
 state and fences late responses. Reload/disconnect does not persist unsent intent.
