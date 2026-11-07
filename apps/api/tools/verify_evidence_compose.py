@@ -92,7 +92,7 @@ def main():
                       'investigation.question_evidence_links', 'coordination.question_followthrough_tasks',
                       'coordination.question_followthrough_events',
                       'coordination.source_event_outbox', 'coordination.source_event_deliveries',
-                      'coordination.source_event_delivery_events',
+                      'coordination.source_event_delivery_events', 'coordination.source_event_recoveries',
                       'investigation.composer_source_event_receipts',
                       'identity.identity_domain_events', 'public.alembic_version']
             result = {table: query('SELECT COALESCE(json_agg(row ORDER BY row::text),\'[]\'::json) '

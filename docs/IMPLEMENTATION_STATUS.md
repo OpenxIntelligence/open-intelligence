@@ -1,5 +1,24 @@
 # Implementation slice 01 — source and investigation ledger
 
+## Connected source-event recovery candidate — 6 November 2026
+
+Extends the connected patient-history/imaging/permission foundation #620 with
+#613's scoped relay status and failure inspection. The source-event worker can
+explicitly request recovery of an inspected terminal revision. A fresh same-actor
+permission check including `source_delivery_retry`, immutable recovery receipt and queued lifecycle commit together.
+Exact retries recover their receipt without resetting later attempts. Ordinary
+worker execution retains the source/Composer owners and reconciliation checks.
+Invalid-event failures and delivered work cannot be reopened through this command.
+
+Additive `0030_source_event_recovery` follows `0029_patient_access`; every earlier
+published migration remains byte-identical. The operations guide describes the
+command, bounded effect and uncertain-response recovery. Focused local worker and
+graph checks pass. Real PostgreSQL, full application and recovery acceptance are
+pending on the exact published candidate. The draft PR holds the final source/tree
+and observed workflow results. No merge, deployment or clinical qualification.
+The full foundation, domain and biomedical-computation mandate remains open.
+
+
 **Current connected application:** use the [persistent fictional demo](H1_DEMO.md).
 This dependent draft's PR records its combined revision, verification receipts
 and landing status; [foundation #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565)

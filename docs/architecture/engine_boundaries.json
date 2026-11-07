@@ -67,7 +67,8 @@
         ],
         "oi_api.source_event_delivery": [
           "EventLeaseLost",
-          "PostgresSourceEventDelivery"
+          "PostgresSourceEventDelivery",
+          "RECOVERY_ACTION"
         ],
         "oi_api.patient_permissions": [
           "PostgresPatientPermissions",
