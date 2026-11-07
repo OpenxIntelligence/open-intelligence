@@ -154,7 +154,7 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
         import sqlite3
         from urllib.parse import urlsplit
         import signal
-        from oi_api.encounter_relay import FeedUnavailable, receive_once, verify_history
+        from oi_api.encounter_relay import FeedUnavailable, backup_receiver, receive_once, verify_history
         from test_encounter_relay import interrupt_receiver
 
         self.creds[0]["actions"].extend(["encounter.read", "encounter.schedule", "encounter.transition",
@@ -205,6 +205,13 @@ class EncounterActivityDeliveryTests(SourceVersionFixture):
             item, = deliver(inbox_after=0)["pending_drafts"]
             self.assertEqual((item["encounter_id"], item["note_version"]), (first["encounter_id"], 1))
             self.assertEqual(deliver(acknowledge=item["event_id"])["acknowledged_event"], item["event_id"])
+            self.assertEqual(deliver(inbox_after=0)["pending_drafts"], [])
+            restored = receiver.with_suffix(".backup")
+            saved = backup_receiver(receiver, restored, port, patient, lambda: TOKEN_A)
+            self.assertEqual(saved["verified_events"], 3)
+            receiver = restored
+            self.assertEqual(verify_history(receiver, port, patient, lambda: TOKEN_A,
+                             expected_ack_sha256=saved["local_acknowledgements"]["sha256"])["verified_events"], 3)
             self.assertEqual(deliver(inbox_after=0)["pending_drafts"], [])
             post(note, dict(draft, request_key="WRITE-TWO", expected_version=1, body="Fictional revision."))
             with self.assertRaises(FeedUnavailable):

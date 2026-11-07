@@ -264,6 +264,21 @@ class RelayHTTPTests(unittest.TestCase):
         stale = self.run_cli("--acknowledge-draft-event", "5")
         self.assertEqual((stale.returncode, json.loads(stale.stdout)["status"]), (3, "superseded_or_unknown"))
 
+    def test_backup_cli_preserves_acknowledgement_at_its_event(self):
+        self.document = page(event(5, NOTE))
+        self.assertEqual(self.run_cli("--acknowledge-draft-event", "5").returncode, 0)
+        backup = self.db.with_suffix(".backup")
+        result = self.run_cli("--backup-to", str(backup))
+        self.assertEqual((result.returncode, json.loads(result.stdout)["status"]), (0, "backup_verified"))
+        digest = json.loads(result.stdout)["local_acknowledgements"]["sha256"]
+        self.db = backup
+        checked = self.run_cli("--verify-history", "--expect-ack-sha256", digest)
+        self.assertEqual((checked.returncode, json.loads(checked.stdout)["verified_events"]), (0, 1))
+        self.assertEqual(json.loads(self.run_cli("--pending-drafts-after", "0").stdout)["pending_drafts"], [])
+        self.document = page(event(5, NOTE), dict(event(9, NOTE), note_version=2))
+        self.assertEqual(json.loads(self.run_cli("--pending-drafts-after", "0").stdout)["pending_drafts"],
+                         [dict(event_id=9, encounter_id=3, note_version=2)])
+
     def test_mid_page_process_kill_replays_once(self):
         self.assertEqual(self.run_cli().returncode, 0)
         self.document = page(event(5), event(6, CHANGED), event(9, NOTE))
