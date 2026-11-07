@@ -45,7 +45,7 @@ Compose outcomes must be recorded against the dependent PR's exact source.
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integration. This candidate requires
-`0029_patient_access`. Run `python -m oi_api.migrate upgrade head` from the
+`0030_lab_amendment_reviews`. Run `python -m oi_api.migrate upgrade head` from the
 published histories before startup. The join retains `0022_encounter_sources`
 and `0027_source_event_purpose`. The latter has single parent `0026_integrated_core`,
 whose existing no-DDL join retains the three parents
@@ -785,7 +785,7 @@ URLs, SQL, source text and rejected validation inputs.
 | Route | Behavior |
 |---|---|
 | GET /health | Process liveness; 200 even if the database is unavailable. |
-| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0027_source_event_purpose; bounded 503 otherwise. |
+| GET /health/ready | 200 only for PostgreSQL major 16 at revision 0030_lab_amendment_reviews; bounded 503 otherwise. |
 | GET /v1 | Reports synthetic_patient_registry stage, implemented synthetic capabilities and the configured authentication mode. |
 | GET /v1/openapi.json | Local typed contract, including bearer security; no CDN documentation UI. |
 | POST /v1/patients | Authenticated synthetic creation; trusted actor/org/purpose; 201 for new identity or 200 for identical retry. |

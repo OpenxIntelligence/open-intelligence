@@ -722,6 +722,9 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     fill(cd, task_card + ' [data-testid=followthrough-transition-reason]', 'This original now needs review.')
     complete = task_dom + '.querySelector("[data-testid=followthrough-complete]")'
     assert cd.evaluate('!(' + complete + ') || ' + complete + '.matches(":disabled")')
+    from laboratory_amendment_journey import exercise as exercise_amendment_review
+    exercise_amendment_review(cd, patient_id, CASE, after, (first, raw), (current, amended), token,
+                              credentials, write_grants, open_recorded_task, task_at_revision, artifacts)
     # A task can lead back to its own superseded original, even when the
     # current version uses the same local Observation identifier.
     click(cd, task_card + ' [data-testid=followthrough-open-laboratory-original]')

@@ -1,3 +1,4 @@
+import {AmendmentPanel} from './laboratory-amendment-panel';
 import {useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
 import {currentFollowthroughQuestion,matchesFollowthroughDraft,FOLLOWTHROUGH_TRANSITIONS,validFollowthroughDraft,
@@ -81,6 +82,9 @@ function TaskCard({task,session,disabled,hidden,draft,onTaskOriginal}:{onTaskOri
   {task.source_context_state==='source_reassessment_required'&&!task.needs_recheck&&<p className="muted">Original source context needs reassessment. This completed or deferred task remains historical.</p>}
   {task.source_line===null&&task.status==='acknowledged'&&task.source_context_state==='source_reassessment_required'&&
    <p>Completion is unavailable because the original laboratory result needs reassessment. You can defer this work and record why.</p>}
+  {task.source_line===null&&task.source_context_state==='source_reassessment_required'&&
+   <button type="button" data-testid="amendment-review-open" disabled={disabled||hidden}
+    onClick={()=>void session.amendments.openTask(task)}>Compare amended laboratory report</button>}
   {task.source_line===null&&onTaskOriginal&&<button type="button" data-testid="followthrough-open-laboratory-original"
    disabled={disabled||hidden} onClick={()=>onTaskOriginal(task)}>Inspect original laboratory report</button>}
   <details><summary>Original question and source provenance</summary>
@@ -190,6 +194,8 @@ export function FollowthroughPanel({state,session,busy,onTaskOriginal}:Props&{on
       disabled={busy||saving||unknown||state.followthroughPhase!=='ready'}/>)}</ul>
     </>}
   </>}
+  <AmendmentPanel key={state.amendment?.detail?.task_id+':'+state.amendment?.detail?.latest.source_id}
+   mode="patient" caseId={caseId} state={state} session={session} busy={busy}/>
   <p className="muted">Fictional coordination records only. No external notification, clinical order or clinical approval is produced.</p>
  </section>;
 }

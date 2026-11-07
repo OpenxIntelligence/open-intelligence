@@ -1232,6 +1232,9 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         records_authorized=records_authorized,
         final_question_authority=final_question_authority, errors=errors,
     )
+    from .amendment_review_routes import register_amendment_review_routes
+    register_amendment_review_routes(router, principal=principal, registry=registry,
+                                     final_question_authority=final_question_authority, errors=errors)
     from .evidence_routes import register_evidence_routes as register_metadata_evidence_routes
     register_metadata_evidence_routes(
         router, principal=principal, registry=registry,

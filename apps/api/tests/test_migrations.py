@@ -134,6 +134,8 @@ class PostgreSQLIntegrationTests(unittest.TestCase):
             conn.execute(text("DROP TABLE IF EXISTS ehr.clinical_encounter_commands"))
             conn.execute(text("DROP TABLE IF EXISTS ehr.clinical_encounters"))
             conn.execute(text("DROP SCHEMA IF EXISTS ehr"))
+            conn.execute(text("DROP TABLE IF EXISTS investigation.laboratory_amendment_reviews"))
+            conn.execute(text("DROP FUNCTION IF EXISTS investigation.guard_lab_amendment_review_insert()"))
             conn.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_manual_dependencies"))
             conn.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_events"))
             conn.execute(text("DROP TABLE IF EXISTS coordination.question_followthrough_tasks"))

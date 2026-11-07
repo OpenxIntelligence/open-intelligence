@@ -1,6 +1,6 @@
 """Persistent loopback-only fictional H1 demo. No real account or patient use.
 
-up explicitly renews one operator-controlled synthetic grant for 12 hours.
+up renews the configured fictional grants for 12 hours. A separate reviewer is opt-in.
 stop retains the database volume. This tool never deletes a volume or resets data.
 """
 import argparse
@@ -32,6 +32,9 @@ ACTIONS = ['patient_create', 'patient_read', 'case_binding_create', 'case_bindin
            'note.read', 'note.write', 'encounter.source.link']
 
 
+REVIEWER_ACTIONS = ['patient_read', 'case_binding_read', 'source_read', 'source_original_read',
+                    'question_read', 'followthrough_read', 'review_queue_read', 'review_return']
+
 def write_json(path, value, mode=0o600):
     pending = path.with_suffix('.next')
     fd = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
@@ -52,6 +55,10 @@ def load_or_create(directory):
                 or not re.fullmatch(r'DEMO-[A-F0-9]{32}', state.get('request_key', ''))
                 or state.get('patient_id') is not None and not re.fullmatch(r'PAT-[A-F0-9]{32}', state['patient_id'])):
             raise ValueError('Invalid demo state; refusing replacement')
+        if 'reviewer_token' in state:
+            token = state['reviewer_token']
+            if not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9_-]{43}', token) or token == state['token']:
+                raise ValueError('Invalid independent reviewer credential')
         return state
     if directory.exists() and any(directory.iterdir()):
         raise ValueError('Demo directory is not empty and has no owned state')
@@ -65,11 +72,17 @@ def load_or_create(directory):
 
 
 def access_document(state, patients):
-    return {'version': 'oi.synthetic-access/1', 'credentials': [{
-        'token_sha256': hashlib.sha256(state['token'].encode()).hexdigest(),
-        'actor': 'ACTOR-FICTIONAL-DEMO', 'organization': 'ORG-FICTIONAL-DEMO',
-        'purpose': 'operations', 'actions': ACTIONS, 'patient_ids': patients,
-        'expires_at': (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()}]}
+    expiry = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
+
+    def credential(token, actor, actions):
+        return {'token_sha256': hashlib.sha256(token.encode()).hexdigest(), 'actor': actor,
+                'organization': 'ORG-FICTIONAL-DEMO', 'purpose': 'operations', 'actions': actions,
+                'patient_ids': patients, 'expires_at': expiry}
+
+    grants = [credential(state['token'], 'ACTOR-FICTIONAL-DEMO', ACTIONS)]
+    if 'reviewer_token' in state:
+        grants.append(credential(state['reviewer_token'], 'ACTOR-FICTIONAL-REVIEWER', REVIEWER_ACTIONS))
+    return {'version': 'oi.synthetic-access/1', 'credentials': grants}
 
 
 def compose_command(state):
@@ -163,10 +176,14 @@ def up(directory, state):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['up', 'stop', 'credentials'])
+    parser.add_argument('command', choices=['up', 'stop', 'credentials', 'reviewer-credentials'])
     parser.add_argument('--state-dir', type=Path, default=ROOT / '.local/h1-demo')
     parser.add_argument('--fictional-only', action='store_true')
+    parser.add_argument('--with-reviewer', action='store_true',
+                        help='Enable a separate fictional reviewer for this local demo')
     args = parser.parse_args(argv)
+    if args.with_reviewer and args.command != 'up':
+        parser.error('--with-reviewer is only valid with up')
     if args.command == 'up' and not args.fictional_only:
         parser.error('up requires --fictional-only; never use actual patient data')
     directory = args.state_dir.resolve()
@@ -184,7 +201,15 @@ def main(argv=None):
             parser.error('No existing demo state')
         state = load_or_create(directory)
         if args.command == 'up':
+            if args.with_reviewer and 'reviewer_token' not in state:
+                state['reviewer_token'] = secrets.token_urlsafe(32)
+                write_json(directory / 'state.json', state)
             up(directory, state)
+        elif args.command == 'reviewer-credentials':
+            if 'reviewer_token' not in state:
+                parser.error('Enable the local reviewer with up --fictional-only --with-reviewer')
+            print('Synthetic reviewer token:', state['reviewer_token'])
+            print('Patient ID:', state['patient_id'])
         elif args.command == 'credentials':
             print('Synthetic fixture token:', state['token'])
             print('Patient ID:', state['patient_id'])

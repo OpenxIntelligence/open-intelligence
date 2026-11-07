@@ -16,6 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 import uuid
 
+from laboratory_amendment_recovery import LaboratoryAmendmentRecovery
 from laboratory_followthrough_recovery import LaboratoryTaskRecovery, V2
 from oi_api.contracts import SCHEMA_REVISION
 
@@ -83,18 +84,24 @@ def main():
             "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
         }
 
+        reviewer_token = secrets.token_urlsafe(32)
+        reviewer_credential = {**credential, "actor": "ACTOR-LAB-INDEPENDENT-REVIEWER",
+            "token_sha256": hashlib.sha256(reviewer_token.encode()).hexdigest(),
+            "actions": ["patient_read", "source_read", "source_original_read", "question_read",
+                        "followthrough_read", "review_queue_read", "review_return"]}
+
         def save_access():
             pending = access / "access.new"
             pending.write_text(json.dumps({"version":"oi.synthetic-access/1",
-                                           "credentials":[credential]}), encoding="utf-8")
+                                           "credentials":[credential, reviewer_credential]}), encoding="utf-8")
             pending.chmod(0o644); pending.replace(access / "access.json")
 
         def command(args, *, check=True, **kwargs):
             return subprocess.run(compose + args, cwd=ROOT, env=env, check=check,
                                   timeout=240, **kwargs)
 
-        def request(path, body=None, *, authenticated=True, accept=None):
-            headers = {"Authorization":"Bearer " + token} if authenticated else {}
+        def request(path, body=None, *, authenticated=True, accept=None, reviewer=False):
+            headers = {"Authorization":"Bearer " + (reviewer_token if reviewer else token)} if authenticated else {}
             if accept is not None: headers["Accept"] = accept
             if body is not None: headers["Content-Type"] = "application/json"
             req = Request(BASE + path, headers=headers,
@@ -175,6 +182,12 @@ def main():
               'task_audit',(SELECT COALESCE(json_agg(x ORDER BY x.id),'[]'::json)
                 FROM (SELECT * FROM identity.identity_domain_events
                        WHERE event_type IN ('coordination.followthrough.created','coordination.followthrough.transitioned')) x),
+              'amendment_reviews',(SELECT COALESCE(json_agg(x ORDER BY x.entry_id),'[]'::json)
+                FROM investigation.laboratory_amendment_reviews x),
+              'amendment_review_audit',(SELECT COALESCE(json_agg(x ORDER BY x.id),'[]'::json)
+                FROM (SELECT * FROM identity.identity_domain_events
+                       WHERE event_type IN ('investigation.laboratory_amendment.requested',
+                                            'investigation.laboratory_amendment.responded')) x),
               'bindings',(SELECT COALESCE(json_agg(x ORDER BY x.case_id),'[]'::json)
                 FROM (SELECT * FROM coordination.patient_case_bindings) x)
             )""", database)
@@ -319,7 +332,9 @@ finally:
             status, created = request("/v1/patients",{
                 "synthetic":True,"request_key":"CREATE-FHIR-LAB-PROOF"})
             assert status == 201
-            patient = created["patient_id"]; credential["patient_ids"]=[patient]; save_access()
+            patient = created["patient_id"]; credential["patient_ids"]=[patient]
+            reviewer_credential["patient_ids"] = [patient]
+            save_access()
             patient_path="/v1/patients/"+patient
             status, binding = request(patient_path+"/case-bindings",{
                 "synthetic":True,"case_id":CASE,"source_organization":"ORG-FHIR-LAB-SOURCE",
@@ -369,6 +384,10 @@ finally:
                 tasks.transition(current_task, status)
             tasks.verify_history(stale={historical_task})
             tasks.reject_stale(historical_task)
+
+            review = LaboratoryAmendmentRecovery(
+                request, case_path, historical_task, saved1["question_id"], first, OBSERVATION)
+            review.exchange(second, "5.00", "BEFORE-BACKUP")
 
             second_cite = cite(questions, saved2, second, cmd2, "trial", "FICT-TRIAL-PREPARATION@1", "CITE-V2")
             verify_citation(first_cite, "source_reassessment_required")
@@ -422,6 +441,7 @@ finally:
                 verify_questions(questions, versions, patient)
                 tasks.verify_history(stale={historical_task})
                 tasks.replay()
+                review.verify()
 
                 verify_citation(first_cite, "source_reassessment_required")
                 verify_citation(second_cite, "current_unreviewed_question")
@@ -458,6 +478,7 @@ finally:
             for _, saved_command, saved, _ in versions:
                 assert request(questions, saved_command) == (200, {**saved, "duplicate": True})
             assert request(questions, {**cmd1, "request_key": "STALE-RESTORED-CONTEXT"})[0] == 409
+            review.verify()
             after_reads = snapshot(RESTORED)
             assert {k: v for k, v in after_reads.items() if k != "sequence_state"} == {
                 k: v for k, v in before_restore.items() if k != "sequence_state"}
@@ -502,6 +523,18 @@ finally:
             verify_citation(restored_cite, "source_reassessment_required")
             assert snapshot() == before_restore, "Restored writes changed the original database"
 
+            # Another amendment in the restored database changes this comparison;
+            # previous request/response IDs and original source remain recoverable.
+            third_raw = FHIR_V2.replace('"value":5.00', '"value":0.00').replace(
+                "2026-04-05T12:00:00Z", "2026-04-06T12:00:00Z")
+            status, third = request(endpoint, body(third_raw, "FHIR-LAB-RESTORED-V3", second_id))
+            assert status == 201 and third["version"] == 3
+            verify_original(patient_path, first_id, FHIR_V1, 1, "superseded")
+            verify_original(patient_path, second_id, FHIR_V2, 2, "superseded")
+            verify_original(patient_path, third["source_id"], third_raw, 3, "current")
+            review.exchange(third, "0.00", "AFTER-RESTORE")
+            assert snapshot() == before_restore, "Restored amendment write changed the original database"
+
             status, revoked = request(patient_path+"/case-bindings/"+CASE+"/revoke",{
                 "synthetic":True,"reason":"Fictional FHIR mapping withdrawn after restore"})
             assert status == 200 and revoked["case_id"] == CASE
@@ -521,13 +554,16 @@ finally:
             ):
                 assert request(path,payload)[0] == 404
             tasks.verify_revoked()
+            review.revoked()
             assert snapshot(REVOKED_RESTORE) == banned
             assert sorted(query(receipts_sql, REVOKED_RESTORE)) == sorted(before_receipts)
+            amendment_receipt = review.receipt(before_restore, banned)
             output = os.environ.get("OI_LABORATORY_TASK_ACCEPTANCE_FILE")
             if output:
                 summary = {
                     "contract": "oi.laboratory-followthrough-recovery/1", "synthetic": True,
                     "schema_revision": banned["revision"], "case_id": CASE,
+                    "amendment_review": amendment_receipt,
                     "original_task_count": len(before_restore["tasks"]),
                     "restored_task_count": len(banned["tasks"]),
                     "restored_event_count": len(banned["task_events"]),
@@ -543,6 +579,9 @@ finally:
                 destination = Path(output)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_text(json.dumps(summary, indent=2) + "\n")
+            print("PASS LABORATORY AMENDMENT REVIEW RECOVERY: two distinct synthetic actors, exact source "
+                  "and human-entry identities through API/DB restart, restored-only new amendment and "
+                  "request/response, historical retries and revoked restored binding denied.")
             print("PASS LABORATORY FOLLOWTHROUGH RECOVERY: task origins, observation references and full "
                   "attributed history survived API/DB restarts and pg_dump/pg_restore. Both HTTP list versions, "
                   "exact retries, restored-only reads and new writes, stale completion refusal and revoked "

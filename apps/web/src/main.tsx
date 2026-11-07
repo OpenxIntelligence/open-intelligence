@@ -155,6 +155,7 @@ function App(){
   const busy=session.permissionChangePending()||state.phase==='creating'||state.phase==='reading'||state.importOutcome==='sending'||state.questionSavePhase==='saving'||state.reviewReturnPhase==='saving'||state.evidenceWritePhase==='saving'||state.suspensionPhase==='sending'||state.suspensionPhase==='unknown';
  function navigate(nextSection:string,discardVisit=false){
   if(section==='Visits'&&nextSection!==section&&visitDirty.current&&encounterScope&&!discardVisit){setLeaveFor({section:nextSection,scopeKey:encounterScope.key});return;}
+  session.amendments.dismiss();
   if(taskOriginal.current){taskOriginal.current=null;session.dismissOriginal();}
   entryFocus.current=null;
   if(nextSection!==section){
