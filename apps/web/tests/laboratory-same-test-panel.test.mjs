@@ -91,6 +91,7 @@ test('matching source labels still state that clinical comparability is unverifi
    raw.laboratory_timeline.find(x=>x.source_id===row.source_id&&
      x.observation_reference===row.observation_reference).status='reported_value';
  }
+ raw.summary.unresolved_observations=0; // The one prior absent entry is now numeric.
  const html=panel(raw);
  assert.match(html,/No difference detected in these listed source fields/);
  assert.match(html,/clinical comparability remains unverified/i);
