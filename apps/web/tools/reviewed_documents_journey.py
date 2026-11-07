@@ -270,11 +270,26 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     assert 'awaiting independent verification' in review_text.lower()
     review_hash=cd.evaluate("document.querySelector('[data-testid=passage-review-preparation] code').textContent")
     assert len(review_hash)==64 and all(ch in '0123456789abcdef' for ch in review_hash)
-    click('Prepare independent verification')
-    cd.wait("Boolean(document.querySelector('[data-testid=passage-review-preparation] code'))",
-            'review preparation independently reopened')
-    assert cd.evaluate("document.querySelector('[data-testid=passage-review-preparation] code').textContent")==review_hash, (
-        'New access receipt must not silently change the frozen review-preparation fingerprint')
+    cd.evaluate("""(() => {
+      const original = window.fetch;
+      window.__verifyReviewPrep = {original, statuses:[]};
+      window.fetch = async(input,init) => {
+        const path = new URL(typeof input==='string'?input:input.url,location.href).pathname;
+        const response = await original(input,init);
+        if(path.endsWith('/review-preparation'))
+          window.__verifyReviewPrep.statuses.push(response.status);
+        return response;
+      };
+    })()""")
+    try:
+        click('Prepare independent verification')
+        cd.wait("window.__verifyReviewPrep.statuses.length===1 && Boolean(document.querySelector('[data-testid=passage-review-preparation] code'))",
+                'new authorized review preparation read completed')
+        assert cd.evaluate('window.__verifyReviewPrep.statuses')==[200]
+        assert cd.evaluate("document.querySelector('[data-testid=passage-review-preparation] code').textContent")==review_hash, (
+            'New access receipt must not silently change the frozen review-preparation fingerprint')
+    finally:
+        cd.evaluate("window.fetch=window.__verifyReviewPrep.original;delete window.__verifyReviewPrep")
     original_question,=operator(prefix+'/'+first+'/questions')['questions']
     assert original_question['selection']['anchor']['annotation_revision_id']==initial_revision['revision_id']
 
