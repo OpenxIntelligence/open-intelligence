@@ -61,6 +61,35 @@ general observability service. Explicit retry is described below. Production
 monitoring remains construction work. PostgreSQL and CLI acceptance
 for this addition belongs to its dependent draft, not its parent's receipts.
 
+### Process a bounded eligible backlog
+
+```bash
+PYTHONPATH=apps/api/src:src python -m oi_api.event_worker --drain \
+  --patient PATIENT-EXAMPLE --case CASE-EXAMPLE --max-batches 20
+```
+
+This existing-owner PF-06 / OI-013 command invokes the same transactional
+single-batch worker up to 1–100 times (default 20). Every batch rereads current
+authority. Actor, organization and purpose remain pinned for the invocation;
+a credential rotation cannot silently switch the actor whose backlog is being
+processed. Revocation stops subsequent work without undoing prior committed
+batches or claiming rollback of an uncertain result.
+
+Output reports `batches_attempted`, `delivered_batches`, `continued_batches`
+and the final status. Attempts include an idle or blocked final call. Counts
+are processing batches, not unique events; a large event may need continuations.
+`limit_reached` means the configured budget was consumed, not that the backlog
+is empty. `idle` means no eligible work was claimed, not that delayed retries
+or dead letters are absent. Both exit zero. Use the inspection modes separately.
+
+A successful queued continuation may proceed to another batch. A delayed
+failure (`queued` without a consumer result), `fenced`, `dead_letter`, `blocked`
+or `unavailable` stops immediately and exits two. The command does not sleep,
+busy-poll, reset failures or replay dead letters. It is a finite invocation,
+not a scheduler or daemon; its budget bounds attempts, not wall-clock duration.
+Existing lease expiry and receipt/replay semantics govern process interruption.
+`--max-batches` requires `--drain`, which is exclusive with all other modes.
+
 ### Inspect terminal failures
 
 The same current actor/org/purpose/patient/case authorization protects a bounded
@@ -84,7 +113,7 @@ bigint (default 0). Pass `next_after_event_id` for the next page; null means no
 further row was seen in that query. Pages are live observations, not a frozen
 multi-page snapshot. Restart at zero to refresh: an earlier event can become
 terminal later, so this cursor must never be used as a durable delivery
-watermark. All three command modes are mutually exclusive; pagination options
+watermark. All command modes are mutually exclusive; pagination options
 require `--dead-letters`. Exit zero means the read succeeded, not that failures
 were repaired. The controlled retry command below continues #104 / OI-013.
 
