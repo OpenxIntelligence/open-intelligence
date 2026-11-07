@@ -26,6 +26,7 @@ RAW = b"Independent fictional convergence record.\nMarker pending.\n"
 
 class PassagePlatformConvergenceTests(evidence.PublishedEvidenceFixture, SourceVersionFixture):
     snapshot = evidence.EvidenceConvergenceMigrationTests.snapshot
+    assert_existing_history_preserved = joined.LabManualPopulatedMigrationTests.assert_existing_history_preserved
     seed_lab = joined.LabManualPopulatedMigrationTests.seed_lab
 
     def seed_citation(self, patient, manual):
@@ -87,7 +88,7 @@ class PassagePlatformConvergenceTests(evidence.PublishedEvidenceFixture, SourceV
         qid, owner_type, extra, command, receipt = self.seed_citation(patient, manual)
         before = self.snapshot()
         migrate(self.admin, "upgrade", SCHEMA_REVISION)
-        self.assertEqual(self.snapshot(before[0]), before)
+        self.assert_existing_history_preserved(before)
         self.seed_citation(patient, not manual)
         with self.services() as registry:
             owner = owner_type(registry)

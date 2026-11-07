@@ -85,7 +85,8 @@
         "oi_api.app",
         "oi_api.patients",
         "oi_api.encounter_routes",
-        "oi_api.patient_permission_routes"
+        "oi_api.patient_permission_routes",
+        "oi_api.document_routes"
       ],
       "exports": {},
       "depends_on": [
@@ -112,22 +113,21 @@
     },
     {
       "id": "source-custody",
-      "responsibility": "Existing original source versions, integrity checks, reviewed-document custody, annotation contracts and document routes.",
+      "responsibility": "Existing original source versions, integrity checks, reviewed-document custody, annotation contracts.",
       "modules": [
         "oi_api.sources",
         "oi_api.source_integrity",
         "oi_api.reviewed_documents",
         "oi_api.document_contracts",
-        "oi_api.document_routes",
         "oi_api.source_contracts",
         "oi_api.encounter_sources"
       ],
       "exports": {
         "oi_api.document_contracts": [
-          "FictionalDocument"
-        ],
-        "oi_api.document_routes": [
-          "register_document_routes"
+          "FictionalDocument",
+          "AnnotationCorrection",
+          "DocumentImport",
+          "DocumentUpload"
         ],
         "oi_api.source_contracts": [
           "ReportedOncologyContext",
@@ -138,6 +138,11 @@
         ],
         "oi_api.encounter_sources": [
           "PostgresEncounterSources"
+        ],
+        "oi_api.reviewed_documents": [
+          "ReviewedDocuments",
+          "fingerprint",
+          "selection_reference"
         ]
       },
       "depends_on": [
@@ -186,7 +191,8 @@
         "oi_api.composer_runs",
         "oi_api.composer_run_routes",
         "oi_api.worker",
-        "oi_api.event_worker"
+        "oi_api.event_worker",
+        "oi_api.reviewed_questions"
       ],
       "exports": {
         "oi_api.question_passage_contracts": [
@@ -205,6 +211,12 @@
         ],
         "oi_api.composer_runs": [
           "return_verified_run"
+        ],
+        "oi_api.reviewed_questions": [
+          "PassageQuestionWrite",
+          "passage_questions",
+          "CONTRACT",
+          "resolve_question_locked"
         ]
       },
       "depends_on": [
@@ -237,6 +249,17 @@
         ],
         "oi_api.laboratory_citation_report_routes": [
           "register_laboratory_citation_report"
+        ],
+        "oi_api.evidence_contracts": [
+          "EvidenceLinkReceipt",
+          "EvidenceLinks",
+          "EvidenceSearch",
+          "EvidenceSearchResult",
+          "PassageEvidenceLinkCreate",
+          "PassageReviewPreparation"
+        ],
+        "oi_api.question_evidence": [
+          "PostgresQuestionEvidence"
         ]
       },
       "depends_on": [
@@ -791,21 +814,10 @@
       "backlog": "OI-005"
     },
     {
-      "consumer": "oi_api.question_passage_contracts",
-      "provider": "oi_api.reviewed_documents",
-      "symbols": [
-        "fingerprint"
-      ],
-      "reason": "Existing manual-context code calls document custody or its canonicalization helpers directly. Isolate source-backed passage resolution and fingerprint contracts without changing reviewed originals or annotation revisions.",
-      "backlog": "OI-005"
-    },
-    {
       "consumer": "oi_api.question_passages",
       "provider": "oi_api.reviewed_documents",
       "symbols": [
-        "ReviewedDocuments",
-        "canonical",
-        "fingerprint"
+        "canonical"
       ],
       "reason": "Existing manual-context code calls document custody or its canonicalization helpers directly. Isolate source-backed passage resolution and fingerprint contracts without changing reviewed originals or annotation revisions.",
       "backlog": "OI-005"
@@ -1012,6 +1024,15 @@
         "PostgresLaboratoryQuestions"
       ],
       "reason": "The clinical branch resolves the existing stored laboratory question, including stale state and its exact Observation. Extract a question-read port without changing its owner.",
+      "backlog": "OI-005"
+    },
+    {
+      "consumer": "oi_api.document_routes",
+      "provider": "oi_api.evidence_routes",
+      "symbols": [
+        "_prepare"
+      ],
+      "reason": "The passage HTTP adapter reuses the existing evidence response preparation and transaction boundary. Extract a public serialization contract without duplicating its disclosure checks.",
       "backlog": "OI-005"
     }
   ]
