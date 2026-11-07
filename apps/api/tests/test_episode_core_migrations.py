@@ -32,9 +32,10 @@ CASE = "CASE-ALPHA"
 class EpisodeGraphTests(unittest.TestCase):
     def test_only_the_guarded_join_serves_patient_requests(self):
         script = graph()
-        self.assertEqual(script.get_heads(), ["0029_episode_history_guard"])
+        self.assertEqual(script.get_heads(), ["0030_review_history_guard"])
         self.assertEqual(SCHEMA_REVISION, script.get_current_head())
-        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, JOIN)
+        self.assertEqual(script.get_revision(SCHEMA_REVISION).down_revision, "0029_episode_history_guard")
+        self.assertEqual(script.get_revision("0029_episode_history_guard").down_revision, JOIN)
         self.assertEqual(set(script.get_revision(JOIN).down_revision), {EPISODES, CORE})
         self.assertEqual(script.get_revision(EPISODES).down_revision, "0022_lab_citation_source_scope")
 

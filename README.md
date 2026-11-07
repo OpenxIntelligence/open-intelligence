@@ -17,7 +17,7 @@ patient/case/source; repeated setup and stop/resume retain its saved work.
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. This revision requires `0029_episode_history_guard` for
+the retained contributions. This revision requires `0030_review_history_guard` for
 [encounters and draft notes](apps/api/README.md#connected-encounter-and-note-service),
 [laboratory questions and citations](docs/engineering/H1_LABORATORY_CITATIONS.md),
 and the [durable source-question brief worker](docs/engineering/H1_DURABLE_EXECUTION.md).
