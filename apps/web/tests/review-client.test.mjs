@@ -530,3 +530,119 @@ test(operation+' '+outcome+' clears source previews with the correct uncertain-r
   assert.deepEqual(s.snapshot().reviewReturn,saved(true));
  }
 });
+
+test('a paired review retains its exact second original when a response is lost', async()=>{
+ const peer={source_id:'SRC-'+'E'.repeat(32),source_line:10};
+ const commands=[];
+ const s=session(async(url,init)=>{
+  if(url===queuePath)return response(queue());
+  commands.push(JSON.parse(init.body));
+  if(commands.length===1)throw Error('lost receipt');
+  return response(saved(true));
+ });
+ await opened(s);
+ await s.returnReviewQuestion(questionId,fingerprint,reason,false,peer);
+ assert.deepEqual(commands[0].comparison_source,peer);
+ await s.returnReviewQuestion(questionId,fingerprint,reason,false,{...peer,source_line:11});
+ assert.equal(commands.length,1);
+ await s.retryReviewReturn();
+ assert.deepEqual(commands[1],commands[0]);
+});
+
+test('a historical review exposes the captured secondary source only with a distinct valid reference',()=>{
+ const peer={source_id:'SRC-'+'E'.repeat(32),source_line:10,document_id:'DOC-SECOND',source_version:1,source_sha256:'b'.repeat(64)};
+ const packet=p=>queue([historyItem({prior_return_count:1})],[receipt({comparison_source:p})]);
+ assert.deepEqual(decodeReviewQueue(packet(peer),patientId,caseId).receipts[0].comparison_source,peer);
+ for(const invalid of [{...peer,source_id:item().source_id},{...peer,source_line:0},{...peer,source_sha256:'bad'}]){
+  assert.throws(()=>decodeReviewQueue(packet(invalid),patientId,caseId));
+ }
+});
+
+test('Journey names the changed original for each comparison on the same question',async()=>{
+ const {attributionReviewStatus}=await import('../.test-dist/review-queue-view.js');
+ const q=historyItem(), peer={source_id:'SRC-'+'E'.repeat(32)};
+ const historic=[{source_id:peer.source_id,document_id:'DOC-CONSULT',version:1}];
+ assert.match(attributionReviewStatus(q,peer,historic),/DOC-CONSULT v1 amended/);
+ assert.doesNotMatch(attributionReviewStatus(q,{source_id:'SRC-'+'F'.repeat(32)},historic),/amended/);
+ assert.match(attributionReviewStatus(q,peer,[]),/case context/i);
+});
+
+const consultRef={source_id:'SRC-'+'E'.repeat(32),source_line:8,document_id:'DOC-CONSULT',source_version:1,source_sha256:'3'.repeat(64)};
+function reassessmentFixture(){
+ const q=historyItem({prior_return_count:1}), r=receipt({comparison_source:consultRef});
+ function version(a,doc,episode){
+  return {source_id:a.source_id,document_id:doc,source_version:a.source_version,source_sha256:a.source_sha256,
+   finding:{source_id:a.source_id,source_line:a.source_line,finding_key:'nodule',source_statement:'Fictional statement '+doc,
+    reported_state:'indeterminate',clinical_review_state:'not_established',oncology:{role:'metastasis',episode_id:episode}}};
+ }
+ const first=version(q,'DOC-ALPHA','EP-A'), second=version(consultRef,'DOC-CONSULT','EP-B');
+ const latest=version({...consultRef,source_id:'SRC-'+'F'.repeat(32),source_version:2,source_line:9,source_sha256:'4'.repeat(64)},'DOC-CONSULT',null);
+ return {q,r,packet:{contract:'oi.synthetic-attribution-reassessment/1',synthetic:true,clinical_approval:false,
+  patient_id:patientId,case_id:caseId,question_id:questionId,receipt_id:receiptId,access_receipt_id:'ACCESS-'+'D'.repeat(32),
+  first:{recorded:first,latest:structuredClone(first)},second:{recorded:second,latest}}};
+}
+
+test('reassessment verifies both saved anchors and distinguishes a removed key from an unassigned episode',async()=>{
+ const {decodeAttributionReassessment}=await import('../.test-dist/attribution-reassessment.js');
+ const {q,r,packet}=reassessmentFixture();
+ assert.equal(decodeAttributionReassessment(packet,q,r).second.latest.finding.oncology.episode_id,null);
+ const absent=structuredClone(packet);absent.second.latest.finding=null;
+ assert.equal(decodeAttributionReassessment(absent,q,r).second.latest.finding,null);
+ for(const mutate of [p=>p.receipt_id='REVIEW-'+'B'.repeat(32),p=>p.patient_id='PAT-OTHER',p=>p.clinical_approval=true,
+   p=>p.second.recorded.finding.source_line=33,p=>p.second.latest.document_id='DOC-OTHER',
+   p=>p.second.latest.finding.finding_key='other',p=>p.second.latest.source_id=q.source_id,
+   p=>p.first.latest.finding.source_statement='Different words from an unchanged source.']){
+  const copy=structuredClone(packet);mutate(copy);assert.throws(()=>decodeAttributionReassessment(copy,q,r));
+ }
+});
+test('a withdrawn comparison grant clears previous passages and pending responses cannot restore them',async()=>{
+ const {q,r,packet}=reassessmentFixture(),pending=deferred();let calls=0;
+ const s=session(async(url)=>{
+  if(url===queuePath)return response(queue([q],[r]));
+  assert.equal(url,'/v1/patients/'+patientId+'/cases/'+caseId+'/review-returns/'+receiptId+'/attribution-reassessment');
+  calls++;return calls===1?response(packet):calls===2?pending.promise:response({detail:'Unavailable'},404);
+ });
+ await opened(s); await s.inspectAttribution(receiptId);
+ assert.equal(s.snapshot().attributionInspection?.receipt_id,receiptId);
+ const earlier=s.inspectAttribution(receiptId);
+ assert.equal(s.snapshot().attributionInspection,null);
+ await s.inspectAttribution(receiptId);
+ pending.resolve(response(packet));await earlier;
+ assert.equal(s.snapshot().attributionInspection,null);
+ assert.equal(s.snapshot().reviewQueue,null);
+ assert.equal(s.snapshot().reviewPhase,'error');
+});
+test('leaving Review while the passage comparison is loading discards its late response',async()=>{
+ const {q,r,packet}=reassessmentFixture(),pending=deferred();
+ const s=session(async url=>url===queuePath?response(queue([q],[r])):pending.promise);
+ await opened(s);const reading=s.inspectAttribution(receiptId);s.dismissAttributionInspection();
+ pending.resolve(response(packet));await reading;
+ assert.equal(s.snapshot().attributionInspection,null);
+ assert.equal(s.snapshot().attributionTarget,null);
+});
+
+test('review original requires a source reference captured by the loaded queue',async()=>{
+ let calls=0;const s=session(async url=>{if(url===queuePath)return response(queue());calls++;return response({},404);});
+ await opened(s);
+ await s.loadReviewOriginal(caseId,sourceId,2,'e'.repeat(64));
+ await s.loadReviewOriginal(caseId,'SRC-'+'F'.repeat(32),1,'e'.repeat(64));
+ assert.equal(calls,0);
+});
+
+test('a delayed review-original lookup cannot override a newer Records selection',async()=>{
+ const held=deferred(),started=deferred();let reads=0;
+ const index={contract:'oi.synthetic-original-sources/1',patient_id:patientId,case_id:caseId,access_receipt_id:'ACCESS-'+'E'.repeat(32),
+  synthetic:true,clinical_interpretation:false,research_review_invalidation_integrated:false,
+  sources:[{source_id:sourceId,document_id:'DOC-ONE',version:1,sha256:'e'.repeat(64),kind:'pathology',
+   event_date:'2026-01-10',issued_at:'2026-01-11',received_at:'2026-11-03T10:00:00Z',
+   specimen_id:'SPECIMEN-ONE',state:'current',supersedes_id:null}],source_reported_assertions:[]};
+ const s=session(async url=>{
+  if(url===queuePath)return response(queue());
+  assert.ok(url.endsWith('/sources'),'A superseded request must not fetch original bytes');
+  if(++reads===1){started.resolve();return held.promise;}return response(index);
+ });
+ await opened(s);const pending=s.loadReviewOriginal(caseId,sourceId,1,'e'.repeat(64));await started.promise;
+ await s.loadSources(caseId);assert.equal(s.snapshot().recordsPhase,'ready');
+ held.resolve(response(index));await pending;
+ assert.equal(reads,2);assert.equal(s.snapshot().original,null);
+});

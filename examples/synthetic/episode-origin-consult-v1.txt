@@ -1,0 +1,8 @@
+OI-SYNTHETIC-REPORT/2
+Patient: CASE-WEB-EPISODES
+Document: DOC-CONSULT
+Type: pathology
+Event-Date: 2026-05-03
+Issued-At: 2026-05-07
+Specimen: BIOPSY-ALPHA
+Oncology-Finding: nodule|metastasis|EP-A|indeterminate|Fictional consultation lists EP-A as a possible origin; attribution is uncertain.

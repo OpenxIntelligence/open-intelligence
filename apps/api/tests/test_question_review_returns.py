@@ -134,6 +134,109 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
         self.assertEqual(save[0],201,save)
         return save[1]["question_id"],source
 
+    def test_unresolved_attribution_binds_both_originals_after_peer_amendment(self):
+        from pathlib import Path
+        fixtures = Path(__file__).resolve().parents[3] / "examples" / "synthetic"
+        def report(name):
+            return (fixtures / name).read_text().replace("CASE-WEB-EPISODES", "CASE-ALPHA")
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            first = report("oncology-episodes-v1.txt").replace("nodule|metastasis|?", "nodule|metastasis|EP-B")
+            self.assertEqual(self.ingest(base, patient, first)[0], 201)
+            second = report("episode-origin-consult-v1.txt")
+            peer = self.ingest(base, patient, second)[1]["source_id"]
+            original = self.world(base, patient)["observations"]
+            first_id = next(o["source_id"] for o in original if o["document_id"] == "DOC-ALPHA")
+            qid, _ = self.prepared_question(base, patient, source=first_id, line=10)
+            fp = self.inbox(base, patient)[1]["items"][0]["queue_fingerprint"]
+            args = {"reason": "Both reports list a different possible origin; the assignment remains unresolved.",
+                    "comparison_source": {"source_id": peer, "source_line": 8}}
+            before = self.persisted_state()
+            wrong = dict(args, comparison_source={"source_id": first_id, "source_line": 8})
+            self.assert_withheld(self.returning(base, patient, qid, fp, **wrong), 409, before)
+            status, saved, _ = self.returning(base, patient, qid, fp, **args)
+            self.assertEqual(status, 201, saved)
+            self.assertEqual(self.returning(base, patient, qid, fp, reason=args["reason"])[0], 409)
+            before = self.inbox(base, patient)[1]["receipts"][0]
+            self.assertEqual(before["comparison_source"]["source_id"], peer)
+            self.assertEqual(self.ingest(base, patient, report("episode-origin-consult-v2.txt"))[0], 201)
+            history = self.inbox(base, patient)[1]
+            self.assertEqual(history["items"][0]["review_state"], "source_reassessment_required")
+            self.assertEqual(history["receipts"], [before])
+            self.assertEqual(history["receipts"][0]["reason"], args["reason"])
+            retry = self.returning(base, patient, qid, fp, **args)
+            self.assertEqual(retry[:2], (200, dict(saved, duplicate=True)))
+            self.assertEqual(self.returning(base, patient, qid, fp, request_key="NEW-RETURN", **args)[0], 409)
+            self.creds[0]["actions"].remove("source_read")
+            self.write()
+            self.assertEqual(self.inbox(base, patient)[0], 404)
+            self.assertEqual(self.returning(base, patient, qid, fp, **args)[0], 404)
+
+    def test_attribution_reassessment_rereads_both_versions_and_rolls_back_on_withdrawal(self):
+        from pathlib import Path
+        fixtures = Path(__file__).resolve().parents[3] / "examples" / "synthetic"
+        def report(name):
+            return (fixtures / name).read_text().replace("CASE-WEB-EPISODES", "CASE-ALPHA")
+
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            first = self.ingest(base, patient, report("oncology-episodes-v1.txt"))[1]["source_id"]
+            original = self.ingest(base, patient, report("episode-origin-consult-v1.txt"))[1]["source_id"]
+            qid, _ = self.prepared_question(base, patient, source=first, line=10)
+            fp = self.inbox(base, patient)[1]["items"][0]["queue_fingerprint"]
+            single = self.returning(base, patient, qid, fp)[1]["receipt_id"]
+            pair = self.returning(base, patient, qid, fp, request_key="RETURN-TWO",
+                                  comparison_source={"source_id":original, "source_line":8})[1]["receipt_id"]
+
+            def read(receipt=pair, pid=patient, case="CASE-ALPHA"):
+                return request(base, f"/v1/patients/{pid}/cases/{case}/review-returns/{receipt}/attribution-reassessment",
+                               token=TOKEN_A)
+
+            for result in (read(single), read(case="CASE-OTHER"), read(pid="PAT-"+"0"*32), read("REVIEW-"+"F"*32)):
+                self.assertEqual(result[0], 404)
+            status, packet, headers = read()
+            self.assertEqual(status, 200, packet)
+            self.assertEqual(headers["Cache-Control"], "no-store")
+            self.assertEqual(packet["first"]["recorded"], packet["first"]["latest"])
+            self.assertEqual(packet["second"]["recorded"], packet["second"]["latest"])
+            self.assertFalse(packet["clinical_approval"])
+            amendment = report("episode-origin-consult-v2.txt")
+            new_id = self.ingest(base, patient, amendment)[1]["source_id"]
+            status, after, _ = read()
+            self.assertEqual(status, 200, after)
+            self.assertEqual(after["second"]["recorded"], packet["second"]["recorded"])
+            latest = after["second"]["latest"]
+            self.assertEqual((latest["source_id"], latest["source_version"]), (new_id, 2))
+            self.assertIsNone(latest["finding"]["oncology"]["episode_id"])
+            self.assertEqual(latest["finding"]["reported_state"], "indeterminate")
+            self.assertEqual(latest["finding"]["source_line"], 9)
+            removed = amendment.replace("DOC-CONSULT@1","DOC-CONSULT@2").replace("2026-05-08","2026-05-09").replace(
+                "Oncology-Finding: nodule|metastasis|?|indeterminate|Fictional consultation amendment withdraws the proposed origin.",
+                "Finding: other|pending|A different fictional finding.")
+            self.assertEqual(self.ingest(base, patient, removed)[0], 201)
+            status, missing, _ = read()
+            self.assertEqual(status, 200, missing)
+            self.assertIsNone(missing["second"]["latest"]["finding"])
+            self.assertEqual(missing["second"]["recorded"], packet["second"]["recorded"])
+            self.assertEqual(self.inbox(base, patient)[1]["items"][0]["review_state"], "source_reassessment_required")
+
+            before = self.persisted_state()
+            for permission in ("source_read", "review_queue_read", "question_read"):
+                self.creds[0]["actions"].remove(permission)
+                self.write()
+                self.assert_withheld(read(), 404, before)
+                self.creds[0]["actions"].append(permission)
+                self.write()
+            append = PostgresPatientRegistry.append_event
+            def revoke(registry, pid, kind, **details):
+                append(registry, pid, kind, **details)
+                if kind == "investigation.review.attribution_compared":
+                    self.creds[0]["actions"].remove("source_original_read")
+                    self.write()
+            with patch.object(PostgresPatientRegistry, "append_event", revoke):
+                self.assert_withheld(read(), 404, before)
+            self.assert_withheld(read(), 404, before)
+
     def test_return_is_nonterminal_atomic_idempotent_and_derived_from_question(self):
         with running_server(create_app(self.settings)) as base:
             patient=self.setup_case(base)
