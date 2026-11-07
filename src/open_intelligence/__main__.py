@@ -66,16 +66,15 @@ ID_PART = r"([A-Z][A-Z0-9-]{1,39})"
 DOCUMENT_BODY_BYTES = 131072
 
 # B-01 fictional-actor grants: workflow governance for the synthetic case
-# workspace. The header carries a FICTIONAL actor id only — this is not
+# workspace. The actor id is a FICTIONAL id only — this is not
 # identity proofing, not credential verification, and not a
 # production-security control. Every case route requires purpose
 # "individual-access" (the only purpose patient_access.py accepts); grants
 # with any other stated purpose authorize no case route in this slice.
-# Slice 1: a signed-in account is the actor; the account id doubles as the
-# B-01 actor id. The header remains only as a transitional path for the
-# seeded demo account, and the browser no longer sends it. Header support
-# for the demo account is flagged for removal in the next slice.
-FICTIONAL_ACTOR_HEADER = "X-Fictional-Actor"
+# A signed-in account is the actor; the account id doubles as the B-01
+# actor id. The X-Fictional-Actor header path was removed in auth slice 2
+# (W1): case routes require a live session, and no header identifies an
+# actor.
 FICTIONAL_ACTOR_PURPOSE = "individual-access"
 DEMO_ACTOR = "FICTIONAL-NAVIGATOR-A"
 DEMO_OPERATOR = "FICTIONAL-OPERATOR-A"
@@ -199,20 +198,6 @@ class Handler(BaseHTTPRequestHandler):
         # metadata provides an additional barrier; this is NOT authentication.
         return self.headers.get("Sec-Fetch-Site", "none") in {"none", "same-origin"}
 
-    def _fictional_actor(self) -> str | None:
-        """Presented fictional actor id, or None when missing/unparseable.
-
-        Any non-None value matches the synthetic-id alphabet; the grant
-        lookup decides authorization. Malformed values are unknown actors,
-        not 422s: behavior item 1 denies them with 403."""
-        raw = self.headers.get(FICTIONAL_ACTOR_HEADER)
-        if raw is None:
-            return None
-        actor = raw.strip()
-        if not re.fullmatch(ID_PART, actor):
-            return None
-        return actor
-
     def _session_token(self) -> str | None:
         """Session bearer token from the cookie, or the test header."""
         raw_cookie = self.headers.get("Cookie")
@@ -240,32 +225,21 @@ class Handler(BaseHTTPRequestHandler):
     def _current_actor(self, store: CaseStore) -> tuple[dict | None, str | None]:
         """(account, actor id) for this request.
 
-        A valid session wins. Otherwise, during the transition, the header
-        still identifies the seeded demo account only — any other header
-        value is not an identity. Returns (None, None) when unauthenticated.
+        A live session is the only identity; no header identifies an actor
+        (removed in auth slice 2, W1). Returns (None, None) when
+        unauthenticated.
         """
         account = self._session_account(store)
         if account is not None:
             return account, account["account_id"]
-        actor = self._fictional_actor()
-        if actor == DEMO_ACTOR:
-            demo = store.get_account(DEMO_ACTOR)
-            if demo is None:
-                demo = {"account_id": DEMO_ACTOR, "display_name": "Fictional demo navigator",
-                        "role": "clinician", "status": "active", "own_case_id": None}
-            return demo, DEMO_ACTOR
         return None, None
 
     def _actor_label(self, store: CaseStore) -> str:
-        """Access-log actor field: the signed-in account, the presented
-        header value, or "missing"."""
+        """Access-log actor field: the signed-in account id, or "missing"."""
         account = self._session_account(store)
         if account is not None:
             return account["account_id"]
-        raw = self.headers.get(FICTIONAL_ACTOR_HEADER)
-        if raw is None or not raw.strip():
-            return "missing"
-        return raw.strip()[:128]
+        return "missing"
 
     @staticmethod
     def _session_cookie(token: str, expires_at: str | None) -> str:
@@ -303,9 +277,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _require_role(self, store: CaseStore, *roles: str) -> dict | None:
         """Current session account holding one of the roles, or None after
-        sending 401/403. Operator/auditor routes require a session: the
-        transitional header identifies the demo clinician only, which
-        holds neither role."""
+        sending 401/403. A live session is required; the header path was
+        removed in auth slice 2 (W1)."""
         account = self._session_account(store)
         if account is None:
             self._json(401, {"error": AUTH_REQUIRED_MESSAGE})
@@ -440,9 +413,9 @@ class Handler(BaseHTTPRequestHandler):
             access_log_route = re.fullmatch(rf"/api/cases/{ID_PART}/access-log", path)
             if access_log_route:
                 # Operator/auditor only, by role — no grant is required:
-                # auditors hold no case grants by design. A session is
-                # required; the transitional header identifies the demo
-                # clinician, which holds neither role.
+                # auditors hold no case grants by design. A live session
+                # is required; the header path was removed in auth slice 2
+                # (W1).
                 account = self._session_account(store)
                 if account is None:
                     return self._json(401, {"error": AUTH_REQUIRED_MESSAGE})
@@ -963,8 +936,7 @@ class Handler(BaseHTTPRequestHandler):
                     # operator/clinician only — the generic case gate
                     # denies patient POSTs and auditor requests before
                     # dispatch reaches this route. The author role comes
-                    # from the session account (the transitional header
-                    # identifies the demo clinician); it is never free
+                    # from the session account; it is never free
                     # text. The update sends nothing anywhere.
                     account, _actor = self._current_actor(store)
                     author_role = account["role"] if account is not None else "clinician"

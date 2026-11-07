@@ -80,23 +80,21 @@ distributed to participants.
   findings. The IV-01/IV-04 validation files are coordinator
   material and blank templates, not an executed evaluation.
 
-## Auth state — no real accounts on `main`
+## Auth state — local demo accounts and sessions on `main`
 
-The demo on `main` runs behind the B-01 fictional-actor gate:
-case routes require an `X-Fictional-Actor` header naming an actor
-with a live grant for that case (`actor_grants` table,
-deny-by-default, revocation by supersede-never-delete), and every
-case access is written to the `access_log` table. The seeded demo
-actor holds grants on the Alpha/Beta cases. The header is not
-identity proofing — the code comments say so — and the `access_log`
-table has no HTTP route or UI on `main`.
+The demo on `main` runs on operator-created accounts with 24-hour
+server-side sessions (operator / clinician / patient read-only on
+their own case / auditor). Case routes require a live session, a
+live grant for that case (`actor_grants` table, deny-by-default,
+revocation by supersede-never-delete), and role permission, and
+every case access is written to the `access_log` table, readable by
+operator/auditor. The seeded demo actor holds grants on the
+Alpha/Beta cases. Sessions are not identity proofing — the code
+comments say so.
 
-Real accounts, roles, and sessions are NOT on `main`. They are
-pending in PR #515 (readied for merge on green; the demo-credential,
-registration, roles/patient-binding, header-retirement, session,
-access-log-UI, and vanilla-only decisions were confirmed by the user
-on 2026-11-05). Until #515 merges, nothing in this packet describes
-a real account, a verified identity, or a production control.
+The `X-Fictional-Actor` header path was removed in auth slice 2
+(W1): a header-only request is now denied. Real accounts, verified
+identities, and production access control are still NOT on `main`.
 
 ## License status — undecided, explicitly
 

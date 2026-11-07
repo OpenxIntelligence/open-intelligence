@@ -8,11 +8,11 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence.__main__ import (
-    FICTIONAL_ACTOR_HEADER,
     FICTIONAL_ACTOR_PURPOSE,
     Handler,
     seed,
 )
+from session_auth import signin_demo
 from open_intelligence.store import CaseStore
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -146,6 +146,7 @@ class JourneyShellHttpTests(unittest.TestCase):
             target=cls.server.serve_forever, daemon=True
         )
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -156,7 +157,7 @@ class JourneyShellHttpTests(unittest.TestCase):
 
     def request_json(self, path: str):
         request = Request(f"http://127.0.0.1:{self.port}{path}",
-                      headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
+                      headers={"Cookie": self._cookie})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())
@@ -165,7 +166,7 @@ class JourneyShellHttpTests(unittest.TestCase):
 
     def request_text(self, path: str):
         request = Request(f"http://127.0.0.1:{self.port}{path}",
-                      headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
+                      headers={"Cookie": self._cookie})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, response.read().decode("utf-8")
@@ -272,6 +273,7 @@ class DraftFilterHttpTests(unittest.TestCase):
             target=cls.server.serve_forever, daemon=True
         )
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -282,7 +284,7 @@ class DraftFilterHttpTests(unittest.TestCase):
 
     def request_json(self, path: str):
         request = Request(f"http://127.0.0.1:{self.port}{path}",
-                      headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
+                      headers={"Cookie": self._cookie})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())
@@ -291,7 +293,7 @@ class DraftFilterHttpTests(unittest.TestCase):
 
     def request_text(self, path: str):
         request = Request(f"http://127.0.0.1:{self.port}{path}",
-                      headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
+                      headers={"Cookie": self._cookie})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, response.read().decode("utf-8")

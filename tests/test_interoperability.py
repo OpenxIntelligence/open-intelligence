@@ -19,7 +19,8 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
+from open_intelligence.__main__ import Handler, seed
+from session_auth import signin_demo
 from open_intelligence.dicom import validate_dicom_report
 from open_intelligence.fhir_exchange import (
     build_fhir_bundle,
@@ -599,6 +600,7 @@ class InteroperabilityHttpTests(unittest.TestCase):
         cls.thread = threading.Thread(
             target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -609,7 +611,7 @@ class InteroperabilityHttpTests(unittest.TestCase):
 
     def request(self, path, data=None, headers=None):
         values = {"Content-Type": "application/json"} if data is not None else {}
-        values.setdefault(FICTIONAL_ACTOR_HEADER, "FICTIONAL-NAVIGATOR-A")
+        values.setdefault("Cookie", self._cookie)
         values.update(headers or {})
         request = Request(
             f"http://127.0.0.1:{self.port}{path}",
@@ -686,9 +688,18 @@ class InteroperabilityHttpTests(unittest.TestCase):
 
     def test_bundle_post_without_actor_is_denied(self):
         bundle = _bundle(_observation("OBS-HGB-1", codings=(_loinc_hemoglobin(),)))
-        status, _ = self.request(
-            "/api/cases/CASE-ALPHA/fhir/bundle", {"bundle": bundle},
-            headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NOBODY"})
+        # W1: the header is ignored — a header-only request is denied.
+        req = Request(
+            f"http://127.0.0.1:{self.port}/api/cases/CASE-ALPHA/fhir/bundle",
+            data=json.dumps({"bundle": bundle}).encode(),
+            headers={"Content-Type": "application/json",
+                     "Origin": f"http://127.0.0.1:{self.port}",
+                     "X-Fictional-Actor": "FICTIONAL-NOBODY"})
+        try:
+            with urlopen(req, timeout=5) as response:
+                status = response.status
+        except HTTPError as err:
+            status = err.code
         self.assertEqual(status, 403)
 
     def test_malformed_bundle_is_422(self):

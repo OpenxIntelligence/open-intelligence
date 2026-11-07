@@ -18,7 +18,6 @@ from open_intelligence.__main__ import (
     AUTH_REQUIRED_MESSAGE,
     DEMO_ACTOR,
     DEMO_OPERATOR,
-    FICTIONAL_ACTOR_HEADER,
     FICTIONAL_ACTOR_PURPOSE,
     GRANT_DENIAL_MESSAGE,
     ROLE_DENIAL_MESSAGE,
@@ -91,12 +90,10 @@ class AuthHttpTests(unittest.TestCase):
         self.assertNotIn("password_hash", body)
         return cookie.split(";", 1)[0]
 
-    def request(self, path, data=None, cookie=None, actor=None):
+    def request(self, path, data=None, cookie=None):
         headers = {}
         if cookie is not None:
             headers["Cookie"] = cookie
-        if actor is not None:
-            headers[FICTIONAL_ACTOR_HEADER] = actor
         status, _, body = self.raw(path, data, headers)
         return status, body
 
@@ -142,7 +139,10 @@ class AuthHttpTests(unittest.TestCase):
     def test_session_endpoint_requires_sign_in(self):
         status, body = self.request("/api/auth/session")
         self.assertEqual(status, 401)
-        status, body = self.request("/api/auth/session", actor=UNKNOWN_ACTOR)
+        # The removed header is not a session either.
+        status, _, body = self.raw(
+            "/api/auth/session", None,
+            {"X-Fictional-Actor": UNKNOWN_ACTOR})
         self.assertEqual(status, 401)
 
     def test_case_gate_uses_session_account_and_role(self):
@@ -192,23 +192,22 @@ class AuthHttpTests(unittest.TestCase):
         self.assertEqual(status, 403)
         self.assertEqual(body, {"error": GRANT_DENIAL_MESSAGE})
 
-    def test_transitional_header_demo_only_and_session_wins(self):
-        # The seeded demo header still works during the transition.
-        status, body = self.request(f"/api/cases/{CASE_A}/state", actor=CLINICIAN)
-        self.assertEqual(status, 200)
-        # Any other header value is not an identity.
-        for actor in (UNKNOWN_ACTOR, PATIENT, AUDITOR, OPERATOR, "not-valid!"):
-            with self.subTest(actor=actor):
-                status, body = self.request(f"/api/cases/{CASE_A}/state", actor=actor)
-                self.assertEqual(status, 403)
-                self.assertEqual(body, {"error": GRANT_DENIAL_MESSAGE})
-        # A session wins over a simultaneous header: a patient session plus
-        # the demo header still cannot write.
+    def test_header_only_request_is_denied(self):
+        # Auth slice 2 (W1) removed the header path: a request carrying only
+        # the old demo header is unauthenticated.
+        header = {"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"}
+        status, _, body = self.raw(f"/api/cases/{CASE_A}/state", None, header)
+        self.assertEqual(status, 403)
+        self.assertEqual(body, {"error": GRANT_DENIAL_MESSAGE})
+        status, _, body = self.raw("/api/auth/session", None, header)
+        self.assertEqual(status, 401)
+        self.assertEqual(body, {"error": AUTH_REQUIRED_MESSAGE})
+        # A patient session plus the header still cannot write.
         patient = self.signin(PATIENT)
-        status, body = self.request(
+        status, _, body = self.raw(
             f"/api/cases/{CASE_A}/questions",
             {"question": "Which fictional Fig01 marker needs review next?"},
-            cookie=patient, actor=CLINICIAN)
+            {"Cookie": patient, "X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"})
         self.assertEqual(status, 403)
         self.assertEqual(body, {"error": ROLE_DENIAL_MESSAGE})
 

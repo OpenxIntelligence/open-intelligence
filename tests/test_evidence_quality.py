@@ -14,7 +14,8 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore, InvalidInput
-from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
+from open_intelligence.__main__ import Handler, seed
+from session_auth import signin_demo
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "examples" / "synthetic"
@@ -182,6 +183,7 @@ class EvidenceQualityHttpTests(unittest.TestCase):
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -191,7 +193,7 @@ class EvidenceQualityHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def request(self, path, data=None):
-        headers = {FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"}
+        headers = {"Cookie": self._cookie}
         if data is not None:
             headers["Content-Type"] = "application/json"
         req = Request(f"http://127.0.0.1:{self.port}{path}",

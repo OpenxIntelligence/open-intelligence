@@ -18,6 +18,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence.__main__ import Handler, seed
+from session_auth import signin_demo
 from open_intelligence.agent_writes import (
     AGENT_ROLES,
     CONTRACT_FIELDS,
@@ -409,6 +410,7 @@ class HttpWriteContractTests(unittest.TestCase):
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -419,7 +421,7 @@ class HttpWriteContractTests(unittest.TestCase):
 
     def request(self, path, data=None):
         values = {"Content-Type": "application/json"} if data is not None else {}
-        values["X-Fictional-Actor"] = "FICTIONAL-NAVIGATOR-A"
+        values["Cookie"] = self._cookie
         request = Request(f"http://127.0.0.1:{self.port}{path}",
                           data=None if data is None else json.dumps(data).encode(),
                           headers=values)

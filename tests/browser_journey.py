@@ -26,16 +26,32 @@ from urllib.request import Request, urlopen as _plain_urlopen
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-# Transitional header: direct API calls in journeys still present the demo
-# actor; the browser itself signs in (see sign_in_demo) and sends no header.
-DEMO_ACTOR_HEADERS = {"X-Fictional-Actor": "FICTIONAL-NAVIGATOR-A"}
+# Slice 2 (W1): the header path is gone. Direct API calls in journeys sign
+# in as the seeded demo account and send the session cookie instead; the
+# browser itself signs in (see sign_in_demo) and sends no header.
+_session_cookies = {}
+
+
+def _signed_in_cookie(origin):
+    """Session cookie for the seeded demo account on this origin, signed in lazily."""
+    if origin not in _session_cookies:
+        body = json.dumps({"account_id": DEMO_SIGNIN_ACCOUNT,
+                           "password": DEMO_SIGNIN_PASSWORD}).encode()
+        req = Request(origin + "/api/auth/sign-in", data=body,
+                      headers={"Content-Type": "application/json", "Origin": origin})
+        with _plain_urlopen(req, timeout=5) as response:
+            assert response.status == 200, response.read()
+            _session_cookies[origin] = response.headers.get("Set-Cookie").split(";", 1)[0]
+    return _session_cookies[origin]
 
 
 def urlopen(url, *args, **kwargs):
     target = url.full_url if isinstance(url, Request) else url
     if isinstance(target, str) and "/api/cases/" in target:
+        origin = target.split("/api/cases/")[0]
         return _plain_urlopen(
-            Request(target, headers=DEMO_ACTOR_HEADERS), *args, **kwargs)
+            Request(target, headers={"Cookie": _signed_in_cookie(origin)}),
+            *args, **kwargs)
     return _plain_urlopen(url, *args, **kwargs)
 
 
@@ -826,8 +842,7 @@ def main() -> None:
               }).observe(element, {childList: true, subtree: true, characterData: true, attributes: true});
             })()""")
             cd.evaluate("""(async (sourceId) => {
-              const text = (await (await fetch('/api/cases/CASE-ALPHA/sources/' + sourceId,
-                {headers: {'X-Fictional-Actor': 'FICTIONAL-NAVIGATOR-A'}})).json()).text;
+              const text = (await (await fetch('/api/cases/CASE-ALPHA/sources/' + sourceId)).json()).text;
               document.querySelector('#report-text').value = text;
               document.querySelector('#import-form').requestSubmit();
             })(""" + str(original_id) + ")")

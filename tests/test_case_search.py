@@ -15,7 +15,8 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, seed
+from open_intelligence.__main__ import Handler, seed
+from session_auth import signin_demo
 from open_intelligence.case_search import list_cases
 from open_intelligence.store import CaseStore, InvalidInput
 
@@ -211,6 +212,7 @@ class CaseSearchHttpTests(unittest.TestCase):
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -220,7 +222,7 @@ class CaseSearchHttpTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def request(self, path, data=None):
-        headers = {FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"}
+        headers = {"Cookie": self._cookie}
         if data is not None:
             headers["Content-Type"] = "application/json"
             headers["Origin"] = f"http://127.0.0.1:{self.port}"
