@@ -210,7 +210,7 @@ export class RegistrySession {
       write:body=>{if(body===null)this.#manualPassageIntents.delete(key);else if(current())this.#manualPassageIntents.set(key,body);}};
   };
   async documentRequest(caseId:string,path:string,body?:string,questionId?:string):Promise<import('./reviewed-documents').DocumentReply>{
-    if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations|questions)|\/questions\/QUESTION-[A-F0-9]{32}\/(?:evidence-search|evidence-links)|\/selections\/ANN-[A-F0-9]{32}\/[a-z][a-z0-9_-]{0,59})?$/.test(path))throw Error('Invalid document path');
+    if(!/^CASE-[A-Z0-9-]{1,35}$/.test(caseId)||!/^$|^\/preview$|^\/SRC-[A-F0-9]{32}(?:\/(?:original|annotations|questions)|\/questions\/QUESTION-[A-F0-9]{32}\/(?:evidence-search|evidence-links|review-preparation)|\/selections\/ANN-[A-F0-9]{32}\/[a-z][a-z0-9_-]{0,59})?$/.test(path))throw Error('Invalid document path');
     if(questionId!==undefined&&!/^QUESTION-[A-F0-9]{32}$/.test(questionId))throw Error('Invalid question scope');
     return this.#caseContentRequest(caseId,'/documents'+path,body,questionId);
   }
@@ -229,7 +229,7 @@ export class RegistrySession {
     const current=()=>scope===this.#scope&&read===this.#read&&records===this.#records&&patient===this.#state.patient?.patient_id&&caseContext();
     if(!patient||!this.#token||!current())throw Error('Recheck patient and case access');
     const control=new AbortController();this.#controllers.add(control);
-    const timeout=questionId!==undefined||path.endsWith('/questions')||path.endsWith('/evidence-search')||path.endsWith('/evidence-links')?setTimeout(()=>control.abort(),10000):undefined;
+    const timeout=questionId!==undefined||path.endsWith('/questions')||path.endsWith('/evidence-search')||path.endsWith('/evidence-links')||path.endsWith('/review-preparation')?setTimeout(()=>control.abort(),10000):undefined;
     try{
       const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+path,this.#init(control,body));
       if(!current()){
