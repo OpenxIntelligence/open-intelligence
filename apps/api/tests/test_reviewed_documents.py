@@ -178,6 +178,195 @@ class ReviewedDocumentTests(SourceVersionFixture):
             self.assertNotIn(b'Marker',caught.exception.read());caught.exception.close()
             self.assertEqual(self.counts(),before)
 
+    def test_passage_review_preparation_preserves_original_and_metadata_boundaries(self):
+        """An authorized reviewer sees exact fictional origins, never an appraised claim."""
+        from oi_api.database import Database
+        from oi_api.evidence_catalog import (
+            seed_fictional_records, fictional_records, append_rights_decision,
+        )
+        from oi_api.reviewed_documents import fingerprint
+        from open_intelligence.postgres_registry import PostgresPatientRegistry
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            saved = request(base, self.basepath(patient), token=TOKEN_A,
+                            body=self.prepared(base, patient))[1]
+            source = self.basepath(patient) + '/' + saved['source_id']
+            selected = request(base, source + '/selections/' +
+                               saved['annotation_revision_id'] + '/marker', token=TOKEN_A)[1]
+            self.creds[0]['actions'].extend(['question_create', 'question_read',
+                                             'evidence_read', 'evidence_link'])
+            self.write()
+            question = 'What is known about this independently fictional pending marker?'
+            payload = dict(synthetic=True, request_key='PASSAGE-REVIEW-QUESTION',
+                           revision_id=saved['annotation_revision_id'], selection_key='marker',
+                           anchor_sha256=selected['anchor_sha256'], question=question)
+            receipt = request(base, source + '/questions', token=TOKEN_A, body=payload)[1]
+            endpoint = source + '/questions/' + receipt['question_id']
+            review_path = endpoint + '/review-preparation'
+            self.assertEqual(request(base, review_path, token=TOKEN_B)[0], 404)
+            with Database(self.settings).registry_connection() as connection:
+                seed_fictional_records(PostgresPatientRegistry(connection, lambda *args: False),
+                                       fictional_records(), recorded_by='FIXTURE-AUTHOR')
+            status, matches, _ = request(base, endpoint + '/evidence-search', token=TOKEN_A,
+                                         body=dict(synthetic=True, query='continuity'))
+            self.assertEqual(status, 200, matches)
+            match = next(record for record in matches['records']
+                         if record['citation'] == 'FICT-RECORD-CONTINUITY@1')
+            command = dict(synthetic=True, request_key='PASSAGE-REVIEW-CITATION',
+                           citation=match['citation'],
+                           expected_metadata_sha256=match['metadata_sha256'],
+                           source_snapshot_contract='oi.reviewed-document-selection/1',
+                           expected_source_snapshot_sha256=selected['anchor_sha256'],
+                           expected_preflight_sha256=fingerprint([selected['anchor_sha256'], question]))
+            self.assertEqual(request(base, endpoint + '/evidence-links', token=TOKEN_A,
+                                     body=command)[0], 201)
+            status, prepared, _ = request(base, review_path, token=TOKEN_A)
+            self.assertEqual(status, 200, prepared)
+            self.assertEqual(prepared['contract'], 'oi.pg-passage-review-preparation/1')
+            self.assertEqual((prepared['patient_id'], prepared['case_id'],
+                              prepared['question_id'], prepared['source_id']),
+                             (patient, 'CASE-ALPHA', receipt['question_id'], saved['source_id']))
+            self.assertEqual(prepared['question_text'], question)
+            self.assertEqual(prepared['selection']['original_sha256'],
+                             selected['anchor']['original_sha256'])
+            self.assertEqual(prepared['selection']['quote'], 'Marker pending.')
+            self.assertEqual(prepared['selection']['line'], 2)
+            self.assertEqual(prepared['selection']['anchor_sha256'], selected['anchor_sha256'])
+            self.assertEqual(prepared['selection']['annotation_revision_id'],
+                             saved['annotation_revision_id'])
+            self.assertEqual(prepared['source_context_state'], 'current_unreviewed_question')
+            self.assertEqual(prepared['next_step'], 'independent_verification_required')
+            self.assertEqual(prepared['human_review_state'], 'not_performed')
+            self.assertEqual(prepared['content_appraised'], False)
+            self.assertEqual(prepared['clinical_approval'], False)
+            self.assertEqual(prepared['model_executed'], False)
+            self.assertEqual(prepared['links'][0]['record']['citation'], match['citation'])
+            self.assertEqual(prepared['links'][0]['record']['availability'], 'metadata_only')
+            self.assertRegex(prepared['packet_sha256'], r'^[0-9a-f]{64}
+        from alembic.util.exc import CommandError
+        from oi_api.migrate import migrate
+        with running_server(create_app(self.settings)) as base:
+            patient=self.setup_case(base)
+            saved=request(base,self.basepath(patient),token=TOKEN_A,body=self.prepared(base,patient))[1]
+            path=self.basepath(patient)+'/'+saved['source_id']
+            rev=saved['annotation_revision_id']
+            selected=request(base,path+'/selections/'+rev+'/marker',token=TOKEN_A)[1]
+            command=dict(synthetic=True,request_key='MANUAL-QUESTION-ONE',revision_id=rev,
+                         selection_key='marker',anchor_sha256=selected['anchor_sha256'],
+                         question='Which fictional report describes the pending marker?')
+            endpoint=path+'/questions'
+            self.assertEqual(request(base,endpoint,token=TOKEN_A,body=command)[0],404)
+            self.creds[0]['actions'].append('question_create');self.write()
+            status,receipt,_=request(base,endpoint,token=TOKEN_A,body=command)
+            self.assertEqual(status,201,receipt)
+            self.assertEqual(request(base,endpoint,token=TOKEN_A)[0],404)
+            self.creds[0]['actions'].append('question_read');self.write()
+            self.assertEqual(request(base,endpoint,token=TOKEN_B)[0],404)
+            search = endpoint + '/' + receipt['question_id'] + '/evidence-search'
+            query = dict(synthetic=True, query='continuity')
+            self.assertEqual(request(base, search, token=TOKEN_A, body=query)[0], 404)
+            self.creds[0]['actions'].append('evidence_read'); self.write()
+            from oi_api.database import Database
+            from oi_api.evidence_catalog import seed_fictional_records, fictional_records
+            from open_intelligence.postgres_registry import PostgresPatientRegistry
+            with Database(self.settings).registry_connection() as connection:
+                seed_fictional_records(PostgresPatientRegistry(connection, lambda *args: False),
+                                      fictional_records(), recorded_by='FIXTURE-AUTHOR')
+            code, results, _ = request(base, search, token=TOKEN_A, body=query)
+            self.assertEqual(code, 200, results)
+            self.assertEqual(results['question_id'], receipt['question_id'])
+            self.assertIn('FICT-RECORD-CONTINUITY@1', [row['citation'] for row in results['records']])
+            self.assertEqual(results['source_context_state'], 'current_unreviewed_question')
+            self.assertEqual(request(base, search, token=TOKEN_B, body=query)[0], 404)
+            from oi_api.reviewed_documents import fingerprint
+            links_path = search.replace('evidence-search', 'evidence-links')
+            record = next(row for row in results['records'] if row['citation']=='FICT-RECORD-CONTINUITY@1')
+            link = dict(synthetic=True, request_key='PASSAGE-CITATION-ONE',
+                        citation=record['citation'], expected_metadata_sha256=record['metadata_sha256'],
+                        source_snapshot_contract='oi.reviewed-document-selection/1',
+                        expected_source_snapshot_sha256=selected['anchor_sha256'],
+                        expected_preflight_sha256=fingerprint([selected['anchor_sha256'], command['question']]))
+            self.assertEqual(request(base, links_path, token=TOKEN_A, body=link)[0], 404)
+            self.creds[0]['actions'].append('evidence_link'); self.write()
+            code, link_receipt, _ = request(base, links_path, token=TOKEN_A, body=link)
+            self.assertEqual(code, 201, link_receipt)
+            self.assertEqual(request(base, links_path, token=TOKEN_A, body=link)[1],
+                             {**link_receipt, 'duplicate': True})
+            self.assertEqual(request(base, links_path, token=TOKEN_A, body={**link,'citation':'FICT-OTHER@1'})[0],409)
+            self.assertEqual(request(base, links_path, token=TOKEN_A)[1]['links'][0]['record']['citation'],record['citation'])
+            with self.assertRaises(CommandError):
+                migrate(self.admin,'downgrade','0019_reviewed_questions')
+            with self.assertRaises(CommandError):
+                migrate(self.admin,'downgrade','0018_laboratory_questions')
+            with self.assertRaisesRegex(DBAPIError,'OI-LAB-QUESTION-ANCHOR-CONTRACT'), self.engine.begin() as conn:
+                conn.execute(text("INSERT INTO investigation.laboratory_question_anchors(question_id,source_id,observation_reference) VALUES (:qid,:sid,'Observation/OTHER')"),
+                             dict(qid=receipt['question_id'],sid=saved['source_id']))
+            for statement in ('DELETE FROM investigation.reviewed_question_anchors',
+                              'UPDATE investigation.reviewed_question_anchors SET manual_key=manual_key'):
+                with self.assertRaises(DBAPIError), self.engine.begin() as conn:
+                    conn.execute(text(statement))
+            correct=dict(synthetic=True,request_key='MANUAL-CORRECTION',expected_revision_id=rev,
+                         confirmed_case_id='CASE-ALPHA',expected_sha256=selected['anchor']['original_sha256'],
+                         reason='Select a different fictional passage',
+                         findings=[dict(key='next',state='reported',quote='Second passage.',line=3)])
+            self.assertEqual(request(base,path+'/annotations',token=TOKEN_A,body=correct)[0],201)
+            self.assertEqual(request(base,endpoint,token=TOKEN_A,body=command)[1],dict(question_id=receipt['question_id'],duplicate=True))
+            self.assertEqual(request(base,endpoint,token=TOKEN_A,body={**command,'request_key':'STALE-NEW'})[0],409)
+            status,packet,_=request(base,endpoint,token=TOKEN_A)
+            self.assertEqual(status,200)
+            question,=packet['questions']
+            self.assertEqual(question['selection']['anchor'],selected['anchor'])
+            self.assertEqual(question['selection']['selection_state'],'selection_reassessment_required')
+            self.assertEqual(request(base, search, token=TOKEN_A, body=query)[1]['source_context_state'],
+                             'source_reassessment_required')
+            self.assertEqual(request(base, links_path, token=TOKEN_A, body={**link,'request_key':'STALE-CITATION'})[0],409)
+            self.assertEqual(request(base, links_path, token=TOKEN_A, body=link)[1],
+                             {**link_receipt, 'duplicate': True})
+            from oi_api.evidence_catalog import append_rights_decision
+            with Database(self.settings).registry_connection() as connection:
+                append_rights_decision(PostgresPatientRegistry(connection, lambda *args: False),
+                    'FICT-RECORD-CONTINUITY','1', recorded_by='FIXTURE-AUTHOR',
+                    permissions={'metadata':{'store':'allowed','display':'allowed'}},
+                    revoked=True, superseded=False, reason='Fictional permission withdrawal')
+            hidden = request(base, links_path, token=TOKEN_A)[1]
+            self.assertEqual(hidden['source_context_state'], 'source_reassessment_required')
+            self.assertEqual(hidden['links'][0]['status'], 'rights_restricted')
+            self.assertIsNone(hidden['links'][0]['record'])
+            self.creds[0]['actions'].remove('source_original_read');self.write()
+            self.assertEqual(request(base,endpoint,token=TOKEN_A)[0],404)
+            self.assertEqual(request(base,endpoint,token=TOKEN_A,body=command)[0],404)
+            self.assertEqual(request(base, search, token=TOKEN_A, body=query)[0], 404)
+            self.assertEqual(request(base, links_path, token=TOKEN_A)[0], 404)
+)
+            next_packet = request(base, review_path, token=TOKEN_A)[1]
+            self.assertEqual(next_packet['packet_sha256'], prepared['packet_sha256'])
+
+            correction = dict(synthetic=True, request_key='PASSAGE-REVIEW-CORRECTION',
+                              expected_revision_id=saved['annotation_revision_id'],
+                              confirmed_case_id='CASE-ALPHA',
+                              expected_sha256=selected['anchor']['original_sha256'],
+                              reason='Correct a fictional passage selection',
+                              findings=[dict(key='other', state='reported',
+                                             quote='Second passage.', line=3)])
+            self.assertEqual(request(base, source + '/annotations', token=TOKEN_A,
+                                     body=correction)[0], 201)
+            historical = request(base, review_path, token=TOKEN_A)[1]
+            self.assertEqual(historical['source_context_state'], 'source_reassessment_required')
+            self.assertEqual(historical['next_step'], 'source_reassessment_required')
+            self.assertEqual(historical['selection']['quote'], 'Marker pending.')
+            with Database(self.settings).registry_connection() as connection:
+                append_rights_decision(PostgresPatientRegistry(connection, lambda *args: False),
+                    'FICT-RECORD-CONTINUITY', '1', recorded_by='FIXTURE-AUTHOR',
+                    permissions={'metadata': {'store': 'allowed', 'display': 'allowed'}},
+                    revoked=True, superseded=False, reason='Fictional rights withdrawal')
+            restricted = request(base, review_path, token=TOKEN_A)[1]
+            self.assertEqual(restricted['links'][0]['status'], 'rights_restricted')
+            self.assertIsNone(restricted['links'][0]['record'])
+            self.assertNotEqual(restricted['packet_sha256'], prepared['packet_sha256'])
+            self.creds[0]['actions'].remove('source_original_read')
+            self.write()
+            self.assertEqual(request(base, review_path, token=TOKEN_A)[0], 404)
+
     def test_reviewed_question_requires_separate_grants_and_preserves_historical_anchor(self):
         from alembic.util.exc import CommandError
         from oi_api.migrate import migrate
