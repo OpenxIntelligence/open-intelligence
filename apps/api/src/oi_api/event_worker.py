@@ -10,7 +10,7 @@ from fastapi import HTTPException
 
 from open_intelligence.patient_registry import PatientRegistryDenied, PatientRegistryError
 
-from .access import Authentication, DenyAuthentication, SyntheticFileAuthentication, authenticate_token
+from .access import Authentication, authentication_for_settings, authenticate_token
 from .composer_runs import ACTIONS, PostgresComposerRuns
 from .config import Settings
 from .database import Database
@@ -24,8 +24,7 @@ def run_once(settings: Settings, token_provider: Callable[[], str], patient_id: 
     """Claim one bounded batch; never return source text, tokens or exception details."""
     if type(lease_seconds) is not int or not 1 <= lease_seconds <= 300:
         raise ValueError("Lease duration must be between 1 and 300 seconds")
-    provider = authentication if authentication is not None else (
-        SyntheticFileAuthentication(settings.access_file) if settings.access_file else DenyAuthentication())
+    provider = authentication_for_settings(settings, authentication)
 
     def fresh():
         current = authenticate_token(token_provider(), provider)

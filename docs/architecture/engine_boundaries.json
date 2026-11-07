@@ -19,7 +19,8 @@
         "oi_api.request_limits",
         "oi_api.registry_context",
         "oi_api.encounter_event_contract",
-        "oi_api.source_event_delivery"
+        "oi_api.source_event_delivery",
+        "oi_api.patient_permissions"
       ],
       "exports": {
         "oi_api": [
@@ -31,7 +32,9 @@
           "Principal",
           "SyntheticFileAuthentication",
           "authenticate_request",
-          "authenticate_token"
+          "authenticate_token",
+          "Action",
+          "authentication_for_settings"
         ],
         "oi_api.config": [
           "ConfigurationError",
@@ -65,6 +68,11 @@
         "oi_api.source_event_delivery": [
           "EventLeaseLost",
           "PostgresSourceEventDelivery"
+        ],
+        "oi_api.patient_permissions": [
+          "PostgresPatientPermissions",
+          "GrantPermission",
+          "RevokePermission"
         ]
       },
       "depends_on": []
@@ -76,7 +84,8 @@
         "oi_api.__main__",
         "oi_api.app",
         "oi_api.patients",
-        "oi_api.encounter_routes"
+        "oi_api.encounter_routes",
+        "oi_api.patient_permission_routes"
       ],
       "exports": {},
       "depends_on": [

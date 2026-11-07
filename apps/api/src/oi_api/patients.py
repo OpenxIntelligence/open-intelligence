@@ -1164,6 +1164,9 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
 
+    from .patient_permission_routes import register_permission_routes
+    register_permission_routes(router, principal=principal, registry=registry, authentication=authentication, errors=errors)
+
     from .encounter_routes import register_encounter_routes
     register_encounter_routes(router, principal=principal, registry=registry, authorize=records_authorized,
                               refresh=final_question_authority, errors=errors)
