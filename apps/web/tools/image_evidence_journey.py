@@ -384,12 +384,13 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         before_toggle = len(observed())
         summary = "document.querySelector(" + json.dumps(mr_row) + ").closest('details[data-testid=source-image-series]').querySelector('summary')"
         cd.evaluate(summary + '.focus()')
-        cd.command('Input.dispatchKeyEvent', {'type':'keyDown','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
-        cd.command('Input.dispatchKeyEvent', {'type':'keyUp','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
+        # Reuse the complete native Enter sequence. keyDown/keyUp without its
+        # character event does not activate a summary in Chromium CDP.
+        press_enter()
         cd.wait("!(" + summary + ").parentElement.open", 'keyboard collapses the exact MR series')
-        cd.command('Input.dispatchKeyEvent', {'type':'keyDown','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
-        cd.command('Input.dispatchKeyEvent', {'type':'keyUp','key':'Enter','code':'Enter','windowsVirtualKeyCode':13})
+        press_enter()
         cd.wait("(" + summary + ").parentElement.open", 'keyboard reopens the exact MR series')
+        assert cd.evaluate('document.activeElement===(' + summary + ')'), 'Series toggle must retain keyboard focus'
         assert len(observed()) == before_toggle, 'Grouping disclosure must not fetch or write'
         cd.command('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
         cd.wait('document.documentElement.scrollWidth<=innerWidth+1', 'image inspector stays within narrow browser viewport')
