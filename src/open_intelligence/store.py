@@ -537,6 +537,27 @@ CREATE TABLE IF NOT EXISTS agent_writes (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_agent_writes_investigation ON agent_writes(investigation_id);
+-- W2 (D5): composed hypothesis persistence. One row per stored
+-- composed hypothesis, holding the HYPOTHESIS text, its sentences and
+-- cited claim ids as JSON, and the full write contract (C1 pattern).
+-- Only 'pending' is written today; 'reviewed'/'withdrawn' belong to
+-- future review flows. A row goes stale (source_changed) with the
+-- case's model runs; rows are never deleted.
+CREATE TABLE IF NOT EXISTS composed_hypotheses (
+  id INTEGER PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(case_id),
+  write_id TEXT NOT NULL UNIQUE,
+  text TEXT NOT NULL,
+  claim_ids_json TEXT NOT NULL,
+  sentences_json TEXT NOT NULL,
+  char_count INTEGER NOT NULL,
+  review_state TEXT NOT NULL DEFAULT 'pending' CHECK(review_state IN ('pending','reviewed','withdrawn')),
+  stale INTEGER NOT NULL DEFAULT 0,
+  stale_reason TEXT CHECK(stale_reason IN ('source_changed')),
+  contract_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_composed_hypotheses_case ON composed_hypotheses(case_id);
 -- Slice 4 (program plan C4): the verification record. Exactly one row
 -- per stored investigation, holding the Skeptic verdicts, the repair
 -- record, the T6 contradiction and gap groups, and the abstention codes
@@ -1802,12 +1823,19 @@ class CaseStore:
         source imports conservatively stale all current runs for THIS case.
         Independently authored snapshots retain anchor-specific invalidation.
         Caller owns the source-import transaction; no extra event is emitted.
+        Composed hypotheses for this case go stale (source_changed) with the runs.
         """
         if not self.db.in_transaction:
             raise InvalidInput("Model invalidation requires the source transaction")
         rows = self.db.execute(
             "SELECT id FROM investigations WHERE case_id=? AND stale=0 ORDER BY id",
             (case_id,)).fetchall()
+        # W2 (D5): composed hypotheses go stale with the case's runs, in
+        # every path, including when no investigation is current.
+        self.db.execute(
+            "UPDATE composed_hypotheses SET stale=1, stale_reason='source_changed' "
+            "WHERE case_id=? AND stale=0",
+            (case_id,))
         if not rows:
             return []
         # Reopen only questions belonging to runs that are newly stale.
@@ -7229,6 +7257,154 @@ class CaseStore:
         except (json.JSONDecodeError, TypeError):
             return None
         return value if isinstance(value, dict) else None
+
+    def save_composed_hypothesis(self, case_id: str, composed: dict,
+                                 write_contract: dict | None = None) -> int:
+        """Store a composed HYPOTHESIS under the C1 write contract.
+
+        The store checks shape only; compose_hypothesis owns the
+        REQ-09-10 composition rules (length, sentence citation, and the
+        rest) and the store follows them, never the reverse.
+        """
+        from .agent_writes import (
+            WriteContractRejected,
+            parse_route_id,
+            validate_write_contract,
+        )
+        self._case(case_id)
+        if not isinstance(composed, dict) or composed.get("status") != "composed":
+            raise InvalidInput("Only a composed hypothesis can be stored")
+        text = composed.get("text")
+        if not isinstance(text, str) or not text:
+            raise InvalidInput("Composed hypothesis text must be a non-empty string")
+        if composed.get("violations") != []:
+            raise InvalidInput("Composed hypothesis must carry no violations")
+        claim_ids = composed.get("claim_ids")
+        if (not isinstance(claim_ids, list) or not claim_ids
+                or not all(isinstance(c, str) and c for c in claim_ids)):
+            raise InvalidInput("Composed hypothesis claim_ids must be a non-empty list of strings")
+        sentences = composed.get("sentences")
+        if not isinstance(sentences, list):
+            raise InvalidInput("Composed hypothesis sentences must be a list")
+        for sentence in sentences:
+            if not isinstance(sentence, dict):
+                raise InvalidInput("Each hypothesis sentence must be an object")
+            s_text = sentence.get("text")
+            s_claims = sentence.get("claim_ids")
+            if not isinstance(s_text, str) or not s_text:
+                raise InvalidInput("Each hypothesis sentence needs non-empty text")
+            if (not isinstance(s_claims, list) or not s_claims
+                    or not all(isinstance(c, str) and c for c in s_claims)):
+                raise InvalidInput("Each hypothesis sentence needs a non-empty list of claim ids")
+        if write_contract is None:
+            raise WriteContractRejected("missing_write_contract")
+        contract = validate_write_contract(write_contract)
+        if contract["agentRole"] not in ("A4", "A5"):
+            raise WriteContractRejected(
+                "invalid_role", "agentRole",
+                "composed hypotheses are written by A4 Literature or A5 Trials",
+            )
+        route_case, _route_template, _route_question = parse_route_id(contract["routeId"])
+        if route_case != case_id:
+            raise WriteContractRejected(
+                "route_mismatch", "routeId",
+                "contract route does not match this case",
+            )
+        # DELIBERATE NON-ENFORCEMENT: check_assignment is NOT called here.
+        # Route policy v1 assigns A1 only, so no route today assigns A4/A5;
+        # enforcing assignment at save time would make this store unusable
+        # until W4's route policy v2 assigns them. The contract still
+        # records the route for replay; assignment enforcement arrives
+        # with W4/W8.
+        loaded: dict[int, dict | None] = {}
+        for claim_id in claim_ids:
+            match = re.fullmatch(r"inv(\d+):c(\d+)", claim_id)
+            unresolved = InvalidInput(
+                f"Cited claim {claim_id} does not resolve to a kept claim in this case")
+            if not match:
+                raise unresolved
+            inv_id, index = int(match.group(1)), int(match.group(2))
+            if inv_id not in loaded:
+                try:
+                    loaded[inv_id] = self.get_investigation(case_id, inv_id)
+                except InvalidInput:
+                    loaded[inv_id] = None
+            inv = loaded[inv_id]
+            if not isinstance(inv, dict) or inv.get("case_id", case_id) != case_id:
+                raise unresolved
+            if inv.get("stale"):
+                raise unresolved
+            claims = inv.get("claims")
+            if not isinstance(claims, list) or index < 1 or index > len(claims):
+                raise unresolved
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            cur = self.db.execute(
+                """INSERT INTO composed_hypotheses
+                (case_id,write_id,text,claim_ids_json,sentences_json,char_count,
+                review_state,stale,stale_reason,contract_json,created_at)
+                VALUES (?,?,?,?,?,?,'pending',0,NULL,?,?)""",
+                (case_id, contract["writeId"], text, json.dumps(claim_ids),
+                 json.dumps(sentences, sort_keys=True), len(text),
+                 json.dumps(contract, sort_keys=True), now_utc()))
+            hypothesis_id = int(cur.lastrowid)
+            self._event(case_id, "composed_hypothesis_stored",
+                        hypothesis_id=hypothesis_id, write_id=contract["writeId"],
+                        claim_ids=list(claim_ids))
+            return hypothesis_id
+
+    @staticmethod
+    def _hypothesis_json(raw: object, kind: type) -> object:
+        try:
+            value = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return None
+        return value if isinstance(value, kind) else None
+
+    def _composed_hypothesis_row(self, row) -> dict:
+        return {
+            "id": int(row[0]),
+            "case_id": row[1],
+            "kind": "hypothesis",
+            "status": "composed",
+            "text": row[3],
+            "sentences": self._hypothesis_json(row[5], list),
+            "claim_ids": self._hypothesis_json(row[4], list),
+            "char_count": row[6],
+            "review_state": row[7],
+            "stale": bool(row[8]),
+            "stale_reason": row[9],
+            "write_id": row[2],
+            "write_contract": self._hypothesis_json(row[10], dict),
+            "created_at": row[11],
+        }
+
+    def get_composed_hypothesis(self, case_id: str) -> dict | None:
+        """Return the latest non-stale composed hypothesis, or None."""
+        self._case(case_id)
+        row = self.db.execute(
+            """SELECT id,case_id,write_id,text,claim_ids_json,sentences_json,char_count,
+            review_state,stale,stale_reason,contract_json,created_at
+            FROM composed_hypotheses WHERE case_id=? AND stale=0
+            ORDER BY id DESC LIMIT 1""",
+            (case_id,)).fetchone()
+        if not row:
+            return None
+        value = self._composed_hypothesis_row(row)
+        value["stale"] = False
+        value["stale_reason"] = None
+        return value
+
+    def list_composed_hypotheses(self, case_id: str) -> list[dict]:
+        """Return every composed hypothesis for the case, newest first."""
+        self._case(case_id)
+        rows = self.db.execute(
+            """SELECT id,case_id,write_id,text,claim_ids_json,sentences_json,char_count,
+            review_state,stale,stale_reason,contract_json,created_at
+            FROM composed_hypotheses WHERE case_id=?
+            ORDER BY id DESC""",
+            (case_id,)).fetchall()
+        return [self._composed_hypothesis_row(row) for row in rows]
 
     def get_verification_record(self, case_id: str, investigation_id: int) -> dict | None:
         """Return the stored verification record for an investigation,

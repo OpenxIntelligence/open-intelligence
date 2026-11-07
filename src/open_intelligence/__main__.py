@@ -514,9 +514,10 @@ class Handler(BaseHTTPRequestHandler):
                 # D5: hypothesis generation — T5 report assembly over
                 # stored kept claims (non-stale investigations only)
                 # plus the pinned A4 literature records and A5 trial
-                # listings. Read-only; no composed hypothesis is
-                # stored yet, so that section reports not_composed
-                # (persistence is a follow-up, not invented here).
+                # listings. Read-only. W2: the stored composed
+                # hypothesis (latest non-stale) is now read from the
+                # store; the section reports not_composed only when
+                # none is stored (never invented here).
                 case_id = hypothesis_report[1]
                 kept_claims = []
                 abstentions = []
@@ -534,12 +535,20 @@ class Handler(BaseHTTPRequestHandler):
                             "citations": claim.get("citations", []),
                         })
                     abstentions.extend(full.get("abstentions", []))
+                stored = store.get_composed_hypothesis(case_id)
                 report = assemble_hypothesis_report(
                     case_id, kept_claims, list_records(),
                     [render_listing(item) for item in list_listings()],
-                    abstentions=abstentions)
+                    abstentions=abstentions, hypothesis=stored)
                 report["stale_investigations_excluded"] = stale_excluded
+                report["stale_hypotheses_excluded"] = len(
+                    [h for h in store.list_composed_hypotheses(case_id) if h["stale"]])
                 return self._json(200, report)
+            hypothesis = re.fullmatch(rf"/api/cases/{ID_PART}/hypothesis", path)
+            if hypothesis:
+                return self._json(200, {
+                    "case_id": hypothesis[1],
+                    "hypothesis": store.get_composed_hypothesis(hypothesis[1])})
             attention = re.fullmatch(rf"/api/cases/{ID_PART}/patient-attention", path)
             if attention:
                 return self._json(200, case_patient_attention(store, attention[1]))

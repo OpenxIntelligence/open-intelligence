@@ -6,6 +6,8 @@ from the implementation: a composition that invents a number, an
 identifier, or a substance, that cites nothing, that exceeds 280
 characters, or that states eligibility must be rejected; a trial
 listing must never be presentable as eligibility.
+
+W2 persistence: composed hypotheses are stored (store table + write-contract treatment) and go stale via the import cascade.
 """
 
 import ast
@@ -19,6 +21,13 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from open_intelligence.__main__ import Handler, seed
+from open_intelligence.agent_writes import (
+    CONTRACT_FIELDS,
+    WriteContractRejected,
+    build_investigation_contract,
+    build_route_id,
+    build_write_contract,
+)
 from session_auth import signin_demo
 from open_intelligence.hypothesis import (
     DATA_LABEL,
@@ -46,6 +55,9 @@ from open_intelligence.trials import (
     render_listing,
     validate_trial_listing,
 )
+from open_intelligence.investigation import validate_output
+from open_intelligence.orchestrator import decide_route
+from open_intelligence.store import CaseStore, InvalidInput, now_utc
 
 
 def _kept_claims():
@@ -548,6 +560,289 @@ class NoModelCallTests(unittest.TestCase):
             self.assertFalse({"investigation", "skeptic", "__main__"} & imports, module)
             imported = {name.split(".")[-1] for name in imports}
             self.assertFalse(dimension_modules & imported, module)
+
+
+def seed_case(store, case_id="CASE-ALPHA"):
+    """A fictional case with one imported source and one question."""
+    store.add_case(case_id, f"Fictional case {case_id}")
+    synthetic = Path(__file__).resolve().parents[1] / "examples" / "synthetic"
+    source_id = store.import_report(
+        case_id, (synthetic / "alpha-pathology-original.txt").read_bytes()
+    )["source_id"]
+    question_id = store.add_question(case_id, "What does the source report?")
+    return source_id, question_id
+
+
+def save_run(store, case_id, question_id, source_id, *, model="recorded-replay",
+             route=True):
+    """Save one completed replay investigation with its contract."""
+    if route:
+        decide_route(store, case_id, "evidence-summary", question_id, "clinician")
+    facts = store.investigation_facts(case_id, question_id)
+    validated = validate_output(
+        {"claims": [{"text": "The sources report a finding.",
+                     "support": "context",
+                     "citations": [{"type": "source", "id": source_id}],
+                     "uncertainty": "moderate", "limits": "Synthetic only."}],
+         "abstentions": []},
+        facts["valid_sources"], facts["valid_assessments"])
+    validated.model = model
+    validated.mode = "replay"
+    contract = build_investigation_contract(
+        store, case_id, question_id, "evidence-summary", model, facts=facts)
+    run_id = store.save_investigation(
+        case_id, question_id, "evidence-summary", validated, "replay",
+        write_contract=contract)
+    return run_id, contract
+
+
+class ComposedHypothesisPersistenceTests(unittest.TestCase):
+    """W2: stored composed hypotheses — write contract and staleness."""
+
+    TEXT = "The sources report a finding."
+
+    def setUp(self):
+        self.store = CaseStore(":memory:")
+        self.source_id, self.question_id = seed_case(self.store)
+
+    def tearDown(self):
+        self.store.close()
+
+    def contract(self, case_id="CASE-ALPHA"):
+        return build_write_contract(
+            agent_role="A4", model_id="recorded-replay",
+            route_id=build_route_id(case_id, "evidence-summary",
+                                    self.question_id),
+            snapshot_at={"as_of": now_utc(), "event_id": None},
+            inputs=[], prompt_version="hypothesis:1")
+
+    def run_once(self):
+        inv_id, _ = save_run(self.store, "CASE-ALPHA", self.question_id,
+                             self.source_id)
+        return inv_id
+
+    def compose(self, inv_id, text=None):
+        kept = [{"id": claim_id(inv_id, 1), "text": self.TEXT,
+                 "uncertainty": "moderate",
+                 "citations": [{"type": "source", "id": self.source_id}]}]
+        return compose_hypothesis(
+            [{"text": text or self.TEXT, "claim_ids": [claim_id(inv_id, 1)]}],
+            kept)
+
+    def amend(self):
+        amended = (Path(__file__).resolve().parents[1] / "examples"
+                   / "synthetic" / "alpha-pathology-amended.txt")
+        self.store.import_report("CASE-ALPHA", amended.read_bytes())
+
+    def store_hypothesis(self, composed, contract=None):
+        return self.store.save_composed_hypothesis(
+            "CASE-ALPHA", composed,
+            write_contract=self.contract() if contract is None else contract)
+
+    def test_round_trip_stores_text_claim_ids_and_contract(self):
+        inv_id = self.run_once()
+        composed = self.compose(inv_id)
+        self.assertEqual(composed["status"], "composed")
+        row_id = self.store_hypothesis(composed)
+        stored = self.store.get_composed_hypothesis("CASE-ALPHA")
+        self.assertEqual(stored["id"], row_id)
+        self.assertEqual(stored["status"], "composed")
+        self.assertEqual(stored["text"], self.TEXT)
+        self.assertEqual(stored["claim_ids"], [claim_id(inv_id, 1)])
+        self.assertTrue(stored["write_id"])
+        self.assertIsInstance(stored["write_contract"], dict)
+        self.assertEqual(stored["write_contract"]["agentRole"], "A4")
+        self.assertEqual(stored["review_state"], "pending")
+        self.assertIs(stored["stale"], False)
+        self.assertEqual(len(self.store.list_composed_hypotheses("CASE-ALPHA")), 1)
+
+    def test_missing_contract_rejected(self):
+        composed = self.compose(self.run_once())
+        with self.assertRaises(WriteContractRejected) as ctx:
+            self.store.save_composed_hypothesis(
+                "CASE-ALPHA", composed, write_contract=None)
+        self.assertEqual(ctx.exception.reason, "missing_write_contract")
+
+    def test_incomplete_contract_rejected(self):
+        composed = self.compose(self.run_once())
+        contract = self.contract()
+        field = next(name for name in CONTRACT_FIELDS if name in contract)
+        del contract[field]
+        with self.assertRaises(WriteContractRejected) as ctx:
+            self.store_hypothesis(composed, contract)
+        self.assertEqual(ctx.exception.reason, "missing_field")
+        self.assertEqual(ctx.exception.field, field)
+
+    def test_rejected_composition_not_stored(self):
+        composed = self.compose(self.run_once(),
+                                text="The sources report 42 findings.")
+        self.assertEqual(composed["status"], "rejected")
+        with self.assertRaises(InvalidInput):
+            self.store_hypothesis(composed)
+        self.assertEqual(self.store.list_composed_hypotheses("CASE-ALPHA"), [])
+
+    def test_wrong_role_rejected(self):
+        composed = self.compose(self.run_once())
+        contract = dict(self.contract(), agentRole="A1")
+        with self.assertRaises(WriteContractRejected) as ctx:
+            self.store_hypothesis(composed, contract)
+        self.assertEqual(ctx.exception.reason, "invalid_role")
+
+    def test_unknown_claim_id_rejected(self):
+        self.run_once()
+        composed = {
+            "status": "composed", "text": self.TEXT,
+            "claim_ids": ["inv99:c1"],
+            "sentences": [{"text": self.TEXT, "claim_ids": ["inv99:c1"]}],
+            "char_count": 29, "violations": [],
+        }
+        with self.assertRaises(InvalidInput):
+            self.store_hypothesis(composed)
+
+    def test_claim_from_stale_investigation_rejected(self):
+        inv_id = self.run_once()
+        self.amend()
+        self.assertEqual(self.store.get_investigation("CASE-ALPHA", inv_id)["stale"], 1)
+        composed = self.compose(inv_id)
+        self.assertEqual(composed["status"], "composed")
+        with self.assertRaises(InvalidInput):
+            self.store_hypothesis(composed)
+
+    def test_amendment_invalidates_stored_hypothesis(self):
+        row_id = self.store_hypothesis(self.compose(self.run_once()))
+        self.assertEqual(self.store.get_composed_hypothesis("CASE-ALPHA")["id"], row_id)
+        self.amend()
+        self.assertIsNone(self.store.get_composed_hypothesis("CASE-ALPHA"))
+        rows = self.store.list_composed_hypotheses("CASE-ALPHA")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], row_id)
+        self.assertIs(rows[0]["stale"], True)
+        self.assertEqual(rows[0]["stale_reason"], "source_changed")
+
+    def test_latest_stored_hypothesis_is_current(self):
+        inv_id = self.run_once()
+        second_text = "The sources report a finding again."
+        first_id = self.store_hypothesis(self.compose(inv_id))
+        second_id = self.store_hypothesis(self.compose(inv_id, text=second_text))
+        self.assertEqual(self.store.get_composed_hypothesis("CASE-ALPHA")["text"],
+                         second_text)
+        rows = self.store.list_composed_hypotheses("CASE-ALPHA")
+        self.assertEqual([row["id"] for row in rows], [second_id, first_id])
+        self.assertEqual([row["text"] for row in rows], [second_text, self.TEXT])
+
+    def test_route_case_mismatch_rejected(self):
+        composed = self.compose(self.run_once())
+        with self.assertRaises(WriteContractRejected) as ctx:
+            self.store_hypothesis(composed, self.contract(case_id="CASE-BETA"))
+        self.assertEqual(ctx.exception.reason, "route_mismatch")
+
+    def test_assignment_not_enforced_at_save_time(self):
+        """Deliberate W2 decision: the route assigns A1 only (policy v1), yet
+        an A4 hypothesis stores. Assignment enforcement arrives with W4's
+        route policy v2, not here."""
+        inv_id = self.run_once()
+        row_id = self.store_hypothesis(self.compose(inv_id))
+        stored = self.store.get_composed_hypothesis("CASE-ALPHA")
+        self.assertEqual(stored["id"], row_id)
+        self.assertEqual(stored["write_contract"]["agentRole"], "A4")
+
+
+class StoredHypothesisHttpTests(unittest.TestCase):
+    """W2: the stored composed hypothesis, served live over HTTP."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.path = str(Path(cls.tmp.name) / "stored.sqlite")
+        seed(cls.path)
+        store = CaseStore(cls.path)
+        try:
+            question_id = store.add_question(
+                "CASE-ALPHA", "What does the source report?")
+            facts = store.investigation_facts("CASE-ALPHA", question_id)
+            source_id = sorted(facts["valid_sources"])[0]
+            run_id, _ = save_run(store, "CASE-ALPHA", question_id, source_id)
+            cls.run_id = run_id
+            composed = compose_hypothesis(
+                [{"text": "The sources report a finding.",
+                  "claim_ids": [claim_id(run_id, 1)]}],
+                [{"id": claim_id(run_id, 1),
+                  "text": "The sources report a finding.",
+                  "uncertainty": "moderate",
+                  "citations": [{"type": "source", "id": source_id}]}])
+            write_contract = build_write_contract(
+                agent_role="A4",
+                model_id="recorded-replay",
+                route_id=build_route_id(
+                    "CASE-ALPHA", "evidence-summary", question_id),
+                snapshot_at={"as_of": now_utc(), "event_id": None},
+                inputs=[],
+                prompt_version="hypothesis:1")
+            store.save_composed_hypothesis(
+                "CASE-ALPHA", composed, write_contract=write_contract)
+        finally:
+            store.close()
+        bound = type("BoundHandlerForTest", (Handler,), {"db_path": cls.path})
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), bound)
+        cls.port = cls.server.server_address[1]
+        cls.thread = threading.Thread(target=cls.server.serve_forever,
+                                      daemon=True)
+        cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join(timeout=5)
+        cls.tmp.cleanup()
+
+    def request(self, path, headers=None):
+        values = {"Cookie": self._cookie}
+        values.update(headers or {})
+        req = Request(f"http://127.0.0.1:{self.port}{path}", headers=values)
+        try:
+            with urlopen(req, timeout=5) as resp:
+                return resp.status, json.loads(resp.read())
+        except HTTPError as err:
+            return err.code, json.loads(err.read())
+
+    def test_report_route_shows_stored_hypothesis(self):
+        status, data = self.request("/api/cases/CASE-ALPHA/hypothesis-report")
+        self.assertEqual(status, 200)
+        expected = claim_id(self.run_id, 1)
+        self.assertEqual(data["hypothesis"]["status"], "composed")
+        self.assertEqual(data["hypothesis"]["text"],
+                         "The sources report a finding.")
+        self.assertEqual(data["hypothesis"]["claim_ids"], [expected])
+        self.assertTrue(data["kept_claims"])
+        self.assertIn(expected, [c["id"] for c in data["kept_claims"]])
+
+    def test_hypothesis_route_returns_stored_hypothesis(self):
+        status, data = self.request("/api/cases/CASE-ALPHA/hypothesis")
+        self.assertEqual(status, 200)
+        self.assertEqual(data["case_id"], "CASE-ALPHA")
+        hyp = data["hypothesis"]
+        self.assertIsInstance(hyp, dict)
+        self.assertEqual(hyp["status"], "composed")
+        self.assertEqual(hyp["text"], "The sources report a finding.")
+        self.assertEqual(hyp["write_contract"]["agentRole"], "A4")
+
+    def test_hypothesis_route_returns_null_when_none_stored(self):
+        status, data = self.request("/api/cases/CASE-BETA/hypothesis")
+        self.assertEqual(status, 200)
+        self.assertIsNone(data["hypothesis"])
+
+    def test_hypothesis_route_requires_a_grant(self):
+        req = Request(
+            f"http://127.0.0.1:{self.port}/api/cases/CASE-ALPHA/hypothesis",
+            headers={"X-Fictional-Actor": "FICTIONAL-NOBODY"})
+        try:
+            with urlopen(req, timeout=5) as resp:
+                status = resp.status
+        except HTTPError as err:
+            status = err.code
+        self.assertEqual(status, 403)
 
 
 if __name__ == "__main__":
