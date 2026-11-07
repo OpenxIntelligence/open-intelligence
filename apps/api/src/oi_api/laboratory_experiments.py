@@ -20,7 +20,7 @@ import tempfile
 import time
 
 from .laboratory_evaluation import (
-    LaboratoryEvaluationRegistry, MAX_JSON_BYTES, _id, _json, _require, _sha,
+    CALIBRATION_CONTRACT, LaboratoryEvaluationRegistry, MAX_JSON_BYTES, _id, _json, _require, _sha,
     _shape, baseline_output, fingerprint, read_json,
 )
 
@@ -44,7 +44,7 @@ def _seconds(value, maximum):
 
 
 def worker(payload):
-    """Allowlisted local adapters receive no test cases or validation references."""
+    """Adapters receive no calibration/test cases or validation references."""
     _shape(payload, ("technique", "training", "validation"))
     technique = payload["technique"]
     _require(technique in TECHNIQUES, "Unsupported technique")
@@ -181,6 +181,9 @@ class LaboratoryExperiments:
                 "source_identity": source_identity(), "objective": OBJECTIVE,
                 "selection_split": "validation", "test_sent_to_worker": False, "test_scored": False,
                 "worker_limits": {"cpu_seconds": 5, "address_space_bytes": 256 * 1024 * 1024}}
+        if manifest["contract"] == CALIBRATION_CONTRACT:
+            plan.update(calibration_sent_to_worker=False, calibration_scored=False,
+                        calibration_performed=False)
         with self.registry._transaction():
             digest = self.registry._put("experiment-plan", spec["experiment_id"], plan)
         return {"experiment_id": spec["experiment_id"], "sha256": digest}
@@ -459,6 +462,9 @@ class LaboratoryExperiments:
                    "wall_seconds": time.monotonic() - started, "test_sent_to_worker": False, "test_scored": False,
                    "promotion_authorized": False, "clinical_validation": False,
                    "neural_training_performed": False}
+        if manifest["contract"] == CALIBRATION_CONTRACT:
+            receipt.update(calibration_sent_to_worker=False, calibration_scored=False,
+                           calibration_performed=False)
         with registry._transaction():
             cancellation = self._cancel_request(experiment_id)
             receipt["status"] = "cancelled" if cancellation else "completed"

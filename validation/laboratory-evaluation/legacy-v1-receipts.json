@@ -1,0 +1,470 @@
+{
+  "dataset": {
+    "authorship": "Independently fictional engineering fixtures adapted from the repository-owned FHIR laboratory example. Public practice labels; not independently adjudicated.",
+    "cases": [
+      {
+        "bundle_json": "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"entry\":[{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000001\",\"resource\":{\"resourceType\":\"Patient\",\"id\":\"FICTIONAL-PATIENT-A\"}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000002\",\"resource\":{\"resourceType\":\"Specimen\",\"id\":\"FICTIONAL-SPECIMEN-A\",\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-A\"},\"type\":{\"text\":\"Fictional plasma sample\"},\"collection\":{\"collectedDateTime\":\"2026-04-03T09:05:00-04:00\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000003\",\"resource\":{\"resourceType\":\"Observation\",\"id\":\"FICTIONAL-OBS-A\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"777-3\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-A\"},\"specimen\":{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-A\"},\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-04T12:00:00Z\",\"valueQuantity\":{\"value\":4.20,\"system\":\"http://unitsofmeasure.org\",\"code\":\"10*9/L\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000004\",\"resource\":{\"resourceType\":\"DiagnosticReport\",\"id\":\"FICTIONAL-REPORT-A\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"58410-2\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-A\"},\"specimen\":[{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-A\"}],\"result\":[{\"reference\":\"Observation/FICTIONAL-OBS-A\"}],\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-04T12:00:00Z\"}}]}",
+        "case_id": "LAB-TRAIN-A",
+        "source_id": "LAB-SOURCE-A",
+        "source_sha256": "c4398eaa27fa31af58bc92bbfe9972d59eedb138f42740c9599f51c2046386f7",
+        "source_version": 1,
+        "split": "train",
+        "subject_reference": "Patient/FICTIONAL-PATIENT-A",
+        "training_eligible": false
+      },
+      {
+        "bundle_json": "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"entry\":[{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000001\",\"resource\":{\"resourceType\":\"Patient\",\"id\":\"FICTIONAL-PATIENT-B\"}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000002\",\"resource\":{\"resourceType\":\"Specimen\",\"id\":\"FICTIONAL-SPECIMEN-B\",\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-B\"},\"type\":{\"text\":\"Fictional plasma sample\"},\"collection\":{\"collectedDateTime\":\"2026-04-03T09:05:00-04:00\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000003\",\"resource\":{\"resourceType\":\"Observation\",\"id\":\"FICTIONAL-OBS-B\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"777-3\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-B\"},\"specimen\":{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-B\"},\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-04T12:00:00Z\",\"dataAbsentReason\":{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/data-absent-reason\",\"code\":\"not-performed\"}]}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000004\",\"resource\":{\"resourceType\":\"DiagnosticReport\",\"id\":\"FICTIONAL-REPORT-B\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"58410-2\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-B\"},\"specimen\":[{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-B\"}],\"result\":[{\"reference\":\"Observation/FICTIONAL-OBS-B\"}],\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-04T12:00:00Z\"}}]}",
+        "case_id": "LAB-VALIDATION-B",
+        "source_id": "LAB-SOURCE-B",
+        "source_sha256": "1854236aef690f4389a7bd111fd060bfa2df93b21a63dc0bf20bb580251cd8c6",
+        "source_version": 1,
+        "split": "validation",
+        "subject_reference": "Patient/FICTIONAL-PATIENT-B",
+        "training_eligible": false
+      },
+      {
+        "bundle_json": "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"entry\":[{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000001\",\"resource\":{\"resourceType\":\"Patient\",\"id\":\"FICTIONAL-PATIENT-C\"}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000002\",\"resource\":{\"resourceType\":\"Specimen\",\"id\":\"FICTIONAL-SPECIMEN-C\",\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-C\"},\"type\":{\"text\":\"Fictional plasma sample\"},\"collection\":{\"collectedDateTime\":\"2026-04-03T09:05:00-04:00\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000003\",\"resource\":{\"resourceType\":\"Observation\",\"id\":\"FICTIONAL-OBS-C\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"777-3\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-C\"},\"specimen\":{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-C\"},\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-04T12:00:00Z\",\"valueQuantity\":{\"value\":0,\"system\":\"http://unitsofmeasure.org\",\"code\":\"10*9/L\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000004\",\"resource\":{\"resourceType\":\"DiagnosticReport\",\"id\":\"FICTIONAL-REPORT-C\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"58410-2\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-C\"},\"specimen\":[{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-C\"}],\"result\":[{\"reference\":\"Observation/FICTIONAL-OBS-C\"}],\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-04T12:00:00Z\"}}]}",
+        "case_id": "LAB-TEST-C-V1",
+        "source_id": "LAB-SOURCE-C",
+        "source_sha256": "844844e1989f56e6aa4c65991c9259899f10ec4f43e7c77a16c4ed07569b047b",
+        "source_version": 1,
+        "split": "test",
+        "subject_reference": "Patient/FICTIONAL-PATIENT-C",
+        "training_eligible": false
+      },
+      {
+        "bundle_json": "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"entry\":[{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000001\",\"resource\":{\"resourceType\":\"Patient\",\"id\":\"FICTIONAL-PATIENT-C\"}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000002\",\"resource\":{\"resourceType\":\"Specimen\",\"id\":\"FICTIONAL-SPECIMEN-C\",\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-C\"},\"type\":{\"text\":\"Fictional plasma sample\"},\"collection\":{\"collectedDateTime\":\"2026-04-03T09:05:00-04:00\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000003\",\"resource\":{\"resourceType\":\"Observation\",\"id\":\"FICTIONAL-OBS-C\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"777-3\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-C\"},\"specimen\":{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-C\"},\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-05T12:00:00Z\",\"valueQuantity\":{\"value\":0.15,\"system\":\"http://unitsofmeasure.org\",\"code\":\"10*9/L\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000004\",\"resource\":{\"resourceType\":\"DiagnosticReport\",\"id\":\"FICTIONAL-REPORT-C\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"58410-2\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-C\"},\"specimen\":[{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-C\"}],\"result\":[{\"reference\":\"Observation/FICTIONAL-OBS-C\"}],\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-05T12:00:00Z\"}}]}",
+        "case_id": "LAB-TEST-C-V2",
+        "source_id": "LAB-SOURCE-C",
+        "source_sha256": "2cb6261f01478652cbd1cb68694dae41884ed988ca6c6d254f10c23fd8acb542",
+        "source_version": 2,
+        "split": "test",
+        "subject_reference": "Patient/FICTIONAL-PATIENT-C",
+        "training_eligible": false
+      }
+    ],
+    "contract": "oi.synthetic-laboratory-evaluation/1",
+    "dataset_id": "laboratory-practice",
+    "synthetic": true,
+    "version": 1
+  },
+  "records": [
+    {
+      "id": "legacy",
+      "kind": "run",
+      "payload": {
+        "contract": "oi.synthetic-laboratory-evaluation/1",
+        "dataset": "laboratory-practice:1",
+        "dataset_sha256": "82102cfda60d37961c93132375da9190483c332b8a7998435cf0e5f01e13ef8a",
+        "execution": "deterministic_parser",
+        "model_execution_verified": false,
+        "outputs": {
+          "LAB-TEST-C-V1": {
+            "observations": [
+              {
+                "absent_reason": null,
+                "effective_at": "2026-04-03T09:05:00-04:00",
+                "issued_at": "2026-04-04T12:00:00Z",
+                "loinc_code": "777-3",
+                "reference": "Observation/FICTIONAL-OBS-C",
+                "source_sha256": "844844e1989f56e6aa4c65991c9259899f10ec4f43e7c77a16c4ed07569b047b",
+                "source_version": 1,
+                "specimen_reference": "Specimen/FICTIONAL-SPECIMEN-C",
+                "status": "reported_value",
+                "subject_reference": "Patient/FICTIONAL-PATIENT-C",
+                "unit_code": "10*9/L",
+                "value_text": "0"
+              }
+            ],
+            "reason": null,
+            "status": "extracted"
+          },
+          "LAB-TEST-C-V2": {
+            "observations": [
+              {
+                "absent_reason": null,
+                "effective_at": "2026-04-03T09:05:00-04:00",
+                "issued_at": "2026-04-05T12:00:00Z",
+                "loinc_code": "777-3",
+                "reference": "Observation/FICTIONAL-OBS-C",
+                "source_sha256": "2cb6261f01478652cbd1cb68694dae41884ed988ca6c6d254f10c23fd8acb542",
+                "source_version": 2,
+                "specimen_reference": "Specimen/FICTIONAL-SPECIMEN-C",
+                "status": "reported_value",
+                "subject_reference": "Patient/FICTIONAL-PATIENT-C",
+                "unit_code": "10*9/L",
+                "value_text": "0.15"
+              }
+            ],
+            "reason": null,
+            "status": "extracted"
+          },
+          "LAB-TRAIN-A": {
+            "observations": [
+              {
+                "absent_reason": null,
+                "effective_at": "2026-04-03T09:05:00-04:00",
+                "issued_at": "2026-04-04T12:00:00Z",
+                "loinc_code": "777-3",
+                "reference": "Observation/FICTIONAL-OBS-A",
+                "source_sha256": "c4398eaa27fa31af58bc92bbfe9972d59eedb138f42740c9599f51c2046386f7",
+                "source_version": 1,
+                "specimen_reference": "Specimen/FICTIONAL-SPECIMEN-A",
+                "status": "reported_value",
+                "subject_reference": "Patient/FICTIONAL-PATIENT-A",
+                "unit_code": "10*9/L",
+                "value_text": "4.20"
+              }
+            ],
+            "reason": null,
+            "status": "extracted"
+          },
+          "LAB-VALIDATION-B": {
+            "observations": [
+              {
+                "absent_reason": "not-performed",
+                "effective_at": "2026-04-03T09:05:00-04:00",
+                "issued_at": "2026-04-04T12:00:00Z",
+                "loinc_code": "777-3",
+                "reference": "Observation/FICTIONAL-OBS-B",
+                "source_sha256": "1854236aef690f4389a7bd111fd060bfa2df93b21a63dc0bf20bb580251cd8c6",
+                "source_version": 1,
+                "specimen_reference": "Specimen/FICTIONAL-SPECIMEN-B",
+                "status": "reported_absent",
+                "subject_reference": "Patient/FICTIONAL-PATIENT-B",
+                "unit_code": null,
+                "value_text": null
+              }
+            ],
+            "reason": null,
+            "status": "extracted"
+          }
+        },
+        "parser_source_sha256": "058ec438f3b956f779bb9ecbbff59e4201467e48d3ec11f57a05ad9c927d4567",
+        "run_id": "legacy",
+        "software_commit_verified": false,
+        "system": {
+          "software_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "system_id": "oi.fhir-r4-laboratory-parser",
+          "system_version": "1"
+        }
+      },
+      "sha256": "fb7713569a0645ec664b4510acf46c0b0d18b6bddfcf786f8fb4feb741981c04"
+    },
+    {
+      "id": "legacy:LAB-TEST-C-V1",
+      "kind": "review",
+      "payload": {
+        "case_id": "LAB-TEST-C-V1",
+        "corrected_observations": [
+          {
+            "absent_reason": null,
+            "effective_at": "2026-04-03T09:05:00-04:00",
+            "issued_at": "2026-04-04T12:00:00Z",
+            "loinc_code": "777-3",
+            "reference": "Observation/FICTIONAL-OBS-C",
+            "source_sha256": "844844e1989f56e6aa4c65991c9259899f10ec4f43e7c77a16c4ed07569b047b",
+            "source_version": 1,
+            "specimen_reference": "Specimen/FICTIONAL-SPECIMEN-C",
+            "status": "reported_value",
+            "subject_reference": "Patient/FICTIONAL-PATIENT-C",
+            "unit_code": "10*9/L",
+            "value_text": "0"
+          }
+        ],
+        "correction_seconds": 0,
+        "decision": "correct",
+        "independence_declared": false,
+        "output_sha256": "ba0b44fb4035354d7b4a7cc92a15d15b650e13247adb2e747d4e155e2d6c043b",
+        "reason": "Independently authored engineering fixture",
+        "reviewer_id": "fixture-author",
+        "run_id": "legacy"
+      },
+      "sha256": "177899bf078a8dea26bccdaac6fba359154c94fad4a18af3d1c4b342a39ed0d6"
+    },
+    {
+      "id": "legacy:LAB-TEST-C-V2",
+      "kind": "review",
+      "payload": {
+        "case_id": "LAB-TEST-C-V2",
+        "corrected_observations": [
+          {
+            "absent_reason": null,
+            "effective_at": "2026-04-03T09:05:00-04:00",
+            "issued_at": "2026-04-05T12:00:00Z",
+            "loinc_code": "777-3",
+            "reference": "Observation/FICTIONAL-OBS-C",
+            "source_sha256": "2cb6261f01478652cbd1cb68694dae41884ed988ca6c6d254f10c23fd8acb542",
+            "source_version": 2,
+            "specimen_reference": "Specimen/FICTIONAL-SPECIMEN-C",
+            "status": "reported_value",
+            "subject_reference": "Patient/FICTIONAL-PATIENT-C",
+            "unit_code": "10*9/L",
+            "value_text": "0.15"
+          }
+        ],
+        "correction_seconds": 0,
+        "decision": "correct",
+        "independence_declared": false,
+        "output_sha256": "64537cda9394b98600bb0453a5689d305314b5f7513944aa1f7d83eae144cdaa",
+        "reason": "Independently authored engineering fixture",
+        "reviewer_id": "fixture-author",
+        "run_id": "legacy"
+      },
+      "sha256": "bec9bdfd8d873d5eabcd7b644bb8b56d72b912358538fc908193de31f9940a63"
+    },
+    {
+      "id": "legacy:LAB-TRAIN-A",
+      "kind": "review",
+      "payload": {
+        "case_id": "LAB-TRAIN-A",
+        "corrected_observations": [
+          {
+            "absent_reason": null,
+            "effective_at": "2026-04-03T09:05:00-04:00",
+            "issued_at": "2026-04-04T12:00:00Z",
+            "loinc_code": "777-3",
+            "reference": "Observation/FICTIONAL-OBS-A",
+            "source_sha256": "c4398eaa27fa31af58bc92bbfe9972d59eedb138f42740c9599f51c2046386f7",
+            "source_version": 1,
+            "specimen_reference": "Specimen/FICTIONAL-SPECIMEN-A",
+            "status": "reported_value",
+            "subject_reference": "Patient/FICTIONAL-PATIENT-A",
+            "unit_code": "10*9/L",
+            "value_text": "4.20"
+          }
+        ],
+        "correction_seconds": 0,
+        "decision": "correct",
+        "independence_declared": false,
+        "output_sha256": "385c797fcd5b7a4aaaeb99a02927e03c6cad4c698b2deb57d132fb37ebcc2ae2",
+        "reason": "Independently authored engineering fixture",
+        "reviewer_id": "fixture-author",
+        "run_id": "legacy"
+      },
+      "sha256": "0d7b1138a0378cd2e7ce85dfd473856c7c68a6f72afa2308b258ca7d8a1f86f1"
+    },
+    {
+      "id": "legacy:LAB-VALIDATION-B",
+      "kind": "review",
+      "payload": {
+        "case_id": "LAB-VALIDATION-B",
+        "corrected_observations": [
+          {
+            "absent_reason": "not-performed",
+            "effective_at": "2026-04-03T09:05:00-04:00",
+            "issued_at": "2026-04-04T12:00:00Z",
+            "loinc_code": "777-3",
+            "reference": "Observation/FICTIONAL-OBS-B",
+            "source_sha256": "1854236aef690f4389a7bd111fd060bfa2df93b21a63dc0bf20bb580251cd8c6",
+            "source_version": 1,
+            "specimen_reference": "Specimen/FICTIONAL-SPECIMEN-B",
+            "status": "reported_absent",
+            "subject_reference": "Patient/FICTIONAL-PATIENT-B",
+            "unit_code": null,
+            "value_text": null
+          }
+        ],
+        "correction_seconds": 0,
+        "decision": "correct",
+        "independence_declared": false,
+        "output_sha256": "5bfd1177422c9e3e55ad61afbae7a7e115a070cf00ea594e5449b43dcde52d2c",
+        "reason": "Independently authored engineering fixture",
+        "reviewer_id": "fixture-author",
+        "run_id": "legacy"
+      },
+      "sha256": "0be98149f13613f477dcfdb9a325648904cf5bb279b338758e49072002361450"
+    },
+    {
+      "id": "4d0e39e358d8c86e763b494d0fa02adfca77937ad8f35150d28a4fa69d43128e",
+      "kind": "score",
+      "payload": {
+        "by_split": {
+          "test": {
+            "abstentions": 0,
+            "assessed_cases": 2,
+            "cases": 2,
+            "execution_errors": 0,
+            "field_errors": 0,
+            "field_opportunities": 22,
+            "omissions": 0,
+            "reference_correction_seconds": 0,
+            "unassessable_cases": 0,
+            "unsupported_observations": 0
+          },
+          "train": {
+            "abstentions": 0,
+            "assessed_cases": 1,
+            "cases": 1,
+            "execution_errors": 0,
+            "field_errors": 0,
+            "field_opportunities": 11,
+            "omissions": 0,
+            "reference_correction_seconds": 0,
+            "unassessable_cases": 0,
+            "unsupported_observations": 0
+          },
+          "validation": {
+            "abstentions": 0,
+            "assessed_cases": 1,
+            "cases": 1,
+            "execution_errors": 0,
+            "field_errors": 0,
+            "field_opportunities": 11,
+            "omissions": 0,
+            "reference_correction_seconds": 0,
+            "unassessable_cases": 0,
+            "unsupported_observations": 0
+          }
+        },
+        "candidate_run": "legacy",
+        "candidate_sha256": "fb7713569a0645ec664b4510acf46c0b0d18b6bddfcf786f8fb4feb741981c04",
+        "clinical_validation": false,
+        "contract": "oi.synthetic-laboratory-evaluation/1",
+        "dataset_sha256": "82102cfda60d37961c93132375da9190483c332b8a7998435cf0e5f01e13ef8a",
+        "details": [
+          {
+            "case_id": "LAB-TRAIN-A",
+            "errors": [],
+            "omitted": [],
+            "unsupported": []
+          },
+          {
+            "case_id": "LAB-VALIDATION-B",
+            "errors": [],
+            "omitted": [],
+            "unsupported": []
+          },
+          {
+            "case_id": "LAB-TEST-C-V1",
+            "errors": [],
+            "omitted": [],
+            "unsupported": []
+          },
+          {
+            "case_id": "LAB-TEST-C-V2",
+            "errors": [],
+            "omitted": [],
+            "unsupported": []
+          }
+        ],
+        "independent_evaluation_established": false,
+        "promotion_authorized": false,
+        "reference_run": "legacy",
+        "reference_sha256": "fb7713569a0645ec664b4510acf46c0b0d18b6bddfcf786f8fb4feb741981c04",
+        "training_performed": false
+      },
+      "sha256": "4d0e39e358d8c86e763b494d0fa02adfca77937ad8f35150d28a4fa69d43128e"
+    },
+    {
+      "id": "legacy-validation",
+      "kind": "run",
+      "payload": {
+        "contract": "oi.synthetic-laboratory-evaluation/1",
+        "dataset": "laboratory-practice:1",
+        "dataset_sha256": "82102cfda60d37961c93132375da9190483c332b8a7998435cf0e5f01e13ef8a",
+        "evaluated_splits": [
+          "validation"
+        ],
+        "execution": "supplied_outputs",
+        "model_execution_verified": false,
+        "outputs": {
+          "LAB-VALIDATION-B": {
+            "observations": [
+              {
+                "absent_reason": "not-performed",
+                "effective_at": "2026-04-03T09:05:00-04:00",
+                "issued_at": "2026-04-04T12:00:00Z",
+                "loinc_code": "777-3",
+                "reference": "Observation/FICTIONAL-OBS-B",
+                "source_sha256": "1854236aef690f4389a7bd111fd060bfa2df93b21a63dc0bf20bb580251cd8c6",
+                "source_version": 1,
+                "specimen_reference": "Specimen/FICTIONAL-SPECIMEN-B",
+                "status": "reported_absent",
+                "subject_reference": "Patient/FICTIONAL-PATIENT-B",
+                "unit_code": null,
+                "value_text": null
+              }
+            ],
+            "reason": null,
+            "status": "extracted"
+          }
+        },
+        "parser_source_sha256": null,
+        "run_id": "legacy-validation",
+        "software_commit_verified": false,
+        "system": {
+          "software_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "system_id": "legacy-validation",
+          "system_version": "1"
+        }
+      },
+      "sha256": "233cae65043841efdca85e01b3f796ff756d2f78096151fe4ff2412001475093"
+    },
+    {
+      "id": "6109e0b9a479e2e012f8a999634967c5e20d58b2c81e12e3d726f0b182a66d93",
+      "kind": "score",
+      "payload": {
+        "by_split": {
+          "test": {
+            "abstentions": 0,
+            "assessed_cases": 0,
+            "cases": 0,
+            "execution_errors": 0,
+            "field_errors": 0,
+            "field_opportunities": 0,
+            "omissions": 0,
+            "reference_correction_seconds": 0,
+            "unassessable_cases": 0,
+            "unsupported_observations": 0
+          },
+          "train": {
+            "abstentions": 0,
+            "assessed_cases": 0,
+            "cases": 0,
+            "execution_errors": 0,
+            "field_errors": 0,
+            "field_opportunities": 0,
+            "omissions": 0,
+            "reference_correction_seconds": 0,
+            "unassessable_cases": 0,
+            "unsupported_observations": 0
+          },
+          "validation": {
+            "abstentions": 0,
+            "assessed_cases": 1,
+            "cases": 1,
+            "execution_errors": 0,
+            "field_errors": 0,
+            "field_opportunities": 11,
+            "omissions": 0,
+            "reference_correction_seconds": 0,
+            "unassessable_cases": 0,
+            "unsupported_observations": 0
+          }
+        },
+        "candidate_run": "legacy-validation",
+        "candidate_sha256": "233cae65043841efdca85e01b3f796ff756d2f78096151fe4ff2412001475093",
+        "clinical_validation": false,
+        "contract": "oi.synthetic-laboratory-evaluation/1",
+        "dataset_sha256": "82102cfda60d37961c93132375da9190483c332b8a7998435cf0e5f01e13ef8a",
+        "details": [
+          {
+            "case_id": "LAB-VALIDATION-B",
+            "errors": [],
+            "omitted": [],
+            "unsupported": []
+          }
+        ],
+        "independent_evaluation_established": false,
+        "promotion_authorized": false,
+        "reference_run": "legacy",
+        "reference_sha256": "fb7713569a0645ec664b4510acf46c0b0d18b6bddfcf786f8fb4feb741981c04",
+        "training_performed": false
+      },
+      "sha256": "6109e0b9a479e2e012f8a999634967c5e20d58b2c81e12e3d726f0b182a66d93"
+    }
+  ],
+  "scope": "Independently authored synthetic engineering fixtures; original v1 serialization compatibility only.",
+  "source_commit": "539705d0741e8192c027c250a2bb016b13d2dca9"
+}
