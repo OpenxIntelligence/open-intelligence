@@ -187,6 +187,7 @@ class CanonicalQuestionFlowHTTPTests(SourceVersionFixture):
                 original_id + ":1:"
             ))
             self.assertFalse(semantic_before["clinical_approval"])
+            self.assertEqual(semantic_before["direct_supersession_impacts"], [])
 
             # A separate internal caller cannot bypass either grant. Failed
             # calls must not emit a canonical source-read receipt.
@@ -243,6 +244,14 @@ class CanonicalQuestionFlowHTTPTests(SourceVersionFixture):
                              semantic_before["bindings"][0]["source_version_id"])
             self.assertTrue(semantic_after["bindings"][0]["requires_reassessment"])
             self.assertFalse(semantic_after["clinical_approval"])
+            self.assertEqual(len(semantic_after["direct_supersession_impacts"]), 1)
+            direct_impact = semantic_after["direct_supersession_impacts"][0]
+            self.assertEqual(direct_impact["superseded_source_id"], original_id)
+            self.assertEqual(direct_impact["amending_source_id"], amended["source_id"])
+            self.assertEqual(direct_impact["question_ids"], (question_id,))
+            self.assertEqual(direct_impact["source_version_id"],
+                             semantic_before["bindings"][0]["source_version_id"])
+
             self.assertEqual(retained["human_review_state"], "not_submitted")
             self.assertFalse(retained["clinical_approval"])
             self.assertFalse(retained["model_executed"])
