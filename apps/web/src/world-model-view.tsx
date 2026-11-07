@@ -1,7 +1,7 @@
 import {EpisodeDraftPanel} from './episode-draft-panel';
 import {SourceOncologyLabel} from './source-oncology-label';
 import type {FollowthroughTask} from './followthrough-view';
-import type {WorldObservation} from './source-world-model';
+import type {WorldObservation,SourceWorldModel} from './source-world-model';
 import {LaboratoryQuestionPanel,SavedLaboratoryQuestions} from './laboratory-question-panel';
 import {questionSaveBlocksSourceChange} from './source-questions-view.js';
 import type {RegistrySession,ViewState} from './registry-client';
@@ -15,6 +15,7 @@ type Props={
   showQuestions?:boolean;
   onInvestigations?:()=>void;
   onReview?:()=>void;
+  onOriginal?:(world:SourceWorldModel,sourceId:string)=>void;
   onRecords?:(caseId:string,taskOriginal?:FollowthroughTask)=>void;
 };
 
@@ -23,7 +24,7 @@ type Props={
  * separate client-owned patient/source ledger. All clinical claims remain
  * attributed to the original fictional source and explicitly unreviewed.
  */
-export function WorldModelView({session,state,onOverview,busy,showQuestions=false,onInvestigations,onReview,onRecords}:Props){
+export function WorldModelView({session,state,onOverview,busy,showQuestions=false,onInvestigations,onReview,onRecords,onOriginal}:Props){
   const loading=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
   const model=state.worldModel;
   const laboratoryByRef=new Map(model?.laboratory_observations.map(item=>[item.source_id+':'+item.observation_reference,item])??[]);
@@ -122,7 +123,7 @@ export function WorldModelView({session,state,onOverview,busy,showQuestions=fals
         </section>}
         {state.worldPhase==='ready'&&<SavedLaboratoryQuestions onFollowthrough={showQuestions?undefined:onInvestigations} session={session} model={model} state={state} busy={loading||busy} sourceSavePending={questionSaveBlocksSourceChange(state)}/>}
         {!showQuestions&&state.worldPhase==='ready'&&<EpisodeDraftPanel key={model.access_receipt_id}
-          session={session} world={model} busy={busy||loading} onRecords={onRecords?()=>onRecords(model.case_id):undefined}/>}
+          session={session} world={model} busy={busy||loading} onOriginal={onOriginal?sourceId=>onOriginal(model,sourceId):undefined} onRecords={onRecords?()=>onRecords(model.case_id):undefined}/>}
         {episodes.size>0&&<section aria-label="Source-reported cancer episodes">
           <h3>Source-reported cancer episodes</h3>
           <p>Reports are grouped by the episode identifier in the original finding. Each statement retains its reported status.</p>

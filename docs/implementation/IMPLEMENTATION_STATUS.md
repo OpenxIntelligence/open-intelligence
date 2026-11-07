@@ -1,12 +1,14 @@
 # Implementation status — 5 November 2026
 
-## Source-linked oncology episode drafts — validation pending
+## Source-linked oncology episode drafts — verified synthetic integration
 
 The integration carries [#570](https://github.com/OpenxIntelligence/open-intelligence/pull/570) from its source-reporting owner onto the clinical worker application from [#567](https://github.com/OpenxIntelligence/open-intelligence/pull/567). An authorized operator in Journey can save two distinct, unreviewed episode IDs from two source-reported primary findings, reopen the original statements and see when an amendment requires reassessment. Independent source-original permission is required to include a superseded quotation. The draft carries no staging or treatment authority.
 
 The published episode-draft migration and the integrated clinical/worker history are both preserved. A subsequent guard checks creation-journal continuity and refuses a direct TRUNCATE that would orphan existing episode identities. Use the actual branch checks to qualify populated upgrades, recovery, correction, concurrent retries and withdrawals. The next clinical construction task is a separately reviewed additional source association on the same durable ID.
 
-Local checks pass 706 client tests, production build, 31 architecture tests and 15 focused API/eligibility/graph tests. Six episode PostgreSQL tests are skipped locally because no disposable PostgreSQL service is available. Hosted checks must establish populated upgrade, historical authorization, browser and restore behavior on this exact candidate. The preceding #567 API run failed one research-purpose import; the compatibility repair and its upgrade regressions are included here.
+[PR #601](https://github.com/OpenxIntelligence/open-intelligence/pull/601), source `e6eed7c721ef5322a800be7022952c1cc3cd3754`, passed 1,017 API/PostgreSQL tests, all seven recovery checks, 136 worker tests, 706 client tests, production build, the real Chromium journey and 927 reference tests. Source-purpose repair, populated episode upgrades, orphan-history rejection and restored episode custody are qualified on that revision. This remains draft, unmerged and synthetic-only.
+
+The direct-original continuation adds an inspection button to each saved episode. It refreshes the source index, verifies the selected version/hash, and opens the exact original under the existing separate source-original permission. Scope changes or dismissal cancel the transition. Seven new client cases and the full 713-test client suite pass locally; actual browser acceptance for this continuation is recorded in its draft PR.
 
 ## Durable patient brief and source-event integration
 

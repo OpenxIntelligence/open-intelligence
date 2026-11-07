@@ -149,8 +149,26 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
                 assert f'DOC-ALPHA v1 · line {line}' in row['body'] and selected_ids[0] in row['body']
                 expected_basis = 'Current source basis' if version == 1 else 'Reassessment required'
                 assert expected_basis in row['body']
-            click_draft('Inspect original report versions in Records')
-            inspect_original(1, originals[0])
+            cd.evaluate("document.querySelector('[data-testid=episode-open-original]').click()")
+            cd.wait('document.querySelector("[data-testid=server-original]")?.textContent===' + json.dumps(originals[0]),
+                    'episode opens its exact original without another source selection')
+            cd.wait('document.activeElement===document.querySelector("#opened-original")',
+                    'episode original heading receives keyboard focus')
+            if version == 1:
+                select_case('Journey', 'world-load-cases', '.world-cases li', 'world-load')
+                click_draft('Open saved episode drafts')
+                cd.wait('document.querySelectorAll("[data-testid=saved-episode-draft]").length===2',
+                        'drafts visible before separate original-read withdrawal')
+                credentials[0]['actions'].remove('source_original_read')
+                write_grants()
+                try:
+                    cd.evaluate("document.querySelector('[data-testid=episode-open-original]').click()")
+                    cd.wait('document.querySelector("[data-testid=records-status]")?.textContent.includes("Original unavailable")',
+                            'direct episode inspection rechecks original-read authority')
+                    assert not cd.evaluate('Boolean(document.querySelector("[data-testid=server-original]"))')
+                finally:
+                    credentials[0]['actions'].append('source_original_read')
+                    write_grants()
             if version == 2:
                 inspect_original(2, originals[1])
             select_case('Journey', 'world-load-cases', '.world-cases li', 'world-load')
@@ -196,7 +214,7 @@ def exercise(cd, patient_id, token, credentials, write_grants, artifacts):
         (artifacts / 'oncology-episodes.json').write_text(json.dumps({
             'synthetic': True, 'case_id': CASE, 'source_ids': selected_ids,
             'source_sha256': [hashlib.sha256(s.encode()).hexdigest() for s in originals],
-            'durable_episode_draft_ids': draft_ids, 'amended_basis_flagged': True,
+            'direct_episode_original_verified': True, 'durable_episode_draft_ids': draft_ids, 'amended_basis_flagged': True,
             'historical_drafts_rechecked_original_read': True,
             'primary_episodes': ['EP-A', 'EP-B'], 'nodule_episode_history': [None, 'EP-B'],
             'nodule_reported_state': 'indeterminate', 'source_only_preflights': 2,

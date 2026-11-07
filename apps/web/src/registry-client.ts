@@ -626,6 +626,25 @@ export class RegistrySession {
         recordMessage:'Case response failed validation or the service is unavailable. No records are shown.'});
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
+  /** Open an exact World Model source through freshly authorized Records reads. */
+  async loadWorldOriginal(world:SourceWorldModel,sourceId:string):Promise<void>{
+    if(this.#state.worldPhase!=='ready'||this.#state.worldModel!==world||
+       this.#state.patient?.patient_id!==world.patient_id)return;
+    const target=[...world.current_sources,...world.history].find(s=>s.source_id===sourceId);
+    if(!target)return;
+    const scope=this.#scope,read=this.#read,request=this.#records+1;
+    await this.loadSources(world.case_id);
+    if(scope!==this.#scope||read!==this.#read||request!==this.#records||
+       this.#state.recordsPhase!=='ready'||this.#state.sourceIndex?.case_id!==world.case_id)return;
+    const fresh=this.#state.sourceIndex.sources.find(s=>s.source_id===sourceId);
+    if(!fresh||fresh.version!==target.version||fresh.sha256!==target.sha256||fresh.document_id!==target.document_id){
+      this.#publish({original:null,recordsPhase:'error',
+        recordMessage:'The original no longer matches the selected episode source. Refresh Journey before trying again.'});
+      return;
+    }
+    await this.loadOriginal(sourceId);
+  }
+
   async loadSources(caseId:string,taskOriginal?:FollowthroughTask):Promise<void>{
     if(taskOriginal&&(taskOriginal.case_id!==caseId||taskOriginal.source_line!==null||
        !projectFollowthroughAttention(this.#state)?.list.tasks.includes(taskOriginal))){
