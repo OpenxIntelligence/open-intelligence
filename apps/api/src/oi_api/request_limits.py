@@ -16,7 +16,7 @@ class PatientRequestLimit:
         laboratory_preview = re.fullmatch(r"/v1/patients/[^/]+/cases/[^/]+/laboratory/fhir-r4/(?:preview|sources)", route) is not None
         bounded = route == "/v1/patients" or (
             route.startswith("/v1/patients/") and (
-                route.endswith("/suspensions") or route.endswith("/encounters") or "/encounters/" in route or
+                route.endswith("/suspensions") or route.endswith("/data-use") or route.endswith("/encounters") or "/encounters/" in route or
                 route.endswith("/record-requests") or route.endswith("/case-bindings") or route.endswith("/sources") or
                 route.endswith("/runs") or re.fullmatch(r"/v1/patients/[^/]+/cases/[^/]+/questions/[^/]+/runs/[^/]+/cancel", route) is not None or
                 route.endswith("/questions") or route.endswith(("/composer/source-preflight",

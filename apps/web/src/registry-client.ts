@@ -510,6 +510,25 @@ export class RegistrySession {
     if(status===401){this.disconnect();this.#publish({phase:'error',message:messages[401]});}
     else this.#publish({phase:'error',patient:null,message:messages[status] || 'Unexpected API response. No patient information is displayed.'});
   }
+  async readDataUse(purpose:'operations'|'research',signal:AbortSignal):Promise<{state:'unrecorded'|'restricted'|'unrestricted';revision:number}> {
+    const patient=this.#state.patient,scope=this.#scope,read=this.#read;
+    if(!patient||!this.#token||signal.aborted)throw Error('Data-use status unavailable');
+    const control=new AbortController();this.#controllers.add(control);
+    const stop=()=>control.abort();signal.addEventListener('abort',stop);
+    const current=()=>!control.signal.aborted&&scope===this.#scope&&read===this.#read&&this.#state.patient===patient;
+    const timeout=setTimeout(stop,10000);
+    try{
+      const response=await this.transport('/v1/patients/'+encodeURIComponent(patient.patient_id)+'/data-use/'+purpose,this.#init(control));
+      if(!current()||response.status!==200){void response.body?.cancel().catch(()=>{});throw Error('Data-use status unavailable');}
+      const value=await json(response,4096) as Record<string,unknown>;
+      if(!current()||!value||Object.keys(value).length!==5||value.patient_id!==patient.patient_id||
+        value.target_purpose!==purpose||value.consent_established!==false||
+        !['unrecorded','restricted','unrestricted'].includes(value.state as string)||
+        !Number.isSafeInteger(value.revision)||(value.revision as number)<0||
+        (value.state==='unrecorded')!==(value.revision===0))throw Error('Data-use status unavailable');
+      return {state:value.state as 'unrecorded'|'restricted'|'unrestricted',revision:value.revision as number};
+    }finally{clearTimeout(timeout);signal.removeEventListener('abort',stop);this.#controllers.delete(control);}
+  }
   async read(id:string):Promise<void>{
     if(this.#suspensionIntent)return;
     this.#publish(emptySuspension());

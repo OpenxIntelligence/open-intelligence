@@ -204,6 +204,79 @@ class PostgresPatientRegistry:
             "status": row[3], "revision": row[4],
         }
 
+    def data_use_state(self, patient_id: str, target_purpose: str) -> dict:
+        """Internal journal projection; callers must enforce independent grants."""
+        if target_purpose not in {"operations", "research"}:
+            raise PatientRegistryError("invalid data-use purpose")
+        row = self._fetchone(
+            "SELECT metadata_json->>'state',metadata_json->>'revision' "
+            "FROM identity.identity_domain_events WHERE patient_id=%s "
+            "AND event_type='identity.data_use.decided' "
+            "AND metadata_json->>'target_purpose'=%s ORDER BY id DESC LIMIT 1",
+            (_key(patient_id, "patient_id"), target_purpose),
+        )
+        return {"patient_id": patient_id, "target_purpose": target_purpose,
+                "state": row[0] if row else "unrecorded",
+                "revision": int(row[1]) if row else 0,
+                "consent_established": False}
+
+    def decide_data_use(self, patient_id: str, *, actor: str, purpose: str,
+                        target_purpose: str, state: str, expected_revision: int,
+                        request_key: str, recheck_authority=None, prepare_response=None):
+        """Synthetic administrative restriction, not consent or a new access grant.
+
+        Reuses the canonical patient lock and immutable journal. Exact retries
+        recover the historical decision receipt, not a claim about current state.
+        """
+        patient_id = _key(patient_id, "patient_id")
+        request_key = _key(request_key, "request_key")
+        if (purpose != "operations" or target_purpose not in {"operations", "research"}
+                or state not in {"restricted", "unrestricted"}
+                or type(expected_revision) is not int
+                or not 0 <= expected_revision < 9_223_372_036_854_775_807):
+            raise PatientRegistryError("invalid data-use decision")
+        self._allow(actor, patient_id, "data_use_manage", purpose)
+        self._allow(actor, patient_id, "patient_read", purpose)
+        fingerprint = _digest(dict(patient_id=patient_id, actor=actor, purpose=purpose,
+                                   target_purpose=target_purpose, state=state,
+                                   expected_revision=expected_revision))
+        with self.transaction():
+            patient = self._fetchone(
+                "SELECT status FROM identity.identity_patients WHERE patient_id=%s FOR UPDATE",
+                (patient_id,))
+            if patient is None or patient[0] != "active":
+                raise PatientRegistryDenied("unknown or inactive patient")
+            if recheck_authority is not None:
+                recheck_authority()
+            self._allow(actor, patient_id, "data_use_manage", purpose)
+            old = self._fetchone(
+                "SELECT metadata_json->>'request_digest',metadata_json->>'revision' "
+                "FROM identity.identity_domain_events WHERE patient_id=%s "
+                "AND event_type='identity.data_use.decided' "
+                "AND metadata_json->>'request_key'=%s ORDER BY id DESC LIMIT 1",
+                (patient_id, request_key))
+            if old:
+                if old[0] != fingerprint:
+                    raise PatientRegistryConflict("request key reused with different intent")
+                revision = int(old[1])
+            else:
+                current = self.data_use_state(patient_id, target_purpose)
+                if current["revision"] != expected_revision:
+                    raise PatientRegistryConflict("data-use revision changed")
+                revision = expected_revision + 1
+                self._write_event(patient_id, "identity.data_use.decided", dict(
+                    actor=actor, purpose=purpose, target_purpose=target_purpose,
+                    state=state, revision=revision, request_key=request_key,
+                    request_digest=fingerprint))
+            result = dict(patient_id=patient_id, target_purpose=target_purpose,
+                          state=state, revision=revision, consent_established=False)
+            response = prepare_response(result) if prepare_response else result
+            if recheck_authority is not None:
+                recheck_authority()
+            self._allow(actor, patient_id, "data_use_manage", purpose)
+            self._allow(actor, patient_id, "patient_read", purpose)
+            return response
+
     def list_patients(self, *, organization: str, actor: str, purpose: str) -> list[dict]:
         organization = _key(organization, "organization")
         self._allow(actor, organization, "patient_list", purpose)
