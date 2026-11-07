@@ -37,6 +37,9 @@ class SourceEventWorkerTests(unittest.TestCase):
                 self.assertEqual(worker.run_once(Settings(), lambda: TOKEN,
                                                   "PATIENT-ONE", "CASE-ALPHA", authentication=Provider()),
                                  {"status": "blocked"})
+                self.assertEqual(worker.read_status(Settings(), lambda: TOKEN,
+                                                    "PATIENT-ONE", "CASE-ALPHA", authentication=Provider()),
+                                 {"status": "blocked"})
 
     def test_wrong_patient_or_purpose_cannot_claim_delivery(self):
         worker = self.worker()
@@ -50,6 +53,9 @@ class SourceEventWorkerTests(unittest.TestCase):
                 self.assertEqual(worker.run_once(Settings(), lambda: TOKEN,
                                                   "PATIENT-ONE", "CASE-ALPHA", authentication=Provider()),
                                  {"status": "blocked"})
+                self.assertEqual(worker.read_status(Settings(), lambda: TOKEN,
+                                                    "PATIENT-ONE", "CASE-ALPHA", authentication=Provider()),
+                                 {"status": "blocked"})
 
     def test_provider_failure_never_discloses_credential_or_exception_details(self):
         worker = self.worker()
@@ -60,6 +66,8 @@ class SourceEventWorkerTests(unittest.TestCase):
         result = worker.run_once(Settings(), lambda: TOKEN, "PATIENT-ONE", "CASE-ALPHA",
                                  authentication=Provider())
         self.assertEqual(result, {"status": "blocked"})
+        self.assertEqual(worker.read_status(Settings(), lambda: TOKEN, "PATIENT-ONE", "CASE-ALPHA",
+                                            authentication=Provider()), {"status": "blocked"})
         for secret in (private, TOKEN):
             self.assertNotIn(secret, json.dumps(result))
 

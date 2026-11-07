@@ -102,6 +102,38 @@ class PostgresSourceEventDelivery:
             "ORDER BY d.event_id,d.delivery_id LIMIT 1 FOR UPDATE OF d SKIP LOCKED",
             (patient_id, case_id, organization, actor, purpose, CONSUMER)))
 
+    def inspect(self, patient_id, case_id, *, organization, actor, purpose, recheck_authority):
+        """Observe this actor's backlog without claiming or changing delivery state."""
+        with self.registry.transaction():
+            self._scope(patient_id, case_id, organization, actor, purpose, recheck_authority)
+            row = self.registry._fetchone(
+                "WITH stamp AS MATERIALIZED (SELECT clock_timestamp() AS observed_at) "
+                "SELECT stamp.observed_at, "
+                "count(o.event_id) FILTER (WHERE d.delivery_id IS NULL), "
+                "count(*) FILTER (WHERE d.state='queued' AND d.available_at<=stamp.observed_at), "
+                "count(*) FILTER (WHERE d.state='queued' AND d.available_at>stamp.observed_at), "
+                "count(*) FILTER (WHERE d.state='running' AND d.lease_expires_at>stamp.observed_at), "
+                "count(*) FILTER (WHERE d.state='running' AND d.lease_expires_at<=stamp.observed_at), "
+                "count(*) FILTER (WHERE d.state='delivered'), "
+                "count(*) FILTER (WHERE d.state='dead_letter') "
+                "FROM stamp LEFT JOIN coordination.source_event_outbox o ON "
+                "o.patient_id=%s AND o.case_id=%s AND o.origin_org=%s AND o.purpose=%s "
+                "LEFT JOIN coordination.source_event_deliveries d ON d.event_id=o.event_id "
+                "AND d.patient_id=o.patient_id AND d.case_id=o.case_id AND d.origin_org=o.origin_org "
+                "AND d.purpose=o.purpose AND d.actor=%s AND d.consumer=%s "
+                "GROUP BY stamp.observed_at",
+                (patient_id, case_id, organization, purpose, actor, CONSUMER))
+            # The empty outbox's LEFT JOIN sentinel must not count as pending.
+            result = dict(zip(("observed_at", "unclaimed", "queued_ready", "queued_waiting",
+                               "running_active", "running_expired", "delivered", "dead_letter"), row))
+            result["observed_at"] = result["observed_at"].isoformat()
+            recheck_authority()
+            self.registry.append_event(
+                patient_id, "source.delivery.status_read_authorized", case_id=case_id,
+                actor=actor, purpose=purpose, consumer=CONSUMER)
+            recheck_authority()
+            return {"status": "observed", **result}
+
     def claim_next(self, patient_id: str, case_id: str, *, organization: str, actor: str,
                    purpose: str, recheck_authority: Callable[[], None], lease_seconds: int = 30):
         """Claim one event for the current actor, or expose an exhausted lease.

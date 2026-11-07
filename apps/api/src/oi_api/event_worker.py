@@ -19,8 +19,9 @@ from .source_event_delivery import EventLeaseLost
 from .worker import _token_reader
 
 
-def run_once(settings: Settings, token_provider: Callable[[], str], patient_id: str, case_id: str, *,
-             authentication: Authentication | None = None, lease_seconds: int = 30) -> dict:
+def _run(settings: Settings, token_provider: Callable[[], str], patient_id: str, case_id: str, *,
+         authentication: Authentication | None = None, lease_seconds: int = 30,
+         inspect_only: bool = False) -> dict:
     """Claim one bounded batch; never return source text, tokens or exception details."""
     if type(lease_seconds) is not int or not 1 <= lease_seconds <= 300:
         raise ValueError("Lease duration must be between 1 and 300 seconds")
@@ -54,6 +55,10 @@ def run_once(settings: Settings, token_provider: Callable[[], str], patient_id: 
 
             deliveries = PostgresComposerRuns(registry).source_events()
             try:
+                if inspect_only:
+                    return deliveries.inspect(
+                        patient_id, case_id, organization=initial.organization, actor=initial.actor,
+                        purpose=initial.purpose, recheck_authority=recheck)
                 claim = deliveries.claim_next(
                     patient_id, case_id, organization=initial.organization, actor=initial.actor,
                     purpose=initial.purpose, recheck_authority=recheck, lease_seconds=lease_seconds)
@@ -85,21 +90,40 @@ def run_once(settings: Settings, token_provider: Callable[[], str], patient_id: 
         database.close()
 
 
+def run_once(settings: Settings, token_provider: Callable[[], str], patient_id: str, case_id: str, *,
+             authentication: Authentication | None = None, lease_seconds: int = 30) -> dict:
+    return _run(settings, token_provider, patient_id, case_id,
+                authentication=authentication, lease_seconds=lease_seconds)
+
+
+def read_status(settings: Settings, token_provider: Callable[[], str], patient_id: str, case_id: str, *,
+                authentication: Authentication | None = None) -> dict:
+    return _run(settings, token_provider, patient_id, case_id,
+                authentication=authentication, inspect_only=True)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Deliver one independently fictional source-context event batch.")
-    parser.add_argument("--once", action="store_true", required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--once", action="store_true")
+    mode.add_argument("--status", action="store_true", help="Inspect this actor's backlog without claiming work")
     parser.add_argument("--patient", required=True)
     parser.add_argument("--case", required=True)
     parser.add_argument("--lease-seconds", type=int, default=30, choices=range(1, 301), metavar="1..300")
     args = parser.parse_args(argv)
     path = os.environ.get("OI_API_EVENT_WORKER_TOKEN_FILE")
     try:
-        result = ({"status": "blocked"} if not path else run_once(
-            Settings.from_env(), _token_reader(path), args.patient, args.case, lease_seconds=args.lease_seconds))
+        if not path:
+            result = {"status": "blocked"}
+        elif args.status:
+            result = read_status(Settings.from_env(), _token_reader(path), args.patient, args.case)
+        else:
+            result = run_once(Settings.from_env(), _token_reader(path), args.patient, args.case,
+                              lease_seconds=args.lease_seconds)
     except Exception:
         result = {"status": "unavailable"}
     print(json.dumps(result, sort_keys=True))
-    return 0 if result["status"] in {"idle", "delivered", "queued", "fenced"} else 2
+    return 0 if result["status"] in {"idle", "delivered", "queued", "fenced", "observed"} else 2
 
 
 if __name__ == "__main__":
