@@ -107,7 +107,11 @@
         "oi_api.case_bindings",
         "oi_api.record_requests"
       ],
-      "exports": {},
+      "exports": {
+        "oi_api.case_bindings": [
+          "CanonicalCaseBindings"
+        ]
+      },
       "depends_on": []
     },
     {
@@ -141,7 +145,8 @@
         ]
       },
       "depends_on": [
-        "platform"
+        "platform",
+        "patient-records"
       ]
     },
     {
@@ -308,7 +313,8 @@
       },
       "depends_on": [
         "platform",
-        "patient-context"
+        "patient-context",
+        "patient-records"
       ]
     }
   ],
@@ -612,15 +618,6 @@
         "_source_id"
       ],
       "reason": "Existing consumer directly uses source-version storage, prepared-response typing or private source identifiers. Preserve source custody, final authority and caller transaction boundaries until a bounded source port is extracted.",
-      "backlog": "OI-005"
-    },
-    {
-      "consumer": "oi_api.patients",
-      "provider": "oi_api.case_bindings",
-      "symbols": [
-        "CanonicalCaseBindings"
-      ],
-      "reason": "Existing consumer uses canonical case-binding storage or private case identifier validation. Preserve the shared patient/case authority and isolate a bounded binding contract before widening the interface.",
       "backlog": "OI-005"
     },
     {

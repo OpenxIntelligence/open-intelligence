@@ -271,3 +271,15 @@ test('dismissing another original cannot mask a preview denial on the same patie
   if(status===401) assert.equal(session.snapshot().connected,false);
  }
 });
+test('institution choice is pinned through an uncertain import and exact retry',async()=>{
+ const id='IDENT-'+'C'.repeat(32);let attempt=0;
+ const {session,calls}=await ready(()=>{if(++attempt===1)throw Error('lost response');return reply({...RECEIPT,duplicate:true},200);});
+ await session.importLaboratory(CID,RAW,true,null,id);
+ const first=calls.find(x=>x[1].method==='POST')[1].body;
+ assert.equal(JSON.parse(first).source_identity_id,id);
+ await session.importLaboratory(CID,RAW,true,null,'IDENT-'+'D'.repeat(32));
+ assert.equal(attempt,1);
+ await session.retryLaboratoryImport();
+ assert.equal(calls.filter(x=>x[1].method==='POST')[1][1].body,first);
+ assert.equal(session.snapshot().laboratoryPhase,'saved');
+});

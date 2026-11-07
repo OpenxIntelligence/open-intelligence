@@ -93,6 +93,8 @@ jobs:
           python --version
       - name: Apply the explicit migration to the disposable database
         run: python -m oi_api.migrate upgrade head
+      - name: Verify institutional identity migration custody and actual restore
+        run: python -m unittest discover -s apps/api/tests -p test_source_identities.py -v
       - name: Verify source purpose compatibility and published-history preservation first
         run: |
           python - <<'PYTEST'

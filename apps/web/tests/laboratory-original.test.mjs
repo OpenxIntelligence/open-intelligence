@@ -93,3 +93,11 @@ test('text reports keep the existing exact case and newline validation, includin
   const{source,value}=original(invalid);await assert.rejects(()=>verifyOriginal(value,caseId,source,subject));
  }
 });
+test('additional institutional original uses its authorized qualified subject and rejects mismatches',async()=>{
+ const {source,value}=original(JSON.stringify(fixture()).replaceAll('FICTIONAL-PATIENT-A','FICTIONAL-PATIENT-B'));
+ const identity={source_organization:'ORG-FICTIONAL-B',source_system:'SYS-FICTIONAL',source_subject_ref:'FICTIONAL-PATIENT-B'};
+ const qualified={...value,institutional_identity:identity};
+ assert.equal((await verifyOriginal(qualified,caseId,source,subject)).original_text,value.original_text);
+ for(const bad of [{...identity,source_subject_ref:'FICTIONAL-PATIENT-C'},{...identity,source_system:''},
+  {...identity,clinical_approval:true}])await assert.rejects(()=>verifyOriginal({...qualified,institutional_identity:bad},caseId,source,subject));
+});

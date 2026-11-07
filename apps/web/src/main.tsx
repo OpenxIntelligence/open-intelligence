@@ -213,6 +213,8 @@ function App(){
        <p>{state.original.state} · SHA-256 <code>{state.original.sha256}</code></p>
        <p>Verified against the selected version metadata. Clinical review: not established. Access was checked for this read.</p>
        <button data-testid="close-original" onClick={closeOriginal}>Close original</button>
+       {state.original.institutional_identity&&<p data-testid="original-institution">Institution {state.original.institutional_identity.source_organization} · {state.original.institutional_identity.source_system}<br/>
+         Source patient identifier <code>{state.original.institutional_identity.source_subject_ref}</code></p>}
        <pre className="original-text" data-testid="server-original" tabIndex={0} role="region" aria-label="Original document text" onFocus={event=>event.currentTarget.scrollIntoView({block:'center'})}>{state.original.original_text}</pre>
       </section>}
       {state.cases!==null&&<section aria-labelledby="case-list-heading" data-testid="records-cases">

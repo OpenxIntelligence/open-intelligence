@@ -7,9 +7,11 @@ no actual source record or clinical authority is introduced.
 from __future__ import annotations
 
 from datetime import datetime
+import json
+import uuid
 
 from open_intelligence.patient_registry import (
-    PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError, _key,
+    PatientRegistryConflict, PatientRegistryDenied, PatientRegistryError, _key, _digest,
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
@@ -33,6 +35,137 @@ class CanonicalCaseBindings:
         # Use the same active patient and origin check as the request owner;
         # FOR SHARE keeps patient suspension from racing the write transaction.
         PostgresRecordRequests(self.registry)._active_patient(patient_id, organization)
+
+    def _identity_table(self):
+        return self.registry._fetchone("SELECT to_regclass('coordination.case_source_identities')")[0]
+
+    def _identity_lock(self, organization, system, subject):
+        # Also used by primary binding creation. Serialize qualified identities
+        # across cases without exposing another patient's identifiers.
+        self.registry._fetchone("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+            (json.dumps([organization, system, subject], separators=(",", ":")),))
+
+    def source_identity(self, patient_id, case_id, *, organization, purpose,
+                        identity_id=None):
+        """Resolve inside the caller's case lock; never infer from an incoming file."""
+        if not self.registry._transaction_active:
+            raise PatientRegistryError("Source identity requires caller transaction")
+        row = self.registry._fetchone(
+            "SELECT source_organization,source_system,source_subject_ref FROM coordination.patient_case_bindings "
+            "WHERE case_id=%s AND patient_id=%s AND origin_org=%s AND purpose=%s AND status='active'",
+            (case_id, patient_id, organization, purpose))
+        if row is None:
+            raise PatientRegistryDenied("Source identity unavailable")
+        if identity_id is None:
+            return tuple(row)
+        identity_id = _key(identity_id, "identity_id")
+        row = self.registry._fetchone(
+            "SELECT source_organization,source_system,source_subject_ref FROM coordination.case_source_identities "
+            "WHERE identity_id=%s AND case_id=%s AND purpose=%s AND status='linked'",
+            (identity_id, case_id, purpose))
+        if row is None:
+            raise PatientRegistryDenied("Source identity unavailable")
+        return tuple(row)
+
+    def _source_case(self, patient_id, case_id, organization, purpose):
+        self._patient(patient_id, organization)
+        row = self.registry._fetchone(
+            "SELECT patient_id,origin_org,purpose,status FROM coordination.patient_case_bindings "
+            "WHERE case_id=%s FOR UPDATE", (case_id,))
+        if row is None or tuple(row) != (patient_id, organization, purpose, "active"):
+            raise PatientRegistryDenied("Source identity unavailable")
+
+    def check_source_origin(self, case_id, source_organization, source_system, source_subject_ref):
+        """Validate immutable custody metadata against this case's source owner."""
+        primary = self.registry._fetchone(
+            "SELECT source_organization,source_system,source_subject_ref FROM coordination.patient_case_bindings WHERE case_id=%s",
+            (case_id,))
+        qualified = (source_organization,source_system,source_subject_ref)
+        if primary is not None and tuple(primary) == qualified:
+            return False
+        if self._identity_table() and self.registry._fetchone(
+            "SELECT identity_id FROM coordination.case_source_identities WHERE case_id=%s "
+            "AND source_organization=%s AND source_system=%s AND source_subject_ref=%s AND status='linked'",
+            (case_id,*qualified)) is not None:
+            return True
+        raise PatientRegistryError("Stored source identity is not linked to this case")
+
+    @staticmethod
+    def _identity_view(row):
+        keys = ("identity_id", "source_organization", "source_system", "source_subject_ref",
+                "review_ref", "created_by", "created_at", "status", "primary_identity")
+        result = dict(zip(keys, row))
+        result["created_at"] = row[6].isoformat()
+        return result
+
+    def list_source_identities(self, patient_id, case_id, *, organization, actor, purpose,
+                               prepare_response, recheck_authority):
+        with self.registry.transaction():
+            self._source_case(patient_id, case_id, organization, purpose)
+            rows = self.registry._fetchall(
+                "SELECT identity_id,source_organization,source_system,source_subject_ref,review_ref,"
+                "created_by,created_at,status,primary_identity FROM coordination.case_source_identities "
+                "WHERE case_id=%s ORDER BY created_at,identity_id LIMIT 65", (case_id,))
+            if len(rows) > 64:
+                raise PatientRegistryError("Source identity history exceeds supported bounds")
+            result = prepare_response({"patient_id":patient_id,"case_id":case_id,
+                "identities":[self._identity_view(row) for row in rows]})
+            recheck_authority()
+            self.registry.append_event(patient_id, "identity.source_identities_read", case_id=case_id,
+                                       actor=actor, purpose=purpose)
+            recheck_authority()
+            return result
+
+    def add_source_identity(self, patient_id, case_id, *, organization, actor, purpose,
+                            source_organization, source_system, source_subject_ref,
+                            review_ref, request_key, prepare_response, recheck_authority):
+        patient_id, organization, actor = (_key(patient_id,"patient_id"),
+            _key(organization,"organization"),_key(actor,"actor"))
+        case_id = _case_id(case_id)
+        source_organization, source_system, source_subject_ref, review_ref, request_key = (
+            _key(value, name) for name,value in (("source_organization",source_organization),
+            ("source_system",source_system),("source_subject_ref",source_subject_ref),
+            ("review_ref",review_ref),("request_key",request_key)))
+        if request_key == "primary":
+            raise PatientRegistryError("Reserved request key")
+        digest = _digest({"patient_id":patient_id,"case_id":case_id,"organization":organization,
+            "actor":actor,"purpose":purpose,"source_organization":source_organization,
+            "source_system":source_system,"source_subject_ref":source_subject_ref,"review_ref":review_ref})
+        with self.registry.transaction():
+            self._source_case(patient_id,case_id,organization,purpose)
+            command = self.registry._fetchone(
+                "SELECT identity_id,status,request_digest FROM coordination.case_source_identities "
+                "WHERE case_id=%s AND request_key=%s", (case_id,request_key))
+            duplicate = command is not None
+            if command is not None:
+                if command[2] != digest:
+                    raise PatientRegistryConflict("Source identity request intent changed")
+                identity_id, status = command[:2]
+            else:
+                count = self.registry._fetchone("SELECT count(*) FROM coordination.case_source_identities WHERE case_id=%s",(case_id,))[0]
+                if count >= 64:
+                    raise PatientRegistryConflict("Source identity limit reached")
+                self._identity_lock(source_organization,source_system,source_subject_ref)
+                existing = self.registry._fetchone(
+                    "SELECT case_id FROM coordination.case_source_identities WHERE source_organization=%s "
+                    "AND source_system=%s AND source_subject_ref=%s AND status='linked'",
+                    (source_organization,source_system,source_subject_ref))
+                if existing is not None and existing[0] == case_id:
+                    raise PatientRegistryConflict("Source identity already linked to this case")
+                status = "quarantined" if existing is not None else "linked"
+                identity_id = "IDENT-" + uuid.uuid4().hex.upper()
+                self.registry._execute(
+                    "INSERT INTO coordination.case_source_identities "
+                    "(identity_id,case_id,source_organization,source_system,source_subject_ref,review_ref,"
+                    "created_by,purpose,status,request_key,request_digest) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (identity_id,case_id,source_organization,source_system,source_subject_ref,review_ref,
+                     actor,purpose,status,request_key,digest))
+                self.registry.append_event(patient_id, "identity.source_identity_recorded",case_id=case_id,
+                    identity_id=identity_id, actor=actor,purpose=purpose,status=status)
+            result = prepare_response({"patient_id":patient_id,"case_id":case_id,"identity_id":identity_id,
+                "status":status,"duplicate":duplicate,"source_identity_verified":False})
+            recheck_authority()
+            return result
 
     @staticmethod
     def _view(row: tuple) -> dict:
@@ -95,6 +228,24 @@ class CanonicalCaseBindings:
                     raise PatientRegistryConflict("Case reference is already bound or revoked")
                 return {"case_id": case_id, "patient_id": patient_id,
                         "duplicate": True, "source_identity_verified": False}
+            if self._identity_table():
+                self._identity_lock(source_organization, source_system, source_subject_ref)
+                linked = self.registry._fetchone(
+                    "SELECT case_id FROM coordination.case_source_identities WHERE source_organization=%s "
+                    "AND source_system=%s AND source_subject_ref=%s AND status='linked'",
+                    (source_organization,source_system,source_subject_ref))
+                if linked is not None:
+                    # Another identical primary command may have committed
+                    # while this transaction waited for the qualified lock.
+                    if linked[0] == case_id:
+                        concurrent = self.registry._fetchone(
+                            "SELECT patient_id,origin_org,source_organization,source_system,"
+                            "source_subject_ref,review_ref,created_by,purpose,status "
+                            "FROM coordination.patient_case_bindings WHERE case_id=%s", (case_id,))
+                        if concurrent is not None and tuple(concurrent[:8]) == intent and concurrent[8] == "active":
+                            return {"case_id":case_id,"patient_id":patient_id,
+                                    "duplicate":True,"source_identity_verified":False}
+                    raise PatientRegistryConflict("External source identity already linked")
             # The unique qualified external subject prevents silent many-to-many
             # reuse. Do not infer identity from subject text; this is a fixture.
             inserted = self.registry._fetchone(

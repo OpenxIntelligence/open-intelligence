@@ -2,7 +2,7 @@ import {useEffect,useRef,useState,useSyncExternalStore} from 'react';
 import {prepareLaboratoryFile} from './laboratory-fhir';
 import {LABORATORY_PREVIEW_REJECTED,LaboratoryPreviewRejected} from './laboratory-preview';
 import type {LaboratoryPreview} from './laboratory-preview';
-import type {LaboratoryFile} from './laboratory-fhir';
+import type {LaboratoryFile,SourceIdentity} from './laboratory-fhir';
 import type {RegistrySession} from './registry-client';
 
 function LaboratoryResults({preview}:{preview:LaboratoryPreview}) {
@@ -27,6 +27,8 @@ export function LaboratoryIntake({session,patientId,caseId,disabled=false}:{
   session:RegistrySession;patientId:string;caseId:string;disabled?:boolean;
 }){
   const state=useSyncExternalStore(session.subscribe,session.snapshot);
+  const [identities,setIdentities]=useState<readonly SourceIdentity[]|null>(null),[identityId,setIdentityId]=useState('');
+  const identity=identities?.find(row=>row.identity_id===identityId);
   const [file,setFile]=useState<LaboratoryFile|null>(null),[name,setName]=useState('');
   const [confirmed,setConfirmed]=useState(false),[previous,setPrevious]=useState('');
   const [message,setMessage]=useState('Select a fictional JSON original. Selection does not upload it.');
@@ -39,7 +41,7 @@ export function LaboratoryIntake({session,patientId,caseId,disabled=false}:{
   const locked=disabled||pending;
   const canConfirm=!!file && !locked && !previewing && previewState!=='rejected' && preview?.report_reference!==null;
   const canImport=canConfirm && confirmed;
-  useEffect(()=>{generation.current++;setFile(null);setName('');setConfirmed(false);setPrevious('');setPreviewState(null);
+  useEffect(()=>{generation.current++;setFile(null);setName('');setConfirmed(false);setPrevious('');setPreviewState(null);setIdentities(null);setIdentityId('');
     return()=>{generation.current++;};},[patientId,caseId]);
   async function select(candidate?:File){
     if(locked)return;
@@ -58,7 +60,7 @@ export function LaboratoryIntake({session,patientId,caseId,disabled=false}:{
     const request=++generation.current;
     setPreviewState('loading');setConfirmed(false);setMessage('Checking the file against this case…');
     try {
-      const result=await session.previewLaboratory(caseId,file);
+      const result=await session.previewLaboratory(caseId,file,identity);
       if(request!==generation.current) return;
       setPreviewState(result);setMessage('Preview ready. Results are source-reported and clinically unreviewed.');
     } catch(error) {
@@ -80,7 +82,22 @@ export function LaboratoryIntake({session,patientId,caseId,disabled=false}:{
     <p>Import an independently authored fictional FHIR R4 laboratory JSON file into this patient’s existing record.
       The supported format contains one patient, one specimen, one final report and 1–16 final observations.</p>
     <p className="small">Patient <code>{patientId}</code> · case <code>{caseId}</code>. Imported results stay unreviewed.</p>
-    <form onSubmit={event=>{event.preventDefault();if(file&&canImport)void session.importLaboratory(caseId,file.text,confirmed,previous||null);}}>
+    <button type="button" data-testid="source-identities-refresh" disabled={locked||previewing}
+      onClick={()=>{const request=++generation.current;setIdentities(null);setIdentityId('');setConfirmed(false);setPreviewState(null);
+        void session.sourceIdentities(caseId).then(rows=>{if(request===generation.current)setIdentities(rows);})
+          .catch(()=>{if(request===generation.current)setMessage('Source identities unavailable. Recheck access before another import.');});}}>
+      Check institutional source identities</button>
+    {identities&&<><label htmlFor="laboratory-source-identity">Institution and patient identifier</label>
+      <select id="laboratory-source-identity" data-testid="laboratory-source-identity" value={identityId} disabled={locked||previewing}
+        onChange={event=>{generation.current++;setIdentityId(event.target.value);setConfirmed(false);setPrevious('');setPreviewState(null);}}>
+        <option value="">Original case source</option>
+        {identities.filter(row=>!row.primary_identity).map(row=><option key={row.identity_id} value={row.identity_id}
+          disabled={row.status!=='linked'}>{row.source_organization} · {row.source_system} · {row.source_subject_ref}
+          {row.status==='quarantined'?' — held for identity review':''}</option>)}
+      </select>
+      <p className="small">Associations are explicit fictional declarations. A held identity cannot receive records.
+        {identity&&<> Selected: {identity.source_organization} / {identity.source_subject_ref}.</>}</p></>}
+    <form onSubmit={event=>{event.preventDefault();if(file&&canImport)void session.importLaboratory(caseId,file.text,confirmed,previous||null,identity?.identity_id);}}>
       <label htmlFor="laboratory-file">Fictional laboratory JSON (up to 64 KiB)</label>
       <input ref={input} id="laboratory-file" data-testid="laboratory-file" type="file" accept=".json,application/json"
         disabled={locked} onChange={event=>void select(event.target.files?.[0])}/>

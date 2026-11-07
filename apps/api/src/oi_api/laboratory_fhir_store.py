@@ -12,7 +12,7 @@ from open_intelligence.patient_registry import (
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
-from .case_bindings import _case_id
+from .case_bindings import _case_id, CanonicalCaseBindings
 from .laboratory_fhir_r4 import PreparedLaboratoryBundle
 from .sources import PostgresSourceVersions, _source_id
 
@@ -57,16 +57,11 @@ class PostgresLaboratoryFHIR:
             raise PatientRegistryError(field + " unavailable") from None
 
     def _binding_metadata(self, patient_id: str, case_id: str, organization: str,
-                          purpose: str) -> tuple[int, str, str, str]:
+                          purpose: str, source_identity_id: str | None = None) -> tuple[int, str, str, str]:
         revision = self.sources._binding(patient_id, case_id, organization, purpose)
-        row = self.registry._fetchone(
-            "SELECT source_organization,source_system,source_subject_ref "
-            "FROM coordination.patient_case_bindings "
-            "WHERE case_id=%s AND patient_id=%s AND status='active'",
-            (case_id, patient_id),
-        )
-        if row is None:
-            raise PatientRegistryDenied("Source mapping unavailable")
+        row = CanonicalCaseBindings(self.registry).source_identity(
+            patient_id, case_id, organization=organization, purpose=purpose,
+            identity_id=source_identity_id)
         return revision, row[0], row[1], row[2]
 
     def _receipt(self, source_id: str, *, duplicate: bool) -> dict:
@@ -88,6 +83,7 @@ class PostgresLaboratoryFHIR:
                       organization: str, actor: str, purpose: str, request_key: str,
                       expected_previous_source_id: str | None,
                       recheck_authority: Callable[[], None],
+                      source_identity_id: str | None = None,
                       prepare_response: Callable[[dict], PreparedResponse] | None = None
                       ) -> dict | PreparedResponse:
         patient_id = _key(patient_id, "patient_id")
@@ -108,6 +104,7 @@ class PostgresLaboratoryFHIR:
         event_date = self._source_date(prepared.report_effective_at, "FHIR report effective date")
         issued_at = self._source_date(prepared.report_issued_at, "FHIR report issued date")
         intent = _digest({
+            **({"source_identity_id": source_identity_id} if source_identity_id is not None else {}),
             "operation": "fhir_laboratory_import",
             "patient_id": patient_id, "case_id": case_id,
             "organization": organization, "actor": actor, "purpose": purpose,
@@ -123,7 +120,7 @@ class PostgresLaboratoryFHIR:
 
         with self.registry.transaction():
             _, source_org, source_system, source_subject = self._binding_metadata(
-                patient_id, case_id, organization, purpose)
+                patient_id, case_id, organization, purpose, source_identity_id)
             if prepared.subject_reference != "Patient/" + source_subject:
                 raise PatientRegistryDenied("Mapped FHIR subject changed")
 
@@ -148,6 +145,8 @@ class PostgresLaboratoryFHIR:
             )
             if old is not None and old[6] is None:
                 raise PatientRegistryConflict("Document format cannot change across intake owners")
+            if old is not None and tuple(old[6:9]) != (source_org, source_system, prepared.subject_reference):
+                raise PatientRegistryConflict("Report identifier belongs to another source identity")
             if old is None and expected_previous_source_id is not None:
                 raise PatientRegistryConflict("First FHIR source cannot amend an absent original")
             if old is not None and expected_previous_source_id is not None and expected_previous_source_id != old[0]:

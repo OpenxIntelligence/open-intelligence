@@ -71,3 +71,59 @@ the draft PR's verification receipt; local PostgreSQL availability is not claime
 `apps/api/tests/test_received_record_requests.py` uses the real PG16 HTTP app, source owner, patient registry, original source bytes, case binding and event history. It checks first receipt/identical retry, restart, source amendment without retarget, cancelled request, wrong case/kind/patient, scoped read versus source read, binding revocation, and failed domain event rollback. Existing source-owner and record-request regression suites remain enabled.
 
 **Review dependency order:** #162 H1 root → #172 patient → #178 record acquisition → #182 case binding → #187 original sources → this candidate. Existing record request, source and patient schemas belong to their original owners; no new migration, vendor dependency, model weights, or frontend framework was introduced. **No Next.js.** This is not a merged/released capability. The exact-head PostgreSQL/HTTP/Chromium CI must pass before describing the integration as verified.
+
+
+## Institutional source identities — connected construction continuation
+
+Base #624 `631c3e0cea30d4b859a2e428d200d352c97c6567` preserves the integrated
+patient permissions, history, diagnostic workspaces and Composer. #560's separate
+amendment reconciliation remains a convergence dependency; it has not been silently
+included or declared merged. Existing #99/#115 and #121 retain intake/MRT-01 ownership.
+
+Migration `0030_case_source_identities` extends the canonical case-binding owner
+with immutable institution/system/subject associations and quarantined conflicting
+association attempts. It backfills each original primary identity without changing
+the parent case or source rows, seeds subsequent primary identities transactionally,
+retains unique qualified identities, and refuses downgrade with additional history.
+The same patient journal records actor, purpose and exact command identities.
+
+GET/POST `/v1/patients/{patient_id}/cases/{case_id}/source-identities` require the
+existing independent case-binding read/create grants, active patient/case and matching
+purpose. Writes retain exact retries and quarantine a qualified identity already
+owned by another case without disclosing that case. Held associations cannot import.
+Current authority and actual response encoding precede commit. There is no automatic
+identity matching, release from quarantine, separate patient registry or consent claim.
+
+Laboratory preview/import accepts an optional `source_identity_id`. Omitted selection
+retains the primary mapping and legacy retry digest. Explicit choices bind that identity
+into the import command and source metadata. Same report IDs across institutions fail
+closed, including byte-identical payloads; namespacing colliding report IDs is unfinished.
+Records provides an explicit identity refresh/selection, then preview/import and exact
+original reopening with the institution and source patient identifier. Establishing new
+associations is currently an operator API action, not a patient self-authorization flow.
+The existing uncertain import preserves the selected identity and request on exact retry.
+
+Local checks at the initial implementation: 826 client tests, production build,
+17 parser/graph/config checks, strict new wire test, architecture and synthetic-data
+boundary pass. Ten new PostgreSQL tests are skipped locally because no PostgreSQL16
+server or Docker executable is installed. Hosted acceptance remains pending until its
+exact source, jobs and counts are recorded in the draft PR. The tests cover three
+institutions, explicit amendments, original bytes, collision quarantine, wrong scope,
+independent grants, concurrent retry, late revocation/encoding rollback, populated
+migration/downgrade and actual pg_dump/pg_restore with restored HTTP and denial.
+
+Remaining: first-party identity review/disposition UI, ambiguous-original quarantine
+intake and release, namespaced institutional report identifiers, #560 convergence and
+full MRT-01 scientific/clinical-review acceptance. This source identity foundation is
+synthetic engineering work; no merge, deployment, real patient data or clinical effects.
+
+
+Follow-up self-review retained concurrent legacy primary-create recovery after the
+qualified-identity lock and updated explicit migration fixture cleanup for the owned
+child table/functions. Local reference regression passed 1,036 tests on an exported
+source tree, and the 31 architecture tests passed. The full initial local API run
+attempted 1,055 tests with 75 AF_UNIX permission errors and 638 database skips, without
+assertion failures; it is not database acceptance. The initial local npm install
+included an optional binary lacking its LICENSE/NOTICE and failed the rights gate.
+Reinstalling with the existing CI `--omit=optional --ignore-scripts` flags passed all
+13 controls and the inventory (18 installed, two optional entries uninspected).

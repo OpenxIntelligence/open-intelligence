@@ -1,3 +1,4 @@
+from oi_api.contracts import SCHEMA_REVISION
 """Synthetic permission policy acceptance over actual HTTP and PostgreSQL 16."""
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -188,7 +189,7 @@ class PermissionHTTPTests(SourceVersionFixture):
         with self.assertRaises(CommandError):
             migrate(self.admin, "downgrade", "0028_connected_product")
         with self.engine.connect() as c:
-            self.assertEqual(c.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), "0029_patient_access")
+            self.assertEqual(c.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), SCHEMA_REVISION)
 
     def test_suspension_does_not_prevent_removing_existing_permission(self):
         patient = self.seed()

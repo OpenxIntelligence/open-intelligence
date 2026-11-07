@@ -22,7 +22,7 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 from open_intelligence.store import InvalidInput, parse_report
 
-from .case_bindings import _case_id
+from .case_bindings import _case_id, CanonicalCaseBindings
 from .record_requests import PostgresRecordRequests
 from .source_integrity import (
     SourceIntegrityError, validate_fhir_laboratory_original,
@@ -152,6 +152,10 @@ class PostgresSourceVersions:
                 "report_reference","report_effective_at","report_issued_at","fhir_release",
                 "profile_contract","observation_count")
             fhir_sources = {row[0]: dict(zip(metadata_fields, row)) for row in metadata_rows}
+            for metadata in fhir_sources.values():
+                CanonicalCaseBindings(self.registry).check_source_origin(case_id,
+                    metadata["source_organization"],metadata["source_system"],
+                    metadata["subject_reference"].removeprefix("Patient/"))
             observation_rows = self.registry._fetchall(
                 "SELECT o.source_id,o.observation_reference,o.position,o.loinc_code,"
                 "o.effective_at,o.issued_at,o.status,o.value_text,o.unit_code,o.absent_reason,"
@@ -332,6 +336,8 @@ class PostgresSourceVersions:
                     "state": stored["state"], "sha256": stored["sha256"],
                     "original_text": raw.decode("utf-8"),
                     "synthetic": True, "clinical_review_state": "not_established"}
+            if "institutional_identity" in stored:
+                result["institutional_identity"] = stored["institutional_identity"]
             result["access_receipt_id"] = "ACCESS-" + uuid.uuid4().hex.upper()
             prepared = prepare_response(result) if prepare_response is not None else result
             self._read_receipt(
@@ -387,6 +393,12 @@ class PostgresSourceVersions:
                     "report_reference","report_effective_at","report_issued_at","fhir_release",
                     "profile_contract","observation_count")
                 metadata = dict(zip(metadata_fields, metadata_row))
+                # Additional source identities are disclosed only with the exact
+                # authorized original. Legacy responses remain byte-compatible.
+                qualified = (metadata["source_organization"],metadata["source_system"],
+                             metadata["subject_reference"].removeprefix("Patient/"))
+                if CanonicalCaseBindings(self.registry).check_source_origin(case_id,*qualified):
+                    stored["institutional_identity"] = dict(zip(("source_organization","source_system","source_subject_ref"),qualified))
                 observation_rows = self.registry._fetchall(
                     "SELECT source_id,observation_reference,position,loinc_code,effective_at,"
                     "issued_at,status,value_text,unit_code,absent_reason,source_reported,"
