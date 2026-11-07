@@ -259,6 +259,22 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
     click('Open saved passage citations')
     cd.wait("document.querySelector('[data-testid=passage-citations]')?.textContent.includes('FICT-RECORD-CONTINUITY@1 · available')",
             'a fresh authorized read restores the original citation')
+    click('Prepare independent verification')
+    cd.wait("document.querySelector('[data-testid=passage-review-preparation]')?.textContent.includes('Marker pending.')",
+            'source-anchored review preparation')
+    review_text=cd.evaluate("document.querySelector('[data-testid=passage-review-preparation]').textContent")
+    assert 'Independent review preparation' in review_text
+    assert 'PDF page 2' in review_text
+    assert 'FICT-RECORD-CONTINUITY@1' in review_text
+    assert 'metadata' in review_text.lower() and 'no clinical approval' in review_text.lower()
+    assert 'awaiting independent verification' in review_text.lower()
+    review_hash=cd.evaluate("document.querySelector('[data-testid=passage-review-preparation] code').textContent")
+    assert len(review_hash)==64 and all(ch in '0123456789abcdef' for ch in review_hash)
+    click('Prepare independent verification')
+    cd.wait("Boolean(document.querySelector('[data-testid=passage-review-preparation] code'))",
+            'review preparation independently reopened')
+    assert cd.evaluate("document.querySelector('[data-testid=passage-review-preparation] code').textContent")==review_hash, (
+        'New access receipt must not silently change the frozen review-preparation fingerprint')
     original_question,=operator(prefix+'/'+first+'/questions')['questions']
     assert original_question['selection']['anchor']['annotation_revision_id']==initial_revision['revision_id']
 
