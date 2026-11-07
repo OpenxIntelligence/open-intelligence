@@ -18,11 +18,11 @@ from urllib.request import Request, urlopen
 
 from open_intelligence import CaseStore, InvalidInput
 from open_intelligence.__main__ import (
-    FICTIONAL_ACTOR_HEADER,
     FICTIONAL_ACTOR_PURPOSE,
     Handler,
     seed,
 )
+from session_auth import signin_demo
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -470,6 +470,7 @@ class SynthesisHttpTests(unittest.TestCase):
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
+        cls._cookie = signin_demo(cls.port, cls.path)
 
     @classmethod
     def tearDownClass(cls):
@@ -483,7 +484,7 @@ class SynthesisHttpTests(unittest.TestCase):
 
     def _get_json(self, path):
         request = Request(self._url(path),
-                          headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
+                          headers={"Cookie": self._cookie})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())
@@ -492,7 +493,7 @@ class SynthesisHttpTests(unittest.TestCase):
 
     def _get_text(self, path):
         request = Request(self._url(path),
-                          headers={FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
+                          headers={"Cookie": self._cookie})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, response.read().decode("utf-8")
@@ -502,7 +503,7 @@ class SynthesisHttpTests(unittest.TestCase):
     def _post_json(self, path, payload):
         request = Request(self._url(path), data=json.dumps(payload).encode("utf-8"),
                           headers={"Content-Type": "application/json",
-                                   FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
+                                   "Cookie": self._cookie})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())

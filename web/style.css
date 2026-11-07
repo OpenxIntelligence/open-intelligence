@@ -28,6 +28,7 @@
 }
 .intake-source-line { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: start; }
 .intake-source-line > span { padding: var(--space-2); white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono, monospace); font-size: var(--text-sm); }
+.exchange-json { max-height: 320px; overflow: auto; margin-block: var(--space-2); padding: var(--space-2); border: 1px solid var(--color-rule); background: var(--color-paper-2); white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono, monospace); font-size: var(--text-sm); }
 .intake-line-select { min-height: 44px; border: 0; border-right: 1px solid var(--color-rule); border-bottom: 1px solid var(--color-rule); color: var(--color-ink-2); background: var(--color-paper); cursor: pointer; }
 .intake-line-select:hover, .intake-line-select:focus-visible { background: var(--color-paper-2); color: var(--color-accent-ink); }
 .intake-passage { display: grid; gap: var(--space-2); border-left: 3px solid var(--color-rule); padding: var(--space-3); overflow-wrap: anywhere; }

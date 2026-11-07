@@ -285,6 +285,15 @@ def main():
                 verify_questions(questions, versions, patient)
 
             before_restore=restore("oi_api_synthetic",RESTORED)
+            text_amendment = (
+                f"OI-SYNTHETIC-REPORT/1\nPatient: {CASE}\nDocument: FICTIONAL-REPORT-A\n"
+                "Type: laboratory\nEvent-Date: 2026-04-03\nIssued-At: 2026-04-06\n"
+                "Specimen: FICTIONAL-SPECIMEN-A\nAmends: FICTIONAL-REPORT-A@2\n"
+                "Finding: marker|pending|Fictional follow-up report pending.\n"
+            )
+            assert request(case_path + "/sources", {"synthetic": True,
+                           "original_text": text_amendment})[0] == 409
+
             verify_original(patient_path,first_id,FHIR_V1,1,"superseded")
             verify_original(patient_path,second_id,FHIR_V2,2,"current")
             verify_world(patient_path,second_id,"5.00",1)
@@ -310,6 +319,7 @@ def main():
             before_receipts = query(receipts_sql, REVOKED_RESTORE)
             for path,payload in (
                 (questions, None), (questions, cmd1), (questions, cmd2),
+                (case_path + "/sources", {"synthetic": True, "original_text": text_amendment}),
                 (patient_path+"/cases/"+CASE+"/world-model",None),
                 (patient_path+"/cases/"+CASE+"/sources/"+second_id,None),
                 (endpoint,body(FHIR_V2,"FHIR-LAB-AFTER-REVOKE",second_id)),

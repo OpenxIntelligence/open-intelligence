@@ -65,6 +65,15 @@ test('lost import reply is unknown and never automatically retried',async()=>{
  const{session,calls}=await ready(()=>{throw Error('private token '+TOKEN)});await session.importSource(CID,RAW,true);
  assert.equal(calls.length,1);assert.equal(session.snapshot().importOutcome,'unknown');assert.equal(session.snapshot().importReceipt,null);assert.ok(!JSON.stringify(session.snapshot()).includes(TOKEN));
 });
+test('a conflicting amendment gives recovery instructions and no new receipt',async()=>{
+ const {session,calls}=await ready(()=>reply({},409));
+ await session.importSource(CID,RAW,true);
+ const state=session.snapshot();
+ assert.equal(calls.length,1);
+ assert.equal(state.importOutcome,'rejected');
+ assert.equal(state.importReceipt,null);
+ assert.match(state.importMessage,/document ID, version and original format/);
+});
 test('malformed success and HTTP 5xx are ambiguous, not a false rollback',async()=>{
  for(const r of [reply({wrong:true}),reply({},503)]){const{session,calls}=await ready(()=>r);await session.importSource(CID,RAW,true);assert.equal(session.snapshot().importOutcome,'unknown');assert.equal(calls.length,1);}
 });

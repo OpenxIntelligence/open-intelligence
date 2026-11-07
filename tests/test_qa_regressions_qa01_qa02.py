@@ -14,6 +14,7 @@ Fictional data only. Run: PYTHONPATH=src python -m unittest tests.test_qa_regres
 from __future__ import annotations
 
 import http.client
+import json
 import sys
 import tempfile
 import threading
@@ -70,6 +71,10 @@ class TestOptionsSnapshotIdRouteValidation(unittest.TestCase):
                 store.create_grant("FICTIONAL-NAVIGATOR-A", "CASE-QA1",
                                    oi_main.FICTIONAL_ACTOR_PURPOSE,
                                    "2020-01-01", "2999-12-31")
+                # W1: the header path is gone; the demo account signs in.
+                store.create_account("FICTIONAL-NAVIGATOR-A",
+                                     "Fictional demo navigator", "clinician",
+                                     "fictional-demo-1")
             finally:
                 store.close()
             handler = type("QABoundHandler", (oi_main.Handler,), {"db_path": db_path})
@@ -80,11 +85,26 @@ class TestOptionsSnapshotIdRouteValidation(unittest.TestCase):
             try:
                 port = server.server_address[1]
 
+                # Sign in over HTTP; the session cookie replaces the header.
+                conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+                try:
+                    conn.request("POST", "/api/auth/sign-in",
+                                 body=json.dumps(
+                                     {"account_id": "FICTIONAL-NAVIGATOR-A",
+                                      "password": "fictional-demo-1"}),
+                                 headers={"Content-Type": "application/json",
+                                          "Origin": f"http://127.0.0.1:{port}"})
+                    signin = conn.getresponse()
+                    signin.read()
+                    assert signin.status == 200, signin.status
+                    cookie = signin.getheader("Set-Cookie").split(";", 1)[0]
+                finally:
+                    conn.close()
+
                 def get(path: str) -> int:
                     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
                     try:
-                        conn.request("GET", path, headers={
-                            oi_main.FICTIONAL_ACTOR_HEADER: "FICTIONAL-NAVIGATOR-A"})
+                        conn.request("GET", path, headers={"Cookie": cookie})
                         response = conn.getresponse()
                         response.read()
                         return response.status

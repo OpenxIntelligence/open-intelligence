@@ -15,8 +15,9 @@ import tempfile
 import threading
 import unittest
 
-from open_intelligence.__main__ import FICTIONAL_ACTOR_HEADER, Handler, SYNTHETIC
+from open_intelligence.__main__ import Handler, SYNTHETIC
 from open_intelligence.store import CaseStore
+from session_auth import signin_cookie
 
 
 class DocumentIntakeHttpTests(unittest.TestCase):
@@ -33,6 +34,10 @@ class DocumentIntakeHttpTests(unittest.TestCase):
                                "individual-access", "2020-01-01", "2999-12-31")
             store.create_grant("FICTIONAL-NAVIGATOR-A", "CASE-BETA",
                                "individual-access", "2020-01-01", "2999-12-31")
+            # W1: the header path is gone; the demo account signs in.
+            store.create_account("FICTIONAL-NAVIGATOR-A",
+                                 "Fictional demo navigator", "clinician",
+                                 "fictional-demo-1")
             self.legacy_raw = (SYNTHETIC / "alpha-imaging.txt").read_bytes()
             self.legacy_id = store.import_report("CASE-ALPHA", self.legacy_raw)["source_id"]
         finally:
@@ -46,6 +51,7 @@ class DocumentIntakeHttpTests(unittest.TestCase):
         self.thread = threading.Thread(
             target=lambda: self.server.serve_forever(poll_interval=0.02), daemon=True)
         self.thread.start()
+        self._cookie = signin_cookie(self.port, "FICTIONAL-NAVIGATOR-A")
         self.raw = b"\xef\xbb\xbfFictional local note\r\nValue stable; review pending.\r\n"
 
     def tearDown(self):
@@ -56,7 +62,7 @@ class DocumentIntakeHttpTests(unittest.TestCase):
 
     def request(self, path, payload=None, *, raw_body=None, headers=None):
         values = dict(headers or {})
-        values.setdefault(FICTIONAL_ACTOR_HEADER, "FICTIONAL-NAVIGATOR-A")
+        values.setdefault("Cookie", self._cookie)
         body = raw_body
         if payload is not None:
             body = json.dumps(payload).encode("utf-8")

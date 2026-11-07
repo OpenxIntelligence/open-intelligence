@@ -59,18 +59,17 @@ class PostgresSourceVersions:
         return bool(self._document_filter() and self.registry._fetchone(
             "SELECT source_id FROM clinical_source.document_intakes WHERE source_id=%s", (source_id,)))
 
-    def _is_fhir_laboratory(self, source_id: str) -> bool:
-        """Do not let text-report intake replace a FHIR-owned original.
-
-        Earlier migration fixtures have no FHIR child table. In that case
-        ordinary text-source imports continue without a new table dependency.
-        The importer holds the canonical case-binding lock throughout.
-        """
-        exists = self.registry._fetchone(
-            "SELECT to_regclass('clinical_source.fhir_laboratory_sources')")[0]
-        return exists is not None and self.registry._fetchone(
-            "SELECT source_id FROM clinical_source.fhir_laboratory_sources "
-            "WHERE source_id=%s", (source_id,)) is not None
+    def _fhir_version_count(self, case_id: str, document_id: str, through_version: int) -> int:
+        # Older migration fixtures predate the FHIR owner. A generic report may
+        # be the latest version of a mixed legacy history, so check its prefix.
+        if self.registry._fetchone("SELECT to_regclass('clinical_source.fhir_laboratory_sources')")[0] is None:
+            return 0
+        return self.registry._fetchone(
+            "SELECT count(*) FROM clinical_source.source_versions s "
+            "JOIN clinical_source.fhir_laboratory_sources f ON f.source_id=s.source_id "
+            "WHERE s.case_id=%s AND s.document_id=%s AND s.version<=%s",
+            (case_id, document_id, through_version),
+        )[0]
 
     def _binding(self, patient_id: str, case_id: str, organization: str, purpose: str) -> int:
         PostgresRecordRequests(self.registry)._active_patient(patient_id, organization)
@@ -326,6 +325,11 @@ class PostgresSourceVersions:
                 "profile_contract,observation_count "
                 "FROM clinical_source.fhir_laboratory_sources WHERE source_id=%s",
                 (source_id,))
+            if stored["version"] > 1:
+                fhir_versions = self._fhir_version_count(case_id, stored["document_id"], stored["version"])
+                expected = stored["version"] if metadata_row is not None else 0
+                if fhir_versions != expected:
+                    raise SourceIntegrityError("Stored source format changed within a report history")
             if metadata_row is not None:
                 metadata_fields = (
                     "source_id","source_organization","source_system","subject_reference",
@@ -409,7 +413,8 @@ class PostgresSourceVersions:
                 "WHERE case_id=%s AND document_id=%s "
                 "ORDER BY version DESC LIMIT 1", (case_id, parsed.document_id),
             )
-            if old and (self._is_reviewed(old[0]) or self._is_fhir_laboratory(old[0])):
+            if old and (self._is_reviewed(old[0]) or
+                        self._fhir_version_count(case_id, parsed.document_id, old[1])):
                 raise PatientRegistryConflict("Document format cannot change across intake owners")
             previously_seen = self.registry._fetchone(
                 "SELECT source_id,version FROM clinical_source.source_versions "

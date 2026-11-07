@@ -1,7 +1,15 @@
 # NOTICE — Open Intelligence demo
 
-For the current tree on branch `oi/safety-packet` (current `main`
-merged in; refreshed 2026-11-02).
+For the current tree on `main` (HEAD `4b13bc2`; refreshed 2026-11-05).
+This refold supersedes the 2026-11-02 revision, which described the
+pre-submission tree on the `oi/safety-packet` branch.
+
+## Product scope
+
+Open Intelligence is a general, patient-centered intelligence
+platform. Cancer bioinformatics is its starting domain, not its
+definition. Nothing in this packet limits the platform to oncology,
+and no claim here depends on an oncology-specific function.
 
 ## Fictional-data statement
 
@@ -34,7 +42,7 @@ distributed to participants.
 ## What is not shipped, and what is not claimed
 
 - No third-party clinical content: no article body, guideline text, trial
-  record, or real oncology data is retrieved or reused. The only
+  record, or real clinical data is retrieved or reused. The only
   third-party material referenced is Crossref bibliographic metadata, which
   is metadata-only (see `DATA_RIGHTS.md`). Publisher abstracts are
   excluded by the adapter, and the discovery format rejects any
@@ -72,6 +80,22 @@ distributed to participants.
   findings. The IV-01/IV-04 validation files are coordinator
   material and blank templates, not an executed evaluation.
 
+## Auth state — local demo accounts and sessions on `main`
+
+The demo on `main` runs on operator-created accounts with 24-hour
+server-side sessions (operator / clinician / patient read-only on
+their own case / auditor). Case routes require a live session, a
+live grant for that case (`actor_grants` table, deny-by-default,
+revocation by supersede-never-delete), and role permission, and
+every case access is written to the `access_log` table, readable by
+operator/auditor. The seeded demo actor holds grants on the
+Alpha/Beta cases. Sessions are not identity proofing — the code
+comments say so.
+
+The `X-Fictional-Actor` header path was removed in auth slice 2
+(W1): a header-only request is now denied. Real accounts, verified
+identities, and production access control are still NOT on `main`.
+
 ## License status — undecided, explicitly
 
 The project's distribution license has NOT been selected
@@ -88,8 +112,13 @@ decision.
 
 ## Third-party notices
 
-The legacy standard-library demo does not bundle third-party application code.
-The separate H1 API development image installs pinned Python dependencies and
+The legacy demo core is standard-library only, with one optional
+exception: the bounded PDF text-extraction runtime, which runs
+`pypdf==6.21.4` (hash-pinned in the repository-root
+`requirements-pdf.lock`) in a separate fresh process and is not
+installed with the demo by default; its notice is in
+`THIRD_PARTY_NOTICES/pypdf.txt` (see `SBOM.md`). The separate H1 API
+development image installs pinned Python dependencies and
 must retain its [artifact notices](../../apps/api/THIRD_PARTY_NOTICES.md) and
 [rights inventory](../../apps/api/dependency-license-inventory.json). This packet
 does not clear the complete image or select a project distribution license.

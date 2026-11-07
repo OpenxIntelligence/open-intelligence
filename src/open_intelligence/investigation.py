@@ -80,62 +80,14 @@ ABSTAIN_REASONS = frozenset(
 )
 
 # Vertical wiring for the deterministic K-checks (program plan slice
-# C2). These are the vertical's own predicates, passed as explicit
-# parameters to the domain-free checker in `kchecks.py` — no vertical
-# knowledge lives in that module.
-#
-# ONCOLOGY_SYNONYMS maps value paraphrases to the case's own certainty
-# words. It is grounded in the seeded case vocabulary (reported,
-# not-reported, indeterminate, pending, not-assessed) and in the seed
-# documents' own phrasings for those states.
-ONCOLOGY_SYNONYMS = {
-    "not tested": "not-reported",
-    "not reported": "not-reported",
-    "present": "reported",
-    "detected": "reported",
-    "found": "reported",
-    "observed": "reported",
-    "unclear": "indeterminate",
-    "uncertain": "indeterminate",
-    "cannot be assessed": "indeterminate",
-    "could not be assessed": "indeterminate",
-    "awaiting": "pending",
-    "unavailable": "pending",
-    "not assessed": "not-assessed",
-    "not evaluated": "not-assessed",
-}
-
-# Condition terms for the K6 "you have" scope pattern.
-CONDITION_TERMS = [
-    "cancer", "carcinoma", "neoplasm", "malignancy", "malignant", "tumour", "tumor",
-]
-
-# K6 scope patterns beyond the structural language guard above: the
-# scope predicates the guard does not cover. A claim matching one is
-# dropped with reason "k6_scope". Each pattern must add value the
-# guard does not already provide, so fixtures for it use phrasings the
-# guard passes.
-K6_SCOPE_PATTERNS = [
-    re.compile(r"\bfirst[- ]line (choice|option|treatment|therapy)\b", re.IGNORECASE),
-    re.compile(r"\bdose of\b", re.IGNORECASE),
-    re.compile(r"\bmg\s*/", re.IGNORECASE),
-    re.compile(r"\beligible for\b", re.IGNORECASE),
-    re.compile(
-        r"(?:\b(trial|study|NCT[0-9]*)\b.{0,40}\bmatches\b"
-        r"|\bmatches\b.{0,40}\b(trial|study|NCT[0-9]*)\b)",
-        re.IGNORECASE | re.DOTALL,
-    ),
-    re.compile(r"\bprognosis\b", re.IGNORECASE),
-    re.compile(
-        r"\byou have\b.{0,40}\b(" + "|".join(CONDITION_TERMS) + r")\b",
-        re.IGNORECASE | re.DOTALL,
-    ),
-    re.compile(r"\bshould (consider|choose|select)\b", re.IGNORECASE),
-    re.compile(
-        r"\brank\w*\b.{0,40}\b(options|treatments|therapies|drugs)\b",
-        re.IGNORECASE | re.DOTALL,
-    ),
-]
+# C2) now lives behind the vertical interface (slice V1): the
+# vertical's own predicates are defined in ``vertical_oncology.py``
+# (oncology) and ``vertical_cardiology.py`` (cardiology), and resolved
+# through the registry in ``vertical.py``. This module holds no
+# vertical knowledge. The structural language guard below stays here:
+# it is domain-free advice language (no vertical literal appears in
+# it), and the vertical's own language contribution is its K6 scope
+# patterns, registered per vertical.
 
 
 class InvestigationError(ValueError):
@@ -217,6 +169,11 @@ def build_prompt(template_id: str, question: str, assertions: list[dict],
         "Every claim must cite at least one source version or assessment "
         "listed above. Do not cite anything else. Do not recommend "
         "treatment, select therapy, dose, or diagnose."
+    )
+    lines.append(
+        "Attribute each claim to its sources through the citations array only. "
+        "Do not write source version numbers in the claim text itself, neither "
+        '"Source version N" nor "version N"; the citation identifies the source.'
     )
     return "\n".join(lines)
 

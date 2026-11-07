@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import dataclasses
 import getpass
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,9 +24,6 @@ from .changes import changes_since_review
 from .packet import build_case_packet, render_packet_text
 from .followthrough import followthrough_view
 from .investigation import (
-    CONDITION_TERMS,
-    K6_SCOPE_PATTERNS,
-    ONCOLOGY_SYNONYMS,
     TEMPLATES,
     InvestigationError,
     ValidatedInvestigation,
@@ -35,12 +33,27 @@ from .investigation import (
     validate_output,
 )
 from .kchecks import build_kcheck_context
+from .lab_series import lab_series
 from .orchestrator import decide_route
+from .vertical import default_vertical
+from .skeptic import run_verification
+from .specimen_chain import validate_specimen_chain
 from .clinician_overview import build_clinician_overview
+from .fhir_exchange import build_fhir_bundle
 from .mission import build_patient_mission
+from .patient_access import PatientAccessAdapter, adapter_envelope_from_dict
+from .patient_analytics import patient_analytics
+from .appointments import appointments_view
+from .notifications import notifications_view
+from .referrals import referrals_view
+from .team_collaboration import care_team_view
+from .hypothesis import assemble_hypothesis_report, claim_id
+from .literature import list_records
+from .trials import list_listings, render_listing
 from .patient_attention import case_patient_attention
 from .provenance import case_provenance
 from .patient_report import build_patient_report, render_text
+from .terminology import codings_for, terminology_table
 from .owned_questions import question_gap_rollup
 from .store import CaseStore, InvalidInput, MAX_SOURCE_BYTES, SESSION_TTL_SECONDS, now_utc
 from .synthetic_metrics import fixture_run
@@ -53,16 +66,15 @@ ID_PART = r"([A-Z][A-Z0-9-]{1,39})"
 DOCUMENT_BODY_BYTES = 131072
 
 # B-01 fictional-actor grants: workflow governance for the synthetic case
-# workspace. The header carries a FICTIONAL actor id only — this is not
+# workspace. The actor id is a FICTIONAL id only — this is not
 # identity proofing, not credential verification, and not a
 # production-security control. Every case route requires purpose
 # "individual-access" (the only purpose patient_access.py accepts); grants
 # with any other stated purpose authorize no case route in this slice.
-# Slice 1: a signed-in account is the actor; the account id doubles as the
-# B-01 actor id. The header remains only as a transitional path for the
-# seeded demo account, and the browser no longer sends it. Header support
-# for the demo account is flagged for removal in the next slice.
-FICTIONAL_ACTOR_HEADER = "X-Fictional-Actor"
+# A signed-in account is the actor; the account id doubles as the B-01
+# actor id. The X-Fictional-Actor header path was removed in auth slice 2
+# (W1): case routes require a live session, and no header identifies an
+# actor.
 FICTIONAL_ACTOR_PURPOSE = "individual-access"
 DEMO_ACTOR = "FICTIONAL-NAVIGATOR-A"
 DEMO_OPERATOR = "FICTIONAL-OPERATOR-A"
@@ -186,20 +198,6 @@ class Handler(BaseHTTPRequestHandler):
         # metadata provides an additional barrier; this is NOT authentication.
         return self.headers.get("Sec-Fetch-Site", "none") in {"none", "same-origin"}
 
-    def _fictional_actor(self) -> str | None:
-        """Presented fictional actor id, or None when missing/unparseable.
-
-        Any non-None value matches the synthetic-id alphabet; the grant
-        lookup decides authorization. Malformed values are unknown actors,
-        not 422s: behavior item 1 denies them with 403."""
-        raw = self.headers.get(FICTIONAL_ACTOR_HEADER)
-        if raw is None:
-            return None
-        actor = raw.strip()
-        if not re.fullmatch(ID_PART, actor):
-            return None
-        return actor
-
     def _session_token(self) -> str | None:
         """Session bearer token from the cookie, or the test header."""
         raw_cookie = self.headers.get("Cookie")
@@ -227,32 +225,21 @@ class Handler(BaseHTTPRequestHandler):
     def _current_actor(self, store: CaseStore) -> tuple[dict | None, str | None]:
         """(account, actor id) for this request.
 
-        A valid session wins. Otherwise, during the transition, the header
-        still identifies the seeded demo account only — any other header
-        value is not an identity. Returns (None, None) when unauthenticated.
+        A live session is the only identity; no header identifies an actor
+        (removed in auth slice 2, W1). Returns (None, None) when
+        unauthenticated.
         """
         account = self._session_account(store)
         if account is not None:
             return account, account["account_id"]
-        actor = self._fictional_actor()
-        if actor == DEMO_ACTOR:
-            demo = store.get_account(DEMO_ACTOR)
-            if demo is None:
-                demo = {"account_id": DEMO_ACTOR, "display_name": "Fictional demo navigator",
-                        "role": "clinician", "status": "active", "own_case_id": None}
-            return demo, DEMO_ACTOR
         return None, None
 
     def _actor_label(self, store: CaseStore) -> str:
-        """Access-log actor field: the signed-in account, the presented
-        header value, or "missing"."""
+        """Access-log actor field: the signed-in account id, or "missing"."""
         account = self._session_account(store)
         if account is not None:
             return account["account_id"]
-        raw = self.headers.get(FICTIONAL_ACTOR_HEADER)
-        if raw is None or not raw.strip():
-            return "missing"
-        return raw.strip()[:128]
+        return "missing"
 
     @staticmethod
     def _session_cookie(token: str, expires_at: str | None) -> str:
@@ -263,22 +250,35 @@ class Handler(BaseHTTPRequestHandler):
                 f"Max-Age={SESSION_TTL_SECONDS}")
 
     @staticmethod
-    def _role_may_use_case(account: dict, case_id: str, method: str) -> bool:
+    def _role_may_use_case(account: dict, case_id: str, method: str,
+                           path: str | None = None) -> bool:
         """Role permission on a case, in addition to the grant. Operator and
         clinician work within grants; a patient reads only their own bound
-        case; an auditor works no case route."""
+        case; an auditor works no case route.
+
+        D7 carve-out (single exception, pinned by tests): a patient may
+        POST only to the notifications-clear route on their own bound
+        case. Clearing writes only an acknowledgment row for the
+        patient's own attention state — it cannot change, hide, or
+        delete any case content — and the clear handler additionally
+        rejects any key whose kind is not patient-visible.
+        """
         role = account["role"]
         if role in ("operator", "clinician"):
             return True
         if role == "patient":
-            return method == "GET" and account.get("own_case_id") == case_id
+            if account.get("own_case_id") != case_id:
+                return False
+            if method == "GET":
+                return True
+            return (method == "POST" and path is not None
+                    and path == f"/api/cases/{case_id}/notifications/clear")
         return False
 
     def _require_role(self, store: CaseStore, *roles: str) -> dict | None:
         """Current session account holding one of the roles, or None after
-        sending 401/403. Operator/auditor routes require a session: the
-        transitional header identifies the demo clinician only, which
-        holds neither role."""
+        sending 401/403. A live session is required; the header path was
+        removed in auth slice 2 (W1)."""
         account = self._session_account(store)
         if account is None:
             self._json(401, {"error": AUTH_REQUIRED_MESSAGE})
@@ -330,7 +330,7 @@ class Handler(BaseHTTPRequestHandler):
             store.record_access(label, case_id, route, "denied")
             self._grant_denial()
             return False
-        if not self._role_may_use_case(account, case_id, method):
+        if not self._role_may_use_case(account, case_id, method, path):
             store.record_access(actor, case_id, route, "denied")
             self._json(403, {"error": ROLE_DENIAL_MESSAGE})
             return False
@@ -413,9 +413,9 @@ class Handler(BaseHTTPRequestHandler):
             access_log_route = re.fullmatch(rf"/api/cases/{ID_PART}/access-log", path)
             if access_log_route:
                 # Operator/auditor only, by role — no grant is required:
-                # auditors hold no case grants by design. A session is
-                # required; the transitional header identifies the demo
-                # clinician, which holds neither role.
+                # auditors hold no case grants by design. A live session
+                # is required; the header path was removed in auth slice 2
+                # (W1).
                 account = self._session_account(store)
                 if account is None:
                     return self._json(401, {"error": AUTH_REQUIRED_MESSAGE})
@@ -465,6 +465,23 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, render_text(payload).encode("utf-8"),
                                       "text/plain; charset=utf-8")
                 return self._json(200, payload)
+            fhir_bundle = re.fullmatch(rf"/api/cases/{ID_PART}/fhir/bundle", path)
+            if fhir_bundle:
+                # D2: synthetic FHIR R4 export of the case's current
+                # assertions and sources, with terminology codings
+                # attached where the pinned table binds them. No live
+                # system connection; mCODE conformance is not claimed.
+                return self._json(200, build_fhir_bundle(
+                    store.state(fhir_bundle[1]), default_vertical(),
+                    codings_for=codings_for))
+            fhir_terminology = re.fullmatch(rf"/api/cases/{ID_PART}/fhir/terminology", path)
+            if fhir_terminology:
+                return self._json(200, terminology_table(default_vertical()))
+            fhir_dicom = re.fullmatch(rf"/api/cases/{ID_PART}/fhir/dicom", path)
+            if fhir_dicom:
+                # D2: DICOM report-only records — metadata, never pixels.
+                return self._json(200, {"dicom_reports": store.list_dicom_reports(
+                    fhir_dicom[1])})
             changes = re.fullmatch(rf"/api/cases/{ID_PART}/changes-since-review", path)
             if changes:
                 raw_since = parse_qs(urlsplit(self.path).query).get("since_event_id", [None])[0]
@@ -477,6 +494,52 @@ class Handler(BaseHTTPRequestHandler):
             timeline = re.fullmatch(rf"/api/cases/{ID_PART}/timeline", path)
             if timeline:
                 return self._json(200, case_timeline(store, timeline[1]))
+            analytics = re.fullmatch(rf"/api/cases/{ID_PART}/analytics", path)
+            if analytics:
+                # D4: patient analytics — lab trends, symptom
+                # progression, record completeness, outcomes tracking.
+                # Read-only derivations of stored data; the T2 lab
+                # series is built here (with terminology codings and
+                # the specimen-chain validator, as D3's injection
+                # pattern requires) and passed in as a plain mapping.
+                case_id = analytics[1]
+                series = dataclasses.asdict(lab_series(
+                    store, case_id, codings_for=codings_for,
+                    vertical=default_vertical(),
+                    validate_chain=validate_specimen_chain))
+                return self._json(200, patient_analytics(
+                    store, case_id, lab_series=series))
+            hypothesis_report = re.fullmatch(rf"/api/cases/{ID_PART}/hypothesis-report", path)
+            if hypothesis_report:
+                # D5: hypothesis generation — T5 report assembly over
+                # stored kept claims (non-stale investigations only)
+                # plus the pinned A4 literature records and A5 trial
+                # listings. Read-only; no composed hypothesis is
+                # stored yet, so that section reports not_composed
+                # (persistence is a follow-up, not invented here).
+                case_id = hypothesis_report[1]
+                kept_claims = []
+                abstentions = []
+                stale_excluded = 0
+                for inv in store.list_investigations(case_id):
+                    if inv.get("stale"):
+                        stale_excluded += 1
+                        continue
+                    full = store.get_investigation(case_id, inv["id"])
+                    for index, claim in enumerate(full.get("claims", []), start=1):
+                        kept_claims.append({
+                            "id": claim_id(inv["id"], index),
+                            "text": claim.get("text", ""),
+                            "uncertainty": claim.get("uncertainty", ""),
+                            "citations": claim.get("citations", []),
+                        })
+                    abstentions.extend(full.get("abstentions", []))
+                report = assemble_hypothesis_report(
+                    case_id, kept_claims, list_records(),
+                    [render_listing(item) for item in list_listings()],
+                    abstentions=abstentions)
+                report["stale_investigations_excluded"] = stale_excluded
+                return self._json(200, report)
             attention = re.fullmatch(rf"/api/cases/{ID_PART}/patient-attention", path)
             if attention:
                 return self._json(200, case_patient_attention(store, attention[1]))
@@ -486,6 +549,35 @@ class Handler(BaseHTTPRequestHandler):
             followthrough = re.fullmatch(rf"/api/cases/{ID_PART}/followthrough", path)
             if followthrough:
                 return self._json(200, followthrough_view(store, followthrough[1]))
+            appointments = re.fullmatch(rf"/api/cases/{ID_PART}/appointments", path)
+            if appointments:
+                # D6: care-coordination appointments — list with full
+                # change history, case-scoped behind the existing grant
+                # gate. Read-only; no booking, no message, no reminder.
+                return self._json(200, appointments_view(store, appointments[1]))
+            notifications = re.fullmatch(rf"/api/cases/{ID_PART}/notifications", path)
+            if notifications:
+                # D7: care-coordination notifications — derived in-app
+                # list for the caller's role. Read-only; nothing is
+                # sent anywhere, and clearing is a separate POST.
+                account, _actor = self._current_actor(store)
+                role = account["role"] if account is not None else "auditor"
+                return self._json(200, notifications_view(
+                    store, notifications[1], role))
+            referrals = re.fullmatch(rf"/api/cases/{ID_PART}/referrals", path)
+            if referrals:
+                # D8: care-coordination referrals — list with materials,
+                # outcome, and full status history, case-scoped behind
+                # the existing grant gate. Read-only; a referral sends
+                # nothing anywhere and performs no handoff.
+                return self._json(200, referrals_view(store, referrals[1]))
+            care_team = re.fullmatch(rf"/api/cases/{ID_PART}/care-team", path)
+            if care_team:
+                # D9: care-team collaboration — shared updates and
+                # handoffs, case-scoped behind the existing grant gate.
+                # Read-only; the patient sees the same shared record
+                # as the clinician. Nothing is sent anywhere.
+                return self._json(200, care_team_view(store, care_team[1]))
             review_queue = re.fullmatch(rf"/api/cases/{ID_PART}/review-queue", path)
             if review_queue:
                 return self._json(200, store.review_queue(review_queue[1]))
@@ -594,10 +686,13 @@ class Handler(BaseHTTPRequestHandler):
             if gated_case is not None and not self._require_case_grant(store, gated_case, path, "POST"):
                 return None
             document_upload = re.fullmatch(rf"/api/cases/{ID_PART}/documents(/preview)?", path)
-            # Base64 plus bounded annotations needs a larger envelope. All
-            # other routes keep their existing request-body limit unchanged.
+            fhir_bundle_upload = re.fullmatch(rf"/api/cases/{ID_PART}/fhir/bundle", path)
+            # Base64 plus bounded annotations needs a larger envelope. A FHIR
+            # bundle body carries the same bytes plus its envelope, so it
+            # takes the larger limit too. All other routes keep their
+            # existing request-body limit unchanged.
             data = (self._body(DOCUMENT_BODY_BYTES, strict=True)
-                    if document_upload else self._body())
+                    if document_upload or fhir_bundle_upload else self._body())
             if path == "/api/auth/sign-in":
                 account_id = data.get("account_id")
                 password = data.get("password")
@@ -669,6 +764,29 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/cases":
                     store.add_case(data.get("case_id"), data.get("label"))
                     return self._json(201, {"result": "created"})
+                if fhir_bundle_upload:
+                    # D2: synthetic FHIR bundle delivery through the
+                    # patient-access adapter (authorization, revocation,
+                    # identity binding, loss receipt). The bundle is
+                    # canonicalized so the stored bytes are exactly the
+                    # bytes the translator anchored its source lines to.
+                    bundle_data = data.get("bundle")
+                    if not isinstance(bundle_data, dict):
+                        raise InvalidInput("FHIR bundle required")
+                    envelope = adapter_envelope_from_dict(data.get("envelope"))
+                    if envelope.case_id != fhir_bundle_upload[1]:
+                        raise InvalidInput(
+                            "Adapter envelope case does not match the route case")
+                    raw = json.dumps(bundle_data, indent=2, sort_keys=True,
+                                     ensure_ascii=False).encode("utf-8")
+                    adapter = PatientAccessAdapter(store)
+                    return self._json(200, adapter.deliver_fhir_bundle(envelope, raw))
+                fhir_dicom_post = re.fullmatch(rf"/api/cases/{ID_PART}/fhir/dicom", path)
+                if fhir_dicom_post:
+                    # D2: DICOM report-only record. Pixel fields are
+                    # rejected by validate_dicom_report before any write.
+                    return self._json(201, store.record_dicom_report(
+                        fhir_dicom_post[1], data))
                 if path == "/api/evidence/imports":
                     raw = data.get("text")
                     if not isinstance(raw, str):
@@ -736,6 +854,136 @@ class Handler(BaseHTTPRequestHandler):
                         data.get("status"), actor_label=data.get("actor_label"),
                         reason=data.get("reason"), owner_label=data.get("owner_label"),
                         **kwargs))
+                appointment_create = re.fullmatch(rf"/api/cases/{ID_PART}/appointments", path)
+                if appointment_create:
+                    # D6: record a fictional appointment. Writes are
+                    # operator/clinician only — the generic case gate
+                    # denies patient POSTs and auditor requests before
+                    # dispatch reaches this route.
+                    appointment_id = store.create_appointment(
+                        appointment_create[1], data.get("title"),
+                        scheduled_date=data.get("scheduled_date"),
+                        scheduled_time=data.get("scheduled_time"),
+                        purpose=data.get("purpose"), location=data.get("location"),
+                        actor_label=data.get("actor_label"), reason=data.get("reason"))
+                    return self._json(201, {"appointment_id": appointment_id})
+                appointment_change = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/appointments/([0-9]+)/change", path)
+                if appointment_change:
+                    kwargs: dict = {}
+                    if "scheduled_date" in data:
+                        kwargs["scheduled_date"] = data.get("scheduled_date")
+                    if "scheduled_time" in data:
+                        kwargs["scheduled_time"] = data.get("scheduled_time")
+                    return self._json(200, store.change_appointment(
+                        appointment_change[1], int(appointment_change[2]),
+                        data.get("action"), actor_label=data.get("actor_label"),
+                        reason=data.get("reason"), **kwargs))
+                notification_clear = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/notifications/clear", path)
+                if notification_clear:
+                    # D7: record an explicit, per-role clear of one
+                    # notification. The generic case gate already
+                    # enforced the grant; patients reach this route only
+                    # via the D7 carve-out (own bound case, clear route
+                    # only), and the store method additionally rejects
+                    # keys this role may not clear.
+                    account, _actor = self._current_actor(store)
+                    role = account["role"] if account is not None else "auditor"
+                    return self._json(200, store.clear_notification(
+                        notification_clear[1], data.get("notification_key"),
+                        role, self._actor_label(store)))
+                referral_create = re.fullmatch(rf"/api/cases/{ID_PART}/referrals", path)
+                if referral_create:
+                    # D8: record a fictional referral request. Writes
+                    # are operator/clinician only — the generic case
+                    # gate denies patient POSTs and auditor requests
+                    # before dispatch reaches this route. The request
+                    # sends nothing anywhere.
+                    referral_id = store.create_referral(
+                        referral_create[1], data.get("question_id"),
+                        data.get("specialty_label"), data.get("reason_text"),
+                        data.get("source_version_ids"),
+                        actor_label=data.get("actor_label"))
+                    return self._json(201, {"referral_id": referral_id})
+                referral_acknowledge = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/referrals/([0-9]+)/acknowledge", path)
+                if referral_acknowledge:
+                    return self._json(200, store.acknowledge_referral(
+                        referral_acknowledge[1], int(referral_acknowledge[2]),
+                        actor_label=data.get("actor_label"),
+                        reason=data.get("reason")))
+                referral_outcome = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/referrals/([0-9]+)/outcome", path)
+                if referral_outcome:
+                    outcome_id = store.record_referral_outcome(
+                        referral_outcome[1], int(referral_outcome[2]),
+                        data.get("outcome_kind"), data.get("outcome_text"),
+                        data.get("anchor_source_version_id"),
+                        actor_label=data.get("actor_label"),
+                        reason=data.get("reason"))
+                    return self._json(201, {"outcome_id": outcome_id})
+                referral_review = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/referrals/([0-9]+)/review", path)
+                if referral_review:
+                    return self._json(200, store.review_referral(
+                        referral_review[1], int(referral_review[2]),
+                        data.get("reviewer_label"), data.get("scope")))
+                care_team_update_create = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/care-team/updates", path)
+                if care_team_update_create:
+                    # D9: post a shared team update. Writes are
+                    # operator/clinician only — the generic case gate
+                    # denies patient POSTs and auditor requests before
+                    # dispatch reaches this route. The author role comes
+                    # from the session account; it is never free
+                    # text. The update sends nothing anywhere.
+                    account, _actor = self._current_actor(store)
+                    author_role = account["role"] if account is not None else "clinician"
+                    update_id = store.create_team_update(
+                        care_team_update_create[1], data.get("update_text"),
+                        author_label=data.get("author_label"),
+                        author_role=author_role)
+                    return self._json(201, {"update_id": update_id})
+                care_team_update_review = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/care-team/updates/([0-9]+)/review", path)
+                if care_team_update_review:
+                    return self._json(200, store.review_team_update(
+                        care_team_update_review[1], int(care_team_update_review[2]),
+                        data.get("reviewer_label"), data.get("scope")))
+                care_team_handoff_create = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/care-team/handoffs", path)
+                if care_team_handoff_create:
+                    # D9: record a handoff of responsibility for a case
+                    # question. Writes are operator/clinician only, as
+                    # above. The handoff sends nothing anywhere and
+                    # performs no transfer outside the product.
+                    handoff_id = store.create_handoff(
+                        care_team_handoff_create[1], data.get("question_id"),
+                        data.get("from_actor"), data.get("to_actor"),
+                        data.get("reason_text"), data.get("source_version_ids"),
+                        actor_label=data.get("actor_label"))
+                    return self._json(201, {"handoff_id": handoff_id})
+                care_team_handoff_acknowledge = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/care-team/handoffs/([0-9]+)/acknowledge", path)
+                if care_team_handoff_acknowledge:
+                    return self._json(200, store.acknowledge_handoff(
+                        care_team_handoff_acknowledge[1], int(care_team_handoff_acknowledge[2]),
+                        actor_label=data.get("actor_label"),
+                        reason=data.get("reason")))
+                care_team_handoff_close = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/care-team/handoffs/([0-9]+)/close", path)
+                if care_team_handoff_close:
+                    return self._json(200, store.close_handoff(
+                        care_team_handoff_close[1], int(care_team_handoff_close[2]),
+                        actor_label=data.get("actor_label"),
+                        reason=data.get("reason")))
+                care_team_handoff_review = re.fullmatch(
+                    rf"/api/cases/{ID_PART}/care-team/handoffs/([0-9]+)/review", path)
+                if care_team_handoff_review:
+                    return self._json(200, store.review_handoff(
+                        care_team_handoff_review[1], int(care_team_handoff_review[2]),
+                        data.get("reviewer_label"), data.get("scope")))
                 question_owner = re.fullmatch(rf"/api/cases/{ID_PART}/questions/([0-9]+)/owner", path)
                 if question_owner:
                     history_id = store.assign_question_owner(
@@ -1019,18 +1267,25 @@ class Handler(BaseHTTPRequestHandler):
                                  account["role"])
                     # Slice 2 K-checks (program plan C2): the deterministic
                     # verification half. The vertical's own predicates are
-                    # passed as explicit parameters; the condition-scope,
-                    # substance, and tier sub-checks are data-pending in
-                    # the runtime (no relation, tier, or substance data
-                    # exists yet), so they skip live and run in tests.
-                    # No run snapshot is pinned yet, so the snapshot-hash
-                    # comparison is not supplied live either.
+                    # resolved through the vertical interface (slice V1)
+                    # and passed as explicit parameters; the
+                    # condition-scope, substance, and tier sub-checks are
+                    # data-pending in the runtime (no relation, tier, or
+                    # substance data exists yet), so they skip live and
+                    # run in tests. No run snapshot is pinned yet, so the
+                    # snapshot-hash comparison is not supplied live
+                    # either. The case carries no vertical yet, so the
+                    # default vertical resolves here; a case-vertical
+                    # field is the V2 follow-up that retires it.
+                    vertical = default_vertical()
                     kcheck_context = build_kcheck_context(
                         facts, store.source_version_facts(case_id),
                         case_id=case_id, snapshot_as_of=now_utc(),
-                        synonyms=ONCOLOGY_SYNONYMS,
-                        scope_patterns=K6_SCOPE_PATTERNS,
-                        condition_terms=CONDITION_TERMS,
+                        synonyms=vertical.synonyms,
+                        scope_patterns=vertical.scope_patterns,
+                        condition_terms=vertical.condition_terms,
+                        lot_ruleset=vertical.lot_ruleset,
+                        current_lot_ruleset=vertical.lot_ruleset,
                         substance_names=[], evidence_tiers={})
                     if mode == "replay":
                         fixture = json.loads((SYNTHETIC / "demo-investigation.json").read_text())
@@ -1054,6 +1309,19 @@ class Handler(BaseHTTPRequestHandler):
                         payload = call_meta_api(prompt, meta_api_key())
                         validated = validate_output(payload, facts["valid_sources"], facts["valid_assessments"],
                                                     kcheck_context)
+                    # Slice 4 verification (program plan C4): one repair
+                    # round, the Skeptic's independent second opinion,
+                    # T6 grouping, and the typed abstention codes. The
+                    # model passes run in live mode only; replay skips
+                    # them and records the skip, while the deterministic
+                    # half still runs. The verification record is stored
+                    # with the run and returned, like the K-check
+                    # findings. A failed Skeptic or repair call records
+                    # AB-MODEL and the run proceeds with its K-checked
+                    # claims; it never fails the run.
+                    verification = run_verification(
+                        validated, kcheck_context, facts, mode=mode,
+                        store=store, case_id=case_id)
                     # Slice 1 write contract (program plan section 5.4):
                     # the run is stored only with its complete, validated
                     # contract attached; a missing or mismatched contract
@@ -1063,7 +1331,8 @@ class Handler(BaseHTTPRequestHandler):
                         facts=facts)
                     investigation_id = store.save_investigation(
                         case_id, question_id, template, validated, mode,
-                        write_contract=contract)
+                        write_contract=contract,
+                        verification_record=verification)
                     stored = store.get_investigation(case_id, investigation_id)
                     # K-check findings are returned, not persisted (slice
                     # C2 follow-up: persisting them is a schema change).
