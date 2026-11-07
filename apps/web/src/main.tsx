@@ -10,6 +10,8 @@ import {RecordImportDisclosure} from './record-import-disclosure';
 import {ReviewedDocumentDisclosure} from './reviewed-documents-view';
 import {WorldModelView} from './world-model-view';
 import {PatientContinuity} from './patient-continuity-view';
+import {laboratoryFollowthroughEntry} from './followthrough-view';
+import type {FollowthroughEntry} from './followthrough-view';
 import {SecondOpinionPreparation} from './second-opinion-preparation-view';
 import {ReviewPanel,useReviewReasonDrafts} from './review-panel';
 import {SourceReading, emptySourceFilters} from './source-reading';
@@ -77,6 +79,8 @@ function App(){
  const [leaveFor,setLeaveFor]=useState<{section:string;scopeKey:string}|null>(null);
  const [recordsVisit,setRecordsVisit]=useState<{id:number;patient:typeof state.patient}|null>(null);
  const [section,setSection]=useState('Overview');
+ const [followthroughEntry,setFollowthroughEntry]=useState<FollowthroughEntry|null>(null);
+ useEffect(()=>{setFollowthroughEntry(null)},[state.patient,state.worldModel?.case_id]);
  const [view,setView]=useState<ReadingView>('patient');
  const reportKind=reportKinds[section];
  const recordsSection=section==='Records'||Boolean(reportKind);
@@ -156,7 +160,7 @@ function App(){
  function navigate(nextSection:string,discardVisit=false){
   if(section==='Visits'&&nextSection!==section&&visitDirty.current&&encounterScope&&!discardVisit){setLeaveFor({section:nextSection,scopeKey:encounterScope.key});return;}
   if(taskOriginal.current){taskOriginal.current=null;session.dismissOriginal();}
-  entryFocus.current=null;
+  entryFocus.current=null;setFollowthroughEntry(null);
   if(nextSection!==section){
    setRecordsVisit(null);
    if((reportKind||reportKinds[nextSection])&&(state.original||state.recordsPhase==='loading-original'))session.dismissOriginal();
@@ -196,7 +200,7 @@ function App(){
     <div className="boundary" role="note"><strong>Synthetic workspace.</strong> Use fictional records and operator-issued credentials only. Clinical sign-off is unavailable.</div>
     {state.patient&&<PageContents key={section}/>}
     {section==='Visits'?(encounterScope?<EncounterChart key={encounterScope.key} scope={encounterScope} dirtyRef={visitDirty}
-      onRecords={id=>{navigate('Records');setRecordsVisit({id,patient:state.patient});}}/>:<div data-testid="visits-no-patient">{state.patient?.status==='suspended'&&<p role="status">This identity is suspended. Open an active patient to see visits.</p>}{patientAccess}</div>):section==='Journey'||section==='Investigations'||section==='Labs'?<WorldModelView labsOnly={section==='Labs'} session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onRecords={(caseId,task)=>{navigate('Records');taskOriginal.current=task?.source_id??null;void session.loadSources(caseId,task);}} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')}/>:recordsSection&&!state.patient?<section data-testid="records-workspace" aria-label={section}><div data-testid="records-no-patient">{patientAccess}</div></section>:recordsSection&&state.patient?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
+      onRecords={id=>{navigate('Records');setRecordsVisit({id,patient:state.patient});}}/>:<div data-testid="visits-no-patient">{state.patient?.status==='suspended'&&<p role="status">This identity is suspended. Open an active patient to see visits.</p>}{patientAccess}</div>):section==='Journey'||section==='Investigations'||section==='Labs'?<WorldModelView labsOnly={section==='Labs'} session={session} state={state} busy={busy} showQuestions={section==='Investigations'} followthroughEntry={followthroughEntry} onClearFollowthroughEntry={()=>setFollowthroughEntry(null)} onRecords={(caseId,task)=>{navigate('Records');taskOriginal.current=task?.source_id??null;void session.loadSources(caseId,task);}} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')}/>:recordsSection&&!state.patient?<section data-testid="records-workspace" aria-label={section}><div data-testid="records-no-patient">{patientAccess}</div></section>:recordsSection&&state.patient?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
      <h2 id="records-heading" data-workspace-anchor={reportKind?'Case selection':'Records'}>{reportKind?section+' reports':view==='patient'?'Records available to you':'Original source records'}</h2>
      <p>{reportKind?'Choose a case to read its structured reports. Text and PDF uploads have their own reader in Records.':'Select a case to inspect reported findings, original files and version history.'}</p>
      <div>
@@ -261,7 +265,10 @@ function App(){
      </div>
     </section>:section!=='Overview'?<section className="panel"><h2>{section} is not connected</h2><p>The existing reference application retains this workflow. No placeholder patient data, generated conclusions or clinical actions are shown here.</p><p>The source, evidence and review owners must be integrated with the same scoped patient API before this becomes available.</p><button onClick={()=>navigate('Overview')}>Return to overview</button></section>:<>
     <PatientContinuity state={state} onNavigate={navigate} busy={busy} onRefreshFollowthrough={caseId=>void session.loadFollowthrough(caseId)}/>
-    <SecondOpinionPreparation session={session} busy={busy} state={state} onNavigate={navigate} onResumeQuestion={questionId=>{navigate('Investigations');if(state.patient)passageResume.current={patientId:state.patient.patient_id,questionId};void session.loadQuestionEvidence(questionId);}} onCheckEvidence={questionId=>void session.loadQuestionEvidence(questionId)}/>
+    <SecondOpinionPreparation session={session} busy={busy} state={state} onNavigate={navigate} onOpenLaboratoryTask={(question,taskId)=>{
+      const entry=laboratoryFollowthroughEntry(session.snapshot(),question,taskId);if(busy||!entry)return;
+      navigate('Investigations');setFollowthroughEntry(entry);void session.loadFollowthrough(entry.case_id);
+    }} onResumeQuestion={questionId=>{navigate('Investigations');if(state.patient)passageResume.current={patientId:state.patient.patient_id,questionId};void session.loadQuestionEvidence(questionId);}} onCheckEvidence={questionId=>void session.loadQuestionEvidence(questionId)}/>
     {patientAccess}
     {state.patient&&<section className="panel patient" data-testid="patient-card"><span className="step">LATEST SUCCESSFUL REGISTRY RESPONSE</span><h2>Patient identity</h2><dl><div><dt>Patient ID</dt><dd>{state.patient.patient_id}</dd></div><div><dt>Organization</dt><dd>{state.patient.origin_org}</dd></div><div><dt>Registry status</dt><dd>{state.patient.status}</dd></div><div><dt>Revision</dt><dd>{state.patient.revision}</dd></div><div><dt>Created</dt><dd>{state.patient.created_at}</dd></div></dl><p className="muted">Identity metadata only, authorized at the last successful request. Recheck access for current permissions. {state.sourceIndex||state.worldModel?'Source information is loaded separately; it does not establish a reviewed clinical conclusion.':'No clinical record or conclusion has been loaded.'}</p><button disabled={busy} onClick={()=>void session.read(state.patient!.patient_id)}>Recheck current access</button></section>}
     <PatientSuspension session={session} state={state} busy={busy}/>

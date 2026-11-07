@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {RegistrySession} from '../.test-dist/registry-client.js';
-import {decodeFollowthrough,projectFollowthroughAttention,laboratoryQuestionFollowthrough} from '../.test-dist/followthrough-view.js';
+import {decodeFollowthrough,projectFollowthroughAttention,laboratoryQuestionFollowthrough,laboratoryFollowthroughEntry,followthroughEntryTask} from '../.test-dist/followthrough-view.js';
 import {secondOpinionPreparation} from '../.test-dist/second-opinion-preparation.js';
 import {projection as laboratoryWorld} from './laboratory-projection-fixture.mjs';
 
@@ -896,5 +896,62 @@ test('a colliding question ID with inconsistent origin or independent read scope
    {labQuestionHistory:{...state.labQuestionHistory,checked_source_snapshot_sha256:'d'.repeat(64)}},
    {labQuestionHistory:{...state.labQuestionHistory,case_id:otherCase}}]){
   assert.equal(laboratoryQuestionFollowthrough({...state,...patch},q),null);
+ }
+});
+
+test('laboratory task handoff requires a new permission receipt and reopens the exact original with its latest status',async()=>{
+ let result=mixedProjection([labRow(),taskRow()]);
+ const s=mixedTransport({list:()=>response(result)});
+ await ready(s);await s.loadLabQuestions(s.snapshot().worldModel);await s.loadFollowthrough(cid);
+ const q=s.snapshot().labQuestionHistory.questions[0];
+ const entry=laboratoryFollowthroughEntry(s.snapshot(),q,labTask);
+ assert.ok(entry);assert.equal(followthroughEntryTask(s.snapshot(),entry),null);
+ assert.equal(laboratoryFollowthroughEntry(s.snapshot(),q,tid),null);
+ assert.equal(laboratoryFollowthroughEntry(s.snapshot(),{...q},labTask),null);
+ result={...mixedProjection([taskRow(),labRow(['created','assigned','acknowledged'],{
+  source_context_state:'source_reassessment_required',needs_recheck:true})]),access_receipt_id:'ACCESS-'+'9'.repeat(32)};
+ const read=s.loadFollowthrough(cid);
+ assert.equal(followthroughEntryTask(s.snapshot(),entry),null);
+ await read;
+ const task=followthroughEntryTask(s.snapshot(),entry);
+ assert.equal(task.task_id,labTask);assert.equal(task.revision,3);assert.equal(task.needs_recheck,true);
+ assert.equal(task.source_id,q.source_id);assert.equal(task.observation_reference,q.observation_reference);
+ assert.equal('title' in entry,false);assert.equal('owner_label' in entry,false);
+});
+
+test('task handoff refuses changed origins, scope, missing tasks, legacy lists and lost authority',async()=>{
+ const s=mixedTransport({list:()=>response(mixedProjection([labRow()]))});
+ await ready(s);await s.loadLabQuestions(s.snapshot().worldModel);await s.loadFollowthrough(cid);
+ const state=s.snapshot(),q=state.labQuestionHistory.questions[0];
+ const entry=laboratoryFollowthroughEntry(state,q,labTask);
+ const fresh={...state,followthrough:{...state.followthrough,access_receipt_id:'ACCESS-'+'9'.repeat(32)}};
+ assert.ok(followthroughEntryTask(fresh,entry));
+ for(const patch of [{question_id:qid},{source_id:sid},{source_line:8},{source_version:2},
+  {source_sha256:'d'.repeat(64)},{observation_reference:'Observation/DIFFERENT'},
+  {source_snapshot_contract:'different'},{source_snapshot_sha256:'d'.repeat(64)},
+  {preflight_sha256:'d'.repeat(64)},{patient_id:'PAT-OTHER'},{case_id:otherCase}]){
+  assert.equal(followthroughEntryTask({...fresh,followthrough:{...fresh.followthrough,
+   tasks:[{...fresh.followthrough.tasks[0],...patch}]}},entry),null,JSON.stringify(patch));
+ }
+ for(const patch of [{followthroughPhase:'error'},{phase:'reading'},{connected:false},
+  {patient:{...state.patient,status:'suspended'}},{cases:[]},
+  {followthrough:{...fresh.followthrough,tasks:[]}},{followthrough:{...fresh.followthrough,contract:'oi.pg-question-followthrough/1'}}]){
+  assert.equal(followthroughEntryTask({...fresh,...patch},entry),null,JSON.stringify(patch));
+ }
+ for(const phase of ['saving','unknown'])assert.equal(laboratoryFollowthroughEntry({...state,followthroughWritePhase:phase},q,labTask),null);
+});
+
+test('denied and late task handoff reads cannot restore the previous task',async()=>{
+ for(const mode of ['denied','disconnect','other patient']){
+  const held=deferred();let count=0;
+  const s=mixedTransport({list:()=>++count===1?response(mixedProjection([labRow()])):held.promise});
+  await ready(s);await s.loadLabQuestions(s.snapshot().worldModel);await s.loadFollowthrough(cid);
+  const entry=laboratoryFollowthroughEntry(s.snapshot(),s.snapshot().labQuestionHistory.questions[0],labTask);
+  const pending=s.loadFollowthrough(cid);
+  if(mode==='disconnect')s.disconnect();
+  if(mode==='other patient')await s.read('PAT-OTHER');
+  held.resolve(mode==='denied'?response({},404):response({...mixedProjection([labRow()]),access_receipt_id:'ACCESS-'+'9'.repeat(32)}));
+  await pending;
+  assert.equal(followthroughEntryTask(s.snapshot(),entry),null,mode);
  }
 });
