@@ -279,6 +279,42 @@ class OriginalSourceIndex(Contract):
     research_review_invalidation_integrated: Literal[False]
 
 
+class InstitutionalSourceIdentity(Contract):
+    source_organization: str
+    source_system: str
+    source_subject_ref: str
+
+
+class CreateSourceIdentity(InstitutionalSourceIdentity):
+    synthetic: StrictBool
+    request_key: str = Field(min_length=3, max_length=128)
+    review_ref: str = Field(min_length=3, max_length=128)
+
+
+class SourceIdentityEntry(InstitutionalSourceIdentity):
+    identity_id: str = Field(pattern=r"^IDENT-[0-9A-F]{32}$")
+    review_ref: str
+    created_by: str
+    created_at: datetime
+    status: Literal["linked", "quarantined"]
+    primary_identity: bool
+
+
+class SourceIdentities(Contract):
+    patient_id: str
+    case_id: str
+    identities: list[SourceIdentityEntry]
+
+
+class SourceIdentityReceipt(Contract):
+    patient_id: str
+    case_id: str
+    identity_id: str = Field(pattern=r"^IDENT-[0-9A-F]{32}$")
+    status: Literal["linked", "quarantined"]
+    duplicate: bool
+    source_identity_verified: Literal[False]
+
+
 class OriginalSource(Contract):
     source_id: str
     case_id: str
@@ -290,6 +326,7 @@ class OriginalSource(Contract):
     original_text: str
     synthetic: Literal[True]
     clinical_review_state: Literal["not_established"]
+    institutional_identity: InstitutionalSourceIdentity | None = None
 
 
 
@@ -800,6 +837,44 @@ def patient_router(database: Database, authentication: Authentication, *, image_
             raise HTTPException(404, "Record request or source unavailable") from None
 
 
+    @router.get("/{patient_id}/cases/{case_id}/source-identities", response_model=SourceIdentities,
+                responses=errors, operation_id="list_case_source_identities_v1")
+    def list_source_identities(request: Request, patient_id: str, case_id: str,
+                               context: Principal = Depends(principal)):
+        if request.query_params:
+            raise HTTPException(422, "Unsupported query")
+        try:
+            with registry(context) as patients:
+                records_authorized(patients,context,patient_id,"case_binding_read")
+                return CanonicalCaseBindings(patients).list_source_identities(
+                    patient_id,case_id,organization=context.organization,actor=context.actor,purpose=context.purpose,
+                    prepare_response=lambda value: JSONResponse(content=SourceIdentities(**value).model_dump(mode="json")),
+                    recheck_authority=lambda: final_question_authority(
+                        request,context,patients,patient_id,("case_binding_read",)))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source identities unavailable") from None
+
+    @router.post("/{patient_id}/cases/{case_id}/source-identities", response_model=SourceIdentityReceipt,
+                 status_code=201, responses={200:{"model":SourceIdentityReceipt},**errors},
+                 operation_id="add_case_source_identity_v1")
+    def add_source_identity(request: Request, patient_id: str, case_id: str,
+                            payload: CreateSourceIdentity, context: Principal = Depends(principal)):
+        if payload.synthetic is not True or request.query_params:
+            raise HTTPException(422, "Fictional source identity required")
+        try:
+            with registry(context) as patients:
+                records_authorized(patients,context,patient_id,"case_binding_create")
+                return CanonicalCaseBindings(patients).add_source_identity(
+                    patient_id,case_id,organization=context.organization,actor=context.actor,purpose=context.purpose,
+                    **payload.model_dump(exclude={"synthetic"}),
+                    prepare_response=lambda value: JSONResponse(
+                        content=SourceIdentityReceipt(**value).model_dump(mode="json"),
+                        status_code=200 if value["duplicate"] else 201),
+                    recheck_authority=lambda: final_question_authority(
+                        request,context,patients,patient_id,("case_binding_create",)))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source identities unavailable") from None
+
     @router.get("/{patient_id}/case-bindings", response_model=CaseBindingList,
                 responses=errors, operation_id="list_case_bindings_v1")
     def list_case_bindings(patient_id: str, context: Principal = Depends(principal)):
@@ -1196,7 +1271,7 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                     patient_id, case_id, source_id, organization=context.organization,
                     actor=context.actor, purpose=context.purpose,
                     prepare_response=lambda result: JSONResponse(
-                        content=OriginalSource(**result).model_dump(mode="json")),
+                        content=OriginalSource(**result).model_dump(mode="json", exclude_none=True)),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "source_original_read"))
         except PatientRegistryDenied:

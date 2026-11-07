@@ -839,6 +839,38 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.evaluate('[...document.querySelectorAll(".world-cases li")].find(e=>e.textContent.includes(' + json.dumps(CASE) + ')).querySelector("[data-testid=world-load]").click()')
     cd.wait('!document.querySelector("[data-testid=world-projection]") && document.querySelector("[data-testid=world-status]").textContent.includes("unavailable or revoked")', 'revoked laboratory projection cleared')
     credentials[0]['actions'].append('source_read');write_grants()
+    # The operator records associations. The workspace deliberately selects
+    # each institution through the existing source-import/read grants.
+    institutional = []
+    for suffix in ('B', 'C'):
+        subject = SUBJECT + '-' + suffix
+        identity = operator('/cases/' + CASE + '/source-identities', dict(synthetic=True,
+            request_key='WEB-INSTITUTION-' + suffix, source_organization='FICT-INSTITUTION-' + suffix,
+            source_system='FICT-LAB-SYSTEM', source_subject_ref=subject, review_ref='FICT-REVIEW-' + suffix))
+        assert identity['status'] == 'linked' and identity['source_identity_verified'] is False
+        records()
+        cd.evaluate('document.querySelector("[data-testid=source-identities-refresh]").click()')
+        cd.wait('Boolean(document.querySelector("[data-testid=laboratory-source-identity]"))', 'institutional identity choices')
+        cd.evaluate("(() => {const e=document.querySelector('[data-testid=laboratory-source-identity]');"
+            "Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e," + json.dumps(identity['identity_id']) + ");"
+            "e.dispatchEvent(new Event('change',{bubbles:true}));})()")
+        institutional_raw = fictional_bundle(patient_resource_id=subject).replace(
+            b'FICT-WEB-REPORT', ('FICT-WEB-REPORT-' + suffix).encode())
+        select(institutional_raw, 'fictional-institution-' + suffix + '.json')
+        cd.evaluate(preview_button + '.click()')
+        cd.wait('Boolean(' + preview_results + ')', 'selected institutional laboratory preview')
+        cd.evaluate('document.querySelector("[data-testid=laboratory-confirm]").click();document.querySelector("[data-testid=laboratory-import]").click()')
+        digest = hashlib.sha256(institutional_raw).hexdigest()
+        cd.wait('Boolean(document.querySelector("[data-testid=laboratory-receipt]"))', 'institutional original saved')
+        cd.wait('document.querySelector("[data-testid=source-index]")?.textContent.includes(' + json.dumps('FICT-WEB-REPORT-'+suffix) + ')', 'institutional source index refreshed')
+        candidate = next(row for row in operator(source_path)['sources'] if row['sha256'] == digest)
+        inspect(candidate['source_id'], institutional_raw)
+        institutional.append(dict(identity_id=identity['identity_id'], source_id=candidate['source_id'], sha256=digest))
+    assert len(operator('/cases/' + CASE + '/source-identities')['identities']) == 3
+    (artifacts / 'institutional-source-identities.json').write_text(json.dumps(dict(synthetic=True,
+        case_id=CASE, institution_count=3, additional_originals=institutional, original_bytes_verified=True), indent=2))
+    (artifacts / 'institutional-source-original.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+    print('PASS INSTITUTIONAL SOURCES: three explicit institutional identities in one case, two UI selections/imports and exact distinct original bytes.')
     cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests;delete window.__oiLabPrepareCodes;delete window.__oiLabQuestionPosts;delete window.__oiLabHistoryCodes;delete window.__oiLabCatalog')
     navigate('Overview')
     (artifacts / 'laboratory-fhir-workflow.json').write_text(json.dumps({

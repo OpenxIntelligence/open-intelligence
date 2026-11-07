@@ -7,6 +7,7 @@ export type ImportReceipt = Readonly<{
 export type OriginalSource = Readonly<{
   source_id:string;case_id:string;access_receipt_id:string;document_id:string;version:number;state:'current'|'superseded';
   sha256:string;original_text:string;synthetic:true;clinical_review_state:'not_established';
+  institutional_identity?:Readonly<{source_organization:string;source_system:string;source_subject_ref:string}>;
 }>;
 function exact(v:unknown,keys:string[]):v is Record<string,unknown>{
   return v!==null && typeof v==='object' && !Array.isArray(v) &&
@@ -89,7 +90,8 @@ function verifyLaboratoryOriginal(text:string,source:SourceVersion,expectedSubje
   }
 }
 export async function verifyOriginal(v:unknown,caseId:string,source:SourceVersion,expectedSubject?:string,expectedObservation?:string):Promise<OriginalSource>{
-  if(!exact(v,['source_id','case_id','access_receipt_id','document_id','version','state','sha256','original_text','synthetic','clinical_review_state'])||
+  const institutional=!!v&&typeof v==='object'&&Object.hasOwn(v,'institutional_identity');
+  if(!exact(v,['source_id','case_id','access_receipt_id','document_id','version','state','sha256','original_text','synthetic','clinical_review_state',...(institutional?['institutional_identity']:[])])||
      v.source_id!==source.source_id||v.case_id!==caseId||v.document_id!==source.document_id||
      v.version!==source.version||v.state!==source.state||v.sha256!==source.sha256||
      typeof v.access_receipt_id!=='string'||!/^ACCESS-[0-9A-F]{32}$/.test(v.access_receipt_id)||
@@ -97,10 +99,18 @@ export async function verifyOriginal(v:unknown,caseId:string,source:SourceVersio
   const bytes=new TextEncoder().encode(v.original_text);
   if(bytes.length<1||bytes.length>65536)throw Error('contract');
   if(/^OI-SYNTHETIC-REPORT\/[12]\n/.test(v.original_text)){
+    if(institutional)throw Error('Unexpected institutional identity');
     if(expectedObservation!==undefined)throw Error('Original laboratory bundle required');
     const prepared=prepareSource(bytes,'original.txt');
     if(prepared.declaredCase!==caseId||prepared.text!==v.original_text)throw Error('contract');
   }else{
+    if(institutional){
+      const identity=v.institutional_identity;
+      if(!exact(identity,['source_organization','source_system','source_subject_ref'])||
+         ['source_organization','source_system','source_subject_ref'].some(k=>typeof identity[k]!=='string'||
+           !/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/.test(identity[k] as string)))throw Error('contract');
+      expectedSubject='Patient/'+identity.source_subject_ref;
+    }
     verifyLaboratoryOriginal(v.original_text,source,expectedSubject,expectedObservation);
   }
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');

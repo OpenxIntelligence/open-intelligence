@@ -43,3 +43,30 @@ export function parseLaboratoryReceipt(value:unknown,sha256:string,status:number
      v.observation_count<1||v.observation_count>16)throw Error('laboratory-receipt');
   return Object.freeze(v as LaboratoryReceipt);
 }
+
+export type SourceIdentity=Readonly<{identity_id:string;source_organization:string;source_system:string;
+  source_subject_ref:string;review_ref:string;created_by:string;created_at:string;
+  status:'linked'|'quarantined';primary_identity:boolean}>;
+export function readSourceIdentities(value:unknown,patientId:string,caseId:string):readonly SourceIdentity[]{
+  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Source identities unavailable');
+  const v=value as Record<string,unknown>;
+  if(Object.keys(v).length!==3||v.patient_id!==patientId||v.case_id!==caseId||
+     !Array.isArray(v.identities)||v.identities.length<1||v.identities.length>64)throw Error('Source identity scope');
+  const seen=new Set<string>();let primary=0;
+  const rows=v.identities.map((raw:unknown)=>{
+    if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Source identity');
+    const r=raw as Record<string,unknown>;
+    const keys=['identity_id','source_organization','source_system','source_subject_ref','review_ref','created_by','created_at','status','primary_identity'];
+    if(Object.keys(r).length!==keys.length||keys.some(k=>!Object.hasOwn(r,k))||
+       typeof r.identity_id!=='string'||!/^IDENT-[0-9A-F]{32}$/.test(r.identity_id)||seen.has(r.identity_id)||
+       ['source_organization','source_system','source_subject_ref','review_ref','created_by'].some(k=>
+         typeof r[k]!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/.test(r[k] as string))||
+       typeof r.created_at!=='string'||!Number.isFinite(Date.parse(r.created_at))||
+       !['linked','quarantined'].includes(r.status as string)||typeof r.primary_identity!=='boolean'||
+       (r.primary_identity&&r.status!=='linked'))throw Error('Source identity');
+    seen.add(r.identity_id);if(r.primary_identity)primary++;
+    return Object.freeze(r as SourceIdentity);
+  });
+  if(primary!==1)throw Error('Primary source identity unavailable');
+  return Object.freeze(rows);
+}

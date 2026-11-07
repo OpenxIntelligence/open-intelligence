@@ -1,3 +1,5 @@
+import {readSourceIdentities} from './laboratory-fhir.js';
+import type {SourceIdentity} from './laboratory-fhir.js';
 import {PermissionConsole,PermissionHttpError} from './patient-permissions.js';
 import {createEncounterChart, EncounterHttpError, type EncounterChart} from './encounter-client.js';
 import {readLaboratoryCitationReport} from './laboratory-citation-report.js';
@@ -2207,20 +2209,29 @@ export class RegistrySession {
     }catch(_){if(current())this.#publish({original:null,recordsPhase:'error',recordMessage:'Original failed verification or service unavailable. Reload metadata before trying again.'});}
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
-  async previewLaboratory(caseId:string,file:LaboratoryFile) {
+  async sourceIdentities(caseId:string):Promise<readonly SourceIdentity[]> {
+    const patientId=this.#state.patient?.patient_id;
+    if(!patientId)throw Error('Patient unavailable');
+    const reply=await this.#caseContentRequest(caseId,'/source-identities');
+    if(reply.status!==200)throw Error('Source identities unavailable');
+    return readSourceIdentities(reply.body,patientId,caseId);
+  }
+  async previewLaboratory(caseId:string,file:LaboratoryFile,identity?:SourceIdentity) {
     const index=this.#state.sourceIndex;
     const binding=this.#state.cases?.find(row=>row.case_id===caseId && row.status==='active');
     if(!index || index.case_id!==caseId || !binding || binding.patient_id!==this.#state.patient?.patient_id ||
        index.patient_id!==binding.patient_id) throw Error('Recheck patient and case access');
     const reply=await this.#caseContentRequest(caseId,'/laboratory/fhir-r4/preview',
-      JSON.stringify({synthetic:true,bundle_json:file.text}));
+      JSON.stringify({synthetic:true,bundle_json:file.text,...(identity?{source_identity_id:identity.identity_id}:{})}));
     if(reply.status===422) throw new LaboratoryPreviewRejected(LABORATORY_PREVIEW_REJECTED);
     if(reply.status!==200 || this.#state.sourceIndex!==index) throw Error('Laboratory preview unavailable.');
-    return readLaboratoryPreview(reply.body,file,binding);
+    if(identity?.status==='quarantined')throw Error('Source identity is quarantined');
+    return readLaboratoryPreview(reply.body,file,identity?{...binding,source_organization:identity.source_organization,source_system:identity.source_system,source_subject_ref:identity.source_subject_ref}:binding);
   }
   /** Preserve one exact in-memory command until its receipt is known or this patient/case is withdrawn. */
-  async importLaboratory(caseId:string,text:string,confirmed:boolean,previousSourceId:string|null=null):Promise<void>{
+  async importLaboratory(caseId:string,text:string,confirmed:boolean,previousSourceId:string|null=null,sourceIdentityId?:string):Promise<void>{
     if(this.#laboratoryWriting||this.#uploading)return;
+    if(sourceIdentityId!==undefined&&!/^IDENT-[0-9A-F]{32}$/.test(sourceIdentityId))return;
     if(this.#state.laboratoryPhase==='unknown'){
       this.#publish({laboratoryMessage:'Resolve the uncertain import with Retry exact import before choosing another original.'});return;
     }
@@ -2237,7 +2248,8 @@ export class RegistrySession {
       if(file.text!==text)throw Error('changed bytes');
       if(preparing!==this.#laboratoryWrite||scope!==this.#scope||read!==this.#read||records!==this.#records||this.#state.sourceIndex!==index)return;
       const body=JSON.stringify({synthetic:true,request_key:crypto.randomUUID(),
-        expected_previous_source_id:previousSourceId,bundle_json:file.text});
+        expected_previous_source_id:previousSourceId,bundle_json:file.text,
+        ...(sourceIdentityId?{source_identity_id:sourceIdentityId}:{})});
       if(new TextEncoder().encode(body).length>524288)throw Error('envelope');
       const intent=Object.freeze({patient_id:patientId,case_id:caseId,body,sha256:file.sha256});
       this.#laboratoryWriting=false;
