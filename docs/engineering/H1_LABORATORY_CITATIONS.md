@@ -5,6 +5,14 @@ versioned metadata citation to one saved laboratory question. The linkage
 preserves the question ID and its exact source ID, version, digest, local FHIR
 Observation, source snapshot and preparation fingerprint.
 
+The same workspace can group current results by their literal LOINC code across
+separate original reports. Each row keeps its source identity, specimen, collection
+time, literal value/unit or coded answer and code-system version. This read-only
+view retains the source timeline order and excludes superseded originals; it does
+not establish that assays or specimens are comparable. The complete result list,
+saved questions, captured inspections and verification requests remain available.
+Opening Records still checks source access before an original is disclosed.
+
 The existing catalog and citation-link registry retain ownership. Migration
 `0019_laboratory_citations` associates the link with its original Observation
 and the rights decision that permitted storing and displaying the metadata.
