@@ -243,6 +243,21 @@ def receive_once(path: Path, port, patient, token_provider, *, inbox_after=None,
         return result
 
 
+def catch_up(path: Path, port, patient, token_provider, *, max_pages, visit_workload=False):
+    """Commit a bounded number of pages; retain earlier commits if a later read fails."""
+    if type(max_pages) is not int or not 1 <= max_pages <= 100:
+        raise ValueError("Catch-up requires a page budget from 1 to 100")
+    applied = 0
+    for pages in range(1, max_pages + 1):
+        result = receive_once(path, port, patient, token_provider, visit_workload=visit_workload)
+        applied += result["applied"]
+        if not result["has_more"]:
+            break
+    return {**result, "status": "catching_up" if result["has_more"] else "ok",
+            "applied": applied, "pages": pages,
+            "stop_reason": "page_budget" if result["has_more"] else "caught_up"}
+
+
 
 def draft_fingerprint(db):
     # Stream in primary-key order; replay state may be larger than one feed page.
@@ -428,9 +443,14 @@ def main(argv=None):
     action.add_argument("--backup-to", type=Path, help="Publish a verified receiver copy at a new private path")
     action.add_argument("--verify-history", action="store_true", help="Reconcile the restored receiver with the feed")
     parser.add_argument("--expect-ack-sha256", help="Compare restored local actions with the digest on the backup receipt")
+    parser.add_argument("--catch-up-pages", type=int, metavar="COUNT",
+                        help="Read up to 1–100 pages; may combine only with --visit-workload")
     args = parser.parse_args(argv)
     if args.expect_ack_sha256 is not None and not args.verify_history:
         parser.error("--expect-ack-sha256 requires --verify-history")
+    if args.catch_up_pages is not None and (args.pending_drafts_after is not None
+            or args.acknowledge_draft_event is not None or args.backup_to is not None or args.verify_history):
+        parser.error("--catch-up-pages may combine only with --visit-workload")
 
     def token():
         with args.token_file.open("rb") as handle:
@@ -444,6 +464,9 @@ def main(argv=None):
             result = backup_receiver(args.database, args.backup_to, args.port, args.patient, token)
         elif args.verify_history:
             result = verify_history(args.database, args.port, args.patient, token, expected_ack_sha256=args.expect_ack_sha256)
+        elif args.catch_up_pages is not None:
+            result = catch_up(args.database, args.port, args.patient, token,
+                              max_pages=args.catch_up_pages, visit_workload=args.visit_workload)
         else:
             result = receive_once(args.database, args.port, args.patient, token,
                                   inbox_after=args.pending_drafts_after, acknowledge=args.acknowledge_draft_event,

@@ -44,6 +44,16 @@ Add `--visit-workload` to the same relay invocation to count visits by their cur
 
 For a populated receiver, the first workload run starts at the beginning of the authorized feed and checks prior event hashes while rebuilding in pages. Existing activity receipts and their original access references survive. The command returns `visit_workload: null` while more pages are needed. After catch-up it returns the distribution as of the last authorized page. Each page commits visit states, workload receipts, and new activity counts together. An unexpected revision or transition rolls back the page. Restore or retry uses the same cursor and patient scope. This local operational projection stores encounter identifiers and aggregate states. Clinical records, note content and decisions stay with the owning application.
 
+### Bounded catch-up after interruption or restore
+
+Add `--catch-up-pages 20` to process at most twenty authorized pages in one invocation. The accepted budget is 1–100 pages. It can be combined with `--visit-workload` to rebuild that projection through the same transactions. Ordinary single-page delivery remains the default.
+
+Each page rereads the token file and checks current access through the existing HTTP feed. The command commits one page at a time, stopping at the first unavailable or invalid page. Previously committed pages survive denial, interruption or process death; rerun with current access to resume. A failed command returns exit code 2 and only `{"status":"unavailable"}` even when earlier pages committed.
+
+On success, `pages` reports completed page transactions, `applied` counts new activity receipts across this invocation, and `counts` retains the receiver's cumulative totals. `stop_reason: "page_budget"` with `status: "catching_up"` means the last page still reported more history; run again to continue. `stop_reason: "caught_up"` means the last authorized page reported no further events at that read. It does not promise that the producer will remain idle. Workload totals remain withheld while its backfill is incomplete. Previously delivered receipts are checked again without increasing their totals.
+
+The finite catch-up command cannot be combined with draft acknowledgement, inbox listing, backup or history verification. Those remain explicit operator actions. This adds no daemon, polling loop or scheduler. The dependent catch-up candidate preserves #571's source for its own recovery acceptance. Added tests exercise the page budget, later-page denial/divergence, workload rebuild and a real command process killed during its second page, plus a PostgreSQL/HTTP grant-withdrawal scenario. Actual hosted results belong to the exact dependent source, separately from #571.
+
 ## Operations intake of revised drafts
 
 The same receiver maintains a local operations inbox with one pending item per encounter and note. A first saved draft opens an item. A later saved version replaces it, including after an operator acknowledged the earlier version. Acknowledgement records receipt of a version for local operations. Clinical review, signing and external notifications require their own authorities.

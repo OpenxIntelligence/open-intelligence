@@ -195,13 +195,15 @@ class ReceiverTests(unittest.TestCase):
                 relay.verify_history(self.db, 8000, PATIENT, lambda: "test")
 
 
-def interrupt_receiver(database, patient, port, token_file, *, visit_workload=False):
-    """Kill the real command before its second new receipt, inside the page transaction."""
+def interrupt_receiver(database, patient, port, token_file, *, visit_workload=False, catch_up_pages=None):
+    """Kill inside a page transaction; catch-up keeps its first committed page."""
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
+    env["OI_TEST_KILL_RECEIPT"] = "27" if catch_up_pages is not None else "2"
     return subprocess.run(
         [sys.executable, __file__, "--patient", patient, "--port", str(port),
          "--database", str(database), "--token-file", str(token_file),
-         *(["--visit-workload"] if visit_workload else [])],
+         *(["--visit-workload"] if visit_workload else []),
+         *(["--catch-up-pages", str(catch_up_pages)] if catch_up_pages is not None else [])],
         env=env, timeout=15, capture_output=True,
     )
 
@@ -223,12 +225,13 @@ class RelayHTTPTests(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
                 fixture.requests.append((self.path, self.headers.get("Authorization")))
+                document = fixture.document(self.path) if callable(fixture.document) else fixture.document
                 self.send_response(fixture.status)
                 self.send_header("Content-Type", "application/json")
                 if fixture.status == 302:
                     self.send_header("Location", "/redirect-target")
                 self.end_headers()
-                self.wfile.write(json.dumps(fixture.document).encode())
+                self.wfile.write(json.dumps(document).encode())
 
             def log_message(self, *_):
                 pass
@@ -278,6 +281,57 @@ class RelayHTTPTests(unittest.TestCase):
         self.document = page(event(5, NOTE), dict(event(9, NOTE), note_version=2))
         self.assertEqual(json.loads(self.run_cli("--pending-drafts-after", "0").stdout)["pending_drafts"],
                          [dict(event_id=9, encounter_id=3, note_version=2)])
+
+    def test_catchup_cli_renews_token_and_withholds_summary_after_page_denial(self):
+        from urllib.parse import parse_qs, urlsplit
+        events = [dict(event(i), encounter_id=i) for i in range(1, 31)]
+        def document(path):
+            after = int(parse_qs(urlsplit(path).query)["after_id"][0])
+            if len(self.requests) == 1:
+                self.token.write_text("r" * 32)
+            elif len(self.requests) == 2:
+                self.status = 403
+            rows = [e for e in events if e["id"] > after]
+            return page(*rows[:25], has_more=len(rows) > 25)
+        self.document = document
+        denied = self.run_cli("--catch-up-pages", "10")
+        self.assertEqual((denied.returncode, json.loads(denied.stdout)), (2, {"status": "unavailable"}))
+        self.assertEqual([token for _, token in self.requests], ["Bearer " + "t"*32, "Bearer " + "r"*32])
+        with closing(sqlite3.connect(self.db)) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM activity_receipts").fetchone(), (25,))
+        self.status = 200
+        resumed = self.run_cli("--catch-up-pages", "10")
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        result = json.loads(resumed.stdout)
+        self.assertEqual((result["applied"], result["pages"], result["stop_reason"]), (5, 1, "caught_up"))
+
+    def test_catchup_cli_rejects_combination_with_operator_actions(self):
+        for options in (("--acknowledge-draft-event", "5"), ("--pending-drafts-after", "0"),
+                        ("--backup-to", str(self.db.with_suffix(".backup"))), ("--verify-history",)):
+            with self.subTest(options=options):
+                self.assertEqual(self.run_cli("--catch-up-pages", "2", *options).returncode, 2)
+                self.assertFalse(self.db.exists())
+                self.assertEqual(self.requests, [])
+
+    def test_catchup_process_death_keeps_first_page_and_replays_second_once(self):
+        from urllib.parse import parse_qs, urlsplit
+        self.document = page()
+        self.assertEqual(self.run_cli().returncode, 0)
+        events = [dict(event(i), encounter_id=i) for i in range(1, 61)]
+        def document(path):
+            after = int(parse_qs(urlsplit(path).query)["after_id"][0])
+            rows = [e for e in events if e["id"] > after]
+            return page(*rows[:25], has_more=len(rows) > 25)
+        self.document = document
+        killed = interrupt_receiver(self.db, PATIENT, self.port, self.token, catch_up_pages=10)
+        self.assertEqual(killed.returncode, -signal.SIGKILL, killed.stderr)
+        with closing(sqlite3.connect(self.db)) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM activity_receipts").fetchone(), (25,))
+            self.assertEqual(db.execute("SELECT total FROM activity_totals").fetchone(), (25,))
+        resumed = self.run_cli("--catch-up-pages", "10")
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        result = json.loads(resumed.stdout)
+        self.assertEqual((result["applied"], result["pages"], result["counts"]), (35, 2, {SCHEDULED: 60}))
 
     def test_mid_page_process_kill_replays_once(self):
         self.assertEqual(self.run_cli().returncode, 0)
@@ -336,15 +390,16 @@ class RelayHTTPTests(unittest.TestCase):
 
 if __name__ == "__main__":
     connect = sqlite3.connect
+    inserts = 0
+    interrupt_after = int(os.environ.get("OI_TEST_KILL_RECEIPT", "2"))
 
     def interrupting_connection(*args, **kwargs):
         db = connect(*args, **kwargs)
-        inserts = 0
 
         def interrupt_second_insert():
-            nonlocal inserts
+            global inserts
             inserts += 1
-            if inserts == 2:
+            if inserts == interrupt_after:
                 os.kill(os.getpid(), signal.SIGKILL)
             return 0
 
