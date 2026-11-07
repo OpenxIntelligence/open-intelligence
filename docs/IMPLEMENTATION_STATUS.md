@@ -18,6 +18,20 @@ the complete inherited PostgreSQL/browser/recovery workflows require exact-sourc
 hosted acceptance. Parent results are not substituted. Published source and
 workflow results belong to the dependent draft's receipt; no merge or deployment.
 
+The initial hosted source `020df48128c3122919ee3fcea205de3580faea63`
+passes 237 worker/database tests (including the new real stop/resume case),
+31 architecture tests, and the web/browser/demo workflow with 704 client and
+13 rights tests. Its full API run 42369046826 executes 1,024 methods and stops
+with one inherited fixture error: the empty manual-context test still expects
+the old `_execute` journal insertion, while the #626 canonical writer uses
+`_fetchone` with `RETURNING id`. No dedicated recovery stage runs after that
+failure. The fixture now routes and inspects the actual canonical insertion,
+requires exactly one audit event and no unrelated write, and retains the real
+primitive metadata validation. An early pure-contract gate catches this class
+of mismatch before long database suites; all existing gates remain required.
+This correction changes no production implementation. Repaired-head full
+acceptance remains separate from the initial worker/browser passes.
+
 **Current connected application:** use the [persistent fictional demo](H1_DEMO.md).
 This dependent draft's PR records its combined revision, verification receipts
 and landing status; [foundation #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565)

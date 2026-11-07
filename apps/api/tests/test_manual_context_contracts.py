@@ -59,7 +59,13 @@ class ManualContextContracts(unittest.TestCase):
     def test_empty_manual_read_obeys_the_actual_primitive_event_contract(self):
         db=Mock(autocommit=False)
         registry=PostgresPatientRegistry(db)
-        registry._fetchone=Mock(return_value=('QUESTION-'+'A'*32,))
+        def fetch_one(sql, params=()):
+            if sql.startswith('INSERT INTO identity.identity_domain_events '):
+                self.assertIn('RETURNING id', sql)
+                return (17,)
+            self.assertTrue(sql.startswith('SELECT question_id FROM investigation.source_questions '))
+            return ('QUESTION-'+'A'*32,)
+        registry._fetchone=Mock(side_effect=fetch_one)
         registry._fetchall=Mock(return_value=[])
         registry.require_patient=Mock()
         registry._execute=Mock()
@@ -70,9 +76,17 @@ class ManualContextContracts(unittest.TestCase):
                 organization='ORG-FICTIONAL',actor='ACTOR-FICTIONAL',purpose='operations',
                 recheck_authority=lambda original:None,prepare_response=lambda result:result)
         self.assertEqual(result['passages'],[])
-        details=json.loads(registry._execute.call_args.args[1][2])
+        # The canonical writer now returns its journal ID through _fetchone;
+        # keep the real primitive validator and inspect that exact insertion.
+        inserts=[call for call in registry._fetchone.call_args_list
+                 if call.args[0].startswith('INSERT INTO identity.identity_domain_events ')]
+        self.assertEqual(len(inserts),1)
+        self.assertEqual(inserts[0].args[1][:2],
+                         ('PAT-FICTIONAL','investigation.question_passages_access_prepared'))
+        details=json.loads(inserts[0].args[1][2])
         self.assertEqual(details['reference_count'],0)
         self.assertEqual(details['references_sha256'],fingerprint([]))
+        registry._execute.assert_not_called()
         db.commit.assert_called_once();db.rollback.assert_not_called()
 
     def test_manual_report_preserves_distinct_authority_and_exact_anchor(self):
