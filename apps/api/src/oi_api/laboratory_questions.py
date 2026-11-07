@@ -11,6 +11,7 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from .case_bindings import _case_id
+from .question_origin import classify_question_origin
 from .composer_preflight import SHA256, SOURCE_SNAPSHOT_CONTRACT, prepare_laboratory_question
 from .laboratory_fhir_store import PostgresLaboratoryFHIR
 from .source_questions import PreparedResponse, _request_key
@@ -113,6 +114,8 @@ class PostgresLaboratoryQuestions:
             recheck_authority()
             selected = prepared["selected_source"]
             qid = "QUESTION-" + uuid.uuid4().hex.upper()
+            classify_question_origin(question_id=qid, source_id=source_id,
+                                     source_line=None, observation_reference=observation_reference)
             inserted = self.registry._fetchone(
                 "INSERT INTO investigation.source_questions "
                 "(question_id,patient_id,case_id,origin_org,request_key,intent_sha256,actor,purpose,"
@@ -176,6 +179,13 @@ class PostgresLaboratoryQuestions:
                         or not hmac.compare_digest(saved, _intent(patient_id, case_id, organization,
                             author, purpose, key, sid, ref, question, snapshot, preflight))):
                     raise PatientRegistryError("Stored laboratory question provenance is inconsistent")
+                try:
+                    origin = classify_question_origin(question_id=qid, source_id=sid,
+                                                      source_line=None, observation_reference=ref)
+                except ValueError as exc:
+                    raise PatientRegistryError("Stored laboratory question origin is invalid") from exc
+                if origin.kind != "fhir_observation":
+                    raise PatientRegistryError("Stored laboratory question origin is inconsistent")
                 fresh = (current.get((sid, ref)) == (version, sha)
                          and hmac.compare_digest(snapshot, world["snapshot_fingerprint"]))
                 questions.append({
