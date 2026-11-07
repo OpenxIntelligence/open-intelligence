@@ -132,6 +132,9 @@ class HTTPContractTests(unittest.TestCase):
                 self.assertEqual(missing_status, 404)
         self.assertEqual(status, 200)
         self.assertEqual(set(schema["paths"]), {
+            "/v1/patients/{patient_id}/cases/{case_id}/institution-identities",
+            "/v1/patients/{patient_id}/cases/{case_id}/institution-identities/{identity_id}/decision",
+            "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/institution",
             "/v1/patients/{patient_id}/encounters",
             "/v1/patients/{patient_id}/encounters/events",
             "/v1/patients/{patient_id}/encounters/{encounter_id}/transitions",
