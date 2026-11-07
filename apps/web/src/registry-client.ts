@@ -2323,7 +2323,10 @@ export class RegistrySession {
         if([403,404].includes(res.status))this.#clearManualDrafts();
         this.#publish({cases:null,sourceIndex:null,original:null,recordsPhase:'error',importOutcome:'rejected',
           ...([403,404].includes(res.status)?{...emptyLaboratory(),...this.#resetLabQuestions(),...this.#resetReview(),...this.#resetFollowthrough(),...this.#resetEvidence(),...this.#evidenceSession.reset()}:{}),
-          importMessage:'The server rejected this import. Reload current case permissions; no success is claimed.'});return;
+          importReceipt:null,
+          importMessage:res.status===409
+            ? 'The report conflicts with a saved version. Reopen Records and check its document ID, version and original format before importing a correction.'
+            : 'The server rejected this import. Reload current case permissions; no success is claimed.'});return;
       }
       if(![200,201].includes(res.status))throw Error('unconfirmed');
       const receipt=parseImportReceipt(await json(res));if(!current())return;

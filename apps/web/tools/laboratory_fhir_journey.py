@@ -552,6 +552,26 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     inspect_recorded_task(False)
     assert cd.evaluate('window.__oiLabMutations') == current_writes
     records()
+    # An accompanying text report can have the same identifiers as a FHIR
+    # result. Try it through Records before submitting the real correction.
+    conflict_file = directory / 'fictional-competing-format.txt'
+    conflict_file.write_text(
+        f"OI-SYNTHETIC-REPORT/1\nPatient: {CASE}\nDocument: FICT-WEB-REPORT\n"
+        "Type: laboratory\nEvent-Date: 2026-04-03\nIssued-At: 2026-04-05\n"
+        "Specimen: FICT-WEB-SPEC\nAmends: FICT-WEB-REPORT@1\n"
+        "Finding: marker|pending|Fictional accompanying report.\n", encoding="utf-8")
+    document = cd.command('DOM.getDocument')
+    node = cd.command('DOM.querySelector', {'nodeId': document['root']['nodeId'], 'selector': '#original-file'})
+    cd.command('DOM.setFileInputFiles', {'nodeId': node['nodeId'], 'files': [str(conflict_file)]})
+    cd.wait("document.querySelector('[data-testid=local-original]')?.textContent.includes('Fictional accompanying')",
+            'structured original selected locally')
+    cd.evaluate("document.querySelector('#original-confirm').click()")
+    cd.evaluate("document.querySelector('[data-testid=import-original]').click()")
+    cd.wait("document.querySelector('[data-testid=import-receipt][data-outcome=rejected]')?.textContent.includes('original format')",
+            'competing intake identifies the version conflict in Records')
+    assert operator(source_path)['sources'] == [first]
+    assert operator(laboratory_history)['questions'] == [committed]
+    records()
     amended = fictional_bundle(amended=True)
     select(amended, 'fictional-lab-amended.json')
     # The replacement is explicit; file selection cannot pick a predecessor.

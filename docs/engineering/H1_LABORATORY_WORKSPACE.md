@@ -83,6 +83,43 @@ proof. Exact execution results, failed attempts and the tested commit belong in
 the draft PR and canonical engineering record. Do not inherit #469's successful
 tests as a new result for this frontend change.
 
+## Report format and amendment history
+
+The generic text and FHIR laboratory importers share a source version table.
+A matching report ID, case, specimen and date can identify a collision between
+the two formats. The structured writer checks the whole document history under
+the existing case lock before accepting an amendment or duplicate. Records
+shows a version conflict so the operator can reopen the original and choose
+the appropriate intake. An accompanying note requires its own document ID.
+
+For previously stored mixed histories, the source index and World Model withhold
+the affected case projection. The original reader can still open an authorized
+version before the first mixed edge. A later text retry cannot extend the mixed
+history. There is no automatic choice of a correct version. An operator can
+inventory the number of affected document histories in a synthetic restore
+without printing source content:
+
+```sql
+SELECT count(*) AS mixed_document_histories FROM (
+    SELECT s.case_id, s.document_id
+    FROM clinical_source.source_versions AS s
+    LEFT JOIN clinical_source.fhir_laboratory_sources AS f USING (source_id)
+    GROUP BY s.case_id, s.document_id
+    HAVING count(f.source_id) BETWEEN 1 AND count(*) - 1
+) AS mixed;
+```
+
+Preserve originals, receipts and dependent question/report references for
+review before any repair. [PR #572](https://github.com/OpenxIntelligence/open-intelligence/pull/572)
+tracks the main-targeted HTTP, browser and restored-database verification.
+The same repair is carried onto the connected historical workspace from #618
+at `7f266e1c389c8a0a3d00111ba295ab0bc8186898`, preserving its existing owners.
+Historical World Model requests also withhold a preexisting mixed history,
+even for an earlier cutoff: the history owner validates the complete live
+source history before reconstruction. The authorized exact original remains
+available independently. The stacked repair PR records its own combined
+verification; neither parent result qualifies that combined revision.
+
 ## Remaining scope
 
 Synthetic development only. No external FHIR/SMART connection, real accounts or

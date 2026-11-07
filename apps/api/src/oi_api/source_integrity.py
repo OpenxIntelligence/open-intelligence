@@ -62,6 +62,8 @@ def validate_snapshot(rows: Sequence[Mapping[str, object]], assertions: Sequence
                             "role": finding.oncology.role, "episode_id": finding.oncology.episode_id,
                         }
         for history in histories.values():
+            if len({row["source_id"] in fhir_sources for row in history}) != 1:
+                raise ValueError()
             history.sort(key=lambda row: row["version"])
             for version, row in enumerate(history, start=1):
                 if (row["version"] != version

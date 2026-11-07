@@ -9,6 +9,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.parse import quote
 
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -21,6 +22,14 @@ from oi_api.migrate import migrate
 from http_support import running_server
 from test_patients import TOKEN_A, TOKEN_B, request, credential
 from test_laboratory_fhir_r4 import example, encode, resource
+
+
+TEXT_AMENDMENT = (
+    "OI-SYNTHETIC-REPORT/1\nPatient: CASE-LAB-A\nDocument: FICTIONAL-REPORT-A\n"
+    "Type: laboratory\nEvent-Date: 2026-04-03\nIssued-At: 2026-04-05\n"
+    "Specimen: FICTIONAL-SPECIMEN-A\nAmends: FICTIONAL-REPORT-A@1\n"
+    "Finding: marker|pending|Fictional follow-up report pending.\n"
+)
 
 
 @unittest.skipUnless(os.environ.get("OI_API_RUN_DATABASE_TESTS") == "1",
@@ -243,7 +252,6 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
                              "not_performed")
 
     def test_historical_laboratory_values_are_selected_by_original_receipt_not_current_state(self):
-        from urllib.parse import quote
         with running_server(self.app) as base:
             patient = self.make_patient(base)
             first = self.import_source(base, patient)
@@ -262,6 +270,78 @@ class LaboratoryFHIRHTTPTests(unittest.TestCase):
                 self.assertEqual(historical["world_model"][key], before[key], key)
             self.assertNotEqual(request(base, route, token=TOKEN_A)[1]["laboratory_observations"],
                                 historical["world_model"]["laboratory_observations"])
+
+    def test_text_amendment_cannot_displace_a_fhir_result_in_the_patient_record(self):
+        with running_server(self.app) as base:
+            patient = self.make_patient(base)
+            case = f"/v1/patients/{patient}/cases/CASE-LAB-A"
+            status, first, _ = self.import_source(base, patient)
+            self.assertEqual(status, 201, first)
+            counts = (self.lab_counts(), self.source_counts())
+            # All ordinary amendment fields match, including document and specimen.
+            # Only the input format and its responsible source owner differ.
+            for _ in range(2):
+                status, body, _ = request(base, case + "/sources", token=TOKEN_A,
+                    body={"synthetic": True, "original_text": TEXT_AMENDMENT})
+                self.assertEqual(status, 409, body)
+            self.assertEqual((self.lab_counts(), self.source_counts()), counts)
+            status, world, _ = request(base, case + "/world-model", token=TOKEN_A)
+            self.assertEqual(status, 200, world)
+            self.assertEqual(world["observations"], [])
+            self.assertEqual([(r["source_id"], r["value_text"]) for r in world["laboratory_observations"]],
+                             [(first["source_id"], "4.20")])
+
+            corrected = example()
+            resource(corrected, "Observation")["valueQuantity"]["value"] = 5
+            status, second, _ = self.import_source(base, patient, corrected,
+                request_key="LAB-CORRECT-SAME-OWNER", expected_previous_source_id=first["source_id"])
+            self.assertEqual((status, second["version"]), (201, 2))
+            status, historical, _ = request(base, case + "/sources/" + first["source_id"], token=TOKEN_A)
+            self.assertEqual(status, 200, historical)
+            self.assertEqual((historical["state"], historical["original_text"]),
+                             ("superseded", encode(example()).decode("utf-8")))
+
+    def test_preexisting_mixed_history_is_withheld_and_original_bytes_remain_recoverable(self):
+        with running_server(self.app) as base:
+            patient = self.make_patient(base)
+            case = f"/v1/patients/{patient}/cases/CASE-LAB-A"
+            status, first, _ = self.import_source(base, patient)
+            self.assertEqual(status, 201, first)
+            status, valid_world, _ = request(base, case + "/world-model", token=TOKEN_A)
+            self.assertEqual(status, 200, valid_world)
+            cutoff = quote(valid_world["as_of_received_at"], safe="")
+            second_id = "SRC-" + "F" * 32
+            # Recreate the persisted rows an older writer could commit. Keep
+            # database constraints and immutable originals enabled throughout.
+            with self.engine.begin() as c:
+                c.execute(text("UPDATE clinical_source.source_versions SET state='superseded' "
+                               "WHERE source_id=:first"), {"first": first["source_id"]})
+                c.execute(text(
+                    "INSERT INTO clinical_source.source_versions "
+                    "(source_id,case_id,document_id,version,sha256,raw,kind,event_date,issued_at,"
+                    "specimen_id,state,supersedes_id) SELECT :second,case_id,document_id,2,:digest,"
+                    ":raw,kind,event_date,DATE '2026-04-05',specimen_id,'current',source_id "
+                    "FROM clinical_source.source_versions WHERE source_id=:first"
+                ), {"second": second_id, "first": first["source_id"], "raw": TEXT_AMENDMENT.encode(),
+                    "digest": hashlib.sha256(TEXT_AMENDMENT.encode()).hexdigest()})
+                c.execute(text(
+                    "INSERT INTO clinical_source.assertions (source_id,finding_key,certainty,quote,source_line) "
+                    "VALUES (:second,'marker','pending','Fictional follow-up report pending.',9)"
+                ), {"second": second_id})
+            before = (self.lab_counts(), self.source_counts())
+            for path in ("/sources", "/world-model", "/sources/" + second_id,
+                         "/world-model/history?received_through=" + cutoff):
+                status, body, _ = request(base, case + path, token=TOKEN_A)
+                self.assertEqual(status, 503, body)
+                self.assertNotIn("Fictional follow-up", json.dumps(body))
+            for raw in (TEXT_AMENDMENT, TEXT_AMENDMENT.replace("REPORT-A@1", "REPORT-A@2")):
+                status, body, _ = request(base, case + "/sources", token=TOKEN_A,
+                    body={"synthetic": True, "original_text": raw})
+                self.assertEqual(status, 409, body)
+            self.assertEqual((self.lab_counts(), self.source_counts()), before)
+            status, original, _ = request(base, case + "/sources/" + first["source_id"], token=TOKEN_A)
+            self.assertEqual(status, 200, original)
+            self.assertEqual(original["original_text"], encode(example()).decode("utf-8"))
 
     def test_exact_retry_and_changed_bundle_require_explicit_amendment(self):
         with running_server(self.app) as base:
