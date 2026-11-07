@@ -301,6 +301,7 @@ class PostgresSourceQuestions:
         retains its patient/case locks, read receipt, grant checks and transaction.
         No new persistence, clinical authority or original-source disclosure.
         """
+        from open_intelligence.h1_question_impact import plan_h1_confirmed_supersessions
         from open_intelligence.h1_semantic_bridge import bind_authorized_h1_question_list
         from open_intelligence.semantic_contract import Concept, Relationship, SemanticRegistry
 
@@ -327,10 +328,16 @@ class PostgresSourceQuestions:
                 source_index=index, authorized_patient_id=patient_id,
                 authorized_case_id=case_id,
             )
+            confirmed_impacts = plan_h1_confirmed_supersessions(
+                index["sources"], bindings, case_id=case_id,
+            )
             return {
                 "contract": "oi.synthetic-h1-semantic-snapshot/1",
                 "patient_id": patient_id, "case_id": case_id,
                 "access_receipt_id": index["access_receipt_id"],
+                # Direct source-version impact, distinct from the broader
+                # conservative fingerprint-based question freshness flag.
+                "direct_supersession_impacts": list(confirmed_impacts),
                 "bindings": [
                     {"question_id": item.question.record_id,
                      "source_id": item.source.record_id,
