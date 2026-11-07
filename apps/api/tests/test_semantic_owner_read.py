@@ -76,6 +76,28 @@ class SemanticOwnerReadTests(unittest.TestCase):
         self.assertTrue(result["bindings"][0]["requires_reassessment"])
         self.assertFalse(result["clinical_approval"])
 
+    def test_invalid_question_projection_rolls_back_owner_preparation(self):
+        malformed = question()
+        malformed["source_sha256"] = "0" * 64
+        service = FakeQuestionService([malformed])
+        with patch("oi_api.source_questions.PostgresSourceVersions", FakeOwner):
+            with self.assertRaises(Exception):
+                service.semantic_snapshot(
+                    "P1", "CASE-1", organization="ORG1", actor="actor",
+                    purpose="operations", recheck_authority=lambda: None,
+                )
+        self.assertEqual(service.registry.transaction_calls, 1)
+
+    def test_empty_question_snapshot_is_nonclinical(self):
+        service = FakeQuestionService([])
+        with patch("oi_api.source_questions.PostgresSourceVersions", FakeOwner):
+            result = service.semantic_snapshot(
+                "P1", "CASE-1", organization="ORG1", actor="actor",
+                purpose="operations", recheck_authority=lambda: None,
+            )
+        self.assertEqual(result["bindings"], [])
+        self.assertFalse(result["clinical_approval"])
+
     def test_research_purpose_rejected_before_read(self):
         service = FakeQuestionService([question()])
         with self.assertRaises(Exception):
