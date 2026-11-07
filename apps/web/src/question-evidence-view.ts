@@ -123,7 +123,8 @@ const passageSelectionFields=['source_id','document_id','source_version','origin
  'selected_state','quote','line','page','classification_origin','clinical_review',
  'anchor_sha256','selection_state'];
 export function decodePassageReviewPreparation(value:unknown,patient:string,caseId:string,
- source:string,questionId:string,expectedAnchor:string,expectedQuestion:string):PassageReviewPreparation{
+ source:string,questionId:string,expectedAnchor:string,expectedQuestion:string,
+ expectedQuote:string,expectedLine:number,expectedRevision:number):PassageReviewPreparation{
  if(!exact(value,[...scopeFields,'source_id','question_text','selection','links',
       'human_review_state','next_step','packet_sha256'])||
   value.contract!=='oi.pg-passage-review-preparation/1'||
@@ -138,7 +139,8 @@ export function decodePassageReviewPreparation(value:unknown,patient:string,case
    !Number.isInteger(selection.annotation_revision)||selection.annotation_revision<1||
    !hash(selection.review_sha256)||!text(selection.selected_by,3,128)||
    !instant(selection.selected_at)||typeof selection.quote!=='string'||
-   selection.quote.length<1||selection.quote.length>1200||
+   selection.quote.length<1||selection.quote.length>1200||selection.quote!==expectedQuote||
+   selection.line!==expectedLine||selection.annotation_revision!==expectedRevision||
    !Number.isInteger(selection.line)||selection.line<1||selection.line>512||
    !(selection.page===null||(Number.isInteger(selection.page)&&Number(selection.page)>=1))||
    !['reported','negative','pending','indeterminate','not-reported','not-assessed','conflicting'].includes(String(selection.selected_state))||
