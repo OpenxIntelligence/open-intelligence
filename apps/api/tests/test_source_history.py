@@ -222,5 +222,6 @@ class HistoryContractTests(unittest.TestCase):
             with patch.object(Database,'registry_connection') as connection,running_server(create_app(settings)) as base:
                 for cutoff in ('2026-01-10','2026-01-10T00:00:00','9999-01-01T00:00:00Z','2026-01-10T00:00:00.0000001Z'):
                     path='/v1/patients/PAT-FICTIONAL/cases/CASE-ALPHA/world-model/history?received_through='+quote(cutoff,safe='')
-                    self.assertEqual(request(base,path,token=TOKEN_A)[0],422)
+                    for endpoint in (path,path.replace('/history?','/history/semantics?')):
+                        self.assertEqual(request(base,endpoint,token=TOKEN_A)[0],422)
                 connection.assert_not_called()

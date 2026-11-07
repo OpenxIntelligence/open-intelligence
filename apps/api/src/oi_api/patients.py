@@ -25,6 +25,7 @@ from .record_requests import PostgresRecordRequests
 from .case_bindings import CanonicalCaseBindings
 from .sources import PostgresSourceVersions
 from .source_world_model import project_source_world_model
+from .source_semantics import HistoricalSourceSemantics, SourceSemantics, project_source_semantics
 from .laboratory_fhir_store import PostgresLaboratoryFHIR
 from .composer_preflight import PostgresSourceComposerPreflight, SHA256
 from .source_questions import PostgresSourceQuestions
@@ -1157,6 +1158,52 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                     patient_id, case_id, received_through=cutoff,
                     organization=context.organization, actor=context.actor, purpose=context.purpose,
                     prepare_response=prepare,
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "source_read"))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source unavailable") from None
+
+    @router.get("/{patient_id}/cases/{case_id}/world-model/history/semantics",
+                response_model=HistoricalSourceSemantics, responses=errors,
+                operation_id="read_historical_source_semantics_v1")
+    def historical_source_semantics(request: Request, patient_id: str, case_id: str,
+                                    received_through: str = Query(min_length=20, max_length=40),
+                                    context: Principal = Depends(principal)):
+        try:
+            cutoff = PostgresSourceVersions.receipt_cutoff(received_through)
+        except PatientRegistryError:
+            raise HTTPException(422, "Use an explicit RFC3339 receipt cutoff") from None
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "source_read")
+                def prepare(index):
+                    labs = PostgresLaboratoryFHIR(patients).observations_for_sources_locked(
+                        case_id, [s["source_id"] for s in index["sources"] if s["state"] == "current"])
+                    packet = HistoricalSourceSemantics(received_through=cutoff,
+                        semantics=project_source_semantics(project_source_world_model(index, labs)))
+                    return JSONResponse(packet.model_dump(mode="json"))
+                return PostgresSourceVersions(patients).history(
+                    patient_id, case_id, received_through=cutoff,
+                    organization=context.organization, actor=context.actor, purpose=context.purpose,
+                    prepare_response=prepare,
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "source_read"))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source unavailable") from None
+
+    @router.get("/{patient_id}/cases/{case_id}/world-model/semantics",
+                response_model=SourceSemantics, responses=errors,
+                operation_id="read_source_semantics_v1")
+    def source_semantics(request: Request, patient_id: str, case_id: str,
+                         context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "source_read")
+                return PostgresSourceVersions(patients).list(
+                    patient_id, case_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda index: JSONResponse(content=project_source_semantics(project_source_world_model(
+                        index, PostgresLaboratoryFHIR(patients).current_observations_locked(case_id))).model_dump(mode="json")),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "source_read"))
         except PatientRegistryDenied:

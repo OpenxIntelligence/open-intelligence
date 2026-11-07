@@ -381,6 +381,7 @@ async function unifiedHistorySession(basis,overrides={}){
  const f=unifiedHistoryFixture(),calls=[];
  const s=new RegistrySession(async(url,init)=>{
   calls.push(url);
+  if(url.includes('/history/semantics?'))return overrides.semantics?overrides.semantics(url,init):response(historicalSemantics(f));
   if(url.includes('/world-model/history?'))return overrides.history?overrides.history(url,init):response(f.historical);
   if(url.endsWith('/world-model'))return response(f.current);
   if(url.endsWith('/sources'))return overrides.index?overrides.index(url,init):response(f.index);
@@ -483,5 +484,88 @@ test('original denial does not disable independently authorized Records history 
  assert.equal(s.snapshot().recordsPhase,'error');
  await s.loadSourceHistory(f.second.received_at,'records');
  assert.equal(s.snapshot().historyPhase,'ready');assert.equal(s.snapshot().sourceHistory.received_through,f.second.received_at);
+ assert.equal(s.snapshot().original,null);s.disconnect();
+});
+
+test('semantic reads reject a response after disconnect and clear denied source context',async()=>{
+  let resolve,replyMode='deferred';
+  const s=new RegistrySession(async url=>{
+    if(url.endsWith('/semantics'))return replyMode==='denied'?response({detail:'Source unavailable'},404):new Promise(r=>{resolve=r;});
+    if(url.endsWith('/case-bindings'))return response(caseList());
+    if(url.endsWith('/world-model'))return response(world());
+    return response(patient());
+  });
+  s.connect(token);await s.read(patientId);await s.loadCases();await s.loadWorldModel(caseId);
+  const pending=s.readSourceSemantics(s.snapshot().worldModel);
+  s.disconnect();resolve(response({}));
+  await assert.rejects(pending);
+  s.connect(token);await s.read(patientId);await s.loadCases();await s.loadWorldModel(caseId);
+  replyMode='denied';
+  await assert.rejects(s.readSourceSemantics(s.snapshot().worldModel));
+  assert.equal(s.snapshot().worldModel,null);
+  assert.equal(s.snapshot().worldPhase,'error');
+});
+
+test('a historical semantic read cannot survive history dismissal or refresh',async()=>{
+  for(const invalidate of [s=>s.dismissSourceHistory(),s=>s.loadWorldModel(caseId),s=>s.disconnect()]){
+    let resolve;
+    const s=new RegistrySession(async url=>{
+      if(url.includes('/history/semantics?'))return new Promise(r=>resolve=r);
+      if(url.includes('/history?'))return response(history());
+      if(url.endsWith('/case-bindings'))return response(caseList());
+      if(url.endsWith('/world-model'))return response(world());
+      return response(patient());
+    });
+    s.connect(token);await s.read(patientId);await s.loadCases();await s.loadWorldModel(caseId);
+    await s.loadSourceHistory(source().received_at);
+    const past=s.snapshot().sourceHistory;
+    const pending=s.readSourceSemantics(past.world_model,past);
+    await invalidate(s);resolve(response({}));await assert.rejects(pending);
+    assert.equal(s.snapshot().sourceHistory,null);
+  }
+});
+
+
+function historicalSemantics(f){
+ const past=f.historical.world_model;
+ return {contract:'oi.source-semantics-history/1',received_through:f.first.received_at,
+  selection_basis:'received_at_inclusive',current_authority_required:true,historical_only:true,
+  semantics:{contract:'oi.source-semantics/1',patient_id:patientId,case_id:caseId,
+   access_receipt_id:'ACCESS-'+'C'.repeat(32),source_snapshot_sha256:past.snapshot_fingerprint,
+   synthetic:true,clinical_interpretation:false,records:[{owner:'clinical_source',
+    record_id:sourceId+'/line/8',concept_id:'oi:source-statement',concept_version:1,
+    source_version_id:sourceId,source_sha256:f.first.sha256,knowledge_kind:'reported',
+    evidence_status:'missing',original_state:'not-reported'}]}};
+}
+test('Records history classifications are bound to its exact source context without requiring Journey',async()=>{
+ const {s,f,calls}=await unifiedHistorySession('records',{original:()=>response({},404)});
+ await s.loadSourceHistory(f.first.received_at,'records');
+ await s.openHistoricalOriginal(sourceId);assert.equal(s.snapshot().recordsPhase,'error');
+ const past=s.snapshot().sourceHistory;
+ assert.equal(s.snapshot().worldModel,null);
+ const packet=await s.readSourceSemantics(past.world_model,past);
+ assert.equal(packet.records[0].source_version_id,sourceId);
+ assert.equal(packet.records[0].evidence_status,'missing');assert.equal(packet.records[0].original_state,'not-reported');
+ assert.ok(calls.at(-1).endsWith('/world-model/history/semantics?received_through='+encodeURIComponent(f.first.received_at)));
+ assert.equal(s.snapshot().worldModel,null);assert.equal(s.snapshot().original,null);
+ const count=calls.length;await assert.rejects(s.readSourceSemantics(past.world_model));assert.equal(calls.length,count);
+ s.disconnect();
+});
+for(const invalidate of ['refresh','dismiss','disconnect','patient']){
+ test(`Records historical semantic reply cannot survive ${invalidate}`,async()=>{
+  let release;const {s,f}=await unifiedHistorySession('records',{semantics:()=>new Promise(r=>release=r)});
+  await s.loadSourceHistory(f.first.received_at,'records');const past=s.snapshot().sourceHistory;
+  const pending=s.readSourceSemantics(past.world_model,past);
+  if(invalidate==='refresh')await s.loadSources(caseId);else if(invalidate==='dismiss')s.dismissSourceHistory();
+  else if(invalidate==='disconnect')s.disconnect();else await s.read(patientId);
+  release(response(historicalSemantics(f)));await assert.rejects(pending);s.disconnect();
+ });
+}
+test('Records historical semantic denial clears current and historical source context',async()=>{
+ const {s,f}=await unifiedHistorySession('records',{semantics:()=>response({},404)});
+ await s.loadSourceHistory(f.first.received_at,'records');await s.openHistoricalOriginal(sourceId);
+ const past=s.snapshot().sourceHistory;
+ await assert.rejects(s.readSourceSemantics(past.world_model,past));
+ assert.equal(s.snapshot().sourceIndex,null);assert.equal(s.snapshot().sourceHistory,null);
  assert.equal(s.snapshot().original,null);s.disconnect();
 });
