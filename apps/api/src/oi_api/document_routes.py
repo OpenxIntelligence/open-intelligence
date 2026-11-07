@@ -3,8 +3,12 @@ from fastapi import Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from open_intelligence.patient_registry import PatientRegistryDenied, PatientRegistryError
 from open_intelligence.store import InvalidInput
+from .evidence_contracts import EvidenceSearch, EvidenceSearchResult, PassageEvidenceLinkCreate, EvidenceLinkReceipt, EvidenceLinks, PassageReviewPreparation
+from .evidence_routes import _prepare
+from .question_evidence import PostgresQuestionEvidence
 from .access import Principal
 from .document_contracts import DocumentUpload, DocumentImport, AnnotationCorrection
+from .reviewed_questions import PassageQuestionWrite, passage_questions
 from .reviewed_documents import ReviewedDocuments
 
 
@@ -74,3 +78,56 @@ def register_document_routes(router, *, principal, registry, records_authorized,
     def correct(request:Request,patient_id:str,case_id:str,source_id:str,payload:AnnotationCorrection,context:Principal=Depends(principal)):
         return execute(request,context,patient_id,case_id,("source_import","source_original_read"),
             lambda owner,kwargs:owner.correct(patient_id,case_id,source_id,payload,**kwargs,prepare_response=saved))
+
+
+    @router.post(prefix+"/{source_id}/questions")
+    def save_passage_question(request:Request,patient_id:str,case_id:str,source_id:str,payload:PassageQuestionWrite,context:Principal=Depends(principal)):
+        return execute(request,context,patient_id,case_id,("patient_read","source_read","source_original_read","question_create"),
+            lambda owner,kwargs:passage_questions(owner,patient_id,case_id,source_id,payload,**kwargs))
+
+    @router.get(prefix+"/{source_id}/questions")
+    def list_passage_questions(request:Request,patient_id:str,case_id:str,source_id:str,context:Principal=Depends(principal)):
+        return execute(request,context,patient_id,case_id,("patient_read","source_read","source_original_read","question_read"),
+            lambda owner,kwargs:passage_questions(owner,patient_id,case_id,source_id,None,**kwargs))
+
+    @router.post(prefix+"/{source_id}/questions/{question_id}/evidence-search", response_model=EvidenceSearchResult)
+    def search_passage_evidence(request: Request, patient_id: str, case_id: str, source_id: str,
+                                question_id: str, payload: EvidenceSearch, context: Principal = Depends(principal)):
+        actions = ("patient_read", "source_read", "source_original_read", "question_read", "evidence_read")
+        return execute(request, context, patient_id, case_id, actions, lambda owner, kwargs:
+            PostgresQuestionEvidence(owner.registry).search(patient_id, case_id, question_id,
+                reviewed_source=source_id, query=payload.query, **kwargs,
+                prepare_response=lambda result: _prepare(EvidenceSearchResult, result)))
+
+    @router.get(prefix+"/{source_id}/questions/{question_id}/evidence-links", response_model=EvidenceLinks)
+    def passage_citations(request: Request, patient_id: str, case_id: str, source_id: str,
+                          question_id: str, context: Principal = Depends(principal)):
+        actions = ("patient_read", "source_read", "source_original_read", "question_read", "evidence_read")
+        return execute(request, context, patient_id, case_id, actions, lambda owner, kwargs:
+            PostgresQuestionEvidence(owner.registry).links(patient_id, case_id, question_id,
+                reviewed_source=source_id, **kwargs,
+                prepare_response=lambda result: _prepare(EvidenceLinks, result)))
+
+    @router.get(prefix+"/{source_id}/questions/{question_id}/review-preparation",
+                response_model=PassageReviewPreparation)
+    def prepare_passage_review(request: Request, patient_id: str, case_id: str,
+                               source_id: str, question_id: str,
+                               context: Principal = Depends(principal)):
+        # Read-only, independent-authority, single-transaction source and
+        # citation packet. Never a clinical assessment or Review-return write.
+        actions = ("patient_read", "source_read", "source_original_read", "question_read",
+                   "evidence_read")
+        return execute(request, context, patient_id, case_id, actions, lambda owner, kwargs:
+            PostgresQuestionEvidence(owner.registry).links(
+                patient_id, case_id, question_id, reviewed_source=source_id,
+                prepare_review=True, **kwargs,
+                prepare_response=lambda result: _prepare(PassageReviewPreparation, result)))
+
+    @router.post(prefix+"/{source_id}/questions/{question_id}/evidence-links", response_model=EvidenceLinkReceipt)
+    def save_passage_citation(request: Request, patient_id: str, case_id: str, source_id: str,
+                             question_id: str, payload: PassageEvidenceLinkCreate, context: Principal = Depends(principal)):
+        actions = ("patient_read", "source_read", "source_original_read", "question_read", "evidence_read", "evidence_link")
+        return execute(request, context, patient_id, case_id, actions, lambda owner, kwargs:
+            PostgresQuestionEvidence(owner.registry).create_link(patient_id, case_id, question_id,
+                reviewed_source=source_id, **payload.model_dump(exclude={"synthetic"}), **kwargs,
+                prepare_response=lambda result: _prepare(EvidenceLinkReceipt, result, command=True)))

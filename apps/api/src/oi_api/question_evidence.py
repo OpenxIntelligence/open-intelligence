@@ -12,6 +12,9 @@ from open_intelligence.patient_registry import (
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
+from .reviewed_documents import ReviewedDocuments
+from .reviewed_questions import resolve_question_locked, CONTRACT as PASSAGE_CONTRACT
+from .reviewed_documents import fingerprint as passage_fingerprint
 from .case_bindings import _case_id
 from .composer_preflight import SOURCE_SNAPSHOT_CONTRACT, SHA256
 from .evidence_catalog import RECORD_FIELDS, _visible, materialize_locked, public_metadata
@@ -32,7 +35,7 @@ class PostgresQuestionEvidence:
         self.registry = registry
 
     def _run(self, patient_id, case_id, question_id, *, organization, actor, purpose,
-             operation, recheck_authority, prepare_response, write=False, discovery=False):
+             operation, recheck_authority, prepare_response, write=False, discovery=False, reviewed_source=None):
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization, "organization")
@@ -47,6 +50,8 @@ class PostgresQuestionEvidence:
             for action in ("patient_read", "question_read", "source_read", "evidence_read") + (
                     ("evidence_link",) if write else ()):
                 self.registry._allow(actor, patient_id, action, purpose)
+            if reviewed_source is not None:
+                self.registry._allow(actor, patient_id, "source_original_read", purpose)
             # Record row locks serialize a different connection's rights append.
             # Also refuse a same-transaction callback changing inspected rights.
             for (record_id, version), expected in rights_versions.items():
@@ -65,10 +70,13 @@ class PostgresQuestionEvidence:
             question = next((item for item in items if item["question_id"] == question_id), None)
             if question is None:
                 raise PatientRegistryDenied("Question evidence unavailable")
+            return encode(question, index["access_receipt_id"])
+
+        def encode(question, receipt):
             scope = {
                 "patient_id": patient_id, "case_id": case_id, "question_id": question_id,
                 "source_context_state": question["source_context_state"],
-                "source_access_receipt_id": index["access_receipt_id"],
+                "source_access_receipt_id": receipt,
                 "synthetic": True, "model_executed": False,
                 "content_appraised": False, "clinical_approval": False,
             }
@@ -84,6 +92,25 @@ class PostgresQuestionEvidence:
 
         with self.registry.transaction():
             authority()
+            if reviewed_source is not None:
+                owner = ReviewedDocuments(self.registry)
+                scope = (patient_id, case_id, organization, purpose, reviewed_source)
+                question, binding = resolve_question_locked(owner, scope, question_id)
+                selection = question["selection"]
+                current = selection["selection_state"] == "current_unreviewed_selection"
+                receipt = "ACCESS-" + uuid.uuid4().hex.upper()
+                prepared = encode({"source_context_state": "current_unreviewed_question" if current
+                                   else "source_reassessment_required",
+                                   "source_snapshot_sha256": selection["anchor_sha256"],
+                                   "preflight_sha256": passage_fingerprint([selection["anchor_sha256"],question["question"]]),
+                                   "question_text": question["question"],
+                                   "selection": selection}, receipt)
+                owner._read_receipt(patient_id, case_id, actor=actor, purpose=purpose,
+                    binding_revision=binding, event="source.document_question_access_authorized",
+                    receipt_id=receipt, source_id=reviewed_source, sha256=selection["anchor"]["original_sha256"],
+                    recheck_authority=authority)
+                authority()
+                return prepared
             prepared = PostgresSourceVersions(self.registry).list_locked(
                 patient_id, case_id, organization=organization, actor=actor,
                 purpose=purpose, prepare_response=prepare, recheck_authority=authority,
@@ -107,7 +134,7 @@ class PostgresQuestionEvidence:
         return record, digest
 
     def search(self, patient_id, case_id, question_id, *, organization, actor, purpose,
-               query, recheck_authority, prepare_response=None):
+               query, recheck_authority, prepare_response=None, reviewed_source=None):
         _visible(query, 200)
         tokens = re.findall(r"\w+", query.casefold())
         if not tokens or len(tokens) > 24:
@@ -145,10 +172,10 @@ class PostgresQuestionEvidence:
 
         return self._run(patient_id, case_id, question_id, organization=organization,
                          actor=actor, purpose=purpose, operation=operation,
-                         recheck_authority=recheck_authority, prepare_response=prepare_response, discovery=True)
+                         recheck_authority=recheck_authority, prepare_response=prepare_response, discovery=True, reviewed_source=reviewed_source)
 
     def links(self, patient_id, case_id, question_id, *, organization, actor, purpose,
-              recheck_authority, prepare_response=None, project_links=None):
+              recheck_authority, prepare_response=None, project_links=None, reviewed_source=None, prepare_review=False):
         """Project authorized links and optionally render a report inside the same transaction."""
         def operation(question, scope, rights_versions):
             rows = self.registry._fetchall(
@@ -182,17 +209,51 @@ class PostgresQuestionEvidence:
             self.registry.append_event(patient_id, "evidence.links.read_authorized",
                                        question_id=question_id, case_id=case_id, actor=actor,
                                        link_count=len(links))
+            if prepare_review:
+                # The reviewed document is already source-bound, original-verified
+                # and authorization-checked inside this same transaction.
+                selected = question["selection"]
+                anchor = selected["anchor"]
+                fields = ("source_id", "document_id", "source_version",
+                          "original_sha256", "annotation_revision_id",
+                          "annotation_revision", "review_sha256",
+                          "selected_by", "selected_at", "selected_state",
+                          "quote", "line", "page", "classification_origin",
+                          "clinical_review")
+                prepared_source = {key: anchor[key] for key in fields}
+                prepared_source["anchor_sha256"] = selected["anchor_sha256"]
+                prepared_source["selection_state"] = selected["selection_state"]
+                state = scope["source_context_state"]
+                packet = {
+                    **scope,
+                    "contract": "oi.pg-passage-review-preparation/1",
+                    "source_id": reviewed_source,
+                    "question_text": question["question_text"],
+                    "selection": prepared_source,
+                    "links": links,
+                    "human_review_state": "not_performed",
+                    "next_step": ("independent_verification_required"
+                                  if state == "current_unreviewed_question"
+                                  else "source_reassessment_required"),
+                }
+                # Access receipt is deliberately excluded: a fresh authorized
+                # read of unchanged content has the same review-preparation hash.
+                packet["packet_sha256"] = _digest({
+                    key: value for key, value in packet.items()
+                    if key != "source_access_receipt_id"
+                })
+                return packet
             result = {**scope, "contract": "oi.pg-question-evidence-links/1", "links": links}
             return project_links(question, result) if project_links is not None else result
 
         return self._run(patient_id, case_id, question_id, organization=organization,
                          actor=actor, purpose=purpose, operation=operation,
-                         recheck_authority=recheck_authority, prepare_response=prepare_response)
+                         recheck_authority=recheck_authority, prepare_response=prepare_response, reviewed_source=reviewed_source)
 
     def create_link(self, patient_id, case_id, question_id, *, organization, actor, purpose,
                     request_key, citation, expected_metadata_sha256, source_snapshot_contract,
                     expected_source_snapshot_sha256, expected_preflight_sha256,
-                    recheck_authority, prepare_response=None):
+                    recheck_authority, prepare_response=None, reviewed_source=None):
         request_key = _key(request_key, "request_key")
         try:
             record_id, version = parse_citation(citation)
@@ -201,7 +262,7 @@ class PostgresQuestionEvidence:
         if (not record_id.startswith("FICT-") or version is None
                 or citation != f"{record_id}@{version}"):
             raise PatientRegistryError("An exact fictional evidence version is required")
-        if source_snapshot_contract != SOURCE_SNAPSHOT_CONTRACT:
+        if source_snapshot_contract != (PASSAGE_CONTRACT if reviewed_source is not None else SOURCE_SNAPSHOT_CONTRACT):
             raise PatientRegistryConflict("Question context requires reassessment")
         for fingerprint in (expected_metadata_sha256, expected_source_snapshot_sha256,
                             expected_preflight_sha256):
@@ -302,7 +363,7 @@ class PostgresQuestionEvidence:
 
         return self._run(patient_id, case_id, question_id, organization=organization,
                          actor=actor, purpose=purpose, operation=operation,
-                         recheck_authority=recheck_authority, prepare_response=prepare_response, write=True)
+                         recheck_authority=recheck_authority, prepare_response=prepare_response, write=True, reviewed_source=reviewed_source)
 
 
 class PostgresLaboratoryQuestionEvidence(PostgresQuestionEvidence):

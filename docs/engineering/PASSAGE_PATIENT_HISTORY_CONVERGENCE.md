@@ -1,0 +1,13 @@
+# Passage questions in the connected patient workspace
+
+This candidate joins #644 at 6699f9463cb4a49d481195ef2229f7b65af0a81c and #645 at 27f5928cb27c7af3676fdf32bddc22517f6d1467. It retains the diagnostic workspaces, receipt-time history, persisted permissions, workers, laboratory citations and passage questions, citations and independent-review preparation.
+
+Migration 0030 joins the two published schema parents. The 0019 laboratory and 0020 passage citation migrations have narrow compatibility adaptations for the shared citation target trigger, so either existing parent can upgrade. Existing revision identifiers, down-revision relationships, source identities and citation rows are preserved. The laboratory guard excludes the reviewed-passage contract, whose own guard verifies its annotation revision. Each branch retains its downgrade protection.
+
+Laboratory projection excludes the manual-passage contract while retaining integrity checks for its typed children. Shared evidence operations preserve laboratory report projection and passage preparation. Session teardown carries both manual context and passage command recovery rules. Source restore acceptance includes both historical context and passage citations.
+
+The document and passage workspaces load when their interface is used. The combined main application chunk decreased from 508.62 kB to 488.21 kB, with additional 12.72 kB document and 10.04 kB passage chunks. Build thresholds were preserved. This is a packaging measurement, with runtime usability covered separately by the browser workflow.
+
+Local production build, 839 client tests and 12 API/graph checks passed before the final migration acceptance additions. PostgreSQL, both populated parent upgrades, connected browser journeys, workers and complete recovery require hosted acceptance on the published revision. Full clinical review, source-passage evidence comparisons and their reports remain further construction work.
+
+The first combined hosted run exposed three acceptance defects: the manual-parent snapshot did not account for the new empty Composer event sequence; the architecture inventory lacked passage ownership and cross-owner interfaces; and the browser script clicked before the lazy passage panel mounted. The follow-up uses the existing strict history-preservation assertion, assigns passage questions to questions-review and HTTP composition to composition, and waits for the actual panel. The boundary scanner and all 31 scanner tests pass locally; hosted acceptance must be repeated. The inherited private evidence response callback remains explicit OI-005 debt.

@@ -101,7 +101,7 @@ def assert_read_only_recovery(before, after, expected_events):
             "Restored receipt differs from returned scope or action"
         assert actual["event_type"] in {"source.document_read_authorized", "source.original_read_authorized",
                                         "source.document_selection_read_authorized", "source.read_authorized",
-                                        "source.history_prepared"}, \
+                                        "source.history_prepared", "source.document_question_access_authorized"}, \
             "Read/retry emitted a business event"
     assert before["sequences"].keys() == after["sequences"].keys(), "Sequence coverage changed"
     assert event_sequence in before["sequences"], "Access sequence absent"
@@ -128,7 +128,7 @@ def main():
         token = secrets.token_urlsafe(32)
         actions = ["patient_create", "patient_read", "case_binding_create",
                    "case_binding_read", "case_binding_revoke", "source_import",
-                   "source_read", "source_original_read"]
+                   "source_read", "source_original_read","question_create","question_read","evidence_read","evidence_link"]
         credential = {
             "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
             "actor": "ACTOR-SOURCE-PROOF", "organization": "ORG-SOURCE-PROOF",
@@ -466,6 +466,46 @@ def main():
                     item["selections"].append({"path": path, "reference": {
                         key: field for key, field in value.items() if key != "access_receipt_id"}})
 
+            question_selection=documents[-1]["selections"][-1]["reference"]
+            question_path=documents[-1]["path"]+"/questions"
+            payload=dict(synthetic=True,request_key="RESTORE-PASSAGE-QUESTION",
+                question="Which fictional record explains this selected passage?",
+                revision_id=question_selection["anchor"]["annotation_revision_id"],selection_key=question_selection["anchor"]["selection_key"],
+                anchor_sha256=question_selection["anchor_sha256"])
+            status,saved_question=request(question_path,payload)
+            assert status==201
+            status,retry=request(question_path,payload)
+            assert status==200 and retry==dict(question_id=saved_question["question_id"],duplicate=True)
+            assert request(question_path,{**payload,"question":"Different fictional question text?"})[0]==409
+            assert request(question_path,{**payload,"request_key":"CHANGED-ANCHOR","anchor_sha256":"0"*64})[0]==409
+
+            seed_script = """
+from oi_api.config import Settings
+from oi_api.database import Database
+from oi_api.evidence_catalog import fictional_records, seed_fictional_records
+from open_intelligence.postgres_registry import PostgresPatientRegistry
+db = Database(Settings.from_env())
+try:
+    with db.registry_connection() as connection:
+        seed_fictional_records(PostgresPatientRegistry(connection, lambda *args: False),
+                              fictional_records(), recorded_by="RESTORE-FIXTURE")
+finally:
+    db.close()
+"""
+            command(["exec","-T","api","python","-c",seed_script])
+            citation_path=question_path+"/"+saved_question["question_id"]+"/evidence-links"
+            status,found=request(question_path+"/"+saved_question["question_id"]+"/evidence-search",
+                                 dict(synthetic=True,query="continuity"))
+            assert status==200
+            record=next(row for row in found["records"] if row["citation"]=="FICT-RECORD-CONTINUITY@1")
+            from oi_api.reviewed_documents import fingerprint
+            citation_command=dict(synthetic=True,request_key="RESTORE-PASSAGE-CITATION",
+                citation=record["citation"],expected_metadata_sha256=record["metadata_sha256"],
+                source_snapshot_contract="oi.reviewed-document-selection/1",
+                expected_source_snapshot_sha256=question_selection["anchor_sha256"],
+                expected_preflight_sha256=fingerprint([question_selection["anchor_sha256"],payload["question"]]))
+            status,citation_receipt=request(citation_path,citation_command)
+            assert status==201
             # Each grant is independent. Changing the mounted fixture takes
             # effect without restarting; denied requests cannot mint receipts.
             for missing, paths in (
@@ -577,6 +617,12 @@ def main():
 
             def readable_cycle():
                 read_history(historical_reference, restored_events)
+                status,stored=request(question_path)
+                assert status==200 and len(stored["questions"])==1
+                row=stored["questions"][0]
+                assert row["question_id"]==saved_question["question_id"] and row["question"]==payload["question"]
+                assert row["selection"]["anchor"]==question_selection["anchor"]
+                document_receipt(stored["access_receipt_id"],"source.document_question_access_authorized",documents[-1])
                 restored_index()
                 for item in documents:
                     restored_document(item)
@@ -592,6 +638,12 @@ def main():
                 assert set(value) == {"detail"} and isinstance(value["detail"], str), "Denial exposed document fields"
                 assert snapshot(database) == before, "Denied document request caused effects"
 
+            for grant in ("source_original_read","question_read"):
+                credential["actions"]=[a for a in actions if a!=grant]
+                save_access()
+                no_effect_denial(question_path)
+            credential["actions"]=list(actions)
+            save_access()
             readable_cycle()
             for service in ("api", "db"):
                 before = snapshot(restored_database)
@@ -665,6 +717,14 @@ def main():
             print("PASS RESTORED DOCUMENT HTTP: text/PDF exact bytes, page anchors, immutable history, "
                   "exact current/historical selection references and hashes, exact retries, independent "
                   "grants and restarts; restored-only access receipts")
+
+            status,restored_citations=request(citation_path)
+            assert status==200 and len(restored_citations["links"])==1
+            restored_link=restored_citations["links"][0]
+            assert restored_link["link_id"]==citation_receipt["link_id"]
+            assert restored_link["record"]==record
+            assert request(citation_path,citation_command)==(200,{**citation_receipt,"duplicate":True})
+            assert snapshot(original_database)==readable_before
 
             # Revoke on the restored copy and back it up again. Keep every grant
             # enabled so only the restored binding state can explain denial.

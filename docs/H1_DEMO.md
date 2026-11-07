@@ -51,6 +51,12 @@ workflow; importing a report does not itself create a question.
 
 The source link records which original was used for this visit. Its read operation checks both the encounter and the case. Opening the original requires its own permission. Clinical notes remain drafts. The demo accepts independently authored structured reports and the supported synthetic laboratory bundle for visit linkage.
 
+## Ask about a reviewed document
+
+In Records, open a saved text or PDF original with a saved passage selection. Choose **Draft a question about** the quotation, enter a question, and choose **Save passage question**. Reopen the document and select **Open saved passage questions** to retrieve it. The original quotation, line and selection revision remain attached after a correction. The history labels questions affected by the change. After an interrupted save, **Retry exact save** recovers the original request within the connected session.
+
+With a current evidence-read grant, open a saved passage question and enter a term under **Search fictional evidence metadata**. Search results show the catalog title, citation version and license. After a source correction the search identifies the original question as needing reassessment. Choose **Save citation** to preserve the selected catalog version with the question. **Open saved passage citations** rechecks current evidence rights before displaying metadata. If the save outcome is uncertain, use **Retry exact citation save**. Choose **Prepare independent verification** on the reopened saved passage question to inspect a source-exact, read-only packet. It presents the user-selected original quotation, version, selection revision, available fictional catalog citation metadata, and a stable content fingerprint. Run it again to confirm a new authorized read does not alter the content fingerprint. Correct the original selected passage or revoke metadata rights to see explicit reassessment or restricted-citation status; the old quote remains part of historical provenance. It does not appraise an abstract or study, imply agreement with the patient's biology, send a question to Review, or create an approved report. **Saving a human comparison, Review return, report or follow-up task from this passage remains separate construction work.**
+
 ## Stop, resume and inspect
 
 Stop the frontend with Ctrl+C, then:
