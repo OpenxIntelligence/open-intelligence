@@ -18,9 +18,14 @@ import sqlite3
 from .laboratory_fhir_r4 import prepare_laboratory_bundle
 
 CONTRACT = "oi.synthetic-laboratory-evaluation/1"
+CALIBRATION_CONTRACT = "oi.synthetic-laboratory-evaluation/2"
 APPLICATION_ID = 0x4F494C45
 MAX_JSON_BYTES = 4 * 1024 * 1024
+# This tuple also defines the meaning of omitted scope in historical v1 runs.
+# Never broaden it when introducing a new information role.
 SPLITS = ("train", "validation", "test")
+CONTRACT_SPLITS = {CONTRACT: SPLITS,
+                   CALIBRATION_CONTRACT: ("train", "validation", "calibration", "test")}
 FIELDS = ("subject_reference", "specimen_reference", "source_sha256", "source_version",
           "loinc_code", "effective_at", "issued_at", "status", "value_text",
           "unit_code", "absent_reason")
@@ -29,6 +34,12 @@ FIELDS = ("subject_reference", "specimen_reference", "source_sha256", "source_ve
 def _require(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+def _splits_for_contract(contract):
+    _require(type(contract) is str and contract in CONTRACT_SPLITS,
+             "Unsupported laboratory evaluation contract")
+    return CONTRACT_SPLITS[contract]
 
 
 def _shape(value, keys):
@@ -117,7 +128,8 @@ def _output(output):
 
 def _manifest(manifest):
     _shape(manifest, ("contract", "dataset_id", "version", "synthetic", "authorship", "cases"))
-    _require(manifest["contract"] == CONTRACT and manifest["synthetic"] is True,
+    splits = _splits_for_contract(manifest["contract"])
+    _require(manifest["synthetic"] is True,
              "Only declared synthetic evaluation fixtures are supported")
     _id(manifest["dataset_id"])
     _positive(manifest["version"])
@@ -133,7 +145,7 @@ def _manifest(manifest):
         _id(case["source_id"])
         _require(case["case_id"] not in seen, "Duplicate case ID")
         seen.add(case["case_id"])
-        _require(case["split"] in SPLITS, "Invalid dataset split")
+        _require(case["split"] in splits, "Invalid dataset split")
         _positive(case["source_version"])
         _require(type(case["training_eligible"]) is bool, "Explicit training eligibility required")
         _require(not case["training_eligible"] or case["split"] == "train",
@@ -278,10 +290,11 @@ class LaboratoryEvaluationRegistry:
         _sha(system["software_commit"], 40)
         _require(execution in ("supplied_outputs", "deterministic_parser"), "Invalid execution kind")
         manifest = self.dataset(dataset)
+        splits = _splits_for_contract(manifest["contract"])
         if evaluated_splits is None:
-            evaluated_splits = list(SPLITS)
+            evaluated_splits = list(splits)
         _require(type(evaluated_splits) is list and bool(evaluated_splits)
-                 and all(type(s) is str and s in SPLITS for s in evaluated_splits)
+                 and all(type(s) is str and s in splits for s in evaluated_splits)
                  and len(set(evaluated_splits)) == len(evaluated_splits), "Invalid evaluated splits")
         cases = [c for c in manifest["cases"] if c["split"] in evaluated_splits]
         _require(bool(cases), "No cases in evaluated splits")
@@ -292,31 +305,37 @@ class LaboratoryEvaluationRegistry:
             _require(system["system_id"] == "oi.fhir-r4-laboratory-parser"
                      and outputs == {c["case_id"]: baseline_output(c) for c in cases},
                      "Baseline receipt does not match canonical parser")
-        run = {"contract": CONTRACT, "run_id": run_id, "dataset": dataset,
+        run = {"contract": manifest["contract"], "run_id": run_id, "dataset": dataset,
                "dataset_sha256": fingerprint(manifest), "system": system, "execution": execution,
                "model_execution_verified": False, "software_commit_verified": False,
                "parser_source_sha256": (hashlib.sha256(Path(__file__).with_name(
                    "laboratory_fhir_r4.py").read_bytes()).hexdigest()
                    if execution == "deterministic_parser" else None), "outputs": outputs}
         # Preserve the byte shape of historical all-split records and retries.
-        if evaluated_splits != list(SPLITS):
+        if manifest["contract"] != CONTRACT or evaluated_splits != list(SPLITS):
             run["evaluated_splits"] = evaluated_splits
         with self._transaction():
             return {"run_id": run_id, "sha256": self._put("run", run_id, run)}
 
     def run(self, key):
         run = self._get("run", key)
-        _require(fingerprint(self.dataset(run["dataset"])) == run["dataset_sha256"],
+        manifest = self.dataset(run["dataset"])
+        _require(fingerprint(manifest) == run["dataset_sha256"],
                  "Dataset fingerprint changed")
+        _require(run["contract"] == manifest["contract"], "Run/dataset contract mismatch")
+        _require(run["contract"] == CONTRACT or "evaluated_splits" in run,
+                 "Version 2 run requires explicit evaluated splits")
         return run
 
     def baseline(self, run_id, dataset, software_commit):
-        cases = self.dataset(dataset)["cases"]
+        manifest = self.dataset(dataset)
+        cases = manifest["cases"]
         return self.record_run(run_id, dataset,
                                {"system_id": "oi.fhir-r4-laboratory-parser", "system_version": "1",
                                 "software_commit": software_commit},
                                {c["case_id"]: baseline_output(c) for c in cases},
-                               execution="deterministic_parser")
+                               execution="deterministic_parser",
+                               evaluated_splits=list(_splits_for_contract(manifest["contract"])))
 
     def review(self, review):
         _shape(review, ("run_id", "case_id", "reviewer_id", "independence_declared", "decision",
@@ -377,7 +396,8 @@ class LaboratoryEvaluationRegistry:
         groups = {split: {"cases": 0, "assessed_cases": 0, "unassessable_cases": 0,
                           "field_opportunities": 0, "field_errors": 0, "omissions": 0,
                           "unsupported_observations": 0, "abstentions": 0, "execution_errors": 0,
-                          "reference_correction_seconds": 0} for split in SPLITS}
+                          "reference_correction_seconds": 0}
+                  for split in _splits_for_contract(candidate["contract"])}
         details = []
         for case in self.dataset(candidate["dataset"])["cases"]:
             if case["split"] not in candidate.get("evaluated_splits", SPLITS):
@@ -407,7 +427,7 @@ class LaboratoryEvaluationRegistry:
                       for field in FIELDS if ref not in actual or row[field] != actual[ref][field]]
             g["field_errors"] += len(errors)
             details.append({"case_id": case_id, "omitted": missing, "unsupported": extra, "errors": errors})
-        report = {"contract": CONTRACT, "candidate_run": candidate_id, "reference_run": reference_id,
+        report = {"contract": candidate["contract"], "candidate_run": candidate_id, "reference_run": reference_id,
                 "candidate_sha256": fingerprint(candidate), "reference_sha256": fingerprint(reference),
                 "dataset_sha256": candidate["dataset_sha256"], "by_split": groups, "details": details,
                 "clinical_validation": False, "independent_evaluation_established": False,
@@ -431,7 +451,7 @@ class LaboratoryEvaluationRegistry:
             examples.append({"case_id": case["case_id"], "bundle_json": case["bundle_json"],
                              "source_sha256": case["source_sha256"], "source_version": case["source_version"],
                              "observations": rows, "review_sha256": fingerprint(review)})
-        return {"contract": CONTRACT, "dataset_sha256": run["dataset_sha256"],
+        return {"contract": run["contract"], "dataset_sha256": run["dataset_sha256"],
                 "reference_run": reference_id, "training_performed": False, "examples": examples}
 
 
