@@ -812,6 +812,49 @@ class ComposedHypothesisPersistenceTests(unittest.TestCase):
             self.store_hypothesis(self.compose(inv_id), dict(contract, promptVersion="changed"))
         self.assertEqual(len(self.store.list_composed_hypotheses("CASE-ALPHA")), 1)
 
+    def test_concurrent_exact_retries_share_one_receipt(self):
+        from concurrent.futures import ThreadPoolExecutor
+        self.store.close()
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "concurrent.sqlite")
+            self.store = CaseStore(path)
+            self.source_id, self.question_id = seed_case(self.store)
+            composed = self.compose(self.run_once())
+            contract = self.contract()
+            barrier = threading.Barrier(2)
+            def save():
+                peer = CaseStore(path)
+                try:
+                    barrier.wait(timeout=10)
+                    return peer.save_composed_hypothesis(
+                        "CASE-ALPHA", composed, write_contract=contract)
+                finally:
+                    peer.close()
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [pool.submit(save) for _ in range(2)]
+                ids = [future.result(timeout=20) for future in futures]
+            self.assertEqual(ids[0], ids[1])
+            self.assertEqual(len(self.store.list_composed_hypotheses("CASE-ALPHA")), 1)
+            self.assertEqual(self.store.db.execute(
+                "SELECT COUNT(*) FROM events WHERE kind='composed_hypothesis_stored'"
+            ).fetchone()[0], 1)
+
+    def test_audit_failure_rolls_back_and_allows_same_write_retry(self):
+        from unittest.mock import patch
+        composed = self.compose(self.run_once())
+        contract = self.contract()
+        before = self.store.db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        with patch.object(self.store, "_event", side_effect=RuntimeError("audit unavailable")):
+            with self.assertRaisesRegex(RuntimeError, "audit unavailable"):
+                self.store_hypothesis(composed, contract)
+        self.assertEqual(self.store.list_composed_hypotheses("CASE-ALPHA"), [])
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM events").fetchone()[0], before)
+        saved = self.store_hypothesis(composed, contract)
+        self.assertEqual(self.store_hypothesis(composed, contract), saved)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM events").fetchone()[0], before + 1)
+
     def test_latest_stored_hypothesis_is_current(self):
         inv_id = self.run_once()
         second_text = "The sources report a finding again."

@@ -2007,3 +2007,16 @@ including file-backed close/reopen recovery and unchanged-event checks.
 Only a docstring clarification and this evidence note followed that run.
 No schema or authority expansion. Hosted checks remain pending for the new head;
 parent #609 and its deferred assignment work remain explicit dependencies.
+
+### W2 concurrent-save and audit rollback verification — 7 November 2026
+
+Two additional recovery checks pass without runtime changes: independent SQLite
+connections concurrently submitting the same contract obtain the same receipt,
+with one hypothesis and one audit event; injected audit failure rolls back the
+hypothesis and permits a later successful retry of the same write ID. The four
+focused suites passed 155 tests with no skips. This is bounded concurrency and
+failure evidence, not proof of arbitrary distributed operation. Exact-head hosted
+acceptance remains separate; the stacked PR's UI workflow runs the full reference
+suite even though the main-only ledger workflow does not trigger on its base.
+Next: finish hosted acceptance and reconcile the existing parent/integration
+owners before adding a new scientific persistence path.
