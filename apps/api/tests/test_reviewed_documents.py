@@ -193,8 +193,7 @@ class ReviewedDocumentTests(SourceVersionFixture):
             source = self.basepath(patient) + '/' + saved['source_id']
             selected = request(base, source + '/selections/' +
                                saved['annotation_revision_id'] + '/marker', token=TOKEN_A)[1]
-            self.creds[0]['actions'].extend(['question_create', 'question_read',
-                                             'evidence_read', 'evidence_link'])
+            self.creds[0]['actions'].extend(['question_create', 'question_read'])
             self.write()
             question = 'What is known about this independently fictional pending marker?'
             payload = dict(synthetic=True, request_key='PASSAGE-REVIEW-QUESTION',
@@ -204,6 +203,9 @@ class ReviewedDocumentTests(SourceVersionFixture):
             endpoint = source + '/questions/' + receipt['question_id']
             review_path = endpoint + '/review-preparation'
             self.assertEqual(request(base, review_path, token=TOKEN_B)[0], 404)
+            self.assertEqual(request(base, review_path, token=TOKEN_A)[0], 404)
+            self.creds[0]['actions'].extend(['evidence_read', 'evidence_link'])
+            self.write()
             with Database(self.settings).registry_connection() as connection:
                 seed_fictional_records(PostgresPatientRegistry(connection, lambda *args: False),
                                        fictional_records(), recorded_by='FIXTURE-AUTHOR')
