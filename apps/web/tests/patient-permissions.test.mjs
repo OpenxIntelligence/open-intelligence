@@ -61,3 +61,19 @@ test('a permission page cannot switch patients or invent administrative delegati
   for(const delta of [{patient_id:'PAT-OTHER'},{available_actions:['patient_permissions_manage']},{enforcement:'unknown'},{next_after:'unbounded'}])
     assert.throws(()=>readPermissionPage({...page(),...delta},id));
 });
+
+test('a refused retry cannot settle an earlier unknown permission outcome',async()=>{
+  for(const status of [403,404,409,413,422]){
+    let attempt=0;const bodies=[];
+    const s=new RegistrySession(async(url,init)=>{
+      bodies.push(init.body);if(++attempt===1)throw Error('lost committed response');
+      return attempt===2?response({},status):response({...receipt(),duplicate:true});
+    });
+    s.connect(token);s.managePatientPermissions(id);const c=s.currentPermissions();
+    await c.command(command());await c.retry();
+    assert.ok(c.pending);assert.match(c.message,/unknown/);
+    await s.read('PAT-OTHER');assert.equal(bodies.length,2);
+    await c.retry();assert.equal(c.pending,null);
+    assert.deepEqual(bodies,[bodies[0],bodies[0],bodies[0]]);
+  }
+});

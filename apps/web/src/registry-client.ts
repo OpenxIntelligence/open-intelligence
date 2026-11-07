@@ -236,8 +236,20 @@ export class RegistrySession {
   #permissions:PermissionConsole|null=null;
   currentPermissions=()=>this.#permissions?.scope.active()?this.#permissions:null;
   permissionChangePending=()=>Boolean(this.currentPermissions()?.pending||this.currentPermissions()?.busy);
+  #hasPendingPatientWrite(patientId:string|undefined){
+    return this.#creating||this.#uploading||this.#savingQuestion||this.#savingReview||
+       this.#savingFollowthrough||this.#savingEvidence||this.#laboratoryWriting||
+       this.#questionRetryKeys.size>0||Boolean(this.#labPending)||
+       [...this.#manualPassageIntents.keys()].some(key=>!patientId||JSON.parse(key)[0]===patientId)||
+       [this.#state.importOutcome,this.#state.laboratoryPhase,this.#state.reviewReturnPhase,
+        this.#state.followthroughWritePhase,this.#state.evidenceWritePhase,this.#state.evidenceLinkPhase,
+        this.#state.labQuestionWritePhase].some(p=>['sending','saving','unknown'].includes(p));
+  }
   managePatientPermissions(patientId:string){
-    if(this.permissionChangePending()||!this.#token||!KEY.test(patientId)||this.#suspensionIntent||this.#uploading)return;
+    if(this.permissionChangePending()||!this.#token||!KEY.test(patientId)||this.#suspensionIntent)return;
+    if(this.#hasPendingPatientWrite(this.#state.patient?.patient_id)){
+      this.#publish({message:'Resolve the pending patient write before managing permissions. Its recovery request is preserved.'});return;
+    }
     this.#clearPatientSessionData();
     const scope=this.#scope;
     const active=()=>scope===this.#scope&&this.#permissions!==null&&!!this.#token&&this.#state.connected;
@@ -663,13 +675,7 @@ export class RegistrySession {
     const target=this.#state.patient;
     if(this.#suspensionIntent||!this.#token||this.#state.phase!=='ready'||
        !target||target.status!=='active'||confirmed!==true)return;
-    if(this.#creating||this.#uploading||this.#savingQuestion||this.#savingReview||
-       this.#savingFollowthrough||this.#savingEvidence||this.#laboratoryWriting||
-       this.#questionRetryKeys.size>0||this.#labPending||
-       [...this.#manualPassageIntents.keys()].some(key=>JSON.parse(key)[0]===target.patient_id)||
-       [this.#state.importOutcome,this.#state.laboratoryPhase,this.#state.reviewReturnPhase,
-        this.#state.followthroughWritePhase,this.#state.evidenceWritePhase,this.#state.evidenceLinkPhase,
-        this.#state.labQuestionWritePhase].some(p=>['sending','saving','unknown'].includes(p))){
+    if(this.#hasPendingPatientWrite(target.patient_id)){
       this.#publish({suspensionPhase:'rejected',suspensionMessage:
         'Resolve the pending patient write before suspending access. Its recovery request is preserved.'});return;
     }

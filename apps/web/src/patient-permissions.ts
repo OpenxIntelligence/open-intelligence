@@ -31,7 +31,7 @@ export function readPermissionPage(value:unknown,patient:string):PermissionPage{
 }
 export class PermissionConsole{
   page:PermissionPage|null=null;
-  pending:{suffix:string;body:string;grantId?:string}|null=null;
+  pending:{suffix:string;body:string;grantId?:string;uncertain:boolean}|null=null;
   busy=false;
   message='Check the current permission history.';
   #generation=0;
@@ -49,7 +49,7 @@ export class PermissionConsole{
   }
   async command(payload:Record<string,unknown>,grant?:string){
     if(this.busy||this.pending||!this.scope.active()||(grant!==undefined&&!grantId(grant)))return;
-    this.pending={suffix:grant?'/'+grant+'/revocations':'',body:JSON.stringify(payload),grantId:grant};
+    this.pending={suffix:grant?'/'+grant+'/revocations':'',body:JSON.stringify(payload),grantId:grant,uncertain:false};
     await this.retry();
   }
   async retry(){
@@ -63,9 +63,12 @@ export class PermissionConsole{
       this.pending=null;this.message='Permission change recorded. Check history to see current access.';
     }catch(error){
       if(generation!==this.#generation||!this.scope.active())return;
-      if(error instanceof PermissionHttpError&&[401,403,404,409,413,422].includes(error.status)){
+      if(!pending.uncertain&&error instanceof PermissionHttpError&&[401,403,404,409,413,422].includes(error.status)){
         this.pending=null;this.message='Permission change refused. Recheck current access and intent.';
-      }else this.message='The outcome is unknown. Retry the exact saved change to recover its receipt.';
+      }else{
+        pending.uncertain=true;
+        this.message='The outcome is unknown. Retry the exact saved change to recover its receipt.';
+      }
     }finally{if(generation===this.#generation){this.busy=false;this.changed();}}
   }
 }

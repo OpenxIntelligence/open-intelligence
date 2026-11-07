@@ -90,7 +90,7 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
         return patient, url, command, receipt
 
     def test_reviewed_document_preserves_citation_through_guard_upgrade_and_downgrade(self):
-        def history():
+        def preserved_history():
             tables, sequences = self.snapshot()
             # 0029 adds independent permission owners. Only their absent/empty
             # states are equivalent here; unexpected rows must still fail.
@@ -108,9 +108,9 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
         # them after the question, while the published guard is still present.
         document = {"patient": patient}
         document_convergence.DocumentImageConvergenceMigrationTests.seed_document(self, document)
-        before = history()
+        before = preserved_history()
         migrate(self.admin, "upgrade", SCHEMA_REVISION)
-        self.assertEqual(history(), before)
+        self.assertEqual(preserved_history(), before)
 
         with running_server(create_app(self.settings)) as base:
             status, page, _ = request(base, url, token=TOKEN_A)
@@ -168,23 +168,23 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
 
         # The database boundary must agree with the API, including its deferred
         # typed-anchor checks. These controls roll back their provisional row.
-        before = history()
+        before = preserved_history()
         with self.engine.connect() as conn:
             write_directly(conn)
             conn.rollback()
-        self.assertEqual(history(), before)
+        self.assertEqual(preserved_history(), before)
         migrate(self.admin, "downgrade", previous)
-        self.assertEqual(history(), before)
+        self.assertEqual(preserved_history(), before)
         with self.assertRaisesRegex(DBAPIError, "OI-LAB-CITATION-CASE-SOURCES-CHANGED"):
             with self.engine.begin() as conn:
                 write_directly(conn)
-        self.assertEqual(history(), before)
+        self.assertEqual(preserved_history(), before)
         migrate(self.admin, "upgrade", SCHEMA_REVISION)
-        self.assertEqual(history(), before)
+        self.assertEqual(preserved_history(), before)
         with self.engine.connect() as conn:
             write_directly(conn)
             conn.rollback()
-        self.assertEqual(history(), before)
+        self.assertEqual(preserved_history(), before)
         with running_server(create_app(self.settings)) as base:
             status, restored, _ = request(base, url, token=TOKEN_A,
                 body={"synthetic": True, **command, "request_key": "CITATION-AFTER-GUARD-REUPGRADE"})

@@ -47,7 +47,10 @@ history, records an explicit declaration and revokes individual grants. Another
 active overlapping grant may still authorize an action.
 
 Unknown command outcomes retain an exact, memory-only retry across workspace
-navigation. Patient switching and duplicate changes are blocked until recovery.
+navigation. A refusal on a later retry cannot settle an earlier unknown outcome.
+Patient switching and duplicate changes are blocked until recovery. Opening the
+console also preserves any unresolved clinical write by requiring its recovery
+before clearing the patient context.
 Disconnect/reload clears the transient console. Authority references are opaque
 references to independently fictional declarations; they are not uploaded legal
 documents, verified caregiver relationships or clinical consent attestations.
@@ -64,7 +67,8 @@ New acceptance covers scope intersection, concurrent exact retries, final provid
 revocation, response-encoding rollback, expiry, both worker entry points,
 immutable history, populated downgrade refusal and actual pg_dump/pg_restore.
 The browser scenario uses the real API/database: grant through the UI, lose the
-committed response, navigate diagnostics, recover exactly once, read under the
+committed response, navigate diagnostics, refuse a retry under withdrawn management
+authority, restore that scope, recover exactly once, read under the
 grant, revoke it and verify denial after API restart.
 
 ## Remaining foundation

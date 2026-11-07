@@ -99,15 +99,24 @@ def main():
             cd.evaluate("[...document.querySelectorAll('fieldset label')].find(e=>e.textContent==='patient read').querySelector('input').click()")
             cd.evaluate("document.querySelector('[data-testid=permission-confirm]').click()")
             # Drop the response only after the real server has committed it.
-            cd.evaluate("""(()=>{const fetchOriginal=window.fetch;let once=true;window.fetch=async(...args)=>{
-              const r=await fetchOriginal(...args);if(once&&String(args[0]).endsWith('/permissions')&&args[1]?.method==='POST'){
-                once=false;await r.clone().text();throw Error('synthetic lost reply');}return r;};})()""")
+            cd.evaluate("""(()=>{const fetchOriginal=window.fetch;let once=true;window.permissionStatuses=[];window.fetch=async(...args)=>{
+              const r=await fetchOriginal(...args);if(String(args[0]).endsWith('/permissions')&&args[1]?.method==='POST'){
+                window.permissionStatuses.push(r.status);
+                if(once){once=false;await r.clone().text();throw Error('synthetic lost reply');}}return r;};})()""")
             cd.evaluate("document.querySelector('[data-testid=permission-submit]').click()")
             cd.wait("document.body.textContent.includes('outcome is unknown')",'unknown receipt')
             for section in ('Labs','Imaging','Pathology','Molecular','Visits'):
                 nav(section)
                 assert cd.evaluate("document.querySelector('#patient-id').form.querySelector('button').disabled")
-            nav('Overview');console();click_text('Retry exact permission change')
+            nav('Overview');console()
+            # A later refusal cannot prove that the lost first request did not commit.
+            credential['actions'].remove('patient_permissions_manage');write()
+            click_text('Retry exact permission change')
+            cd.wait("window.permissionStatuses.length===2 && [...document.querySelectorAll('button')].some(b=>b.textContent==='Retry exact permission change'&&!b.disabled)", 'refused retry retains recovery')
+            assert cd.evaluate("window.permissionStatuses[1]===404 && document.body.textContent.includes('outcome is unknown')")
+            assert cd.evaluate("document.querySelector('#patient-id').form.querySelector('button').disabled")
+            credential['actions'].append('patient_permissions_manage');write()
+            click_text('Retry exact permission change')
             cd.wait("document.body.textContent.includes('Permission change recorded')",'exact recovery')
             code,page=api('/v1/patients/'+pid+'/permissions');assert code==200 and len(page['grants'])==1
             history();screenshot('permissions-desktop.png',1280)
@@ -124,7 +133,7 @@ def main():
             cd.wait("document.querySelector('[data-testid=status]').textContent.includes('Patient unavailable')",'restored denial')
             assert cd.evaluate("!document.querySelector('[data-testid=patient-card]')")
             assert api('/v1/patients/'+pid)[0]==404
-            print('PASS PATIENT PERMISSIONS: actual UI grant, lost response/exact retry across all diagnostic workspaces, one stored grant, allowed read, revocation, API restart denial, desktop and mobile containment.')
+            print('PASS PATIENT PERMISSIONS: actual UI grant, lost response/refused retry/exact recovery across all diagnostic workspaces, one stored grant, allowed read, revocation, API restart denial, desktop and mobile containment.')
         finally:
             if cd:
                 cd.close()
