@@ -643,9 +643,14 @@ export class RegistrySession {
     const queue=this.#state.reviewQueue;
     if(this.#state.reviewPhase!=='ready'||!queue||queue.case_id!==caseId||
        queue.patient_id!==this.#state.patient?.patient_id)return;
-    const anchors=[...queue.items,...queue.receipts.flatMap(r=>r.comparison_source?[r.comparison_source]:[])];
-    if(!anchors.some(a=>a.source_id===sourceId&&a.source_version===version&&a.source_sha256===digest))return;
-    await this.#loadAnchoredOriginal(caseId,sourceId,version,digest);
+    const inspection=this.#state.attributionInspection;
+    const inspected=inspection&&this.#state.attributionTarget===inspection.receipt_id&&
+      queue.receipts.some(r=>r.receipt_id===inspection.receipt_id&&r.comparison_source)
+      ?[inspection.first.latest,inspection.second.latest]:[];
+    const anchors=[...queue.items,...queue.receipts.flatMap(r=>r.comparison_source?[r.comparison_source]:[]),...inspected];
+    const anchor=anchors.find(a=>a.source_id===sourceId&&a.source_version===version&&a.source_sha256===digest);
+    if(!anchor)return;
+    await this.#loadAnchoredOriginal(caseId,sourceId,version,digest,'document_id' in anchor?anchor.document_id:undefined);
   }
 
   async #loadAnchoredOriginal(caseId:string,sourceId:string,version:number,digest:string,documentId?:string):Promise<void>{

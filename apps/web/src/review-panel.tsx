@@ -161,7 +161,8 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,onOr
         </button></p>
         {state.attributionTarget===receipt.receipt_id&&<>
          <p role="status">{state.attributionMessage}</p>
-         {state.attributionInspection&&<ReassessmentPassages packet={state.attributionInspection}/>}
+         {state.attributionInspection&&<ReassessmentPassages packet={state.attributionInspection} disabled={busy||returning||uncertain}
+          onOriginal={version=>onOriginal(caseId,version.source_id,version.source_version,version.source_sha256)}/>}
         </>}
        </div>;
       })()}

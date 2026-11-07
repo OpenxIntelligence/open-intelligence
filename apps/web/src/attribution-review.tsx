@@ -46,10 +46,13 @@ export function AttributionReview({state,session,question,disabled}:{
 }
 
 
-export function ReassessmentPassages({packet}:{packet:AttributionReassessment}){
+export function ReassessmentPassages({packet,onOriginal,disabled}:{
+ packet:AttributionReassessment;onOriginal:(version:AttributionVersion)=>void;disabled:boolean;
+}){
  function passage(version:AttributionVersion, label:string){
   const item=version.finding;
   return <div><strong>{label} · {version.document_id} v{version.source_version}</strong>
+   <p><button type="button" disabled={disabled} onClick={()=>onOriginal(version)}>Open original · {version.document_id} v{version.source_version}</button></p>
    {item?<><p>Line {item.source_line} · {item.finding_key} · {item.reported_state} · {item.oncology?
     item.oncology.role+' · '+(item.oncology.episode_id??'Episode unassigned'):'No episode attribution on this line'}</p>
     <blockquote>{item.source_statement}</blockquote></>:<p>This version has no statement with the recorded finding key.</p>}
