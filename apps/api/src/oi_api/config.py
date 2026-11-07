@@ -19,9 +19,12 @@ class Settings:
     environment: str = "synthetic"
     connect_timeout_seconds: float = 2.0
     require_persisted_grants: bool = False
+    require_consent_decisions: bool = False
     access_file: str | None = field(default=None, repr=False)
 
     def __post_init__(self):
+        if type(self.require_consent_decisions) is not bool:
+            raise ConfigurationError("Consent policy must be boolean")
         if type(self.require_persisted_grants) is not bool:
             raise ConfigurationError("Persisted grant policy must be boolean")
         if self.environment != "synthetic":
@@ -50,7 +53,10 @@ class Settings:
             raise ConfigurationError("Database timeout must be numeric") from None
         if values.get("OI_API_REQUIRE_PERSISTED_GRANTS", "0") not in {"0", "1"}:
             raise ConfigurationError("Persisted grant policy must be 0 or 1")
+        if values.get("OI_API_REQUIRE_CONSENT_DECISIONS", "0") not in {"0", "1"}:
+            raise ConfigurationError("Consent policy must be 0 or 1")
         return cls(
+            require_consent_decisions=values.get("OI_API_REQUIRE_CONSENT_DECISIONS", "0") == "1",
             require_persisted_grants=values.get("OI_API_REQUIRE_PERSISTED_GRANTS", "0") == "1",
             database_url=values.get("OI_API_DATABASE_URL"),
             environment=values.get("OI_API_ENVIRONMENT", "synthetic"),

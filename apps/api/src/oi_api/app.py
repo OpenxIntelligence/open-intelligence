@@ -79,7 +79,7 @@ def create_app(settings: Settings | None = None, *, authentication: Authenticati
 
     @app.get("/v1", response_model=VersionManifest, operation_id="version_v1")
     def version():
-        return VersionManifest(authentication=authentication_kind, patient_access_policy="persisted_grants" if settings.require_persisted_grants else "synthetic_fixture")
+        return VersionManifest(authentication=authentication_kind, consent_policy="required" if settings.require_consent_decisions else "recorded_decisions_only", patient_access_policy="persisted_grants" if settings.require_persisted_grants else "synthetic_fixture")
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, error):

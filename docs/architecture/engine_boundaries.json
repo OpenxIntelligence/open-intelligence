@@ -20,7 +20,8 @@
         "oi_api.registry_context",
         "oi_api.encounter_event_contract",
         "oi_api.source_event_delivery",
-        "oi_api.patient_permissions"
+        "oi_api.patient_permissions",
+        "oi_api.patient_consent"
       ],
       "exports": {
         "oi_api": [
@@ -73,6 +74,10 @@
           "PostgresPatientPermissions",
           "GrantPermission",
           "RevokePermission"
+        ],
+        "oi_api.patient_consent": [
+          "ConsentDecision",
+          "PostgresPatientConsent"
         ]
       },
       "depends_on": []
@@ -85,7 +90,8 @@
         "oi_api.app",
         "oi_api.patients",
         "oi_api.encounter_routes",
-        "oi_api.patient_permission_routes"
+        "oi_api.patient_permission_routes",
+        "oi_api.patient_consent_routes"
       ],
       "exports": {},
       "depends_on": [

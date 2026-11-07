@@ -24,7 +24,7 @@ class AccessUnavailable(Exception):
     """The trusted context provider is unavailable; details are not public."""
 
 
-Action = Literal["patient_create", "patient_suspend", "patient_read", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "image_import", "image_read", "image_original_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update", "evidence_read", "evidence_link", "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess", "authored_evidence_withdraw", "authored_evidence_original_read", "evidence_report_export", "encounter.schedule", "encounter.read", "encounter.events.read", "encounter.transition", "encounter.source.link", "note.write", "note.read", "patient_permissions_read", "patient_permissions_manage"]
+Action = Literal["patient_create", "patient_suspend", "patient_read", "data_use_read", "data_use_manage", "consent_read", "consent_manage", "record_request_create", "record_request_read", "record_request_cancel", "record_request_receive", "case_binding_create", "case_binding_read", "case_binding_revoke", "source_import", "source_read", "source_original_read", "composer_context_read", "question_create", "question_read", "image_import", "image_read", "image_original_read", "review_queue_read", "review_return", "source_brief_export", "review_packet_read", "followthrough_read", "followthrough_create", "followthrough_update", "evidence_read", "evidence_link", "authored_evidence_read", "authored_evidence_import", "authored_evidence_assess", "authored_evidence_withdraw", "authored_evidence_original_read", "evidence_report_export", "encounter.schedule", "encounter.read", "encounter.events.read", "encounter.transition", "encounter.source.link", "note.write", "note.read", "patient_permissions_read", "patient_permissions_manage"]
 
 
 class Principal(Contract):
@@ -33,6 +33,7 @@ class Principal(Contract):
     purpose: Literal["operations", "research"]
     actions: frozenset[Action] = frozenset()
     persisted_grants: bool = False
+    consent_decisions: bool = False
     patient_ids: frozenset[str] = Field(default_factory=frozenset, max_length=256)
     expires_at: datetime
 
@@ -163,9 +164,10 @@ def _reject_nonfinite_policy_number(_value):
 
 class PolicyAuthentication:
     """The credential cannot disable the server's selected policy mode."""
-    def __init__(self, provider: Authentication, required: bool):
+    def __init__(self, provider: Authentication, required: bool, consent_required: bool = False):
         self.provider = provider
         self.required = required
+        self.consent_required = consent_required
 
     def authenticate(self, token: str) -> Principal | None:
         context = self.provider.authenticate(token)
@@ -173,10 +175,10 @@ class PolicyAuthentication:
             return None
         if not isinstance(context, Principal):
             raise AccessUnavailable()
-        return context.model_copy(update={"persisted_grants": self.required})
+        return context.model_copy(update={"persisted_grants": self.required, "consent_decisions": self.consent_required})
 
 
 def authentication_for_settings(settings, provider=None):
     base = provider if provider is not None else (
         SyntheticFileAuthentication(settings.access_file) if settings.access_file else DenyAuthentication())
-    return PolicyAuthentication(base, settings.require_persisted_grants)
+    return PolicyAuthentication(base, settings.require_persisted_grants, settings.require_consent_decisions)

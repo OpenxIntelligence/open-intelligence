@@ -93,6 +93,18 @@ jobs:
           python --version
       - name: Apply the explicit migration to the disposable database
         run: python -m oi_api.migrate upgrade head
+      - name: Verify purpose restrictions before broad regression
+        run: |
+          PYTHONPATH=apps/api/src:src:apps/api/tests python -m unittest -v test_data_use_restrictions test_composer_runs_postgres.ComposerRunsPostgresTests.test_data_use_restriction_blocks_queued_worker test_composer_runs_postgres.ComposerRunsPostgresTests.test_data_use_restriction_fences_claimed_result test_composer_runs_postgres.ComposerRunsPostgresTests.test_data_use_restriction_withholds_completed_result
+      - name: Verify consent and permission intersection with real PostgreSQL first
+        run: |
+          python - <<'PYTEST'
+          import unittest
+          suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_patient_consent.py')
+          suite.addTests(unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_patient_permissions.py'))
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(0 if result.wasSuccessful() and result.testsRun and not result.skipped else 1)
+          PYTEST
       - name: Verify source purpose compatibility and published-history preservation first
         run: |
           python - <<'PYTEST'

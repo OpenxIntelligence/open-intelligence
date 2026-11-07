@@ -14,7 +14,7 @@ from .access import Action
 from .contracts import Contract
 
 ADMIN_ACTIONS = frozenset({"patient_permissions_read", "patient_permissions_manage"})
-RESERVED_ACTIONS = ADMIN_ACTIONS | {"patient_create"}
+RESERVED_ACTIONS = ADMIN_ACTIONS | {"patient_create", "data_use_read", "data_use_manage", "consent_read", "consent_manage"}
 
 
 class PermissionCommand(Contract):

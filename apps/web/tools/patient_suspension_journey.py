@@ -108,6 +108,41 @@ def exercise(cd, token, credentials, write_grants, api, restart_api, artifacts):
         cd.evaluate("document.querySelector('#credential').form.requestSubmit()")
         cd.wait("!document.querySelector('#credential')", 'synthetic operator credential connected')
         open_patient(victim)
+        # Read-only workspace status is separately granted and sourced from real PG.
+        def inspect_restriction(expected):
+            nav('Overview')
+            cd.evaluate("document.querySelector('[data-testid=data-use-panel]').open=true")
+            click(cd, '[data-testid=data-use-panel] button')
+            cd.wait("document.querySelector('[data-testid=data-use-panel]')?.textContent.includes("
+                    + json.dumps(expected) + ")", 'purpose restriction: ' + expected)
+        inspect_restriction('Status unavailable')
+        credential['actions'].extend(['data_use_read', 'data_use_manage'])
+        write_grants()
+        inspect_restriction('No restriction decision recorded')
+        root = '/v1/patients/' + victim
+        restriction_command = {'synthetic': True, 'request_key': 'BROWSER-RESTRICT',
+                               'expected_revision': 0, 'target_purpose': 'operations',
+                               'state': 'restricted'}
+        status, restricted = api(root + '/data-use', restriction_command)
+        assert status == 200 and restricted['consent_established'] is False
+        inspect_restriction('Restricted · Decision revision 1')
+        source_denied(root + '/cases/' + case + '/sources/' + source_id)
+        assert api(control_path)[0] == 200
+        restart_api()
+        assert api(root + '/data-use/operations')[1] == restricted
+        assert api(root + '/data-use', restriction_command)[1] == restricted
+        status, lifted = api(root + '/data-use', {
+            **restriction_command, 'request_key': 'BROWSER-LIFT',
+            'expected_revision': 1, 'state': 'unrestricted'})
+        assert status == 200 and lifted['revision'] == 2
+        inspect_restriction('Restriction lifted; independent access grants still required')
+        (artifacts / 'data-use-restriction.json').write_text(json.dumps({
+            'synthetic': True, 'patient_id': victim, 'restricted': restricted,
+            'lifted': lifted, 'api_restart_preserved_decision': True,
+            'exact_retry': True, 'other_patient_readable': True,
+            'independent_status_grant': True, 'consent_established': False}, indent=2))
+        print('PASS DATA USE: separate status grant, real restriction and source denial, '
+              'purpose receipt after API restart, unchanged retry, lifting and control patient.')
         load_sources(case)
         assert cd.evaluate("document.querySelector('[data-testid=source-statement]').textContent.includes('suspension target marker')")
 
