@@ -76,6 +76,37 @@ FHIR_V2 = (FHIR_V1.replace('"value":4.20', '"value":5.00')
            .replace('"Observation/FICTIONAL-OBS-A"', '"urn:uuid:00000000-0000-4000-8000-000000000003"'))
 
 
+def assert_rejected_inspection_unchanged(before, after, before_events, after_events):
+    """A rolled-back read may allocate audit IDs, but must commit no rows.
+
+    PostgreSQL nextval is not rolled back. Limit this exception to the audit
+    event sequence; retain exact row, complete audit log and other sequence checks.
+    """
+    assert before.keys() == after.keys(), "Rejected inspection changed snapshot inventory"
+    for key in before.keys() - {"sequence_state"}:
+        assert before[key] == after[key], f"Rejected inspection changed {key}"
+    assert before_events == after_events, "Rejected inspection committed or changed audit events"
+    inventories = []
+    for state in (before, after):
+        rows = state["sequence_state"]
+        inventory = {(row["schemaname"], row["sequencename"]): row for row in rows}
+        assert len(inventory) == len(rows), "Duplicate sequence inventory"
+        inventories.append(inventory)
+    prior, current = inventories
+    assert prior.keys() == current.keys(), "Rejected inspection changed sequence inventory"
+    event_sequence = ("identity", "identity_domain_events_id_seq")
+    assert event_sequence in prior, "Audit event sequence is missing"
+    for key in prior.keys() - {event_sequence}:
+        assert prior[key] == current[key], f"Rejected inspection changed sequence {key}"
+    old, new = prior[event_sequence], current[event_sequence]
+    assert {k: v for k, v in old.items() if k != "last_value"} == {
+        k: v for k, v in new.items() if k != "last_value"
+    }, "Rejected inspection changed audit sequence configuration"
+    assert type(old["last_value"]) is int and type(new["last_value"]) is int
+    assert new["last_value"] >= old["last_value"], "Audit sequence moved backwards"
+    return new["last_value"] - old["last_value"]
+
+
 def main():
     project = "oi-h1-fhir-lab-proof-" + uuid.uuid4().hex[:12]
     compose = ["docker", "compose", "--project-name", project,
@@ -575,6 +606,9 @@ finally:
             assert set(snapshot_receipts) <= set(query(receipts_sql, RESTORED))
             assert set(snapshot_receipts).isdisjoint(query(receipts_sql))
             review_receipts = []
+            rejected_review_sequence_gaps = []
+            all_events_sql = """SELECT COALESCE(json_agg(e ORDER BY e.id),'[]'::json)
+                                FROM identity.identity_domain_events e"""
             for captured, returned, source_state in (
                 (first_inspection, first_return, "source_reassessment_required"),
                 (second_inspection, second_return, "current_unreviewed_question"),
@@ -584,8 +618,12 @@ finally:
                 review_receipts.append(restored_queue["source_access_receipt_id"])
                 retry_return(returned)
                 before_denial = snapshot(RESTORED)
+                events_before_denial = query(all_events_sql, RESTORED)
                 assert request(returned["path"], {**returned["payload"], "request_key": "RESTORED-STALE-RETURN"})[0] == 409
-                assert snapshot(RESTORED) == before_denial
+                rejected_review_sequence_gaps.append(assert_rejected_inspection_unchanged(
+                    before_denial, snapshot(RESTORED), events_before_denial, query(all_events_sql, RESTORED)))
+            print("PASS REJECTED RESTORED INSPECTIONS: all rows and audit events unchanged; "
+                  f"uncommitted audit sequence allocations {rejected_review_sequence_gaps}")
             assert set(review_receipts) <= set(query(receipts_sql, RESTORED))
             assert set(review_receipts).isdisjoint(query(receipts_sql))
             for item in preserved:
@@ -703,6 +741,8 @@ finally:
                     "exact_retries": len(preserved), "revoked_snapshots_denied": len(preserved) + 1,
                     "review_return_ids": [item["saved"]["receipt_id"] for item in (first_return, second_return, restored_return)],
                     "restored_review_read_receipts": review_receipts,
+                    "rejected_review_sequence_gaps": rejected_review_sequence_gaps,
+                    "rejected_review_rows_and_audit_unchanged": True,
                     "review_returns_preserved": True, "review_retry_authority_checked": True,
                     "source_and_rights_changes_require_reassessment": True, "clinical_approval": False,
                 }, indent=2) + "\n", encoding="utf-8")

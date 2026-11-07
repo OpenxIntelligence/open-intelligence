@@ -4,6 +4,7 @@ The operator grants scope; the UI cannot grant itself access. No external FHIR
 service, patient data, terminology expansion or clinical interpretation is used.
 """
 import base64
+from datetime import datetime
 import hashlib
 import json
 from urllib.request import Request, urlopen
@@ -57,6 +58,27 @@ def fictional_bundle(*, amended=False):
                        'entry': [{'fullUrl': 'urn:uuid:10000000-0000-4000-8000-%012d' % index,
                                   'resource': row} for index, row in enumerate(resources, 1)]},
                       ensure_ascii=False, indent=2).encode('utf-8')
+
+
+def independent_bundle():
+    """Different report/specimen, deliberately reusing bundle-local Observation IDs."""
+    bundle = json.loads(fictional_bundle())
+    for entry in bundle['entry']:
+        row = entry['resource']
+        if row['resourceType'] == 'Specimen':
+            row['id'] = 'FICT-WEB-SECOND-SPEC'
+            row['type']['text'] = 'Fictional independent sample'
+            row['collection']['collectedDateTime'] = '2026-04-06T09:05:00-04:00'
+        if row['resourceType'] == 'DiagnosticReport':
+            row['id'] = 'FICT-WEB-SECOND-REPORT'
+        if row['resourceType'] in ('Observation', 'DiagnosticReport'):
+            row['effectiveDateTime'] = '2026-04-06T09:05:00-04:00'
+            row['issued'] = '2026-04-07T12:00:00Z'
+        if row.get('id') == 'FICT-WEB-NUMBER':
+            row['valueQuantity']['code'] = 'mg/L'
+        if row.get('id') == 'FICT-WEB-CODED':
+            row['valueCodeableConcept']['coding'][0]['version'] = 'fixture-v2'
+    return json.dumps(bundle, ensure_ascii=False, indent=2).encode('utf-8')
 
 
 def exercise(cd, patient_id, directory, token, credentials, write_grants, artifacts):
@@ -161,6 +183,8 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     observations = []
     def key(name, code):
         cd.command('Input.dispatchKeyEvent', {'type':'rawKeyDown','key':name,'code':name,'windowsVirtualKeyCode':code})
+        if name == 'Enter':
+            cd.command('Input.dispatchKeyEvent', {'type':'char','text':'\r','key':name,'windowsVirtualKeyCode':code})
         cd.command('Input.dispatchKeyEvent', {'type':'keyUp','key':name,'code':name,'windowsVirtualKeyCode':code})
     for width, height in ((390, 844), (320, 256)):
         cd.command('Emulation.setDeviceMetricsOverride', {'width':width,'height':height,'deviceScaleFactor':1,'mobile':False})
@@ -253,14 +277,17 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     assert len(operator(source_path)['sources']) == 1
     inspect(first['source_id'], raw)
 
-    def journey(expected_value):
+    def load_journey(result_count):
         navigate('Journey')
         has_case = '[...document.querySelectorAll(".world-cases li")].some(e=>e.textContent.includes(' + json.dumps(CASE) + '))'
         if not cd.evaluate(has_case):
             cd.evaluate('document.querySelector("[data-testid=world-load-cases]").click()')
             cd.wait(has_case, 'authorized laboratory case available')
         cd.evaluate('[...document.querySelectorAll(".world-cases li")].find(e=>e.textContent.includes(' + json.dumps(CASE) + ')).querySelector("[data-testid=world-load]").click()')
-        cd.wait('document.querySelectorAll("[data-testid=world-laboratory-observation]").length===4', 'four typed source laboratory results')
+        cd.wait('document.querySelectorAll("[data-testid=world-laboratory-observation]").length===' + str(result_count), 'all expected typed source laboratory results')
+
+    def journey(expected_value):
+        load_journey(4)
         rendered = cd.evaluate('[...document.querySelectorAll("[data-testid=world-laboratory-observation]")].map(e=>({text:e.textContent,value:e.querySelector("[data-testid=world-laboratory-value]").textContent}))')
         assert any('777-3' in row['text'] and row['value'] == expected_value + ' 10*9/L (UCUM)' for row in rendered), rendered
         assert any('718-7' in row['text'] and row['value'] == '-4.25 10*9/L (UCUM)' for row in rendered), rendered
@@ -682,10 +709,80 @@ def exercise(cd, patient_id, directory, token, credentials, write_grants, artifa
     cd.evaluate('[...document.querySelectorAll("[data-testid=source-version]")].find(e=>e.querySelector("[data-testid=source-verify] dl>div:first-child code").textContent===' + json.dumps(current['source_id']) + ').querySelector("[data-testid=open-original]").click()')
     cd.wait('!document.querySelector("[data-testid=server-original]") && document.querySelector("[data-testid=records-status]").textContent.includes("permission denied")', 'revoked laboratory original withheld')
     credentials[0]['actions'].append('source_original_read');write_grants()
-    journey('1')
+    # Continue the same saved-inspection workflow with another independent report.
+    # Reused local Observation IDs must not join specimens or replace the old source.
+    records()
+    other_raw = independent_bundle()
+    select(other_raw, 'fictional-lab-independent.json')
+    assert cd.evaluate('document.querySelector("[data-testid=laboratory-predecessor]").value') == ''
+    cd.evaluate('document.querySelector("[data-testid=laboratory-confirm]").click();document.querySelector("[data-testid=laboratory-import]").click()')
+    cd.wait('document.querySelectorAll("[data-testid=source-version]").length===3', 'second report retained beside amendment history')
+    versions = operator(source_path)['sources']
+    other, = [row for row in versions if row['document_id'] == 'FICT-WEB-SECOND-REPORT']
+    assert other['version'] == 1 and other['supersedes_id'] is None
+    assert other['sha256'] == hashlib.sha256(other_raw).hexdigest()
+    assert len([row for row in versions if row['state'] == 'current']) == 2
+    load_journey(8)
+    before_read = cd.evaluate('window.__oiLabRequests')
+    writes_before = cd.evaluate('window.__oiLabWrites.length')
+    summary = '[data-testid=laboratory-same-test] > summary'
+    cd.evaluate('document.querySelector('+json.dumps(summary)+').focus()')
+    key('Enter', 13)
+    cd.wait('document.querySelector("[data-testid=laboratory-same-test]").open', 'keyboard opens grouped current reports')
+    assert cd.evaluate('window.__oiLabRequests') == before_read
+    groups = cd.evaluate('''[...document.querySelectorAll('[data-testid=laboratory-same-test] > section')].map(section=>({
+      heading:section.querySelector('h5').textContent,
+      rows:[...section.querySelectorAll('[data-testid=laboratory-same-test-row]')].map(row=>({
+        text:row.textContent,value:row.querySelector('[data-testid=laboratory-same-test-value]').textContent,
+        times:[...row.querySelectorAll('time')].map(time=>time.dateTime)}))
+    }))''')
+    assert len(groups) == 4 and all(len(g['rows']) == 2 for g in groups), groups
+    for group in groups:
+        # Preserve the existing source timeline's ascending effective-time order.
+        earlier, later = group['rows']
+        assert all(part in later['text'] for part in (other['source_id'], other['sha256'], 'FICT-WEB-SECOND-SPEC'))
+        # PostgreSQL retains the instant, not the original offset spelling.
+        assert len(later['times']) == 3
+        assert all(datetime.fromisoformat(value) == datetime.fromisoformat('2026-04-06T09:05:00-04:00')
+                   for value in later['times'][:2])
+        assert all(part in earlier['text'] for part in (current['source_id'], current['sha256'], 'FICT-WEB-SPEC'))
+        assert all(first['source_id'] not in row['text'] for row in group['rows'])
+    number = next(g for g in groups if g['heading'].startswith('LOINC 718-7 '))
+    assert [r['value'] for r in number['rows']] == ['-4.25 10*9/L (source UCUM)', '-4.25 mg/L (source UCUM)']
+    coded = next(g for g in groups if g['heading'].startswith('LOINC 999990-1 '))
+    assert [r['value'] for r in coded['rows']] == ['Coded result: DETECTED · Source label: Detected', 'Coded result: NOT-DETECTED · Source label: Not detected']
+    assert 'fixture-v1' in coded['rows'][0]['text'] and 'fixture-v2' in coded['rows'][1]['text']
+    assert all('urn:oi:synthetic:lab-results' in row['text'] for row in coded['rows'])
+    assert not cd.evaluate('Boolean(document.querySelector("[data-testid=laboratory-same-test] script"))')
+    filter_results('lab-filter-status', 'reported_coded')
+    cd.wait('document.querySelectorAll("[data-testid=world-laboratory-observation]").length===2', 'ordinary result filter remains independent')
+    assert cd.evaluate('document.querySelectorAll("[data-testid=laboratory-same-test-row]").length') == 8
+    assert cd.evaluate('window.__oiLabRequests') == before_read
+    assert cd.evaluate('window.__oiLabWrites.length') == writes_before
+    assert cd.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+    (artifacts / 'h1-laboratory-same-test-mobile.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot', {'format':'png'})['data']))
+    cd.evaluate('document.querySelector("[data-testid=laboratory-same-test-records]").click()')
+    cd.wait('document.querySelector("[data-testid=source-index]")?.textContent.includes('+json.dumps(other['source_id'])+')', 'comparison opens current case source history')
+    inspect(first['source_id'], raw)
+    inspect(other['source_id'], other_raw)
+    # An independent report cannot move the original saved question or inspection.
+    retained = operator(review_path.removesuffix('/review-returns'))
+    assert retained['snapshot']['captured_report_sha256'] == opened_digest
+    assert retained['inspection']['reported_result']['source_id'] == first['source_id']
+    assert retained['inspection']['reported_result']['coded_result']['code'] == 'NOT-DETECTED'
+    (artifacts / 'laboratory-same-test-connected.json').write_text(json.dumps({
+        'synthetic':True, 'case_id':CASE, 'groups':groups,
+        'source_ids':[current['source_id'],other['source_id']], 'historical_source_excluded':first['source_id'],
+        'snapshot_id':snapshot_id, 'snapshot_source_preserved':True,
+        'keyboard_open':True, 'group_and_filter_requests':0, 'new_writes_from_grouping':0,
+        'originals_verified':True, 'clinical_comparability_asserted':False,
+    },indent=2)+'\n')
+    print('PASS CONNECTED LABORATORY COMPARISON: two current reports retain literal quantities, different units, codes, specimen times and source-local identities; keyboard grouping/filtering performs no requests; exact originals and historical saved inspection remain intact.')
+    load_journey(8)
     credentials[0]['actions'].remove('source_read');write_grants()
     cd.evaluate('[...document.querySelectorAll(".world-cases li")].find(e=>e.textContent.includes(' + json.dumps(CASE) + ')).querySelector("[data-testid=world-load]").click()')
     cd.wait('!document.querySelector("[data-testid=world-projection]") && document.querySelector("[data-testid=world-status]").textContent.includes("unavailable or revoked")', 'revoked laboratory projection cleared')
+    assert not cd.evaluate('Boolean(document.querySelector("[data-testid=laboratory-same-test]"))')
     credentials[0]['actions'].append('source_read');write_grants()
     cd.evaluate('window.fetch=window.__oiLabFetch;delete window.__oiLabFetch;delete window.__oiLabWrites;delete window.__oiLabDrop;delete window.__oiLabRequests;delete window.__oiLabPrepareCodes;delete window.__oiLabQuestionPosts;delete window.__oiLabHistoryCodes;delete window.__oiLabCatalog;delete window.__oiLabReviewDrop')
     navigate('Overview')

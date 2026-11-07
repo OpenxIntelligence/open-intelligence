@@ -55,6 +55,12 @@ If startup fails, inspect the Docker output and retry the same command/state dir
 
 ## Save a question about a laboratory result
 
+When two current original reports share a test code, expand **Same laboratory
+test code across current originals** in Journey. Each row retains its literal
+result and original identity, including different specimens, units and code-system
+versions. Use **Inspect exact report versions in Records** to check the originals.
+This grouping performs no writes and does not establish clinical comparability.
+
 In Records, open the source versions for `CASE-DEMO`. Select
 [the fictional FHIR bundle](../examples/synthetic/fictional-fhir-r4-lab-bundle.json),
 confirm the file, and import it as a new report. In Journey, inspect that case and
