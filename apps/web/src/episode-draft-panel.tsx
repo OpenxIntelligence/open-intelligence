@@ -3,7 +3,7 @@ import type {RegistrySession} from './registry-client';
 import type {SourceWorldModel} from './source-world-model';
 import {draftCommand,isDraftOrigin,readDraftReceipt,readDrafts,type Draft} from './episode-drafts';
 
-export function EpisodeDraftPanel({session,world,busy,onRecords}:{session:RegistrySession;world:SourceWorldModel;busy:boolean;onRecords?:()=>void}){
+export function EpisodeDraftPanel({session,world,busy,onRecords,onOriginal}:{session:RegistrySession;world:SourceWorldModel;busy:boolean;onRecords?:()=>void;onOriginal?:(sourceId:string)=>void}){
   const [drafts,setDrafts]=useState<Draft[]|null>(null);
   const [selected,setSelected]=useState('');
   const [message,setMessage]=useState('');
@@ -48,6 +48,8 @@ export function EpisodeDraftPanel({session,world,busy,onRecords}:{session:Regist
       <strong>{d.source_label}</strong> · Unreviewed draft · {d.basis_state==='current'?'Current source basis':'Reassessment required'}
       <blockquote>{d.statement}</blockquote>
       <p>{d.document_id} v{d.source_version} · line {d.source_line} · {d.source_state} original</p>
+      {onOriginal&&<button type="button" data-testid="episode-open-original" disabled={busy||pending}
+        onClick={()=>onOriginal(d.source_id)}>Inspect {d.document_id} v{d.source_version} original</button>}
       <details><summary>Draft and source identifiers</summary><p>Draft <code>{d.episode_id}</code> · created by {d.created_by} at {d.created_at}</p>
         <p>Source <code>{d.source_id}</code> · SHA-256 <code>{d.source_sha256}</code></p></details>
     </li>)}</ul>}

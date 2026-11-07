@@ -31,7 +31,7 @@ async function inspected({recordsContext=episode,journeyContext=episode,ambiguou
   calls.push(url);
   const action=url.endsWith('/source-preflight')?'preflight':url.endsWith('/brief')?'brief':
    url.endsWith('/source-review-packet')?'packet':url.endsWith('/questions')?(init.method==='POST'?'save':'history'):
-   url.endsWith('/sources')?'sources':url.endsWith('/followthrough')?'followthrough':null;
+   url.endsWith('/sources/'+sourceId)?'original':url.endsWith('/sources')?'sources':url.endsWith('/followthrough')?'followthrough':null;
   if(action==='save')writes.push(init.body);
   if(replies.has(action))return replies.get(action)();
   if(action==='save')return response({question_id:questionId,duplicate:true});
@@ -240,4 +240,41 @@ test('a late source index cannot restore Records after switching credentials dur
  assert.equal(s.snapshot().original,null);assert.equal(s.snapshot().sourceIndex,null);
  s.connect(token+'2');held.resolve(response(index));await waiting;
  for(const field of ['patient','cases','sourceIndex','original','worldModel'])assert.equal(s.snapshot()[field],null,field);
+});
+
+
+test('episode source inspection refreshes metadata then verifies the exact original',async()=>{
+ const {session:s,calls}=await inspected();const text=s.snapshot().original.original_text;
+ await s.loadWorldModel(caseId);const before=calls.length;
+ await s.loadWorldOriginal(s.snapshot().worldModel,sourceId);
+ assert.deepEqual(calls.slice(before),['/v1/patients/'+patientId+'/cases/'+caseId+'/sources',
+  '/v1/patients/'+patientId+'/cases/'+caseId+'/sources/'+sourceId]);
+ assert.equal(s.snapshot().original.original_text,text);
+});
+for(const action of ['sources','original'])test('episode inspection withholds old text when '+action+' permission is denied',async()=>{
+ const {session:s,replies}=await inspected();await s.loadWorldModel(caseId);
+ replies.set(action,()=>response({},404));await s.loadWorldOriginal(s.snapshot().worldModel,sourceId);
+ assert.equal(s.snapshot().original,null);assert.equal(s.snapshot().recordsPhase,'error');
+});
+test('episode inspection rejects a stale world and an unknown source before transport',async()=>{
+ const {session:s,calls}=await inspected();await s.loadWorldModel(caseId);const old=s.snapshot().worldModel;
+ await s.loadWorldModel(caseId);const before=calls.length;
+ await s.loadWorldOriginal(old,sourceId);await s.loadWorldOriginal(s.snapshot().worldModel,'SRC-'+'F'.repeat(32));
+ assert.equal(calls.length,before);
+});
+test('changed source metadata cannot redirect an episode inspection',async()=>{
+ const {session:s,replies,calls}=await inspected();const index=structuredClone(s.snapshot().sourceIndex);
+ await s.loadWorldModel(caseId);index.sources[0].sha256='0'.repeat(64);
+ replies.set('sources',()=>response(index));const before=calls.length;
+ await s.loadWorldOriginal(s.snapshot().worldModel,sourceId);
+ assert.equal(calls.length,before+1);assert.equal(s.snapshot().original,null);assert.equal(s.snapshot().recordsPhase,'error');
+});
+for(const change of ['credentials','dismiss'])test('pending episode inspection cannot reopen after '+change,async()=>{
+ const {session:s,replies,calls}=await inspected();const index=s.snapshot().sourceIndex;
+ await s.loadWorldModel(caseId);const started=deferred(),held=deferred();
+ replies.set('sources',()=>{started.resolve();return held.promise;});
+ const before=calls.length,pending=s.loadWorldOriginal(s.snapshot().worldModel,sourceId);await started.promise;
+ if(change==='credentials')s.connect(token+'2');else s.dismissOriginal();
+ held.resolve(response(index));await pending;
+ assert.equal(calls.length,before+1);assert.equal(s.snapshot().original,null);
 });
