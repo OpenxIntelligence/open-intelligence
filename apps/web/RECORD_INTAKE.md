@@ -73,3 +73,9 @@ The comparison follows the recorded finding key within each document. If an
 amendment moves that finding, the view shows its new line. If the key disappears,
 the view identifies the missing statement. An explicitly unassigned episode
 and a statement without an episode field are displayed separately.
+
+The comparison audit preserves both recorded/current passage pairs, their patient,
+case, question and original review receipt, and a deterministic content digest.
+Access receipts remain separate so repeated inspection of unchanged content has
+the same digest. This snapshot is a prerequisite for a later durable disposition.
+Reviewer decisions and completion remain unimplemented in this increment.

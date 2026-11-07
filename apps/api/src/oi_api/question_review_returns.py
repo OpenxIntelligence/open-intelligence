@@ -19,7 +19,7 @@ from open_intelligence.patient_registry import (
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
-from .attribution_reassessment import compare_versions
+from .attribution_reassessment import compare_versions, comparison_snapshot
 from .case_bindings import _case_id
 from .composer_preflight import SHA256, SOURCE_SNAPSHOT_CONTRACT
 from .source_questions import LEGACY_SNAPSHOT_CONTRACT, PostgresSourceQuestions
@@ -273,12 +273,15 @@ class PostgresQuestionReviewReturns:
 
             first, first_access = side(question)
             second, second_access = side(receipt["comparison_source"])
+            inspected = comparison_snapshot(patient_id=patient_id, case_id=case_id,
+                question_id=question["question_id"], receipt_id=receipt_id, first=first, second=second)
             self.registry.append_event(
                 patient_id, "investigation.review.attribution_compared", case_id=case_id,
                 question_id=question["question_id"], review_receipt_id=receipt_id, actor=actor,
                 source_access_receipt_id=index["access_receipt_id"], first_original_access_id=first_access,
                 second_original_access_id=second_access, first_latest_source_id=first["latest"]["source_id"],
                 second_latest_source_id=second["latest"]["source_id"],
+                comparison_snapshot=inspected["content"], comparison_sha256=inspected["sha256"],
             )
             packet = {"contract": "oi.synthetic-attribution-reassessment/1", "synthetic": True,
                       "clinical_approval": False, "patient_id": patient_id, "case_id": case_id,
