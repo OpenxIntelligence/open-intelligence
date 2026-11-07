@@ -206,7 +206,8 @@ class PostgresQuestionEvidence:
                           "original_sha256", "annotation_revision_id",
                           "annotation_revision", "review_sha256",
                           "selected_by", "selected_at", "selected_state",
-                          "quote", "line", "page")
+                          "quote", "line", "page", "classification_origin",
+                          "clinical_review")
                 prepared_source = {key: anchor[key] for key in fields}
                 prepared_source["anchor_sha256"] = selected["anchor_sha256"]
                 prepared_source["selection_state"] = selected["selection_state"]
