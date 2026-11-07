@@ -224,18 +224,38 @@ def exercise(cd,patient_id,directory,token,credentials,write_grants,artifacts,re
         cd.evaluate('window.__restoreCitationFetch()')
     click('Open saved passage citations')
     cd.wait("document.querySelector('[data-testid=passage-citations]')?.textContent.includes('FICT-RECORD-CONTINUITY@1 · available')",'saved citation reopened')
-    # Evidence access may be revoked while document access remains valid.
-    # A denied *new* search must invalidate older on-screen citation metadata.
-    # The source owner is unchanged; this is an information-display boundary.
-    credentials[0]['actions'].remove('evidence_read');write_grants()
-    click('Search evidence catalog')
-    cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('Evidence search unavailable.')",
-            'denied citation search reported')
-    assert cd.evaluate("!document.querySelector('[data-testid=passage-citations]')"), (
-        'Evidence denial must hide earlier saved-citation metadata')
-    assert cd.evaluate("!document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('FICT-RECORD-CONTINUITY@1')"), (
-        'A denied metadata search must not retain an earlier citation in the visible panel')
-    credentials[0]['actions'].append('evidence_read');write_grants()
+    # A transient metadata service failure is distinct from an authoritative
+    # 404 grant denial (which already unmounts the entire shared case scope).
+    # A failed new search must not display the prior citation as fresh.
+    cd.evaluate("""(() => {
+      const original = window.fetch;
+      if(window.__failPassageSearch) throw Error('Evidence interceptor already installed');
+      window.__failPassageSearch = original;
+      window.__failedPassageSearchRequests = 0;
+      window.fetch = async(input, init) => {
+        const path = new URL(typeof input==='string'?input:input.url,location.href).pathname;
+        if(path.endsWith('/evidence-search') && init?.method==='POST'){
+          window.__failedPassageSearchRequests++;
+          return new Response(JSON.stringify({detail:'Fictional temporary metadata service failure'}), {
+            status:503, headers:{'Content-Type':'application/json'}
+          });
+        }
+        return original(input,init);
+      };
+    })()""")
+    try:
+        click('Search evidence catalog')
+        cd.wait("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('Evidence search unavailable.')",
+                'failed metadata refresh is reported')
+        assert cd.evaluate('window.__failedPassageSearchRequests')==1, 'One failed metadata request was intercepted'
+        assert cd.evaluate("Boolean(document.querySelector('[data-testid=source-index]'))"), (
+            'Temporary evidence failure must preserve independently authorized source reading')
+        assert cd.evaluate("!document.querySelector('[data-testid=passage-citations]')"), (
+            'A failed metadata refresh must remove the previously displayed citation')
+        assert not cd.evaluate("document.querySelector('[data-testid=saved-passage-questions]')?.textContent.includes('FICT-RECORD-CONTINUITY@1')"), (
+            'The failed metadata refresh must not leave the old citation visible')
+    finally:
+        cd.evaluate("window.fetch=window.__failPassageSearch;delete window.__failPassageSearch;delete window.__failedPassageSearchRequests")
     click('Open saved passage citations')
     cd.wait("document.querySelector('[data-testid=passage-citations]')?.textContent.includes('FICT-RECORD-CONTINUITY@1 · available')",
             'a fresh authorized read restores the original citation')
