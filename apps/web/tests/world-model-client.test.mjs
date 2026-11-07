@@ -292,3 +292,22 @@ for(const action of ['opening','closing']){
     }
   });
 }
+
+test('semantic reads reject a response after disconnect and clear denied source context',async()=>{
+  let resolve,replyMode='deferred';
+  const s=new RegistrySession(async url=>{
+    if(url.endsWith('/semantics'))return replyMode==='denied'?response({detail:'Source unavailable'},404):new Promise(r=>{resolve=r;});
+    if(url.endsWith('/case-bindings'))return response(caseList());
+    if(url.endsWith('/world-model'))return response(world());
+    return response(patient());
+  });
+  s.connect(token);await s.read(patientId);await s.loadCases();await s.loadWorldModel(caseId);
+  const pending=s.readSourceSemantics(s.snapshot().worldModel);
+  s.disconnect();resolve(response({}));
+  await assert.rejects(pending);
+  s.connect(token);await s.read(patientId);await s.loadCases();await s.loadWorldModel(caseId);
+  replyMode='denied';
+  await assert.rejects(s.readSourceSemantics(s.snapshot().worldModel));
+  assert.equal(s.snapshot().worldModel,null);
+  assert.equal(s.snapshot().worldPhase,'error');
+});

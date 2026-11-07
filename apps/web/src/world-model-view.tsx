@@ -1,3 +1,4 @@
+import {SourceSemanticsPanel} from './source-semantics-panel';
 import type {ReactNode} from 'react';
 import {SourceOncologyLabel} from './source-oncology-label';
 import type {FollowthroughTask} from './followthrough-view';
@@ -111,6 +112,7 @@ export function WorldModelView({session,state,patientAccess,busy,showQuestions=f
           <div><strong data-testid="world-unresolved-count">{model.summary.unresolved_observations}</strong><span>Unresolved statements</span></div>
           <div><strong data-testid="world-conflict-count">{model.summary.source_disagreements}</strong><span>Source disagreements</span></div>
         </div>
+        {state.worldPhase==='ready'&&<SourceSemanticsPanel key={model.access_receipt_id} session={session} model={model} busy={loading||busy}/> }
         <h3>Source chronology</h3>
         {model.current_sources.length===0?<p>No current fictional original was imported.</p>:
         <ol className="world-timeline">{model.current_sources.map(item=><li key={item.source_id} data-testid="world-source">
