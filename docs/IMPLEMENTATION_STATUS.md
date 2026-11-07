@@ -1993,3 +1993,17 @@ focused suites now pass 150 tests with zero skips; diff checks pass. Valid
 composition round trips and the amendment race regression remain covered.
 Hosted acceptance is pending for this new source; earlier CI does not certify
 it. Continue with exact-head verification before integrating the parent owner.
+
+### W2 exact-retry recovery continuation
+
+An identical normalized write contract and hypothesis envelope now recover the
+original save ID under the publication transaction, without another row or audit
+event. A reused write ID with changed case/content/contract raises InvalidInput.
+Recovery returns a historical receipt, not a freshness assertion: amendment
+staleness remains unchanged and the current-hypothesis getter still returns None.
+Three new tests reproduced uniqueness errors and failed receipt recovery before
+repair. After repair, the four focused suites passed 153 tests, zero skips,
+including file-backed close/reopen recovery and unchanged-event checks.
+Only a docstring clarification and this evidence note followed that run.
+No schema or authority expansion. Hosted checks remain pending for the new head;
+parent #609 and its deferred assignment work remain explicit dependencies.

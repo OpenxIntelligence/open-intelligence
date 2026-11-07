@@ -7265,6 +7265,8 @@ class CaseStore:
         The store checks shape only; compose_hypothesis owns the
         REQ-09-10 composition rules (length, sentence citation, and the
         rest) and the store follows them, never the reverse.
+        Exact retries recover the original id without changing currentness;
+        the returned id is a save receipt, not an assertion of fresh inputs.
         """
         from .agent_writes import (
             WriteContractRejected,
@@ -7331,6 +7333,19 @@ class CaseStore:
             # Otherwise an amendment can commit after validation and leave
             # a newly inserted hypothesis incorrectly marked current.
             self.db.execute("BEGIN IMMEDIATE")
+            prior = self.db.execute(
+                """SELECT id,case_id,text,claim_ids_json,sentences_json,char_count,
+                contract_json FROM composed_hypotheses WHERE write_id=?""",
+                (contract["writeId"],)).fetchone()
+            if prior is not None:
+                expected = (case_id, text, json.dumps(claim_ids),
+                            json.dumps(sentences, sort_keys=True), len(text),
+                            json.dumps(contract, sort_keys=True))
+                if tuple(prior)[1:] != expected:
+                    raise InvalidInput("Hypothesis write id was already used with different content")
+                # Receipt recovery only: do not recreate, re-review or revive
+                # a historical hypothesis whose inputs have since changed.
+                return int(prior[0])
             loaded: dict[int, dict | None] = {}
             for claim_id in claim_ids:
                 match = re.fullmatch(r"inv(\d+):c(\d+)", claim_id)

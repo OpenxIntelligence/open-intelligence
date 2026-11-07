@@ -773,6 +773,45 @@ class ComposedHypothesisPersistenceTests(unittest.TestCase):
                 self.assertEqual(self.store.db.execute(
                     "SELECT COUNT(*) FROM events").fetchone()[0], before)
 
+    def test_exact_retry_returns_original_receipt_after_reopen(self):
+        self.store.close()
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "retry.sqlite")
+            self.store = CaseStore(path)
+            self.source_id, self.question_id = seed_case(self.store)
+            composed = self.compose(self.run_once())
+            contract = self.contract()
+            original = self.store_hypothesis(composed, contract)
+            events = self.store.db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+            self.store.close()
+            self.store = CaseStore(path)
+            self.assertEqual(self.store_hypothesis(composed, contract), original)
+            self.assertEqual(len(self.store.list_composed_hypotheses("CASE-ALPHA")), 1)
+            self.assertEqual(self.store.db.execute(
+                "SELECT COUNT(*) FROM events").fetchone()[0], events)
+
+    def test_retry_after_amendment_does_not_revive_hypothesis(self):
+        composed = self.compose(self.run_once())
+        contract = self.contract()
+        original = self.store_hypothesis(composed, contract)
+        self.amend()
+        events = self.store.db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        self.assertEqual(self.store_hypothesis(composed, contract), original)
+        self.assertIsNone(self.store.get_composed_hypothesis("CASE-ALPHA"))
+        self.assertTrue(self.store.list_composed_hypotheses("CASE-ALPHA")[0]["stale"])
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM events").fetchone()[0], events)
+
+    def test_reused_write_id_with_changed_payload_is_rejected(self):
+        inv_id = self.run_once()
+        contract = self.contract()
+        self.store_hypothesis(self.compose(inv_id), contract)
+        with self.assertRaises(InvalidInput):
+            self.store_hypothesis(self.compose(inv_id, "The sources report a finding again."), contract)
+        with self.assertRaises(InvalidInput):
+            self.store_hypothesis(self.compose(inv_id), dict(contract, promptVersion="changed"))
+        self.assertEqual(len(self.store.list_composed_hypotheses("CASE-ALPHA")), 1)
+
     def test_latest_stored_hypothesis_is_current(self):
         inv_id = self.run_once()
         second_text = "The sources report a finding again."
