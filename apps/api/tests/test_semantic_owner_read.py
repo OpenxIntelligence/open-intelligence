@@ -4,6 +4,7 @@ from contextlib import nullcontext
 from unittest.mock import patch
 
 from oi_api.source_questions import PostgresSourceQuestions
+from open_intelligence.patient_registry import PatientRegistryDenied
 
 SID = "SRC-" + "A" * 32
 QID = "QUESTION-" + "B" * 32
@@ -12,8 +13,15 @@ SHA = "d" * 64
 
 
 class FakeRegistry:
-    def __init__(self):
+    def __init__(self, allowed_actions=("source_read", "question_read")):
         self.transaction_calls = 0
+        self.allowed_actions = set(allowed_actions)
+        self.checked_actions = []
+
+    def _allow(self, actor, patient_id, action, purpose):
+        self.checked_actions.append(action)
+        if (actor, patient_id, purpose) != ("actor", "P1", "operations") or action not in self.allowed_actions:
+            raise PatientRegistryDenied("Synthetic owner grant denied")
 
     def transaction(self):
         self.transaction_calls += 1
@@ -27,6 +35,7 @@ class FakeOwner:
     def list_locked(self, patient_id, case_id, *, organization, actor, purpose,
                     prepare_response, recheck_authority):
         assert self.registry.transaction_calls == 1
+        assert self.registry.checked_actions == ["source_read", "question_read"]
         assert (patient_id, case_id, organization, purpose) == (
             "P1", "CASE-1", "ORG1", "operations"
         )
@@ -71,6 +80,7 @@ class SemanticOwnerReadTests(unittest.TestCase):
                 purpose="operations", recheck_authority=lambda: None,
             )
         self.assertEqual(service.registry.transaction_calls, 1)
+        self.assertEqual(service.registry.checked_actions, ["source_read", "question_read"])
         self.assertEqual(result["access_receipt_id"], RECEIPT)
         self.assertEqual(result["bindings"][0]["question_id"], QID)
         self.assertTrue(result["bindings"][0]["requires_reassessment"])
@@ -97,6 +107,30 @@ class SemanticOwnerReadTests(unittest.TestCase):
             )
         self.assertEqual(result["bindings"], [])
         self.assertFalse(result["clinical_approval"])
+
+    def test_missing_source_read_grant_fails_before_owner(self):
+        service = FakeQuestionService([question()])
+        service.registry = FakeRegistry(allowed_actions=("question_read",))
+        with patch("oi_api.source_questions.PostgresSourceVersions") as owner:
+            with self.assertRaises(PatientRegistryDenied):
+                service.semantic_snapshot(
+                    "P1", "CASE-1", organization="ORG1", actor="actor",
+                    purpose="operations", recheck_authority=lambda: None,
+                )
+            owner.assert_not_called()
+        self.assertEqual(service.registry.checked_actions, ["source_read"])
+
+    def test_missing_question_read_grant_fails_before_owner(self):
+        service = FakeQuestionService([question()])
+        service.registry = FakeRegistry(allowed_actions=("source_read",))
+        with patch("oi_api.source_questions.PostgresSourceVersions") as owner:
+            with self.assertRaises(PatientRegistryDenied):
+                service.semantic_snapshot(
+                    "P1", "CASE-1", organization="ORG1", actor="actor",
+                    purpose="operations", recheck_authority=lambda: None,
+                )
+            owner.assert_not_called()
+        self.assertEqual(service.registry.checked_actions, ["source_read", "question_read"])
 
     def test_research_purpose_rejected_before_read(self):
         service = FakeQuestionService([question()])
