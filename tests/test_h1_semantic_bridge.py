@@ -1,7 +1,9 @@
 """H1 source/question projection contract tests for unittest discovery."""
 import unittest
 
-from open_intelligence.h1_semantic_bridge import (\n    bind_authorized_h1_question, bind_authorized_h1_question_list,\n)
+from open_intelligence.h1_semantic_bridge import (
+    bind_authorized_h1_question, bind_authorized_h1_question_list,
+)
 from open_intelligence.semantic_contract import (
     Concept, Relationship, SemanticContractError, SemanticRegistry,
 )
