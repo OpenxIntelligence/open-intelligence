@@ -1,5 +1,23 @@
 # Implementation slice 01 — source and investigation ledger
 
+## Source-relay elapsed admission budget — November 7, 2026
+
+Continuation of #626 at `a398f2401091b130fec0c38824b00511c7866abd`,
+under OI-013 / PF-06. The existing `--drain` command accepts optional
+`--max-seconds 1..3600` alongside its batch budget. A monotonic deadline stops
+new admissions; active transactions retain their normal completion, leases,
+receipts and authority checks. Failure results are preserved rather than hidden
+by a budget stop. No migration, grant, dependency or additional state owner.
+
+Tests first reproduced argparse's rejection of the new flag. After construction,
+21 worker/schema tests and 31 architecture tests pass locally, as do the ownership
+and independently fictional-data gates. The new real-PostgreSQL test exercises a
+committed delivery, expiry before another claim, and actual CLI resume with one
+receipt per delivery. PostgreSQL/Docker are unavailable locally; that test and
+the complete inherited PostgreSQL/browser/recovery workflows require exact-source
+hosted acceptance. Parent results are not substituted. Published source and
+workflow results belong to the dependent draft's receipt; no merge or deployment.
+
 **Current connected application:** use the [persistent fictional demo](H1_DEMO.md).
 This dependent draft's PR records its combined revision, verification receipts
 and landing status; [foundation #565](https://github.com/OpenxIntelligence/open-intelligence/pull/565)

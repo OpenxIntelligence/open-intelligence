@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta, timezone
 import importlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -129,6 +130,8 @@ class SourceEventWorkerTests(unittest.TestCase):
 
     def test_cli_rejects_ambiguous_modes_and_invalid_pagination(self):
         for flags in (("--drain", "--once"), ("--status", "--max-batches", "2"),
+                      ("--once", "--max-seconds", "1"), ("--status", "--max-seconds", "1"),
+                      ("--drain", "--max-seconds", "0"), ("--drain", "--max-seconds", "3601"),
                       ("--drain", "--max-batches", "101"), ("--drain", "--limit", "1"),
                       ("--once", "--dead-letters"), ("--status", "--dead-letters"),
                       ("--status", "--limit", "1"), ("--once", "--after-event", "0"),
@@ -171,6 +174,79 @@ class SourceEventWorkerTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 self.worker().run_bounded(Settings(), forbidden_read, "PATIENT-ONE", "CASE-ALPHA",
                                           max_batches=value)
+
+    def test_cli_accepts_time_budget_without_bypassing_missing_credentials(self):
+        env = {key: value for key, value in os.environ.items() if not key.startswith("OI_API_")}
+        result = subprocess.run([sys.executable, "-m", "oi_api.event_worker", "--drain",
+                                 "--max-seconds", "1", "--patient", "PATIENT-ONE",
+                                 "--case", "CASE-ALPHA"], env=env,
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(json.loads(result.stdout), {"status": "blocked"})
+
+    def test_elapsed_budget_stops_before_admitting_another_batch(self):
+        worker = self.worker()
+        for status in ("delivered", "queued"):
+            with self.subTest(status=status), \
+                 patch.object(worker, "monotonic", side_effect=[100.0, 100.0, 101.0]), \
+                 patch.object(worker, "run_once", return_value={
+                     "status": status, "invalidated_count": 3}) as execute:
+                result = worker.run_bounded(Settings(), lambda: TOKEN, "PATIENT-ONE", "CASE-ALPHA",
+                                            max_batches=10, max_seconds=1)
+            self.assertEqual(result, {"status": "time_limit_reached", "batches_attempted": 1,
+                                      "delivered_batches": int(status == "delivered"),
+                                      "continued_batches": int(status == "queued")})
+            self.assertEqual(execute.call_count, 1)
+
+    def test_elapsed_budget_can_expire_before_any_credential_or_claim(self):
+        worker = self.worker()
+        def forbidden_read():
+            self.fail("Expired budget read a credential")
+        with patch.object(worker, "monotonic", side_effect=[100.0, 101.0]), \
+             patch.object(worker, "run_once") as execute:
+            result = worker.run_bounded(Settings(), forbidden_read, "PATIENT-ONE", "CASE-ALPHA",
+                                        max_seconds=1)
+        self.assertEqual(result, {"status": "time_limit_reached", "batches_attempted": 0,
+                                  "delivered_batches": 0, "continued_batches": 0})
+        execute.assert_not_called()
+
+    def test_observed_failure_is_not_masked_by_elapsed_budget(self):
+        worker = self.worker()
+        for status in ("blocked", "unavailable", "dead_letter", "fenced", "queued", "idle"):
+            clock = [0.0]
+            def expire_with_result(*args, **kwargs):
+                clock[0] = 2.0
+                return {"status": status}
+            with self.subTest(status=status), \
+                 patch.object(worker, "monotonic", side_effect=lambda: clock[0]), \
+                 patch.object(worker, "run_once", side_effect=expire_with_result) as execute:
+                result = worker.run_bounded(Settings(), lambda: TOKEN, "PATIENT-ONE", "CASE-ALPHA",
+                                            max_seconds=1)
+                self.assertEqual(result["status"], status)
+                self.assertEqual(result["batches_attempted"], 1)
+                self.assertEqual(execute.call_count, 1)
+
+    def test_invalid_elapsed_budget_cannot_read_credentials(self):
+        def forbidden_read():
+            self.fail("Invalid elapsed budget read a credential")
+        for value in (0, -1, 3601, True, "1", 1.5, float("nan"), float("inf")):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.worker().run_bounded(Settings(), forbidden_read, "PATIENT-ONE", "CASE-ALPHA",
+                                          max_seconds=value)
+
+    def test_cli_passes_elapsed_budget_and_reports_controlled_stop(self):
+        worker = self.worker()
+        result = {"status": "time_limit_reached", "batches_attempted": 1,
+                  "delivered_batches": 1, "continued_batches": 0}
+        with patch.dict(os.environ, {"OI_API_EVENT_WORKER_TOKEN_FILE": "synthetic-token-file"}), \
+             patch.object(worker, "run_bounded", return_value=result) as execute, \
+             patch("sys.stdout", new_callable=io.StringIO) as output:
+            code = worker.main(["--drain", "--max-seconds", "7", "--patient", "PATIENT-ONE",
+                                "--case", "CASE-ALPHA"])
+        self.assertEqual(code, 0)
+        self.assertEqual(execute.call_args.kwargs["max_seconds"], 7)
+        self.assertEqual(json.loads(output.getvalue()), result)
 
     def test_cli_does_not_reuse_composer_worker_credential_file(self):
         self.worker()

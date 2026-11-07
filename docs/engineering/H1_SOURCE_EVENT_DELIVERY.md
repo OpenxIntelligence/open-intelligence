@@ -65,7 +65,7 @@ for this addition belongs to its dependent draft, not its parent's receipts.
 
 ```bash
 PYTHONPATH=apps/api/src:src python -m oi_api.event_worker --drain \
-  --patient PATIENT-EXAMPLE --case CASE-EXAMPLE --max-batches 20
+  --patient PATIENT-EXAMPLE --case CASE-EXAMPLE --max-batches 20 --max-seconds 60
 ```
 
 This existing-owner PF-06 / OI-013 command invokes the same transactional
@@ -82,13 +82,26 @@ are processing batches, not unique events; a large event may need continuations.
 is empty. `idle` means no eligible work was claimed, not that delayed retries
 or dead letters are absent. Both exit zero. Use the inspection modes separately.
 
+Optional `--max-seconds` accepts integers 1–3600. It uses elapsed monotonic time
+to stop admitting batches once the deadline is reached. The default has no
+elapsed budget and retains the existing batch-count behavior. A currently
+admitted batch finishes under the existing transaction, lease and authority
+rules; the elapsed budget does not interrupt it or impose a hard process timeout.
+After a successful batch, `time_limit_reached` returns its committed counters
+and exits zero. An observed denial, failure, fence or idle result remains the
+actual final status even if that batch used up the time budget. If the batch
+count is exhausted by the last completed batch, `limit_reached` remains the stop
+reason. A budget stop does not establish an empty backlog or successful access.
+
 A successful queued continuation may proceed to another batch. A delayed
 failure (`queued` without a consumer result), `fenced`, `dead_letter`, `blocked`
 or `unavailable` stops immediately and exits two. The command does not sleep,
 busy-poll, reset failures or replay dead letters. It is a finite invocation,
-not a scheduler or daemon; its budget bounds attempts, not wall-clock duration.
+not a scheduler or daemon; its budgets bound admissions, not in-flight duration.
 Existing lease expiry and receipt/replay semantics govern process interruption.
-`--max-batches` requires `--drain`, which is exclusive with all other modes.
+`--max-batches` and `--max-seconds` require `--drain`, which is exclusive with all
+other modes. Resume deliberately with the same scope after a budget stop; prior
+receipts are retained and completed deliveries are not re-executed.
 
 ### Inspect terminal failures
 
