@@ -1,4 +1,5 @@
 """Actual local workers, immutable experiments and held-out isolation."""
+from contextlib import contextmanager
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -218,6 +219,61 @@ class LaboratoryExperimentTests(unittest.TestCase):
         spec.update(reference_run="unassessable", recipes=[self.keys[1]])
         self.service.plan(spec)
         self.assertIsNone(self.service.execute("search")["selected_recipe"])
+
+    def test_lock_wait_exhaustion_prevents_a_trial_claim(self):
+        self.service.plan(self.spec())
+        clock, transactions = [0], [0]
+        original = self.registry._transaction
+        @contextmanager
+        def delayed_lock():
+            with original():
+                transactions[0] += 1
+                if transactions[0] == 2:
+                    clock[0] = 11
+                yield
+        with patch.object(self.registry, "_transaction", delayed_lock), \
+                patch("oi_api.laboratory_experiments.time.monotonic", side_effect=lambda: clock[0]), \
+                patch("oi_api.laboratory_experiments.run_worker") as launch:
+            receipt = self.service.execute("search")
+        launch.assert_not_called()
+        self.assertEqual([t["status"] for t in receipt["trials"]], ["budget_exhausted"] * 2)
+        self.assertEqual(self.registry.db.execute(
+            "SELECT count(*) FROM records WHERE kind='experiment-trial-start'").fetchone()[0], 0)
+
+    def test_trial_preparation_exhaustion_does_not_launch_worker(self):
+        self.service.plan(self.spec())
+        clock = [0]
+        original = self.registry._get
+        def delayed_recipe(kind, key):
+            result = original(kind, key)
+            if kind == "recipe":
+                clock[0] = 11
+            return result
+        with patch.object(self.registry, "_get", side_effect=delayed_recipe), \
+                patch("oi_api.laboratory_experiments.time.monotonic", side_effect=lambda: clock[0]), \
+                patch("oi_api.laboratory_experiments.run_worker") as launch:
+            receipt = self.service.execute("search")
+        launch.assert_not_called()
+        self.assertEqual([t["status"] for t in receipt["trials"]], ["budget_exhausted"] * 2)
+        self.assertEqual(receipt["trials"][0]["failure_reason"], "worker_budget_exhausted_before_launch")
+
+    def test_preparation_time_reduces_worker_timeout(self):
+        spec = self.spec()
+        spec["recipes"] = [self.keys[1]]
+        self.service.plan(spec)
+        clock = [0]
+        original = self.registry._get
+        def delayed_recipe(kind, key):
+            result = original(kind, key)
+            if kind == "recipe":
+                clock[0] = 2
+            return result
+        with patch.object(self.registry, "_get", side_effect=delayed_recipe), \
+                patch("oi_api.laboratory_experiments.time.monotonic", side_effect=lambda: clock[0]), \
+                patch("oi_api.laboratory_experiments.run_worker", wraps=run_worker) as launch:
+            receipt = self.service.execute("search")
+        self.assertEqual(launch.call_args.args[1], 1)
+        self.assertEqual(receipt["trials"][0]["status"], "completed")
 
     def test_total_budget_prevents_starting_more_trials(self):
         self.service.plan(self.spec())

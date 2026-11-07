@@ -29,6 +29,10 @@ TECHNIQUES = {"parser_baseline": "oi.fhir-r4-laboratory-parser/1",
 OBJECTIVE = ["field_errors", "unsupported_observations", "execution_errors", "abstentions"]
 
 
+class _LaunchBudgetExhausted(Exception):
+    """Preparation consumed the budget before starting the worker."""
+
+
 def source_identity():
     return {name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
             for name in ("laboratory_experiments.py", "laboratory_evaluation.py", "laboratory_fhir_r4.py")}
@@ -382,7 +386,6 @@ class LaboratoryExperiments:
         trials = []
         for index, key in enumerate(spec["recipes"]):
             trial_key = "trial-" + fingerprint([experiment_id, index])[:48]
-            remaining = spec["max_total_wall_seconds"] - (time.monotonic() - started)
             trial = {"recipe": key, "recipe_sha256": plan["recipes"][key], "status": "budget_exhausted",
                      "run_id": None, "checkpoint_sha256": None, "score_sha256": None,
                      "cpu_seconds": None, "peak_rss_kib": None, "wall_seconds": 0,
@@ -391,6 +394,7 @@ class LaboratoryExperiments:
             # Serialize each launch claim against cancellation on other connections.
             with registry._transaction():
                 cancelled = self._cancel_request(experiment_id) is not None
+                remaining = spec["max_total_wall_seconds"] - (time.monotonic() - started)
                 if not cancelled and remaining > 0:
                     registry._put("experiment-trial-start", trial_key,
                                   {"experiment_id": experiment_id, "recipe": key, "plan_sha256": fingerprint(plan)})
@@ -404,7 +408,12 @@ class LaboratoryExperiments:
                     _require(fingerprint(recipe) == plan["recipes"][key], "Recipe changed")
                     payload = {"technique": recipe["technique"], "validation": validation,
                                "training": training if recipe["technique"] == "exact_source_memory" else []}
-                    result = run_worker(payload, min(remaining, spec["max_trial_wall_seconds"]))
+                    now = time.monotonic()
+                    timeout = min(spec["max_total_wall_seconds"] - (now - started),
+                                  spec["max_trial_wall_seconds"] - (now - before))
+                    if timeout <= 0:
+                        raise _LaunchBudgetExhausted()
+                    result = run_worker(payload, timeout)
                     _validate_result(result, payload, plan["source_identity"])
                     # No weight-execution claim is inferred from supplied output
                     # registration. The separate trial proves this adapter call.
@@ -421,6 +430,9 @@ class LaboratoryExperiments:
                                  score_sha256=fingerprint(score), cpu_seconds=result["cpu_seconds"],
                                  peak_rss_kib=result["peak_rss_kib"], fit_performed=result["fit_performed"],
                                  fitted_examples=result["fitted_examples"], validation=score["by_split"]["validation"])
+                except _LaunchBudgetExhausted:
+                    trial["status"] = "budget_exhausted"
+                    trial["failure_reason"] = "worker_budget_exhausted_before_launch"
                 except subprocess.TimeoutExpired:
                     trial["status"] = "timed_out"
                     trial["failure_reason"] = "worker_wall_timeout"

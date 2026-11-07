@@ -257,3 +257,18 @@ save a new registry record or establish an independent final evaluation.
 execution across differing training eligibility, stable tied ranks and CLI/reopen,
 incompatible adjudication rejection, unfinished/cancelled/duplicate rejection,
 and visible unranked failures.
+
+## Budget accounting correction
+
+The remaining total launch budget is now checked after acquiring the registry
+transaction lock, then checked again immediately before invoking the worker.
+Trial preparation consumes the per-trial wall allowance too. If preparation
+exhausts either allowance, no worker is invoked and the trial records
+`budget_exhausted` with `worker_budget_exhausted_before_launch`. A persisted launch
+claim means permission to launch, not proof that a worker actually executed.
+Registry finalization and operating-system scheduling are not hard real-time bounded.
+
+Three regression tests failed before the repair: lock delay still allowed a
+claim/worker, preparation exhaustion still invoked a worker, and preparation time
+was not subtracted from its timeout. After repair, **66 focused tests passed,
+zero skips**, including the unchanged existing timeout/cancellation checks.
