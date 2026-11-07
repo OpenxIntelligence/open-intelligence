@@ -1,0 +1,49 @@
+{
+  "contract": "oi.synthetic-laboratory-evaluation/1",
+  "dataset_id": "laboratory-practice",
+  "version": 1,
+  "synthetic": true,
+  "authorship": "Independently fictional engineering fixtures adapted from the repository-owned FHIR laboratory example. Public practice labels; not independently adjudicated.",
+  "cases": [
+    {
+      "case_id": "LAB-TRAIN-A",
+      "split": "train",
+      "source_id": "LAB-SOURCE-A",
+      "source_version": 1,
+      "subject_reference": "Patient/FICTIONAL-PATIENT-A",
+      "bundle_json": "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"entry\":[{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000001\",\"resource\":{\"resourceType\":\"Patient\",\"id\":\"FICTIONAL-PATIENT-A\"}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000002\",\"resource\":{\"resourceType\":\"Specimen\",\"id\":\"FICTIONAL-SPECIMEN-A\",\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-A\"},\"type\":{\"text\":\"Fictional plasma sample\"},\"collection\":{\"collectedDateTime\":\"2026-04-03T09:05:00-04:00\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000003\",\"resource\":{\"resourceType\":\"Observation\",\"id\":\"FICTIONAL-OBS-A\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"777-3\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-A\"},\"specimen\":{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-A\"},\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-04T12:00:00Z\",\"valueQuantity\":{\"value\":4.20,\"system\":\"http://unitsofmeasure.org\",\"code\":\"10*9/L\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000004\",\"resource\":{\"resourceType\":\"DiagnosticReport\",\"id\":\"FICTIONAL-REPORT-A\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"58410-2\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-A\"},\"specimen\":[{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-A\"}],\"result\":[{\"reference\":\"Observation/FICTIONAL-OBS-A\"}],\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-04T12:00:00Z\"}}]}",
+      "source_sha256": "c4398eaa27fa31af58bc92bbfe9972d59eedb138f42740c9599f51c2046386f7",
+      "training_eligible": false
+    },
+    {
+      "case_id": "LAB-VALIDATION-B",
+      "split": "validation",
+      "source_id": "LAB-SOURCE-B",
+      "source_version": 1,
+      "subject_reference": "Patient/FICTIONAL-PATIENT-B",
+      "bundle_json": "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"entry\":[{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000001\",\"resource\":{\"resourceType\":\"Patient\",\"id\":\"FICTIONAL-PATIENT-B\"}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000002\",\"resource\":{\"resourceType\":\"Specimen\",\"id\":\"FICTIONAL-SPECIMEN-B\",\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-B\"},\"type\":{\"text\":\"Fictional plasma sample\"},\"collection\":{\"collectedDateTime\":\"2026-04-03T09:05:00-04:00\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000003\",\"resource\":{\"resourceType\":\"Observation\",\"id\":\"FICTIONAL-OBS-B\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"777-3\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-B\"},\"specimen\":{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-B\"},\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-04T12:00:00Z\",\"dataAbsentReason\":{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/data-absent-reason\",\"code\":\"not-performed\"}]}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000004\",\"resource\":{\"resourceType\":\"DiagnosticReport\",\"id\":\"FICTIONAL-REPORT-B\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"58410-2\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-B\"},\"specimen\":[{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-B\"}],\"result\":[{\"reference\":\"Observation/FICTIONAL-OBS-B\"}],\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-04T12:00:00Z\"}}]}",
+      "source_sha256": "1854236aef690f4389a7bd111fd060bfa2df93b21a63dc0bf20bb580251cd8c6",
+      "training_eligible": false
+    },
+    {
+      "case_id": "LAB-TEST-C-V1",
+      "split": "test",
+      "source_id": "LAB-SOURCE-C",
+      "source_version": 1,
+      "subject_reference": "Patient/FICTIONAL-PATIENT-C",
+      "bundle_json": "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"entry\":[{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000001\",\"resource\":{\"resourceType\":\"Patient\",\"id\":\"FICTIONAL-PATIENT-C\"}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000002\",\"resource\":{\"resourceType\":\"Specimen\",\"id\":\"FICTIONAL-SPECIMEN-C\",\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-C\"},\"type\":{\"text\":\"Fictional plasma sample\"},\"collection\":{\"collectedDateTime\":\"2026-04-03T09:05:00-04:00\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000003\",\"resource\":{\"resourceType\":\"Observation\",\"id\":\"FICTIONAL-OBS-C\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"777-3\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-C\"},\"specimen\":{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-C\"},\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-04T12:00:00Z\",\"valueQuantity\":{\"value\":0,\"system\":\"http://unitsofmeasure.org\",\"code\":\"10*9/L\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000004\",\"resource\":{\"resourceType\":\"DiagnosticReport\",\"id\":\"FICTIONAL-REPORT-C\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"58410-2\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-C\"},\"specimen\":[{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-C\"}],\"result\":[{\"reference\":\"Observation/FICTIONAL-OBS-C\"}],\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-04T12:00:00Z\"}}]}",
+      "source_sha256": "844844e1989f56e6aa4c65991c9259899f10ec4f43e7c77a16c4ed07569b047b",
+      "training_eligible": false
+    },
+    {
+      "case_id": "LAB-TEST-C-V2",
+      "split": "test",
+      "source_id": "LAB-SOURCE-C",
+      "source_version": 2,
+      "subject_reference": "Patient/FICTIONAL-PATIENT-C",
+      "bundle_json": "{\"resourceType\":\"Bundle\",\"type\":\"collection\",\"entry\":[{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000001\",\"resource\":{\"resourceType\":\"Patient\",\"id\":\"FICTIONAL-PATIENT-C\"}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000002\",\"resource\":{\"resourceType\":\"Specimen\",\"id\":\"FICTIONAL-SPECIMEN-C\",\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-C\"},\"type\":{\"text\":\"Fictional plasma sample\"},\"collection\":{\"collectedDateTime\":\"2026-04-03T09:05:00-04:00\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000003\",\"resource\":{\"resourceType\":\"Observation\",\"id\":\"FICTIONAL-OBS-C\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"777-3\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-C\"},\"specimen\":{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-C\"},\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-05T12:00:00Z\",\"valueQuantity\":{\"value\":0.15,\"system\":\"http://unitsofmeasure.org\",\"code\":\"10*9/L\"}}},{\"fullUrl\":\"urn:uuid:00000000-0000-4000-8000-000000000004\",\"resource\":{\"resourceType\":\"DiagnosticReport\",\"id\":\"FICTIONAL-REPORT-C\",\"status\":\"final\",\"category\":[{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/observation-category\",\"code\":\"laboratory\"}]}],\"code\":{\"coding\":[{\"system\":\"http://loinc.org\",\"code\":\"58410-2\"}]},\"subject\":{\"reference\":\"Patient/FICTIONAL-PATIENT-C\"},\"specimen\":[{\"reference\":\"Specimen/FICTIONAL-SPECIMEN-C\"}],\"result\":[{\"reference\":\"Observation/FICTIONAL-OBS-C\"}],\"effectiveDateTime\":\"2026-04-03T09:05:00-04:00\",\"issued\":\"2026-04-05T12:00:00Z\"}}]}",
+      "source_sha256": "2cb6261f01478652cbd1cb68694dae41884ed988ca6c6d254f10c23fd8acb542",
+      "training_eligible": false
+    }
+  ]
+}

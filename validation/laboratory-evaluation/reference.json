@@ -1,0 +1,69 @@
+{
+  "status": "authored-engineering-reference-not-independent",
+  "observations": {
+    "LAB-TRAIN-A": [
+      {
+        "reference": "Observation/FICTIONAL-OBS-A",
+        "subject_reference": "Patient/FICTIONAL-PATIENT-A",
+        "specimen_reference": "Specimen/FICTIONAL-SPECIMEN-A",
+        "source_sha256": "c4398eaa27fa31af58bc92bbfe9972d59eedb138f42740c9599f51c2046386f7",
+        "source_version": 1,
+        "loinc_code": "777-3",
+        "effective_at": "2026-04-03T09:05:00-04:00",
+        "issued_at": "2026-04-04T12:00:00Z",
+        "status": "reported_value",
+        "value_text": "4.20",
+        "unit_code": "10*9/L",
+        "absent_reason": null
+      }
+    ],
+    "LAB-VALIDATION-B": [
+      {
+        "reference": "Observation/FICTIONAL-OBS-B",
+        "subject_reference": "Patient/FICTIONAL-PATIENT-B",
+        "specimen_reference": "Specimen/FICTIONAL-SPECIMEN-B",
+        "source_sha256": "1854236aef690f4389a7bd111fd060bfa2df93b21a63dc0bf20bb580251cd8c6",
+        "source_version": 1,
+        "loinc_code": "777-3",
+        "effective_at": "2026-04-03T09:05:00-04:00",
+        "issued_at": "2026-04-04T12:00:00Z",
+        "status": "reported_absent",
+        "value_text": null,
+        "unit_code": null,
+        "absent_reason": "not-performed"
+      }
+    ],
+    "LAB-TEST-C-V1": [
+      {
+        "reference": "Observation/FICTIONAL-OBS-C",
+        "subject_reference": "Patient/FICTIONAL-PATIENT-C",
+        "specimen_reference": "Specimen/FICTIONAL-SPECIMEN-C",
+        "source_sha256": "844844e1989f56e6aa4c65991c9259899f10ec4f43e7c77a16c4ed07569b047b",
+        "source_version": 1,
+        "loinc_code": "777-3",
+        "effective_at": "2026-04-03T09:05:00-04:00",
+        "issued_at": "2026-04-04T12:00:00Z",
+        "status": "reported_value",
+        "value_text": "0",
+        "unit_code": "10*9/L",
+        "absent_reason": null
+      }
+    ],
+    "LAB-TEST-C-V2": [
+      {
+        "reference": "Observation/FICTIONAL-OBS-C",
+        "subject_reference": "Patient/FICTIONAL-PATIENT-C",
+        "specimen_reference": "Specimen/FICTIONAL-SPECIMEN-C",
+        "source_sha256": "2cb6261f01478652cbd1cb68694dae41884ed988ca6c6d254f10c23fd8acb542",
+        "source_version": 2,
+        "loinc_code": "777-3",
+        "effective_at": "2026-04-03T09:05:00-04:00",
+        "issued_at": "2026-04-05T12:00:00Z",
+        "status": "reported_value",
+        "value_text": "0.15",
+        "unit_code": "10*9/L",
+        "absent_reason": null
+      }
+    ]
+  }
+}
