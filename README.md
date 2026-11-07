@@ -385,13 +385,20 @@ section, never invented content. No model call exists in the slice
 model-call path or any other dimension module, including each
 other). Local suite at the slice branch: 1161 tests, with the same
 17 pre-existing `test_pdf_intake` failures as the branch baseline
-(1106 tests) and zero new failures. Unproven: no composed
-hypothesis is stored yet — the report section reports
-`not_composed` and persistence is a follow-up (it needs a store
-table and write-contract treatment); the pinned literature and trial
-fixtures are not matched to the case; no live registry lookup
-exists; no live model call exists in the slice (Meta billing fix
-still pending).
+(1106 tests) and zero new failures. **W2 persistence (wave slice,
+6 November 2026):** composed hypotheses are now stored — a
+`composed_hypotheses` table carrying the full C1 write contract
+(role A4/A5 only), the report route reads the latest non-stale
+stored hypothesis instead of reporting `not_composed`, a read-only
+`GET /api/cases/{id}/hypothesis` route serves it, and a source
+amendment stales the stored hypothesis through the same cascade as
+investigations. Nothing is invented: with none stored the section
+still reports `not_composed`. Local suite at the W2 branch: 1273
+tests, with the same 17 pre-existing `test_pdf_intake` failures as
+the main baseline (1258 tests) and zero new failures. Unproven: the
+pinned literature and trial fixtures are not matched to the case;
+no live registry lookup exists; no live model call exists in the
+slice (Meta billing fix still pending).
 
 **Care coordination dimension (Slice D6, 6 November 2026):**
 Appointments — the patient can know appointment times and changes —

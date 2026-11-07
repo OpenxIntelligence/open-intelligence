@@ -1004,14 +1004,74 @@ same 17 `test_pdf_intake` failures as the baseline run on the same
 machine, verified by diffing the two failure-name sets; zero new
 failures. This is fictional-only engineering, draft and undeployed.
 
-Unproven: no composed hypothesis is stored yet — the report section
-reports `not_composed` and persistence is a follow-up (it needs a
-store table and write-contract treatment); the pinned literature and
-trial fixtures are not matched to the case; no live registry or
-literature lookup exists; no live model call was attempted and no
-substitute model was used (Meta billing fix still pending). The
-evaluation harness (C5) has no D5 probes yet — a follow-up could add
-hypothesis-composition probes to it.
+Unproven: the pinned literature and trial fixtures are not
+matched to the case; no live registry or literature lookup exists;
+no live model call was attempted and no substitute model was used
+(Meta billing fix still pending). The evaluation harness (C5) has
+no D5 probes yet — a follow-up could add hypothesis-composition
+probes to it. Composed-hypothesis persistence is implemented by
+wave slice W2 (see the next section): the report section now reads
+the stored hypothesis and reports `not_composed` only when none is
+stored.
+
+## Hypothesis persistence (Wave slice W2) — 6 November 2026
+
+Branch `program/w2-hypothesis-persistence`, from main `f8ff4f4c`
+(post-W1). Implements next-wave-plan W2: D5 hypothesis
+persistence — the report's `not_composed` was the hypothesis
+dimension's output not being real yet, and W4's A4/A5 passes need a
+store for what they compose.
+
+New `composed_hypotheses` table (`store.py`): one row per stored
+composed hypothesis — text, claim ids and sentences as JSON, char
+count, review_state (`pending` only in this slice; `reviewed` /
+`withdrawn` belong to future review flows), stale flag + reason
+(`source_changed`), and the full write contract. `CaseStore` gains
+`save_composed_hypothesis` (shape-checked only — the store never
+re-checks REQ-09-10 composition rules, which `compose_hypothesis`
+owns), `get_composed_hypothesis` (latest non-stale row, or None)
+and `list_composed_hypotheses` (all rows, newest first; history is
+never deleted). The write-contract treatment follows the C1
+pattern: a missing or incomplete contract is rejected, the role
+must be A4 Literature or A5 Trials, the route must belong to the
+case, and every cited claim id must resolve to a kept claim in a
+non-stale investigation of the case (dangling citations are never
+stored). Deliberately NOT enforced at save time: `check_assignment`
+— route policy v1 assigns A1 only, so enforcing assignment would
+make the store unusable until W4's route policy v2 assigns A4/A5;
+the contract still records the route for replay, and the
+non-enforcement is pinned by a test. A composed hypothesis can cite
+claims from more than one investigation, so no single
+investigation_id foreign key is recorded; the contract's inputs and
+the claim ids are the provenance.
+
+Staleness: `_stale_case_model_investigations` now also stales the
+case's composed hypotheses (`source_changed`) in every path,
+including when no investigation is current — a new source version
+or amendment invalidates the stored hypothesis through the same
+cascade as investigations; it is never silently kept. The report
+route reads the stored hypothesis (`hypothesis=` on
+`assemble_hypothesis_report`) and reports `stale_hypotheses_excluded`
+alongside `stale_investigations_excluded`; a new read-only
+`GET /api/cases/{id}/hypothesis` route returns the stored
+hypothesis (null when none is stored), grant-gated by the
+centralized case-route check. The web panel already rendered a
+`composed` hypothesis section, so no web change was needed.
+
+Deliberately not done: no change to the HYPOTHESIS composition
+rules (`hypothesis.py` untouched); `kchecks.py`, `skeptic.py`, the
+`investigation.py` model call, and the vertical modules are
+untouched; no POST route exists — storage is via the store method
+only, and W4 wires the A4/A5 passes that will call it; no live
+model call exists anywhere in the slice.
+
+Local suite on the slice branch: 1273 tests (1258 on the main
+baseline plus 15 new — 11 store tests, 4 HTTP tests), FAILED with
+9 failures and 8 errors — the same 17 `test_pdf_intake` failures
+as the baseline run on the same machine, verified by diffing the
+two failure-name sets; zero new failures. The C5 evaluation
+harness still passes all 8 measured metrics with `model_calls: 0`.
+This is fictional-only engineering, draft and undeployed.
 
 ## Care coordination dimension: appointments (Slice D6) — 6 November 2026
 
