@@ -61,8 +61,12 @@ class SourceEventPurposeUpgradeTests(SourceVersionFixture):
                     "SELECT schemaname,tablename FROM pg_tables WHERE schemaname IN "
                     + schemas + " ORDER BY schemaname,tablename")).all():
                 key = f"{schema}.{name}"
+                row = "to_jsonb(t)"
+                if key == "coordination.source_event_delivery_events":
+                    # Retain every historical value and require the new nullable link's default.
+                    row = "jsonb_build_object('retry_audit_id', NULL) || to_jsonb(t)"
                 tables[key] = connection.execute(text(
-                    f"SELECT to_jsonb(t)::text FROM {key} t ORDER BY 1"
+                    f"SELECT ({row})::text FROM {key} t ORDER BY 1"
                 )).scalars().all()
             sequences = {}
             for schema, name in connection.execute(text(

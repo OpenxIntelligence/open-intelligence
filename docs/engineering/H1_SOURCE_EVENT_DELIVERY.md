@@ -57,8 +57,8 @@ counts. The existing `idle` execution result means no work was claimed in that
 attempt, not that every obligation was delivered.
 
 This bounded operational view adds no migration, scheduler, dependency or
-general observability service. Dead-letter repair/replay and production
-monitoring remain separate construction work. PostgreSQL and CLI acceptance
+general observability service. Explicit retry is described below. Production
+monitoring remains construction work. PostgreSQL and CLI acceptance
 for this addition belongs to its dependent draft, not its parent's receipts.
 
 ### Inspect terminal failures
@@ -108,8 +108,8 @@ The application requires `0028_source_delivery_retry`, the single successor of
 All 42 migration files from upstream #565 source
 `462e6c25f805089fadcb290567045447e6d627b7` remain unchanged, including 0020 and
 0027. The published 0020 creates the delivery tables and its original
-operations-only capture/backfill. This candidate does not replay #529's edited
-version of that historical migration or add a 0028 successor.
+operations-only capture/backfill. The new 0028 successor adds an explicit
+recovery authorization link and guarded failed-to-queued transition.
 
 The published 0027 installs the source-event binding resolver and replaces the
 capture and outbox guard functions. On new writes, both `operations` and

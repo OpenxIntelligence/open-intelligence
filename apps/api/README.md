@@ -5,8 +5,8 @@
 Use the [persistent fictional demo](../../docs/H1_DEMO.md) to run this API together
 with the React application. [Consolidation #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integration. This candidate requires
-`0027_source_event_purpose`. Run `python -m oi_api.migrate upgrade head` from the
-published histories before startup. Its single parent is `0026_integrated_core`,
+`0028_source_delivery_retry`. Run `python -m oi_api.migrate upgrade head` from the
+published histories before startup. It follows `0027_source_event_purpose` and `0026_integrated_core`,
 whose existing no-DDL join retains the three parents
 `0025_clinical_source_events`, `0023_composer_clinical_join`, and
 `0023_ehr_lab_ownership_join` without renaming their migration identities.

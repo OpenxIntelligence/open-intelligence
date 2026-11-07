@@ -16,8 +16,9 @@ patient/case/source; repeated setup and stop/resume retain its saved work.
 records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
 the retained contributions. This integration candidate requires
-`0027_source_event_purpose`, the successor of the existing `0026_integrated_core`
-join, retaining the published migration owner from upstream #565 at `462e6c2`.
+`0028_source_delivery_retry`, extending the published `0027_source_event_purpose`
+repair and `0026_integrated_core` join. The retry extends the existing source-event owner
+with explicit authority and immutable receipts.
 The [upgrade contract](docs/implementation/SOURCE_EVENT_PURPOSE_REPAIR.md)
 covers fresh and published 0026 databases; older research-history adoption
 remains held. It retains [encounters and draft notes](apps/api/README.md#connected-encounter-and-note-service),
