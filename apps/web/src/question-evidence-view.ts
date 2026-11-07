@@ -134,14 +134,14 @@ export function decodePassageReviewPreparation(value:unknown,patient:string,case
   !hash(value.packet_sha256))throw Error('passage review preparation');
  const selection=value.selection;
  if(!exact(selection,passageSelectionFields)||selection.source_id!==source||
-   !text(selection.document_id,2,40)||!Number.isInteger(selection.source_version)||selection.source_version<1||
+   !text(selection.document_id,2,40)||typeof selection.source_version!=='number'||!Number.isInteger(selection.source_version)||selection.source_version<1||
    !hash(selection.original_sha256)||!opaque(selection.annotation_revision_id,'ANN-')||
-   !Number.isInteger(selection.annotation_revision)||selection.annotation_revision<1||
+   typeof selection.annotation_revision!=='number'||!Number.isInteger(selection.annotation_revision)||selection.annotation_revision<1||
    !hash(selection.review_sha256)||!text(selection.selected_by,3,128)||
    !instant(selection.selected_at)||typeof selection.quote!=='string'||
    selection.quote.length<1||selection.quote.length>1200||selection.quote!==expectedQuote||
    selection.line!==expectedLine||selection.annotation_revision!==expectedRevision||
-   !Number.isInteger(selection.line)||selection.line<1||selection.line>512||
+   typeof selection.line!=='number'||!Number.isInteger(selection.line)||selection.line<1||selection.line>512||
    !(selection.page===null||(Number.isInteger(selection.page)&&Number(selection.page)>=1))||
    !['reported','negative','pending','indeterminate','not-reported','not-assessed','conflicting'].includes(String(selection.selected_state))||
    selection.classification_origin!=='user_selected'||selection.clinical_review!=='not_performed'||
