@@ -115,7 +115,7 @@ def main():
         token = secrets.token_urlsafe(32)
         actions = ["patient_create", "patient_read", "case_binding_create",
                    "case_binding_read", "case_binding_revoke", "source_import",
-                   "source_read", "source_original_read"]
+                   "source_read", "source_original_read", "episode_draft_read", "episode_draft_create"]
         credential = {
             "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
             "actor": "ACTOR-SOURCE-PROOF", "organization": "ORG-SOURCE-PROOF",
@@ -609,6 +609,40 @@ def main():
                   "exact current/historical selection references and hashes, exact retries, independent "
                   "grants and restarts; restored-only access receipts")
 
+            # Extend the restored copy only. Exercise the new owner through HTTP and
+            # the existing complete database backup rather than seeding its table.
+            episode_url = source_path.removesuffix("/sources") + "/episode-drafts"
+            world_url = source_path.removesuffix("/sources") + "/world-model"
+            episode_originals = [(ROOT / "examples/synthetic" / f"oncology-episodes-v{n}.txt")
+                                 .read_text().replace("CASE-WEB-EPISODES", CASE) for n in (1, 2)]
+            assert request(source_path, {"synthetic": True, "original_text": episode_originals[0]})[0] == 201
+            status, world = request(world_url)
+            assert status == 200
+            origin = next(o for o in world["observations"] if o.get("oncology", {}).get("episode_id") == "EP-A")
+            intent = {"synthetic": True, "source_id": origin["source_id"], "source_line": origin["source_line"],
+                      "source_version": origin["document_version"], "source_sha256": origin["source_sha256"],
+                      "snapshot_sha256": world["snapshot_fingerprint"]}
+            status, created = request(episode_url, intent)
+            assert status == 201 and not created["duplicate"]
+            assert request(source_path, {"synthetic": True, "original_text": episode_originals[1]})[0] == 201
+            status, before_draft = request(episode_url)
+            assert status == 200 and len(before_draft["drafts"]) == 1
+            draft = before_draft["drafts"][0]
+            assert draft["basis_state"] == "reassessment_required" and draft["source_state"] == "superseded"
+            assert draft["source_sha256"] == intent["source_sha256"] and draft["episode_id"] == created["episode_id"]
+            episode_copy = "oi_api_test_episode_restore"
+            saved_rows = restore(restored_database, episode_copy)
+            blocked = command(["exec", "-T", "db", "psql", "-X", "-U", "oi_api", "-d", episode_copy,
+                               "-v", "ON_ERROR_STOP=1", "-c", "TRUNCATE clinical_source.episode_drafts"],
+                              check=False, capture_output=True, text=True)
+            assert blocked.returncode and "OI-IDENTITY-HISTORY-IMMUTABLE" in blocked.stderr, blocked.stderr
+            assert snapshot(episode_copy) == saved_rows, "Rejected TRUNCATE changed restored history"
+            status, restored_draft = request(episode_url)
+            assert status == 200 and restored_draft["drafts"] == before_draft["drafts"]
+            assert restored_draft["access_receipt_id"] != before_draft["access_receipt_id"]
+            assert request(episode_url, intent) == (200, dict(created, duplicate=True))
+            serve_database(restored_database)
+
             # Revoke on the restored copy and back it up again. Keep every grant
             # enabled so only the restored binding state can explain denial.
             assert credential["actions"] == actions and credential["patient_ids"] == [patient]
@@ -619,6 +653,8 @@ def main():
             revoked_database = "oi_api_test_documents_revoked"
             revoked_before = restore(restored_database, revoked_database)
             assert revoked_before["tables"]["coordination.patient_case_bindings"][0]["status"] == "revoked"
+            no_effect_denial(episode_url, database=revoked_database)
+            no_effect_denial(episode_url, intent, database=revoked_database)
             no_effect_denial(document_path, database=revoked_database)
             for item in documents:
                 for path, body in ((item["path"], None), (item["path"] + "/original", None),
@@ -635,6 +671,7 @@ def main():
             assert snapshot(restored_database) == revoked_before, "Revoked restore changed its source copy"
             assert snapshot(original_database) == readable_before, "Recovery changed original database"
             receipt = {"contract": "oi.source-document-recovery/1", "synthetic": True,
+                "episode_draft_restored": created["episode_id"], "episode_original_basis_preserved": True,
                 "schema_revision": SCHEMA_REVISION, "table_count": len(rows),
                 "sequence_count": len(readable_before["sequences"]),
                 "documents": [{"source_id": item["saved"]["source_id"],

@@ -105,6 +105,14 @@ jobs:
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           assert result.testsRun and result.wasSuccessful() and not result.skipped
           PYTEST
+      - name: Verify oncology draft custody and populated upgrades before the full suite
+        run: |
+          python - <<'PYTEST'
+          import unittest
+          suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_episode*.py')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(0 if result.wasSuccessful() and result.testsRun and not result.skipped else 1)
+          PYTEST
       - name: Verify governed encounter relay and process-death recovery
         run: |
           python - <<'PYTEST'

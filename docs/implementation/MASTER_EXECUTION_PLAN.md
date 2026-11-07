@@ -18,7 +18,7 @@ H1 is the connected synthetic React/FastAPI/PostgreSQL application. The [first-p
 ## Next engineering sequence
 
 1. Inspect the exact [#567 worker, API and browser checks](https://github.com/OpenxIntelligence/open-intelligence/pull/567/checks). They exercise worker loss and reauthorization, result/audit rollback at lease expiry, amendment-driven invalidation, access-scoped historical reopening and the existing return-to-review flow. Check the populated migration, restart/restore and immutable package gates on that same source.
-2. Extend canonical source and case ownership with a persisted, versioned episode identity and separately reviewed source association. Exercise two primaries and an unassigned lesion, an amendment, retained past evidence, refused cross-patient links, and a reopened patient view after restore. Follow the [clinical data model](CLINICAL_DATA_MODEL.md) and retain the source-reported episode projection.
+2. Validate the [source-linked oncology draft](CLINICAL_DATA_MODEL.md) with two primaries, distinct original lines, amendment, retry, wrong-patient denial, revoked historical access, populated upgrade from each published parent and a clean restore. Next, allow a human to add a source association to an existing draft and supersede that association on review while preserving both versions and the original episode ID.
 3. Keep the clinical evidence, authorization and adjudication gates in force for future extraction, staging, orders, scientific jobs and external deployment. Populate only independently authored fictional cases during development.
 
 ## Earlier clinical consolidation work packages

@@ -241,9 +241,16 @@ export class RegistrySession {
     if(!q||q.patient_id!==this.#state.patient?.patient_id)throw Error('Recheck current question access');
     return this.#caseContentRequest(caseId,'/questions/'+questionId+'/manual-passages',body,questionId);
   }
+  async episodeDraftRequest(world:SourceWorldModel,body?:string){
+    if(this.#state.worldPhase!=='ready'||this.#state.worldModel!==world)throw Error('Reopen the current Journey');
+    return this.#caseContentRequest(world.case_id,'/episode-drafts',body);
+  }
   async #caseContentRequest(caseId:string,path:string,body?:string,questionId?:string):Promise<import('./reviewed-documents').DocumentReply>{
     const scope=this.#scope,read=this.#read,records=this.#records,patient=this.#state.patient?.patient_id;
-    const caseContext=()=>questionId!==undefined?
+    const episodeDrafts=path==='/episode-drafts';
+    const world=this.#state.worldModel;
+    const caseContext=()=>episodeDrafts?this.#state.worldPhase==='ready'&&this.#state.worldModel===world&&world?.case_id===caseId:
+      questionId!==undefined?
       this.#state.questionListPhase==='ready'&&this.#state.questionsCaseId===caseId&&this.#state.worldPhase==='ready'&&this.#state.worldModel?.case_id===caseId&&
        Boolean(this.#state.questions?.some(q=>q.question_id===questionId&&q.case_id===caseId&&q.patient_id===patient)):
       this.#state.sourceIndex?.case_id===caseId;
@@ -254,7 +261,7 @@ export class RegistrySession {
       (labPreview ? selectedIndex===this.#state.sourceIndex : records===this.#records) && caseContext();
     if(!patient||!this.#token||!current())throw Error('Recheck patient and case access');
     const control=new AbortController();this.#controllers.add(control);
-    const timeout=questionId!==undefined||labPreview?setTimeout(()=>control.abort(),10000):undefined;
+    const timeout=questionId!==undefined||labPreview||episodeDrafts?setTimeout(()=>control.abort(),10000):undefined;
     try{
       const response=await this.transport('/v1/patients/'+encodeURIComponent(patient)+'/cases/'+encodeURIComponent(caseId)+path,this.#init(control,body));
       if(!current()){
@@ -265,12 +272,16 @@ export class RegistrySession {
       // Status is authoritative even when a proxy returns a non-JSON body.
       if([401,403,404].includes(response.status)){
         if(response.status===401)this.#httpError(401);
-        else this.#publish(this.#resetDeniedCaseSources(labPreview?'Laboratory preview access unavailable. Reload case permissions.':'Document access unavailable or mapping changed. Reload case permissions.'));
+        else if(episodeDrafts){
+          const message='Episode draft access unavailable. Check authorized cases to reopen the Journey.';
+          this.#publish({...this.#resetDeniedCaseSources(message),worldPhase:'error',worldMessage:message});
+        }else this.#publish(this.#resetDeniedCaseSources(labPreview?'Laboratory preview access unavailable. Reload case permissions.':'Document access unavailable or mapping changed. Reload case permissions.'));
         void response.body?.cancel().catch(()=>{});
         return{status:response.status,body:null,headers:response.headers};
       }
       let value:unknown;
-      if(path.endsWith('/original')&&response.status===200){
+      if(episodeDrafts)value=await json(response,524288);
+      else if(path.endsWith('/original')&&response.status===200){
         value=await boundedBytes(response,65536);
       }else{
         // 64 revisions × 30 quotes × 1200 code points × at most 12 JSON bytes
@@ -278,7 +289,7 @@ export class RegistrySession {
         // 32 MiB covers the complete permitted history; streaming still limits bad peers.
         value=await json(response,labPreview?65536:32*1024*1024);
       }
-      if(!current())throw Error('Patient or case changed');
+      if(!current()||control.signal.aborted)throw Error('Patient or case changed');
       const contentScope=path.includes('/selections/')&&value&&typeof value==='object'?(value as {anchor?:unknown}).anchor:value;
       if(body===undefined&&response.status===200&&path!=='/documents/preview'&&!path.endsWith('/original')&&
         (!contentScope||typeof contentScope!=='object'||(contentScope as {patient_id?:string}).patient_id!==patient||(contentScope as {case_id?:string}).case_id!==caseId))throw Error('Wrong document scope');

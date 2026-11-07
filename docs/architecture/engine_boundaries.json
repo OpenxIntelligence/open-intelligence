@@ -134,12 +134,13 @@
     },
     {
       "id": "patient-context",
-      "responsibility": "Existing source world-model projection and bounded source-composer preflight; the projection does not create a second canonical patient record.",
+      "responsibility": "Existing source world-model projection and bounded source-composer preflight; the projection does not create a second canonical patient record. Owns unreviewed episode drafts anchored to existing source assertions.",
       "modules": [
         "oi_api.source_world_model",
         "oi_api.composer_preflight",
         "oi_api.source_anchor",
-        "oi_api.question_anchors"
+        "oi_api.question_anchors",
+        "oi_api.episode_drafts"
       ],
       "exports": {
         "oi_api.source_world_model": [
@@ -152,10 +153,14 @@
         ],
         "oi_api.question_anchors": [
           "legacy_text_question_anchor"
+        ],
+        "oi_api.episode_drafts": [
+          "register_episode_routes"
         ]
       },
       "depends_on": [
-        "platform"
+        "platform",
+        "source-custody"
       ]
     },
     {
