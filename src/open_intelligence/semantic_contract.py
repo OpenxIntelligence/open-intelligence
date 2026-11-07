@@ -52,7 +52,7 @@ class SemanticRegistry:
         self.relationships: dict[tuple[str, int], Relationship] = {}
         for concept in concepts:
             self._check_id(concept.identifier)
-            if concept.version < 1 or not concept.definition.strip():
+            if type(concept.version) is not int or concept.version < 1 or not isinstance(concept.definition, str) or not concept.definition.strip():
                 raise SemanticContractError("invalid_concept")
             key = (concept.identifier, concept.version)
             if key in self.concepts:
@@ -60,7 +60,7 @@ class SemanticRegistry:
             self.concepts[key] = concept
         for relation in relationships:
             self._check_id(relation.identifier)
-            if relation.version < 1:
+            if type(relation.version) is not int or relation.version < 1:
                 raise SemanticContractError("invalid_relationship")
             key = (relation.identifier, relation.version)
             if key in self.relationships:
@@ -73,13 +73,13 @@ class SemanticRegistry:
 
     @staticmethod
     def _check_id(value: str) -> None:
-        if not value or value.strip() != value or ":" not in value:
+        if not isinstance(value, str) or not value or value.strip() != value or ":" not in value or value.startswith(":") or value.endswith(":"):
             raise SemanticContractError("invalid_semantic_id")
 
     def validate_reference(self, ref: SemanticReference) -> None:
         if (ref.concept_id, ref.concept_version) not in self.concepts:
             raise SemanticContractError("unknown_concept_version")
-        if not ref.owner or not ref.record_id or not ref.source_version_id:
+        if any(not isinstance(value, str) or not value.strip() or value != value.strip()\n               for value in (ref.owner, ref.record_id, ref.source_version_id)):
             raise SemanticContractError("missing_provenance")
         if ref.knowledge_kind not in ("observed", "reported", "inferred", "calculated", "hypothesis"):
             raise SemanticContractError("invalid_knowledge_kind")
