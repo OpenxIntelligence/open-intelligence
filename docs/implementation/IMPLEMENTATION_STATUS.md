@@ -1,4 +1,28 @@
-## Continuation: inspect current paired-report originals
+## Current continuation: compare a saved episode's originating finding
+
+Builds on #622 at `1cc6b26934cb9f0972a6366d5a89f1b5ba34f90b`. Journey now compares
+each saved episode's original statement with the same finding key in the latest
+version of its original document. The API derives the key from the protected
+original bytes. The client checks the complete version lineage and exact source
+metadata. A moved line, changed state or attribution, removed key, untyped finding
+and explicitly unassigned episode remain distinguishable. Matching episode labels
+in independent documents never substitute for the original finding.
+
+The draft ID, original quote and unreviewed state remain unchanged. An unchanged
+origin cannot clear whole-snapshot reassessment. The current original opens through
+the existing freshly authorized Records owner. No schema, grant or dependency is
+added. Local 728 client tests, production build and 17 package-rights tests pass.
+Hosted API/PostgreSQL, browser and restore qualification belongs to this branch's
+exact published revision and remains pending at publication.
+
+The existing browser walkthrough now exercises a third pathology version that
+changes one primary and removes the other finding key, while retaining both draft
+IDs and opening the exact amended original. Next construction remains durable
+reviewer disposition and explicit reviewed source associations through the existing
+review/episode owners. The independent comparison-fingerprint proposal #621 has
+not been silently integrated or claimed as qualified here.
+
+## Previous continuation: inspect current paired-report originals
 
 The dependent continuation of PR #614 adds direct original-report controls beside
 both recorded and current passages. Current-version requests must match the active,

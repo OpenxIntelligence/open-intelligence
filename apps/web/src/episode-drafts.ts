@@ -1,4 +1,5 @@
 import type {SourceWorldModel,WorldObservation} from './source-world-model.js';
+import type {SourceVersion} from './source-contracts.js';
 
 export function isDraftOrigin(item:WorldObservation):boolean {
   return item.reported_state==='reported' && item.oncology?.role==='primary' && item.oncology.episode_id!==null;
@@ -11,6 +12,7 @@ export function draftCommand(world:SourceWorldModel,origin:WorldObservation):str
 }
 
 export type Draft=Readonly<{episode_id:string;created_by:string;created_at:string;source_id:string;source_line:number;
+  finding_key:string;
   source_version:number;source_sha256:string;document_id:string;event_date:string;issued_at:string;
   source_label:string;statement:string;source_state:'current'|'superseded';basis_sha256:string;
   basis_state:'current'|'reassessment_required';review_state:'unreviewed_draft'}>;
@@ -36,7 +38,7 @@ export function readDrafts(value:unknown,world:SourceWorldModel):Draft[]{
   const ids=new Set<string>(), anchors=new Set<string>();
   const sources=new Map([...world.current_sources,...world.history].map(s=>[s.source_id,s]));
   return v.drafts.map(raw=>{
-    const d=fields(raw,['episode_id','created_by','created_at','source_id','source_line','source_version',
+    const d=fields(raw,['episode_id','created_by','created_at','source_id','source_line','finding_key','source_version',
       'source_sha256','document_id','event_date','issued_at','source_label','statement','source_state',
       'basis_sha256','basis_state','review_state']);
     const source=typeof d.source_id==='string'?sources.get(d.source_id):undefined;
@@ -44,6 +46,7 @@ export function readDrafts(value:unknown,world:SourceWorldModel):Draft[]{
        source.sha256!==d.source_sha256||source.document_id!==d.document_id||source.state!==d.source_state||
        source.event_date!==d.event_date||source.issued_at!==d.issued_at||typeof d.source_line!=='number'||
        !Number.isSafeInteger(d.source_line)||d.source_line<1||d.source_line>10000||
+       typeof d.finding_key!=='string'||!/^[a-z][a-z0-9_-]{0,59}$/.test(d.finding_key)||
        typeof d.source_label!=='string'||!/^EP-[A-Z0-9][A-Z0-9-]{0,35}$/.test(d.source_label)||
        typeof d.statement!=='string'||!d.statement||d.statement.length>2400||
        typeof d.created_by!=='string'||!d.created_by||typeof d.created_at!=='string'||!Number.isFinite(Date.parse(d.created_at))||
@@ -54,10 +57,43 @@ export function readDrafts(value:unknown,world:SourceWorldModel):Draft[]{
     if(anchors.has(key))throw Error('Duplicate episode draft origin');
     if(source.state==='current'){
       const o=world.observations.find(x=>x.source_id===source.source_id&&x.source_line===d.source_line);
-      if(!o||!isDraftOrigin(o)||o.oncology?.episode_id!==d.source_label||o.source_statement!==d.statement)
+      if(!o||!isDraftOrigin(o)||o.finding_key!==d.finding_key||o.oncology?.episode_id!==d.source_label||o.source_statement!==d.statement)
         throw Error('Draft differs from its source');
     }
     ids.add(d.episode_id);anchors.add(key);
-    return Object.freeze({...d} as Draft);
+    const draft=Object.freeze({...d} as Draft);
+    compareDraftOrigin(draft,world);
+    return draft;
   });
+}
+
+export type DraftOriginComparison=Readonly<{
+  source:SourceVersion;finding:WorldObservation|null;
+  change:'same_version'|'unchanged'|'changed'|'removed';
+}>;
+
+/** Follow one immutable document history and finding key, never an episode label. */
+export function compareDraftOrigin(draft:Draft,world:SourceWorldModel):DraftOriginComparison{
+  const current=world.current_sources.filter(s=>s.document_id===draft.document_id);
+  if(current.length!==1)throw Error('Episode origin lineage unavailable');
+  const source=current[0];
+  const versions=new Map([...world.current_sources,...world.history].map(s=>[s.source_id,s]));
+  let ancestor:SourceVersion|undefined=source;
+  while(ancestor&&ancestor.version>draft.source_version){
+    const prior:SourceVersion|undefined=ancestor.supersedes_id?versions.get(ancestor.supersedes_id):undefined;
+    if(!prior||prior.document_id!==draft.document_id||prior.version!==ancestor.version-1)
+      throw Error('Episode origin lineage unavailable');
+    ancestor=prior;
+  }
+  if(!ancestor||ancestor.source_id!==draft.source_id||ancestor.version!==draft.source_version||
+     ancestor.sha256!==draft.source_sha256)throw Error('Episode origin lineage unavailable');
+  const matches=world.observations.filter(o=>o.source_id===source.source_id&&o.finding_key===draft.finding_key);
+  if(matches.length>1)throw Error('Ambiguous episode origin');
+  const finding=matches[0]??null;
+  if(finding&&(finding.document_id!==source.document_id||finding.document_version!==source.version||
+     finding.source_sha256!==source.sha256))throw Error('Episode origin source mismatch');
+  const unchanged=finding?.source_statement===draft.statement&&finding.reported_state==='reported'&&
+    finding.oncology?.role==='primary'&&finding.oncology.episode_id===draft.source_label;
+  const change=source.source_id===draft.source_id?'same_version':!finding?'removed':unchanged?'unchanged':'changed';
+  return Object.freeze({source,finding,change});
 }

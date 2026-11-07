@@ -72,6 +72,7 @@ class EpisodeHTTPTests(SourceVersionFixture):
             self.assertEqual(post(cmd)[1], dict(first[1], duplicate=True))
             before = request(base, url, token=TOKEN_A)[1]["drafts"]
             self.assertCountEqual([d["source_label"] for d in before], ["EP-A","EP-B"])
+            self.assertCountEqual([d["finding_key"] for d in before], ["breast","colon"])
             self.assertTrue(all(d["basis_state"] == "current" for d in before))
             amended = HEADER + "Amends: DOC-ALPHA@1\n" + LINES.replace("EP-A", "EP-C")
             self.assertEqual(self.ingest(base, patient, amended)[0], 201)
@@ -90,6 +91,7 @@ class EpisodeHTTPTests(SourceVersionFixture):
             self.assertEqual((row["source_label"],row["source_line"],row["source_version"],row["source_sha256"]),
                              ("EP-A",8,1,cmd["source_sha256"]))
             self.assertEqual(row["statement"], "Fictional breast primary.")
+            self.assertEqual(row["finding_key"], "breast")
             self.assertTrue(all(d["basis_state"] == "reassessment_required" for d in history["drafts"]))
             self.assertEqual(row["source_state"], "superseded")
             # A historical literal is a protected read of the old original.

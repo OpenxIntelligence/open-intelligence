@@ -17,6 +17,13 @@ H1 is the connected synthetic React/FastAPI/PostgreSQL application. The [first-p
 
 ## Next engineering sequence
 
+The current saved-origin comparison continuation builds on #622's integrated chart.
+Finish its exact-revision PostgreSQL/browser/recovery acceptance, then implement
+durable reviewer disposition and additional reviewed associations. Reuse #621's
+comparison identity only after inspecting its actual content and qualification.
+The current read-only comparison deliberately preserves the original episode ID
+and review state, including when a source key disappears or its attribution changes.
+
 1. Inspect the exact [#567 worker, API and browser checks](https://github.com/OpenxIntelligence/open-intelligence/pull/567/checks). They exercise worker loss and reauthorization, result/audit rollback at lease expiry, amendment-driven invalidation, access-scoped historical reopening and the existing return-to-review flow. Check the populated migration, restart/restore and immutable package gates on that same source.
 2. Validate the [source-linked oncology draft](CLINICAL_DATA_MODEL.md) with two primaries, distinct original lines, amendment, retry, wrong-patient denial, revoked historical access, populated upgrade from each published parent and a clean restore. Next, allow a human to add a source association to an existing draft and supersede that association on review while preserving both versions and the original episode ID.
 3. Keep the clinical evidence, authorization and adjudication gates in force for future extraction, staging, orders, scientific jobs and external deployment. Populate only independently authored fictional cases during development.
