@@ -236,8 +236,6 @@ def main():
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('superseded')")
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
                 assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
-                from source_history_journey import exercise as exercise_history
-                exercise_history(cd,original,amended,out,credentials,write_grants)
                 from reading_convergence_journey import exercise as exercise_reading
                 assert cd.evaluate("Boolean(document.querySelector('[data-testid=reviewed-document-disclosure]')) && !document.querySelector('[data-testid=reviewed-document-disclosure]').open"), 'Reviewed originals start collapsed beside the structured import'
                 assert cd.evaluate("!document.querySelector('[data-testid=reviewed-file]').checkVisibility()"), 'Closed reviewed intake preserves the reading-first workspace'
@@ -287,6 +285,10 @@ def main():
                 assert cd.evaluate("document.querySelectorAll('[data-testid=history-result] script').length===0")
                 assert cd.evaluate("document.querySelectorAll('[data-testid=history-result] [data-testid=choose-question-draft]').length===0")
                 assert cd.evaluate("document.querySelector('[data-testid=world-reported-state]').textContent==='negative'")
+                from source_history_journey import exercise as exercise_source_history
+                exercise_source_history(cd,original,amended,initial_world_fingerprint,
+                    Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')),
+                    credentials,write_grants)
                 questions.finish(new_receipt['source_id'],credentials,write_grants,
                     Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')))
                 # Actual brief responses identify the three already-persisted

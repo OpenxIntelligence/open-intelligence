@@ -4,7 +4,7 @@ import {readLaboratoryCitationReport} from './laboratory-citation-report.js';
 import {emptySuspension,readSuspensionReceipt,type SuspensionState} from './patient-suspension.js';
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 export {patientContinuity} from './patient-continuity.js';
-import {parseCaseBindingList, parseSourceIndex, parseSourceHistory, receiptMicros} from './source-contracts.js';
+import {parseCaseBindingList, parseSourceIndex} from './source-contracts.js';
 import {decodeQuestionSourcePacket} from './source-quote-review-packet.js';
 import type {QuestionSourceReviewPacket} from './source-quote-review-packet.js';
 import type {CaseBinding, SourceIndex} from './source-contracts.js';
@@ -64,7 +64,7 @@ export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryI
   original:OriginalSource|null; importReceipt:ImportReceipt|null;
   importOutcome:'idle'|'sending'|'confirmed'|'rejected'|'unknown'; importMessage:string;
   recordMessage: string;
-  sourceHistory:SourceHistory|null;historyPhase:'idle'|'loading'|'ready'|'error';historyMessage:string;
+  sourceHistory:SourceHistory|null;historyBasis:'world'|'records'|null;historyPhase:'idle'|'loading'|'ready'|'error';historyMessage:string;
   worldModel:SourceWorldModel|null;
   worldPhase:'idle'|'loading'|'ready'|'error';
   worldMessage:string;
@@ -107,7 +107,7 @@ const messages: Record<number,string> = {
   503:'The patient registry or access service is unavailable. No cached patient is shown.',
 };
 const emptyIntake=()=>({original:null,importReceipt:null,importOutcome:'idle' as const,importMessage:''});
-const emptyHistory=()=>({sourceHistory:null,historyPhase:'idle' as const,historyMessage:''});
+const emptyHistory=()=>({sourceHistory:null,historyBasis:null,historyPhase:'idle' as const,historyMessage:''});
 const emptyWorld=()=>({...emptyHistory(),worldModel:null,worldPhase:'idle' as const,worldMessage:'Choose an authorized active fictional case to inspect its source-derived World Model.'});
 const emptyReview=()=>({reviewQueue:null,reviewPhase:'idle' as const,
   reviewMessage:'Open the current patient case to inspect saved questions and verification returns.',
@@ -295,33 +295,6 @@ export class RegistrySession {
     const suffix='/'+id+'/cases/'+encodeURIComponent(caseId)+'/source-links'+(after===null?'':'?after_id='+after+'&limit=25');
     return this.#encounterRequest(patientId,suffix,current,body,65536,x=>x,body!==undefined);
   }
-  async sourceHistory(index:SourceIndex,cutoff:string,signal:AbortSignal):Promise<import('./source-contracts.js').SourceHistory>{
-    const patientCurrent=this.#encounterScope(index.patient_id),records=this.#records;
-    const current=()=>patientCurrent()&&records===this.#records&&this.#state.sourceIndex===index&&this.#state.recordsPhase==='ready';
-    receiptMicros(cutoff);
-    if(!current()||signal.aborted)throw Error('Recheck patient and case access');
-    const control=new AbortController(),stop=()=>control.abort();
-    signal.addEventListener('abort',stop,{once:true});this.#controllers.add(control);
-    const timer=setTimeout(stop,10000),live=()=>current()&&!control.signal.aborted;
-    try{
-      const path='/v1/patients/'+encodeURIComponent(index.patient_id)+'/cases/'+encodeURIComponent(index.case_id)+
-        '/source-history?received_through='+encodeURIComponent(cutoff);
-      const response=await this.transport(path,this.#init(control));
-      if(!live()){void response.body?.cancel().catch(()=>{});throw Error();}
-      if(response.status!==200){
-        void response.body?.cancel().catch(()=>{});
-        if(response.status===401)this.#httpError(401);
-        else if(response.status===403||response.status===404){
-          this.#clearPatientSessionData();
-          this.#publish({connected:true,phase:'error',message:'Source history access is unavailable. Reopen the patient to check current access.'});
-        }
-        throw Error();
-      }
-      const value=await json(response,512000);if(!live())throw Error();
-      return parseSourceHistory(value,index,cutoff);
-    }catch{throw Error('Source history could not be verified. Refresh records and check current access.');}
-    finally{clearTimeout(timer);signal.removeEventListener('abort',stop);this.#controllers.delete(control);}
-  }
   async #encounterRequest<T>(patientId:string,suffix:string,current:()=>boolean,body:string|undefined,limit:number,
       decode:(data:unknown)=>T|Promise<T>,allowCreated=false):Promise<T>{
     if(!current())throw Error('Reopen the authorized patient');
@@ -405,6 +378,7 @@ export class RegistrySession {
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
   #historyRead=0;
+  #historyController:AbortController|null=null;
   #token=''; #scope=0; #read=0; #records=0; #state:ViewState=fresh();
   #suspensionIntent:{target:Patient;body:string;uncertain:boolean}|null=null;
   #worldRead=0; #composerRead=0; #questionRead=0; #questionWrite=0; #briefRead=0;
@@ -450,8 +424,12 @@ export class RegistrySession {
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){
     let next={...this.#state,...patch};
-    if(next.worldModel!==this.#state.worldModel||next.worldPhase!=='ready'||
-       next.patient!==this.#state.patient||!next.connected||next.phase!=='ready'){
+    const historyBasis=next.historyBasis??this.#state.historyBasis;
+    const historyInvalid=historyBasis==='world'?
+      next.worldModel!==this.#state.worldModel||next.worldPhase!=='ready':historyBasis==='records'?
+      next.sourceIndex!==this.#state.sourceIndex||!next.sourceIndex:false;
+    if(historyInvalid||next.patient!==this.#state.patient||!next.connected||next.phase!=='ready'){
+      this.#historyController?.abort();
       this.#historyRead++;next={...next,...emptyHistory()};
     }
     const prior=this.#state.laboratoryIntent,intent=next.laboratoryIntent;
@@ -1105,33 +1083,64 @@ export class RegistrySession {
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
 
-  dismissSourceHistory=()=>{this.#historyRead++;this.#publish(emptyHistory());};
+  dismissSourceHistory=()=>{this.#historyController?.abort();this.#historyRead++;this.#publish(emptyHistory());};
 
-  async loadSourceHistory(cutoff:string):Promise<void>{
-    const model=this.#state.worldModel;
-    if(!model||this.#state.worldPhase!=='ready'||!this.#token||this.#uploading||
-       ![...model.current_sources,...model.history].some(s=>s.received_at===cutoff))return;
-    const scope=this.#scope,read=this.#read,generation=++this.#historyRead;
+  async loadSourceHistory(cutoff:string,basis:'world'|'records'='world'):Promise<void>{
+    const model=this.#state.worldModel,index=this.#state.sourceIndex;
+    const context=basis==='world'?model:index;
+    const sources=basis==='world'?(model?[...model.current_sources,...model.history]:[]):index?.sources??[];
+    const recordsReady=()=>['ready','error'].includes(this.#state.recordsPhase);
+    if(!context||(basis==='world'?this.#state.worldPhase!=='ready':!recordsReady())||
+       !this.#token||this.#uploading||!sources.some(s=>s.received_at===cutoff))return;
+    this.#historyController?.abort();
+    const scope=this.#scope,read=this.#read,generation=++this.#historyRead,records=this.#records;
+    const control=new AbortController();this.#historyController=control;this.#controllers.add(control);
     const current=()=>scope===this.#scope&&read===this.#read&&generation===this.#historyRead&&
-      model===this.#state.worldModel&&this.#state.worldPhase==='ready';
-    const control=new AbortController();this.#controllers.add(control);
+      !control.signal.aborted&&(basis==='world'?model===this.#state.worldModel&&this.#state.worldPhase==='ready':
+        records===this.#records&&index===this.#state.sourceIndex&&recordsReady());
     const timeout=setTimeout(()=>control.abort(),10000);
-    this.#publish({...emptyHistory(),historyPhase:'loading',historyMessage:'Checking historical sources and current access…'});
+    this.#publish({...emptyHistory(),historyBasis:basis,historyPhase:'loading',historyMessage:'Checking historical sources and current access…'});
     try{
-      const url='/v1/patients/'+encodeURIComponent(model.patient_id)+'/cases/'+encodeURIComponent(model.case_id)+
+      const url='/v1/patients/'+encodeURIComponent(context.patient_id)+'/cases/'+encodeURIComponent(context.case_id)+
         '/world-model/history?received_through='+encodeURIComponent(cutoff);
       const response=await this.transport(url,this.#init(control));
-      if(!current())return;
+      if(!current()){void response.body?.cancel().catch(()=>{});return;}
       if(response.status===401){this.#httpError(401);return;}
       if(response.status===403||response.status===404){
         this.#publish(this.#resetDeniedCaseSources('Historical source access unavailable. Recheck patient and case permissions.'));return;
       }
       if(response.status!==200)throw Error('Historical view unavailable');
-      const history=parseSourceHistory(await json(response,1048576),model.patient_id,model.case_id,cutoff);
+      const history=parseSourceHistory(await json(response,1048576),context.patient_id,context.case_id,cutoff,sources);
       if(current())this.#publish({sourceHistory:history,historyPhase:'ready',historyMessage:'Historical source context checked under current access.'});
     }catch(_){
-      if(current())this.#publish({...emptyHistory(),historyPhase:'error',historyMessage:'Historical context could not be verified. Retry to check access and sources again.'});
-    }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+      if(current()||generation===this.#historyRead&&this.#historyController===control&&control.signal.aborted)
+        this.#publish({...emptyHistory(),historyBasis:basis,historyPhase:'error',historyMessage:'Historical context could not be verified. Retry to check access and sources again.'});
+    }finally{
+      // An abort-ignoring transport may finish normally after the deadline.
+      if(generation===this.#historyRead&&this.#state.historyPhase==='loading')
+        this.#publish({...emptyHistory(),historyBasis:basis,historyPhase:'error',historyMessage:'Historical context timed out or changed. Retry to check access again.'});
+      clearTimeout(timeout);this.#controllers.delete(control);if(this.#historyController===control)this.#historyController=null;
+    }
+  }
+
+  /** Resolve an active historical selection through today's source/original readers. */
+  async openHistoricalOriginal(sourceId:string):Promise<void>{
+    const history=this.#state.sourceHistory,patient=this.#state.patient;
+    const selected=history?.world_model.current_sources.find(s=>s.source_id===sourceId);
+    if(!history||!selected||!patient||this.#state.historyPhase!=='ready')return;
+    const scope=this.#scope,read=this.#read;
+    if(this.#state.historyBasis==='world'){
+      const expected=this.#records+1;
+      await this.loadSources(history.world_model.case_id);
+      if(expected!==this.#records||scope!==this.#scope||read!==this.#read||patient!==this.#state.patient)return;
+    }
+    const index=this.#state.sourceIndex,known=index?.sources.find(s=>s.source_id===sourceId);
+    if(this.#state.recordsPhase.startsWith('loading')||index?.patient_id!==history.world_model.patient_id||
+       index.case_id!==history.world_model.case_id||!known||
+       Object.keys(selected).some(k=>k!=='state'&&selected[k as keyof typeof selected]!==known[k as keyof typeof known])){
+      this.#publish({original:null,recordsPhase:'error',recordMessage:'The historical original could not be matched to current source access. Refresh records.'});return;
+    }
+    await this.loadOriginal(sourceId);
   }
 
   /** A question draft belongs to one current source and World Model snapshot.

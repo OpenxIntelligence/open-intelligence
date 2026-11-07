@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {RegistrySession} from '../.test-dist/registry-client.js';
+import {receiptMicros} from '../.test-dist/source-contracts.js';
 import {parseSourceWorldModel,parseSourceHistory} from '../.test-dist/source-world-model.js';
 
 const token='fictional_test_credential_000000000001';
@@ -342,4 +343,145 @@ test('invalid history clears earlier results and provides retry state',async()=>
  await session.loadSourceHistory(source().received_at);valid=false;
  await session.loadSourceHistory(source().received_at);
  assert.equal(session.snapshot().historyPhase,'error');assert.equal(session.snapshot().sourceHistory,null);
+});
+
+
+test('receipt boundaries preserve microseconds and reject normalized or overprecise dates',()=>{
+ assert.equal(receiptMicros('2026-01-03T10:00:00.000002Z')-receiptMicros('2026-01-03T10:00:00.000001Z'),1n);
+ assert.equal(receiptMicros('2026-01-03T10:00:00.000001Z'),receiptMicros('2026-01-03T11:00:00.000001+01:00'));
+ for(const bad of ['2026-02-30T00:00:00Z','2026-01-01T24:00:00Z','2026-01-01','2026-01-01T00:00:00',
+  '2026-01-01T00:00:00.0000001Z','2026-01-01T00:00:00+00:99']){
+  assert.throws(()=>receiptMicros(bad));
+  const w=world();w.current_sources[0].received_at=bad;
+  assert.throws(()=>parseSourceWorldModel(w,patientId,caseId));
+ }
+});
+function unifiedHistoryFixture(){
+ const text=`OI-SYNTHETIC-REPORT/1\nPatient: ${caseId}\nDocument: DOC-ONE\nType: pathology\nEvent-Date: 2026-01-10\nIssued-At: 2026-01-11\nSpecimen: SPECIMEN-ONE\nFinding: marker|not-reported|Independently fictional original.\n`.replaceAll('\\n','\n');
+ const hash=createHash('sha256').update(text).digest('hex');
+ const first={...source(),sha256:hash},second={...first,source_id:'SRC-'+'B'.repeat(32),version:2,
+  sha256:'d'.repeat(64),received_at:'2026-11-02T10:00:00.000001Z',supersedes_id:sourceId};
+ const past=world();past.current_sources=[first];past.observations[0].source_sha256=hash;
+ past.observations[0].source_statement='Independently fictional original.';
+ const current=clone(past);current.current_sources=[second];current.history=[{...first,state:'superseded'}];
+ current.as_of_received_at=second.received_at;current.summary.historical_sources=1;
+ Object.assign(current.observations[0],{source_id:second.source_id,document_version:2,source_sha256:second.sha256});
+ current.unresolved_refs[0].source_id=second.source_id;
+ const index={contract:'oi.synthetic-original-sources/1',patient_id:patientId,case_id:caseId,
+  access_receipt_id:'ACCESS-'+'A'.repeat(32),sources:[{...first,state:'superseded'},second],
+  source_reported_assertions:[{source_id:second.source_id,finding_key:'marker',reported_state:'not-reported',
+   source_statement:'Independently fictional original.',source_line:8,clinical_review_state:'not_established'}],
+  synthetic:true,clinical_interpretation:false,research_review_invalidation_integrated:false};
+ const original={source_id:sourceId,case_id:caseId,access_receipt_id:'ACCESS-'+'B'.repeat(32),
+  document_id:first.document_id,version:1,state:'superseded',sha256:hash,original_text:text,
+  synthetic:true,clinical_review_state:'not_established'};
+ return {first,second,index,original,current,historical:{...history(),world_model:past}};
+}
+async function unifiedHistorySession(basis,overrides={}){
+ const f=unifiedHistoryFixture(),calls=[];
+ const s=new RegistrySession(async(url,init)=>{
+  calls.push(url);
+  if(url.includes('/world-model/history?'))return overrides.history?overrides.history(url,init):response(f.historical);
+  if(url.endsWith('/world-model'))return response(f.current);
+  if(url.endsWith('/sources'))return overrides.index?overrides.index(url,init):response(f.index);
+  if(url.endsWith('/sources/'+sourceId))return overrides.original?overrides.original(url,init):response(f.original);
+  if(url.endsWith('/case-bindings'))return response(caseList());
+  return response(patient());
+ });
+ s.connect(token);await s.read(patientId);await s.loadCases();
+ if(basis==='world')await s.loadWorldModel(caseId);else await s.loadSources(caseId);
+ return {s,f,calls};
+}
+test('history requires complete exact membership from the loaded source snapshot',()=>{
+ const f=unifiedHistoryFixture(),cutoff=f.first.received_at;
+ const parse=(value,known=f.index.sources)=>parseSourceHistory(value,patientId,caseId,cutoff,known);
+ assert.equal(parse(f.historical).world_model.current_sources[0].state,'current');
+ for(const field of ['sha256','kind','document_id','received_at','specimen_id']){
+  const known=clone(f.index.sources);
+  known[0][field]=field==='sha256'?'e'.repeat(64):field==='kind'?'laboratory':field==='received_at'?'2026-11-01T10:00:00Z':'DIFFERENT';
+  assert.throws(()=>parse(f.historical,known),field);
+ }
+ assert.throws(()=>parse(f.historical,[]));
+ assert.throws(()=>parse(f.historical,[...f.index.sources,{...f.first,source_id:'SRC-'+'C'.repeat(32),document_id:'DOC-MISSING'}]));
+ assert.throws(()=>parseSourceHistory(f.historical,patientId,caseId,f.second.received_at,f.index.sources));
+});
+for(const basis of ['records','world']){
+ test(`${basis} historical selection opens the exact superseded original with fresh authorization`,async()=>{
+  const {s,f,calls}=await unifiedHistorySession(basis);
+  await s.loadSourceHistory(f.first.received_at,basis);
+  assert.equal(s.snapshot().historyPhase,'ready');
+  assert.equal(s.snapshot().historyBasis,basis);
+  const start=calls.length;await s.openHistoricalOriginal(sourceId);
+  assert.equal(s.snapshot().original?.original_text,f.original.original_text);
+  assert.equal(s.snapshot().original?.state,'superseded');
+  assert.equal(s.snapshot().original?.version,1);
+  assert.deepEqual(calls.slice(start).map(u=>u.split('/').at(-1)),basis==='world'?['sources',sourceId]:[sourceId]);
+  s.disconnect();
+ });
+}
+test('Records history grants no original authority and permits a fresh authorized retry',async()=>{
+ const f=unifiedHistoryFixture();let allowed=false,reads=0;
+ const {s}=await unifiedHistorySession('records',{original:()=>{reads++;return response(allowed?f.original:{},allowed?200:404);}});
+ await s.loadSourceHistory(f.first.received_at,'records');await s.openHistoricalOriginal(sourceId);
+ assert.equal(s.snapshot().original,null);assert.equal(s.snapshot().recordsPhase,'error');
+ assert.ok(s.snapshot().sourceHistory);allowed=true;await s.openHistoricalOriginal(sourceId);
+ assert.equal(reads,2);assert.equal(s.snapshot().original?.version,1);s.disconnect();
+});
+for(const invalidate of ['refresh','dismiss','disconnect','patient']){
+ test(`late Records history cannot return after ${invalidate}`,async()=>{
+  let release,signal;const {s,f}=await unifiedHistorySession('records',{
+   history:(_,init)=>{signal=init.signal;return new Promise(r=>release=r);}});
+  const pending=s.loadSourceHistory(f.first.received_at,'records');
+  if(invalidate==='refresh')await s.loadSources(caseId);
+  else if(invalidate==='dismiss')s.dismissSourceHistory();
+  else if(invalidate==='disconnect')s.disconnect();
+  else await s.read(patientId);
+  assert.equal(signal.aborted,true);release(response(f.historical));await pending;
+  assert.equal(s.snapshot().sourceHistory,null);assert.notEqual(s.snapshot().historyPhase,'loading');s.disconnect();
+ });
+}
+test('a superseded history response cannot replace the most recent receipt selection',async()=>{
+ let release,calls=0;const f=unifiedHistoryFixture();
+ const {s}=await unifiedHistorySession('records',{history:()=>++calls===1?new Promise(r=>release=r):response({...history(f.second.received_at),world_model:f.current})});
+ const old=s.loadSourceHistory(f.first.received_at,'records');await s.loadSourceHistory(f.second.received_at,'records');
+ release(response(f.historical));await old;
+ assert.equal(s.snapshot().sourceHistory.received_through,f.second.received_at);s.disconnect();
+});
+test('Journey handoff withholds originals if the refreshed source identity changed',async()=>{
+ const f=unifiedHistoryFixture();const changed=clone(f.index);changed.sources[0].sha256='e'.repeat(64);
+ const {s,calls}=await unifiedHistorySession('world',{index:()=>response(changed)});
+ await s.loadSourceHistory(f.first.received_at);await s.openHistoricalOriginal(sourceId);
+ assert.equal(s.snapshot().original,null);assert.equal(s.snapshot().recordsPhase,'error');
+ assert.equal(calls.some(u=>u.endsWith('/sources/'+sourceId)),false);s.disconnect();
+});
+for(const invalidate of ['dismiss','disconnect','refresh']){
+ test(`Journey original handoff cannot finish after ${invalidate}`,async()=>{
+  let release;const {s,f,calls}=await unifiedHistorySession('world',{index:()=>new Promise(r=>release=r)});
+  await s.loadSourceHistory(f.first.received_at);const pending=s.openHistoricalOriginal(sourceId);
+  if(invalidate==='dismiss')s.dismissOriginal();else if(invalidate==='disconnect')s.disconnect();else await s.read(patientId);
+  release(response(f.index));await pending;
+  assert.equal(s.snapshot().original,null);assert.equal(calls.some(u=>u.endsWith('/sources/'+sourceId)),false);s.disconnect();
+ });
+}
+
+
+test('Records history denial clears source metadata, original text and history',async()=>{
+ let allowed=true;const f=unifiedHistoryFixture();
+ const {s}=await unifiedHistorySession('records',{history:()=>response(allowed?f.historical:{},allowed?200:404)});
+ await s.loadSourceHistory(f.first.received_at,'records');await s.openHistoricalOriginal(sourceId);
+ assert.ok(s.snapshot().original);allowed=false;await s.loadSourceHistory(f.first.received_at,'records');
+ assert.equal(s.snapshot().sourceHistory,null);assert.equal(s.snapshot().sourceIndex,null);
+ assert.equal(s.snapshot().original,null);s.disconnect();
+});
+
+
+test('original denial does not disable independently authorized Records history browsing',async()=>{
+ const f=unifiedHistoryFixture();
+ const {s}=await unifiedHistorySession('records',{original:()=>response({},404),history:url=>
+  response(url.endsWith(encodeURIComponent(f.first.received_at))?f.historical:{...history(f.second.received_at),world_model:f.current})});
+ await s.loadSourceHistory(f.first.received_at,'records');await s.openHistoricalOriginal(sourceId);
+ assert.equal(s.snapshot().recordsPhase,'error');
+ await s.loadSourceHistory(f.second.received_at,'records');
+ assert.equal(s.snapshot().historyPhase,'ready');assert.equal(s.snapshot().sourceHistory.received_through,f.second.received_at);
+ assert.equal(s.snapshot().original,null);s.disconnect();
 });

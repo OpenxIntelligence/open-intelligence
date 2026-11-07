@@ -19,6 +19,7 @@ type Props={
   onInvestigations?:()=>void;
   onReview?:()=>void;
   onRecords?:(caseId:string,taskOriginal?:FollowthroughTask)=>void;
+  onHistoryOriginal?:(sourceId:string)=>void;
 };
 
 /** First-party PG read-only Patient World Model view.
@@ -26,7 +27,7 @@ type Props={
  * separate client-owned patient/source ledger. All clinical claims remain
  * attributed to the original fictional source and explicitly unreviewed.
  */
-export function WorldModelView({session,state,patientAccess,busy,showQuestions=false,labsOnly=false,onInvestigations,onReview,onRecords}:Props){
+export function WorldModelView({session,state,patientAccess,busy,showQuestions=false,labsOnly=false,onInvestigations,onReview,onRecords,onHistoryOriginal}:Props){
   const loading=state.worldPhase==='loading'||state.recordsPhase.startsWith('loading');
   const model=state.worldModel;
   const laboratoryByRef=new Map(model?.laboratory_observations.map(item=>[item.source_id+':'+item.observation_reference,item])??[]);
@@ -112,7 +113,7 @@ export function WorldModelView({session,state,patientAccess,busy,showQuestions=f
           <div><strong data-testid="world-unresolved-count">{model.summary.unresolved_observations}</strong><span>Unresolved statements</span></div>
           <div><strong data-testid="world-conflict-count">{model.summary.source_disagreements}</strong><span>Source disagreements</span></div>
         </div>
-        {!showQuestions&&<SourceHistoryView key={model.access_receipt_id} session={session} state={state} busy={busy||loading}/>}
+        {!showQuestions&&<SourceHistoryView key={model.access_receipt_id} session={session} state={state} busy={busy||loading} onOpenOriginal={onHistoryOriginal}/>}
         <h3>Source chronology</h3>
         {model.current_sources.length===0?<p>No current fictional original was imported.</p>:
         <ol className="world-timeline">{model.current_sources.map(item=><li key={item.source_id} data-testid="world-source">

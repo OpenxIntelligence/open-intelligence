@@ -1,45 +1,51 @@
-"""Actual received-time report history in React, FastAPI and PostgreSQL."""
+"""One receipt-time contract in Journey and Records; real PostgreSQL HTTP."""
 import base64
 import json
 
 
-def exercise(cd, original, amended, out, credentials, write_grants):
+def exercise(cd, original, amended, expected_fingerprint, out, credentials, write_grants):
     previous = list(credentials[0]['actions'])
-    credentials[0]['actions'] = [action for action in previous if action != 'source_original_read']
-    write_grants()
     try:
-        _exercise(cd, original, amended, out, credentials, write_grants)
-    finally:
-        credentials[0]['actions'] = previous
-        write_grants()
-
-
-def _exercise(cd, original, amended, out, credentials, write_grants):
-    receipts = cd.evaluate("[...document.querySelector('#source-history-cutoff').options].map(e=>e.value).filter(Boolean)")
-    assert len(receipts) == 2 and receipts[0] != receipts[1]
-    for version, (cutoff, text) in enumerate(zip(receipts, (original, amended)), start=1):
-        cd.evaluate("(()=>{const e=document.querySelector('#source-history-cutoff');e.value="+json.dumps(cutoff)+";e.dispatchEvent(new Event('change',{bubbles:true}));})()")
-        cd.wait("!document.querySelector('[data-testid=source-history-result]')", 'changing cutoff clears earlier result')
-        cd.evaluate("document.querySelector('[data-testid=source-history-check]').click()")
-        cd.wait("document.querySelectorAll('[data-testid=source-history-version]').length===1", 'one document version held at the receipt')
-        assert cd.evaluate("document.querySelector('[data-testid=source-history-version] strong').textContent") == 'DOC-ONE · version '+str(version)
-        assert 'superseded' not in cd.evaluate("document.querySelector('[data-testid=source-history-result]').textContent")
-        cd.evaluate("document.querySelector('[data-testid=source-history-version] button').click()")
-        if version == 1:
-            cd.wait("document.querySelector('[data-testid=records-status]').textContent.includes('Original unavailable')", 'history does not confer original-read permission')
-            assert not cd.evaluate("Boolean(document.querySelector('[data-testid=server-original]'))")
-            credentials[0]['actions'].append('source_original_read')
-            write_grants()
-            cd.evaluate("document.querySelector('[data-testid=source-history-version] button').click()")
-        cd.wait("document.querySelector('[data-testid=server-original]')?.textContent==="+json.dumps(text), 'history opens exact source bytes')
+        if 'source_original_read' not in credentials[0]['actions']:
+            credentials[0]['actions'].append('source_original_read'); write_grants()
+        # Journey already shows the original historical context after amendment.
+        cd.evaluate("document.querySelector('[data-testid=history-open-original]').click()")
+        cd.wait("document.querySelector('[data-testid=server-original]')?.textContent==="+json.dumps(original),
+                'Journey resolves exact historical bytes through current Records authority')
         cd.evaluate("document.querySelector('[data-testid=close-original]').click()")
-        cd.wait("document.activeElement===document.querySelector('[data-testid=source-history-version] button')", 'original closes back to selected history action')
-    for width,height in ((390,844),(1440,960)):
-        cd.command('Emulation.setDeviceMetricsOverride',{'width':width,'height':height,'deviceScaleFactor':1,'mobile':False})
-        cd.evaluate("document.querySelector('[data-testid=source-history]').scrollIntoView({block:'start'})")
-        assert cd.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'historical records reflow'
-        (out/f'source-history-{width}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot',{'format':'png'})['data']))
-    cd.command('Emulation.clearDeviceMetricsOverride')
-    cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
-    cd.wait("document.querySelector('#source-history-cutoff')?.value==='' && !document.querySelector('[data-testid=source-history-result]')", 'record refresh discards historical selection')
-    print('PASS SOURCE HISTORY: receipt cutoff selects the prior or amended original; independent original-read denial and grant, exact bytes, focus return, mobile reflow and refresh invalidation.')
+        cd.wait("!document.querySelector('[data-testid=server-original]')", 'Journey original closes')
+        credentials[0]['actions'].remove('source_original_read'); write_grants()
+        receipts = cd.evaluate("[...document.querySelector('[data-testid=history-cutoff]').options].map(e=>e.value)")
+        assert len(receipts) == 2 and receipts[0] != receipts[1]
+        for version, (cutoff, raw) in enumerate(zip(receipts, (original, amended)), start=1):
+            cd.evaluate("(()=>{const e=document.querySelector('[data-testid=history-cutoff]');e.value="+json.dumps(cutoff)+";e.dispatchEvent(new Event('change',{bubbles:true}));})()")
+            cd.wait("!document.querySelector('[data-testid=history-result]')", 'receipt change clears the earlier history')
+            cd.evaluate("document.querySelector('[data-testid=history-load]').click()")
+            cd.wait("document.querySelectorAll('[data-testid=history-source]').length===1", 'one version at receipt cutoff')
+            assert cd.evaluate("document.querySelector('[data-testid=history-source] strong').textContent") == 'DOC-ONE v'+str(version)
+            if version == 1:
+                assert cd.evaluate("document.querySelector('[data-testid=history-fingerprint]').textContent") == expected_fingerprint
+            cd.evaluate("document.querySelector('[data-testid=history-open-original]').click()")
+            if version == 1:
+                cd.wait("document.querySelector('[data-testid=records-status]').textContent.includes('Original unavailable')", 'history does not confer original permission')
+                assert not cd.evaluate("Boolean(document.querySelector('[data-testid=server-original]'))")
+                credentials[0]['actions'].append('source_original_read'); write_grants()
+                cd.evaluate("document.querySelector('[data-testid=history-open-original]').click()")
+            cd.wait("document.querySelector('[data-testid=server-original]')?.textContent==="+json.dumps(raw), 'exact selected original bytes')
+            cd.evaluate("document.querySelector('[data-testid=close-original]').click()")
+            cd.wait("document.activeElement===document.querySelector('[data-testid=history-open-original]')", 'focus returns to selected history action')
+        for width,height in ((390,844),(1440,960)):
+            cd.command('Emulation.setDeviceMetricsOverride',{'width':width,'height':height,'deviceScaleFactor':1,'mobile':False})
+            cd.evaluate("document.querySelector('[data-testid=source-history]').scrollIntoView({block:'start'})")
+            assert cd.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'history reflows on mobile'
+            (out/f'unified-source-history-{width}.png').write_bytes(base64.b64decode(cd.command('Page.captureScreenshot',{'format':'png'})['data']))
+        cd.command('Emulation.clearDeviceMetricsOverride')
+        cd.evaluate("document.querySelector('[data-testid=load-sources]').click()")
+        cd.wait("Boolean(document.querySelector('[data-testid=history-cutoff]')) && !document.querySelector('[data-testid=history-result]')", 'refresh discards history')
+        cd.evaluate("[...document.querySelectorAll('nav[aria-label=\"Patient workspace\"] button')].find(b=>b.textContent.includes('Journey')).click()")
+        cd.evaluate("document.querySelector('[data-testid=world-load]').click()")
+        cd.wait("document.querySelector('[data-testid=world-history-count]')?.textContent==='1'", 'current Journey restored')
+        assert cd.evaluate("document.querySelector('[data-testid=world-reported-state]').textContent==='negative'")
+        print('PASS UNIFIED HISTORY: same historical fingerprint in Journey and Records; exact amended and superseded originals; independent original denial/regrant; focus return; 390/1440 reflow; refresh cancellation; current Journey remains current.')
+    finally:
+        credentials[0]['actions'] = previous; write_grants()

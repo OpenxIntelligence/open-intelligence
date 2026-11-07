@@ -187,7 +187,7 @@ class HTTPContractTests(unittest.TestCase):
             "/v1/patients/{patient_id}/cases/{case_id}/questions/{question_id}/source-review-packet",
             "/v1/patients/{patient_id}/cases/{case_id}/review-queue",
             "/v1/patients/{patient_id}/cases/{case_id}/sources",
-            "/v1/patients/{patient_id}/cases/{case_id}/source-history",
+            "/v1/patients/{patient_id}/cases/{case_id}/world-model/history",
             "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}",
             "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images",
             "/v1/patients/{patient_id}/cases/{case_id}/sources/{source_id}/images/{image_id}",
