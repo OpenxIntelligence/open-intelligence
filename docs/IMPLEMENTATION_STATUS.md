@@ -16,7 +16,8 @@ draft labels, schema heads and test counts are not current acceptance claims.
 
 The recovery candidate in [#626](https://github.com/OpenxIntelligence/open-intelligence/pull/626)
 builds on #613 at `6dc77e52342bee6928866bbda7680319600baf77` and retains
-#625's bounded worker at `39f09ffabc6ce0246cb463e7e895210e2015475f`.
+#625's bounded worker and isolated authority fixtures at
+`8749cfa59622c36732a8604841b86bf8f8dd36cb`.
 It adds `0028_source_delivery_retry` after the published 0027, preserving all
 42 upstream migration files. Readiness requires 0028. An explicit current
 `source_delivery_retry` grant authorizes recovery of one exact eligible failed
