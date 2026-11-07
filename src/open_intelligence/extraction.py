@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field as dc_field
+from uuid import uuid4
 
 from .store import InvalidInput, KEY, STATES
 
@@ -191,10 +192,11 @@ def record_extraction_proposal(store, case_id, source_version_id, fields):
     those facts between validation and insertion. The whole standalone
     batch commits or rolls back together.
 
-    When the caller already owns a transaction, validation and inserts
-    join it without committing or rolling back the caller's work. A
-    validation-only call remains read-only and cannot authorize a later
-    insert without repeating these checks in the write transaction.
+    When the caller already owns a transaction, a nested savepoint makes
+    this batch atomic without committing or rolling back the caller's
+    earlier work. Database-level transaction rollback still takes precedence;
+    its original error is preserved. A validation-only call remains read-only
+    and cannot authorize a later insert without repeating these checks.
     """
     def validate_and_insert():
         validation = validate_extraction_proposal(
@@ -205,7 +207,22 @@ def record_extraction_proposal(store, case_id, source_version_id, fields):
         return validation
 
     if store.db.in_transaction:
-        return validate_and_insert()
+        # The generated SQL identifier contains only a fixed prefix and hex.
+        # A distinct name leaves any caller-owned savepoints untouched.
+        savepoint = f"oi_extraction_{uuid4().hex}"
+        store.db.execute(f"SAVEPOINT {savepoint}")
+        try:
+            validation = validate_and_insert()
+            store.db.execute(f"RELEASE SAVEPOINT {savepoint}")
+        except BaseException:
+            # RAISE(ROLLBACK) and some engine failures end the entire outer
+            # transaction. Do not mask that error with a missing-savepoint
+            # error or try to recreate work the database already rolled back.
+            if store.db.in_transaction:
+                store.db.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                store.db.execute(f"RELEASE SAVEPOINT {savepoint}")
+            raise
+        return validation
     with store.db:
         store.db.execute("BEGIN IMMEDIATE")
         return validate_and_insert()

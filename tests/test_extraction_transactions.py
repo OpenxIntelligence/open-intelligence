@@ -222,5 +222,140 @@ class ExtractionTransactionTests(unittest.TestCase):
         self.assertEqual(self.assertion_keys(self.other.db), ["baseline"])
 
 
+    def test_caller_insert_failure_removes_only_the_failed_batch(self):
+        self.store.db.execute("""
+            CREATE TEMP TRIGGER reject_nested_assertion
+            BEFORE INSERT ON assertions
+            WHEN NEW.finding_key='rejected-second'
+            BEGIN SELECT RAISE(ABORT, 'fixture nested insertion failure'); END
+        """)
+        self.store.db.execute("BEGIN IMMEDIATE")
+        self.store.db.execute(
+            "UPDATE cases SET label=? WHERE case_id=?",
+            ("Fictional pending label", "CASE-ALPHA"))
+        prior = record_extraction_proposal(
+            self.store, "CASE-ALPHA", self.source_id,
+            [self.field("earlier-proposal")])
+        self.assertEqual(len(prior.inserted_assertion_ids), 1)
+        with self.assertRaisesRegex(sqlite3.IntegrityError,
+                                    "fixture nested insertion failure"):
+            record_extraction_proposal(
+                self.store, "CASE-ALPHA", self.source_id,
+                [self.field("accepted-first"), self.field("rejected-second")])
+        self.assertTrue(self.store.db.in_transaction)
+        self.assertEqual(self.assertion_keys(), ["baseline", "earlier-proposal"])
+        self.assertEqual(self.store.db.execute(
+            "SELECT label FROM cases WHERE case_id='CASE-ALPHA'"
+        ).fetchone()[0], "Fictional pending label")
+        self.assertEqual(self.assertion_keys(self.other.db), ["baseline"])
+        self.assertEqual(self.other.db.execute(
+            "SELECT label FROM cases WHERE case_id='CASE-ALPHA'"
+        ).fetchone()[0], "Fictional Alpha")
+        self.store.db.commit()
+        self.assertEqual(self.assertion_keys(self.other.db),
+                         ["baseline", "earlier-proposal"])
+        self.assertEqual(self.other.db.execute(
+            "SELECT label FROM cases WHERE case_id='CASE-ALPHA'"
+        ).fetchone()[0], "Fictional pending label")
+
+    def test_caller_can_retry_the_entire_failed_batch_with_complete_ids(self):
+        self.store.db.execute("""
+            CREATE TEMP TRIGGER reject_retry_assertion
+            BEFORE INSERT ON assertions
+            WHEN NEW.finding_key='retry-second'
+            BEGIN SELECT RAISE(ABORT, 'fixture retry failure'); END
+        """)
+        self.store.db.execute("BEGIN IMMEDIATE")
+        fields = [self.field("retry-first"), self.field("retry-second")]
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "fixture retry failure"):
+            record_extraction_proposal(
+                self.store, "CASE-ALPHA", self.source_id, fields)
+        self.store.db.execute("DROP TRIGGER reject_retry_assertion")
+        result = record_extraction_proposal(
+            self.store, "CASE-ALPHA", self.source_id, fields)
+        self.assertEqual(result.dropped, [])
+        self.assertEqual(len(result.inserted_assertion_ids), 2)
+        saved_keys = [self.store.db.execute(
+            "SELECT finding_key FROM assertions WHERE id=?", (assertion_id,)
+        ).fetchone()[0] for assertion_id in result.inserted_assertion_ids]
+        self.assertEqual(saved_keys, ["retry-first", "retry-second"])
+        self.assertTrue(self.store.db.in_transaction)
+        self.assertEqual(self.assertion_keys(self.other.db), ["baseline"])
+        self.store.db.rollback()
+        self.assertEqual(self.assertion_keys(), ["baseline"])
+
+    def test_caller_savepoint_can_undo_a_successful_proposal(self):
+        self.store.db.execute("BEGIN IMMEDIATE")
+        self.store.db.execute(
+            "UPDATE cases SET label=? WHERE case_id=?",
+            ("Fictional pending label", "CASE-ALPHA"))
+        self.store.db.execute("SAVEPOINT caller_scope")
+        result = record_extraction_proposal(
+            self.store, "CASE-ALPHA", self.source_id, [self.field()])
+        self.assertEqual(len(result.inserted_assertion_ids), 1)
+        self.store.db.execute("ROLLBACK TO SAVEPOINT caller_scope")
+        self.store.db.execute("RELEASE SAVEPOINT caller_scope")
+        self.assertTrue(self.store.db.in_transaction)
+        self.assertEqual(self.assertion_keys(), ["baseline"])
+        self.assertEqual(self.store.db.execute(
+            "SELECT label FROM cases WHERE case_id='CASE-ALPHA'"
+        ).fetchone()[0], "Fictional pending label")
+        self.store.db.commit()
+        self.assertEqual(self.assertion_keys(self.other.db), ["baseline"])
+        self.assertEqual(self.other.db.execute(
+            "SELECT label FROM cases WHERE case_id='CASE-ALPHA'"
+        ).fetchone()[0], "Fictional pending label")
+
+    def test_database_rollback_preserves_original_failure_and_connection_reuse(self):
+        self.store.db.execute("""
+            CREATE TEMP TRIGGER rollback_nested_assertion
+            BEFORE INSERT ON assertions
+            WHEN NEW.finding_key='rollback-second'
+            BEGIN SELECT RAISE(ROLLBACK, 'fixture whole transaction rollback'); END
+        """)
+        self.store.db.execute("BEGIN IMMEDIATE")
+        self.store.db.execute(
+            "UPDATE cases SET label=? WHERE case_id=?",
+            ("Fictional pending label", "CASE-ALPHA"))
+        with self.assertRaisesRegex(sqlite3.IntegrityError,
+                                    "fixture whole transaction rollback"):
+            record_extraction_proposal(
+                self.store, "CASE-ALPHA", self.source_id,
+                [self.field("rollback-first"), self.field("rollback-second")])
+        self.assertFalse(self.store.db.in_transaction)
+        self.assertEqual(self.assertion_keys(self.other.db), ["baseline"])
+        self.assertEqual(self.other.db.execute(
+            "SELECT label FROM cases WHERE case_id='CASE-ALPHA'"
+        ).fetchone()[0], "Fictional Alpha")
+        result = record_extraction_proposal(
+            self.store, "CASE-ALPHA", self.source_id, [self.field("after-rollback")])
+        self.assertEqual(len(result.inserted_assertion_ids), 1)
+        self.assertEqual(self.assertion_keys(self.other.db),
+                         ["after-rollback", "baseline"])
+
+    def test_caller_validation_error_does_not_discard_pending_work(self):
+        self.store.db.execute("BEGIN IMMEDIATE")
+        self.store.db.execute(
+            "UPDATE cases SET label=? WHERE case_id=?",
+            ("Fictional pending label", "CASE-ALPHA"))
+        with self.assertRaises(InvalidInput):
+            record_extraction_proposal(
+                self.store, "CASE-ALPHA", self.source_id, None)
+        self.assertTrue(self.store.db.in_transaction)
+        self.assertEqual(self.assertion_keys(), ["baseline"])
+        self.assertEqual(self.store.db.execute(
+            "SELECT label FROM cases WHERE case_id='CASE-ALPHA'"
+        ).fetchone()[0], "Fictional pending label")
+        result = record_extraction_proposal(
+            self.store, "CASE-ALPHA", self.source_id, [self.field("after-invalid")])
+        self.assertEqual(len(result.inserted_assertion_ids), 1)
+        self.store.db.commit()
+        self.assertEqual(self.assertion_keys(self.other.db),
+                         ["after-invalid", "baseline"])
+        self.assertEqual(self.other.db.execute(
+            "SELECT label FROM cases WHERE case_id='CASE-ALPHA'"
+        ).fetchone()[0], "Fictional pending label")
+
+
 if __name__ == "__main__":
     unittest.main()
