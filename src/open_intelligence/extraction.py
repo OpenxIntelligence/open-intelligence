@@ -64,6 +64,9 @@ def validate_extraction_proposal(store, case_id, source_version_id, fields, *,
     a freshly verified parser of those original bytes. Without such
     bindings, a FHIR proposal fails closed instead of guessing anchors.
     The key must not repeat or already exist on the source version.
+
+    A validation-only result is provisional and does not reserve a write.
+    Persistence must validate again inside its owning write transaction.
     """
     if not isinstance(case_id, str) or not case_id:
         raise InvalidInput("case_id must be a non-empty string")
@@ -180,25 +183,29 @@ def _insert_assertions(store, case_id, source_version_id, kept):
 
 
 def record_extraction_proposal(store, case_id, source_version_id, fields):
-    """Validate a proposal and store its kept fields as assertions.
+    """Validate and store a proposal in one owning write transaction.
 
     Dropped fields are reported in the returned validation, never stored.
-    If the caller is already inside a write transaction (as the
-    report-import path is), the inserts join that transaction; otherwise
-    this function opens its own. Assertions are the stored form of an
-    accepted extraction proposal — the same rows the import path has
-    always written.
+    Standalone calls reserve the writer before checking source freshness,
+    original integrity, or duplicate keys, so another writer cannot change
+    those facts between validation and insertion. The whole standalone
+    batch commits or rolls back together.
+
+    When the caller already owns a transaction, validation and inserts
+    join it without committing or rolling back the caller's work. A
+    validation-only call remains read-only and cannot authorize a later
+    insert without repeating these checks in the write transaction.
     """
-    validation = validate_extraction_proposal(
-        store, case_id, source_version_id, fields)
-    if not validation.kept:
-        return validation
-    if store.db.in_transaction:
-        validation.inserted_assertion_ids = _insert_assertions(
-            store, case_id, source_version_id, validation.kept)
-    else:
-        with store.db:
-            store.db.execute("BEGIN IMMEDIATE")
+    def validate_and_insert():
+        validation = validate_extraction_proposal(
+            store, case_id, source_version_id, fields)
+        if validation.kept:
             validation.inserted_assertion_ids = _insert_assertions(
                 store, case_id, source_version_id, validation.kept)
-    return validation
+        return validation
+
+    if store.db.in_transaction:
+        return validate_and_insert()
+    with store.db:
+        store.db.execute("BEGIN IMMEDIATE")
+        return validate_and_insert()
