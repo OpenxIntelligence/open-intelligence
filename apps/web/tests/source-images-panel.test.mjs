@@ -21,9 +21,26 @@ test('existing source reader exposes image inspection only for a current imaging
  const html=renderToStaticMarkup(createElement(SourceReading,{index,view:'patient',filters:{query:'',versionState:'all'},
   onFiltersChange(){},busy:false,questionBusy:false,onAskQuestion(){},onOpenOriginal(){},onInspectImages(){},
   sourceImages:null,sourceImagesPhase:'idle',sourceImagesMessage:'',sourceImageDownload:null,
-  sourceImageDownloadPhase:'idle',sourceImageDownloadMessage:'',onDownloadImage(){},onDismissImages(){}}));
+  sourceImageDownloadPhase:'idle',sourceImageDownloadMessage:'',sourceImagePreview:null,
+  sourceImagePreviewPhase:'idle',sourceImagePreviewMessage:'',onPreviewImage(){},onDismissImagePreview(){},
+  onDownloadImage(){},onDismissImages(){}}));
  assert.equal((html.match(/data-testid="source-images-open"/g)||[]).length,1,'one current imaging original has its own governed inspection action');
+ assert.equal((html.match(/data-testid="source-image-preview-open"/g)||[]).length,0,'preview appears only after an authorized image list is loaded');
  assert.equal((html.match(/data-testid="open-original"/g)||[]).length,3,'text originals retain their independent action');
  assert.equal((html.match(/data-testid="ask-source-question"/g)||[]).length,1);
  assert.ok(html.includes(sourceId));assert.ok(!html.includes('type="file"'),'image inspection does not introduce automatic image upload');
+});
+
+
+test('loaded image list exposes a non-diagnostic preview action beside exact DICOM download',async()=>{
+ const {images}=await import('./source-images-fixtures.mjs');
+ const html=renderToStaticMarkup(createElement(SourceReading,{index:sourceIndex(),view:'patient',filters:{query:'',versionState:'all'},
+  onFiltersChange(){},busy:false,questionBusy:false,onAskQuestion(){},onOpenOriginal(){},onInspectImages(){},
+  sourceImages:images(),sourceImagesSourceId:sourceId,sourceImagesPhase:'ready',sourceImagesMessage:'ready',
+  sourceImageDownload:null,sourceImageDownloadPhase:'idle',sourceImageDownloadMessage:'',
+  sourceImagePreview:null,sourceImagePreviewPhase:'idle',sourceImagePreviewMessage:'',
+  onPreviewImage(){},onDismissImagePreview(){},onDownloadImage(){},onDismissImages(){}}));
+ assert.equal((html.match(/data-testid="source-image-preview-open"/g)||[]).length,1);
+ assert.equal((html.match(/data-testid="source-image-download"/g)||[]).length,1);
+ assert.match(html,/Original custody plus a bounded non-diagnostic preview only\. No diagnostic viewer/);
 });

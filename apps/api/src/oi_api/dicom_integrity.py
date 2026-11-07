@@ -15,6 +15,7 @@ from hashlib import sha256
 from io import BytesIO
 import re
 import struct
+import zlib
 
 from pydicom import config as dicom_config
 from pydicom.datadict import dictionary_VR
@@ -232,3 +233,63 @@ def parse_dicom(raw: bytes) -> DicomIdentity:
         )
     except Exception:
         raise DicomIntegrityError("DICOM original integrity check failed") from None
+
+
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+MAX_PREVIEW_BYTES = 1_200_000
+
+
+def _png_chunk(kind: bytes, payload: bytes) -> bytes:
+    if len(kind) != 4:
+        raise ValueError()
+    body = kind + payload
+    return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+
+def render_dicom_preview(raw: bytes) -> bytes:
+    """Render a bounded, non-diagnostic 8-bit grayscale PNG from the qualified CT profile.
+
+    The original is first revalidated by parse_dicom. Pixel values are mapped by
+    per-frame min/max only; no modality LUT, rescale slope/intercept, VOI/window,
+    spatial calibration, overlays, annotations or clinical interpretation is
+    applied. This preview exists only to make the already-authorized synthetic
+    custody object visible in the development workspace.
+    """
+    try:
+        identity = parse_dicom(raw)
+        elements = _elements(raw)
+        pixels = _value(elements, 0x7FE00010, "OW")
+        signed = _unsigned(elements, 0x00280103) == 1
+        sample = "<h" if signed else "<H"
+        low = high = None
+        for (value,) in struct.iter_unpack(sample, pixels):
+            low = value if low is None or value < low else low
+            high = value if high is None or value > high else high
+        if low is None or high is None:
+            raise ValueError()
+
+        count = identity.rows * identity.columns
+        grayscale = bytearray(count)
+        if high == low:
+            grayscale[:] = b"\x7f" * count
+        else:
+            span = high - low
+            for index, (value,) in enumerate(struct.iter_unpack(sample, pixels)):
+                grayscale[index] = (value - low) * 255 // span
+
+        stride = identity.columns
+        scanlines = b"".join(
+            b"\x00" + bytes(grayscale[offset:offset + stride])
+            for offset in range(0, count, stride)
+        )
+        header = struct.pack(">IIBBBBB", identity.columns, identity.rows, 8, 0, 0, 0, 0)
+        png = (_PNG_SIGNATURE + _png_chunk(b"IHDR", header)
+               + _png_chunk(b"IDAT", zlib.compress(scanlines, level=6))
+               + _png_chunk(b"IEND", b""))
+        if len(png) > MAX_PREVIEW_BYTES:
+            raise ValueError()
+        return png
+    except DicomIntegrityError:
+        raise
+    except Exception:
+        raise DicomIntegrityError("DICOM preview generation failed") from None

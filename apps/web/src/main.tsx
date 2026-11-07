@@ -169,7 +169,11 @@ function App(){
         sourceImagesPhase={state.sourceImagesPhase} sourceImagesMessage={state.sourceImagesMessage}
         sourceImageDownload={state.sourceImageDownload} sourceImageDownloadPhase={state.sourceImageDownloadPhase}
         sourceImageDownloadMessage={state.sourceImageDownloadMessage}
+        sourceImagePreview={state.sourceImagePreview} sourceImagePreviewPhase={state.sourceImagePreviewPhase}
+        sourceImagePreviewMessage={state.sourceImagePreviewMessage}
         onInspectImages={sourceId=>void session.loadSourceImages(sourceId)}
+        onPreviewImage={(sourceId,imageId)=>void session.previewSourceImage(sourceId,imageId)}
+        onDismissImagePreview={session.dismissSourceImagePreview}
         onDownloadImage={(sourceId,imageId)=>void session.downloadSourceImage(sourceId,imageId)}
         onDismissImages={session.dismissSourceImages}
         onOpenOriginal={(sourceId,trigger)=>{originalReturn.current={sourceId,trigger,pending:true};void session.loadOriginal(sourceId)}}

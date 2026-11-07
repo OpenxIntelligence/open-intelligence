@@ -53,7 +53,18 @@ QUESTION_ANCHORS = (
     "source_sha256", "source_version", "source_snapshot_contract",
     "source_snapshot_sha256", "preflight_sha256",
 )
-ACCESS_EVENTS = "'image.read_authorized','image.original_read_authorized'"
+ACCESS_EVENTS = "'image.read_authorized','image.original_read_authorized','image.preview_read_authorized'"
+# Operational reads may append access receipts, but must never append business
+# writes during a restored-database verification. Keep one closed allowlist
+# for both recovery checks so a new authorized read is not misclassified.
+RECOVERY_READ_EVENTS = frozenset({
+    "source.read_authorized",
+    "image.read_authorized",
+    "image.original_read_authorized",
+    "image.preview_read_authorized",
+    "evidence.metadata.searched",
+    "evidence.links.read_authorized",
+})
 IMAGE_FIELDS = {
     "image_id", "source_id", "case_id", "sha256", "byte_count",
     "study_uid", "series_uid", "sop_uid", "modality", "study_date",
@@ -292,7 +303,7 @@ def main():
                 raw = response.read(MAX_IMAGE_BYTES + 1)
                 assert len(raw) <= MAX_IMAGE_BYTES, "Response exceeded the image boundary"
                 media_type = response.headers.get_content_type()
-                if media_type == "application/dicom":
+                if media_type in {"application/dicom", "image/png"}:
                     value = raw
                 else:
                     assert media_type == "application/json", "Unexpected response media type"
@@ -926,11 +937,24 @@ finally:
                 status, raw, headers = request(collection(source_id) + "/" + image_id)
                 assert status == 200 and headers.get_content_type() == "application/dicom"
                 assert type(raw) is bytes and raw == originals[index], "Original DICOM bytes changed"
-                remember(headers.get("X-OI-Access-Receipt"), "image.original_read_authorized")
-                receipts.append(headers.get("X-OI-Access-Receipt"))
-            expected = [{"study_uid": STUDY, "series_uid": SERIES, "sop_uid": sop}
-                        for sop in SOPS] if archive_enabled else []
-            assert archive_history() == before + expected, "Original HTTP bypassed the selected archive path"
+                original_receipt = headers.get("X-OI-Access-Receipt")
+                remember(original_receipt, "image.original_read_authorized")
+                receipts.append(("image.original_read_authorized", original_receipt))
+
+                status, preview, preview_headers = request(collection(source_id) + "/" + image_id + "/preview")
+                assert status == 200 and preview_headers.get_content_type() == "image/png"
+                assert type(preview) is bytes and preview.startswith(b"\x89PNG\r\n\x1a\n")
+                assert len(preview) <= 1_200_000
+                assert preview_headers.get("X-OI-Original-SHA256") == hashlib.sha256(originals[index]).hexdigest()
+                assert preview_headers.get("X-OI-Preview-Mode") == "synthetic-ct-minmax-8bit-nondiagnostic"
+                preview_receipt = preview_headers.get("X-OI-Access-Receipt")
+                remember(preview_receipt, "image.preview_read_authorized")
+                receipts.append(("image.preview_read_authorized", preview_receipt))
+            expected = ([item for sop in SOPS for item in (
+                {"study_uid": STUDY, "series_uid": SERIES, "sop_uid": sop},
+                {"study_uid": STUDY, "series_uid": SERIES, "sop_uid": sop},
+            )] if archive_enabled else [])
+            assert archive_history() == before + expected, "Image original/preview HTTP bypassed the selected archive path"
             return receipts
 
         def denied(source_id, *, index=True, original=True, ingest=False, authenticated=True):
@@ -940,7 +964,9 @@ finally:
             if index:
                 requests.append((collection(source_id), None))
             if original:
-                requests.extend((collection(source_id) + "/" + image_id, None) for image_id in image_ids)
+                for image_id in image_ids:
+                    requests.append((collection(source_id) + "/" + image_id, None))
+                    requests.append((collection(source_id) + "/" + image_id + "/preview", None))
             if ingest:
                 requests.append((collection(source_id), originals[0]))
             for path, body in requests:
@@ -1552,10 +1578,10 @@ finally:
             retry_followthrough_and_evidence()
             read_images(source_two)
             restored_image_receipts = read_originals(source_two)
-            for image_receipt in restored_image_receipts:
+            for event_type, image_receipt in restored_image_receipts:
                 image_receipt_query = (
                     "SELECT to_json(count(*)) FROM identity.identity_domain_events "
-                    "WHERE event_type='image.original_read_authorized' AND metadata_json->>'receipt_id'='"
+                    "WHERE event_type='" + event_type + "' AND metadata_json->>'receipt_id'='"
                     + image_receipt + "'"
                 )
                 assert query(image_receipt_query) == 1, "Archive HTTP lacks a restored image receipt"
@@ -1607,10 +1633,9 @@ finally:
             assert restored_after_reads["events"][:len(before["events"])] == before["events"]
             fresh_events = restored_after_reads["events"][len(before["events"]):]
             assert fresh_events and all(row["patient_id"] == patient for row in fresh_events)
-            assert {row["event_type"] for row in fresh_events} <= {
-                "source.read_authorized", "image.read_authorized", "image.original_read_authorized",
-                "evidence.metadata.searched", "evidence.links.read_authorized",
-            }, "Restored reads/retries appended a business event"
+            assert {row["event_type"] for row in fresh_events} <= RECOVERY_READ_EVENTS, (
+                "Restored reads/retries appended a business event"
+            )
             assert snapshot(source_database) == before, "Restored HTTP mutated the pre-restore database"
             print("Active restored API reopened exact v1/v2 questions/returns/tasks/citations, frozen authored reports, archive originals and same-key retries; revoked title/URL stayed redacted")
 
@@ -1665,8 +1690,7 @@ finally:
             withheld_image_receipts = read_originals(source_two)
             withheld_receipts = [("source.read_authorized", value["access_receipt_id"])
                                 for value in withheld_reports.values()]
-            withheld_receipts.extend(("image.original_read_authorized", receipt)
-                                     for receipt in withheld_image_receipts)
+            withheld_receipts.extend(withheld_image_receipts)
             for event_type, receipt in withheld_receipts:
                 query_receipt = (
                     "SELECT to_json(count(*)) FROM identity.identity_domain_events WHERE event_type='"
@@ -1719,10 +1743,7 @@ finally:
             assert added and all(row["patient_id"] == patient for row in added), "Archive read audit changed patient authority"
             # Authored report reads and exact command retries use the existing
             # source-read receipt. They must never append report/business writes.
-            unexpected = {row["event_type"] for row in added} - {
-                "source.read_authorized", "image.read_authorized", "image.original_read_authorized",
-                "evidence.links.read_authorized", "evidence.metadata.searched",
-            }
+            unexpected = {row["event_type"] for row in added} - RECOVERY_READ_EVENTS
             assert not unexpected, "Archive recovery added non-read business history: " + repr(sorted(unexpected))
             source_reads = [row for row in added if row["event_type"] == "source.read_authorized"]
             source_receipts = {row["metadata_json"]["receipt_id"] for row in source_reads}
