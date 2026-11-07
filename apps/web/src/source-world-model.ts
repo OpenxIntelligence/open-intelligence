@@ -2,7 +2,7 @@
  * A response is a derived report of fictional source statements, not clinical
  * judgment, consent, or authorization to execute an AI investigation.
  */
-import {parseOncologyContext} from './source-contracts.js';
+import {parseOncologyContext,receiptMicros} from './source-contracts.js';
 import type {ReportedOncologyContext,SourceVersion} from './source-contracts.js';
 
 export type WorldRef=Readonly<{source_id:string;source_line:number}>;
@@ -54,22 +54,27 @@ export type SourceHistory=Readonly<{
   world_model:SourceWorldModel;
 }>;
 
-export function parseSourceHistory(raw:unknown,patient:string,caseId:string,cutoff:string):SourceHistory{
+export function parseSourceHistory(raw:unknown,patient:string,caseId:string,cutoff:string,knownSources?:readonly SourceVersion[]):SourceHistory{
   const v=shape(raw,['contract','received_through','selection_basis','current_authority_required','historical_only','world_model']);
   const received=stamp(v.received_through);
-  // Preserve PostgreSQL microseconds: JS Date alone would accept a different
-  // cutoff in the same millisecond. The server emits ISO text, including Z.
-  const instant=(s:string)=>{
-    stamp(s);
-    const fraction=s.match(/\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/)?.[1]??'';
-    if(fraction.length>6)return error();
-    return BigInt(Date.parse(s))*1000n+BigInt(fraction.padEnd(6,'0').slice(3));
-  };
-  const boundary=instant(cutoff);
+  const boundary=receiptMicros(cutoff);
   if(v.contract!=='oi.pg-source-history/1'||v.selection_basis!=='received_at_inclusive'||
-     v.current_authority_required!==true||v.historical_only!==true||instant(received)!==boundary)return error();
+     v.current_authority_required!==true||v.historical_only!==true||receiptMicros(received)!==boundary)return error();
   const model=parseSourceWorldModel(v.world_model,patient,caseId);
-  if([...model.current_sources,...model.history].some(s=>instant(s.received_at)>boundary))return error();
+  const returned=[...model.current_sources,...model.history];
+  if(returned.some(s=>receiptMicros(s.received_at)>boundary))return error();
+  if(knownSources){
+    const expected=new Map(knownSources.filter(s=>receiptMicros(s.received_at)<=boundary).map(s=>[s.source_id,s]));
+    const latest=new Map<string,number>();
+    for(const s of expected.values())latest.set(s.document_id,Math.max(s.version,latest.get(s.document_id)??0));
+    if(expected.size!==returned.length)return error();
+    for(const s of returned){
+      const known=expected.get(s.source_id);
+      if(!known||Object.keys(s).some(k=>k!=='state'&&s[k as keyof SourceVersion]!==known[k as keyof SourceVersion])||
+         s.state!==(s.version===latest.get(s.document_id)?'current':'superseded'))return error();
+      expected.delete(s.source_id);
+    }
+  }
   return Object.freeze({contract:'oi.pg-source-history/1',received_through:received,
     selection_basis:'received_at_inclusive',current_authority_required:true,historical_only:true,world_model:model});
 }
@@ -118,7 +123,7 @@ function source(v:unknown):SourceVersion{
      !TYPES.has(String(s.kind))||!['current','superseded'].includes(String(s.state))||
      s.specimen_id!==null&&typeof s.specimen_id!=='string'||
      s.supersedes_id!==null&&(!SOURCE.test(str(s.supersedes_id,36))))return error();
-  str(s.document_id,128);pos(s.version);date(s.event_date);date(s.issued_at);stamp(s.received_at);
+  str(s.document_id,128);pos(s.version);date(s.event_date);date(s.issued_at);receiptMicros(str(s.received_at,80));
   if(s.specimen_id!==null)str(s.specimen_id,128);
   return Object.freeze({...s} as SourceVersion);
 }

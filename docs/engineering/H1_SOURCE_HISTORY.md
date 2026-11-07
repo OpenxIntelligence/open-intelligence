@@ -1,5 +1,7 @@
 # Receipt-time source history
 
+> Historical donor record. The unified follow-up replaces the duplicate metadata endpoint/view with the existing World Model history contract and restores replay tests. See [UNIFIED_PATIENT_HISTORY.md](UNIFIED_PATIENT_HISTORY.md) for current construction and acceptance.
+
 This OI-009 increment builds on connected foundation `2e37d7579f3d748dfe2918a1ec4d02872e0e625c` (PR #602). It adds an operational historical source-membership view through the existing PostgreSQL source owner, patient API and Records workspace. It introduces no tables, migrations, dependencies, alternate source store or new permission action.
 
 ## Behavior and boundary

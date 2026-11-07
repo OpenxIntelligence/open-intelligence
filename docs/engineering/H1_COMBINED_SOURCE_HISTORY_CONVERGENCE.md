@@ -1,5 +1,7 @@
 # Open Intelligence — historical source membership + World Model convergence
 
+> Historical donor record. The unified follow-up replaces the duplicate metadata endpoint/view with the existing World Model history contract and restores replay tests. See [UNIFIED_PATIENT_HISTORY.md](UNIFIED_PATIENT_HISTORY.md) for current construction and acceptance.
+
 **Status:** integrated construction candidate, no deployment, merge or clinical approval.
 
 ## Canonical ownership and donor identity

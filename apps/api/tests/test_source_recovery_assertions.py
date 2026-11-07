@@ -50,6 +50,24 @@ class SourceRecoveryAssertions(unittest.TestCase):
     def test_accepts_only_expected_restored_receipts(self):
         self.check()
 
+    def test_history_requires_one_scope_bound_preparation_authority_pair(self):
+        read = deepcopy(self.expected[0]);read['event_type'] = 'source.read_authorized'
+        prepared = deepcopy(read);prepared['event_type'] = 'source.history_prepared'
+        prepared['metadata_json'] = {k:v for k,v in read['metadata_json'].items()
+                                    if k in ('receipt_id','case_id','actor','purpose')}
+        expected = [prepared, read]
+        def check_pair(events):
+            after = deepcopy(self.before)
+            after['tables'][EVENTS] += [{**deepcopy(e), 'id':8+i,'occurred_at':'2026-01-02'} for i,e in enumerate(events)]
+            after['sequences'][SEQUENCE]['last_value'] = 7 + len(events)
+            self.check(after=after,expected=events)
+        check_pair(expected)
+        for invalid in ([prepared], [read,prepared], [prepared,prepared,read], [prepared,read,read]):
+            with self.assertRaises(AssertionError): check_pair(invalid)
+        for key,value in (('receipt_id','ACCESS-'+'B'*32),('case_id','CASE-OTHER'),('actor','ACTOR-OTHER'),('purpose','research')):
+            changed = deepcopy(expected);changed[0]['metadata_json'][key] = value
+            with self.assertRaises(AssertionError): check_pair(changed)
+
     def test_rejects_modified_or_missing_business_rows(self):
         for table in ("clinical_source.source_versions", "clinical_source.annotation_revisions", "public.alembic_version"):
             for operation in ("modify", "remove"):

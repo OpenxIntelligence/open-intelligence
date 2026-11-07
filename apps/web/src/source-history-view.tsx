@@ -1,13 +1,17 @@
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
+import {receiptMicros} from './source-contracts';
 
 /** Read-only history never enters the current question/Composer context. */
-export function SourceHistoryView({session,state,busy}:{session:RegistrySession;state:ViewState;busy:boolean}){
-  const model=state.worldModel!;
-  const sources=[...model.current_sources,...model.history].sort((a,b)=>a.received_at.localeCompare(b.received_at));
+export function SourceHistoryView({session,state,busy,basis='world',onOpenOriginal}:{session:RegistrySession;state:ViewState;busy:boolean;
+  basis?:'world'|'records';onOpenOriginal?:(sourceId:string,trigger:HTMLButtonElement)=>void}){
+  const model=state.worldModel;
+  const sources=[...(basis==='world'?(model?[...model.current_sources,...model.history]:[]):state.sourceIndex?.sources??[])]
+    .sort((a,b)=>{const left=receiptMicros(a.received_at),right=receiptMicros(b.received_at);return left<right?-1:left>right?1:0;});
   const cutoffs=[...new Set(sources.map(s=>s.received_at))];
   const [cutoff,setCutoff]=useState(cutoffs[0]??'');
-  const history=state.sourceHistory;
+  useEffect(()=>()=>{session.dismissSourceHistory();},[session,basis]);
+  const history=state.historyBasis===basis?state.sourceHistory:null;
   const past=history?.world_model;
   return <section aria-labelledby="history-heading" className="source-history" data-testid="source-history">
     <h3 id="history-heading">What was available then?</h3>
@@ -17,7 +21,7 @@ export function SourceHistoryView({session,state,busy}:{session:RegistrySession;
         onChange={e=>{setCutoff(e.target.value);session.dismissSourceHistory();}}>
         {cutoffs.map(time=><option key={time} value={time}>{time} · {sources.filter(s=>s.received_at===time).map(s=>`${s.document_id} v${s.version}`).join(', ')}</option>)}
       </select></label>{' '}
-      <button type="button" data-testid="history-load" disabled={busy||state.historyPhase==='loading'} onClick={()=>void session.loadSourceHistory(cutoff)}>Load historical context</button>
+      <button type="button" data-testid="history-load" disabled={busy||state.historyPhase==='loading'} onClick={()=>void session.loadSourceHistory(cutoff,basis)}>Load historical context</button>
     </>}
     <p role="status" data-testid="history-status">{state.historyMessage}</p>
     {past&&<div data-testid="history-result">
@@ -34,6 +38,9 @@ export function SourceHistoryView({session,state,busy}:{session:RegistrySession;
         {past.laboratory_observations.filter(o=>o.source_id===s.source_id).map(o=><p key={o.observation_reference}>
           {o.loinc_code} · {o.status==='reported_value'?`${o.value_text} ${o.unit_code}`:`Result absent: ${o.absent_reason}`} · {o.effective_at} · {o.observation_reference}
         </p>)}
+        {onOpenOriginal&&<button type="button" data-testid="history-open-original" disabled={busy}
+          aria-label={`Open this exact original: ${s.document_id}, version ${s.version}`}
+          onClick={event=>onOpenOriginal(s.source_id,event.currentTarget)}>Open this exact original</button>}
       </li>)}</ul>
       <details><summary>Historical receipt and fingerprint</summary><p><code>{past.access_receipt_id}</code></p><p><code data-testid="history-fingerprint">{past.snapshot_fingerprint}</code></p></details>
       <button type="button" onClick={()=>session.dismissSourceHistory()}>Close historical context</button>

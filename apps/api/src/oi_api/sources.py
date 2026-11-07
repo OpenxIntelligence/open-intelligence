@@ -64,29 +64,6 @@ class PostgresSourceVersions:
             raise PatientRegistryError("Receipt cutoff cannot be in the future")
         return cutoff
 
-    @staticmethod
-    def _history(index: dict, cutoff: datetime) -> dict:
-        # This is received-time source membership, not a reconstruction of past
-        # assertions, clinical decisions, grants, or external record availability.
-        selected = {}
-        previous = {}
-        for source in sorted(index["sources"], key=lambda s: (s["document_id"], s["version"])):
-            received = datetime.fromisoformat(source["received_at"].replace("Z", "+00:00"))
-            document = source["document_id"]
-            if document in previous and received < previous[document]:
-                raise SourceIntegrityError("Source receipt chronology is inconsistent")
-            previous[document] = received
-            if received <= cutoff:
-                # Today's mutable supersession label would leak later context.
-                selected[document] = {key: value for key, value in source.items() if key != "state"}
-        return {
-            "contract": "oi.synthetic-source-history/1",
-            "patient_id": index["patient_id"], "case_id": index["case_id"],
-            "received_through": _TIMESTAMP_JSON.dump_python(cutoff, mode="json"),
-            "cutoff_basis": "platform_received_at", "selection": "latest_version_per_document",
-            "sources": list(selected.values()), "synthetic": True, "clinical_interpretation": False,
-        }
-
     def _document_filter(self) -> str:
         # Direct migration fixtures legitimately seed old structured-only
         # schemas. HTTP separately requires the exact current migration head.
@@ -211,7 +188,6 @@ class PostgresSourceVersions:
 
     def list(self, patient_id: str, case_id: str, *, organization: str,
              actor: str, purpose: str, recheck_authority: Callable[[], None],
-             received_through: str | None = None,
              prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
         """Prepare a trusted read view before its final authority check and commit.
 
@@ -224,7 +200,6 @@ class PostgresSourceVersions:
             return self.list_locked(
                 patient_id, case_id, organization=organization, actor=actor,
                 purpose=purpose, recheck_authority=recheck_authority,
-                received_through=received_through,
                 prepare_response=prepare_response,
             )
 
@@ -249,6 +224,12 @@ class PostgresSourceVersions:
                 sources = index["sources"]
                 if len(sources) > 512:
                     raise PatientRegistryError("Source history exceeds bounds")
+                previous = {}
+                for source in sorted(sources, key=lambda s: (s["document_id"], s["version"])):
+                    received = datetime.fromisoformat(source["received_at"])
+                    if source["document_id"] in previous and received < previous[source["document_id"]]:
+                        raise SourceIntegrityError("Source receipt chronology is inconsistent")
+                    previous[source["document_id"]] = received
                 visible = [dict(s) for s in sources
                            if datetime.fromisoformat(s["received_at"]) <= cutoff]
                 latest = {}
@@ -297,7 +278,6 @@ class PostgresSourceVersions:
 
     def list_locked(self, patient_id: str, case_id: str, *, organization: str,
                     actor: str, purpose: str, recheck_authority: Callable[[], None],
-                    received_through: str | None = None,
                     prepare_response: Callable[[dict], PreparedResponse] | None = None) -> dict | PreparedResponse:
         """Prepare and audit the same source view inside the caller's transaction.
 
@@ -307,7 +287,6 @@ class PostgresSourceVersions:
         """
         if not self.registry._transaction_active:
             raise PatientRegistryError("Source preparation requires caller transaction")
-        cutoff = self.receipt_cutoff(received_through) if received_through is not None else None
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
         organization = _key(organization, "organization")
@@ -336,8 +315,6 @@ class PostgresSourceVersions:
             "synthetic": True, "clinical_interpretation": False,
             "research_review_invalidation_integrated": False,
         }
-        if cutoff is not None:
-            result = self._history(result, cutoff)
         # This receipt describes canonical source context, not delivery or
         # question review. Projection and receipt IDs do not change the digest.
         digest = hashlib.sha256(json.dumps(result, sort_keys=True, ensure_ascii=False,
@@ -350,8 +327,7 @@ class PostgresSourceVersions:
             binding_revision=binding_revision, event="source.read_authorized",
             receipt_id=receipt_id,
             recheck_authority=recheck_authority, snapshot_sha256=digest,
-            source_count=len(result["sources"]), assertion_count=0 if cutoff is not None else len(rows),
-            **({"received_through": result["received_through"]} if cutoff is not None else {}),
+            source_count=len(sources), assertion_count=len(rows),
         )
         return prepared
 

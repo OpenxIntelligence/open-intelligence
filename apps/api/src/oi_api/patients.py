@@ -244,7 +244,7 @@ class OriginalSourceReceipt(Contract):
     version: int | None
 
 
-class HistoricalSourceVersion(Contract):
+class SourceVersion(Contract):
     source_id: str
     document_id: str
     version: int
@@ -254,24 +254,8 @@ class HistoricalSourceVersion(Contract):
     issued_at: str
     received_at: datetime
     specimen_id: str | None
-    supersedes_id: str | None
-
-
-class SourceVersion(HistoricalSourceVersion):
     state: Literal["current", "superseded"]
-
-
-class SourceHistory(Contract):
-    contract: Literal["oi.synthetic-source-history/1"]
-    patient_id: str
-    case_id: str
-    access_receipt_id: str
-    received_through: datetime
-    cutoff_basis: Literal["platform_received_at"]
-    selection: Literal["latest_version_per_document"]
-    sources: list[HistoricalSourceVersion]
-    synthetic: Literal[True]
-    clinical_interpretation: Literal[False]
+    supersedes_id: str | None
 
 
 class SourceFinding(SourceOncologyFields):
@@ -1126,26 +1110,6 @@ def patient_router(database: Database, authentication: Authentication, *, image_
         except PatientRegistryDenied:
             raise HTTPException(404, "Source unavailable") from None
 
-    @router.get("/{patient_id}/cases/{case_id}/source-history", response_model=SourceHistory,
-                responses=errors, operation_id="read_source_history_v1")
-    def source_history(request: Request, patient_id: str, case_id: str, received_through: str,
-                       context: Principal = Depends(principal)):
-        try:
-            # Reject ambiguous cutoffs before opening a database transaction.
-            PostgresSourceVersions.receipt_cutoff(received_through)
-            with registry(context) as patients:
-                records_authorized(patients, context, patient_id, "source_read")
-                return PostgresSourceVersions(patients).list(
-                    patient_id, case_id, organization=context.organization,
-                    actor=context.actor, purpose=context.purpose, received_through=received_through,
-                    prepare_response=lambda index: JSONResponse(SourceHistory(**index).model_dump(mode="json")),
-                    recheck_authority=lambda: refresh_source_authority(
-                        request, context, patients, patient_id, "source_read"))
-        except PatientRegistryDenied:
-            raise HTTPException(404, "Source history unavailable") from None
-        except PatientRegistryError:
-            raise HTTPException(422, "Invalid receipt cutoff") from None
-
     @router.get("/{patient_id}/cases/{case_id}/world-model",
                 response_model=SourceWorldModel, responses=errors,
                 operation_id="read_source_world_model_v1")
@@ -1176,9 +1140,9 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                        received_through: str = Query(min_length=20, max_length=40),
                        context: Principal = Depends(principal)):
         try:
-            cutoff = datetime.fromisoformat(received_through)
-        except ValueError:
-            raise HTTPException(422, "Use a timezone-aware ISO receipt cutoff") from None
+            cutoff = PostgresSourceVersions.receipt_cutoff(received_through)
+        except PatientRegistryError:
+            raise HTTPException(422, "Use an explicit RFC3339 receipt cutoff") from None
         try:
             with registry(context) as patients:
                 records_authorized(patients, context, patient_id, "source_read")

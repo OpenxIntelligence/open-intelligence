@@ -4,7 +4,7 @@ import {createRoot} from 'react-dom/client';
 import {RegistrySession} from './registry-client';
 import {createEncounterScope, EncounterChart} from './encounter-chart';
 import {EncounterSourceLinks} from './encounter-source-links-view';
-import {SourceHistory} from './source-history';
+import {SourceHistoryView} from './source-history-view';
 import {PatientSuspension} from './patient-suspension-view';
 import {SourceIntake} from './source-intake-view';
 import {RecordImportDisclosure} from './record-import-disclosure';
@@ -197,7 +197,7 @@ function App(){
     <div className="boundary" role="note"><strong>Synthetic workspace.</strong> Use fictional records and operator-issued credentials only. Clinical sign-off is unavailable.</div>
     {state.patient&&<PageContents key={section}/>}
     {section==='Visits'?(encounterScope?<EncounterChart key={encounterScope.key} scope={encounterScope} dirtyRef={visitDirty}
-      onRecords={id=>{navigate('Records');setRecordsVisit({id,patient:state.patient});}}/>:<div data-testid="visits-no-patient">{state.patient?.status==='suspended'&&<p role="status">This identity is suspended. Open an active patient to see visits.</p>}{patientAccess}</div>):section==='Journey'||section==='Investigations'||section==='Labs'?<WorldModelView labsOnly={section==='Labs'} session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onRecords={(caseId,task)=>{navigate('Records');taskOriginal.current=task?.source_id??null;void session.loadSources(caseId,task);}} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')}/>:recordsSection&&!state.patient?<section data-testid="records-workspace" aria-label={section}><div data-testid="records-no-patient">{patientAccess}</div></section>:recordsSection&&state.patient?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
+      onRecords={id=>{navigate('Records');setRecordsVisit({id,patient:state.patient});}}/>:<div data-testid="visits-no-patient">{state.patient?.status==='suspended'&&<p role="status">This identity is suspended. Open an active patient to see visits.</p>}{patientAccess}</div>):section==='Journey'||section==='Investigations'||section==='Labs'?<WorldModelView labsOnly={section==='Labs'} session={session} state={state} busy={busy} showQuestions={section==='Investigations'} onHistoryOriginal={sourceId=>{navigate('Records');taskOriginal.current=sourceId;void session.openHistoricalOriginal(sourceId);}} onRecords={(caseId,task)=>{navigate('Records');taskOriginal.current=task?.source_id??null;void session.loadSources(caseId,task);}} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')} onReview={()=>navigate('Review')}/>:section==='Review'?<ReviewPanel key={state.patient?.patient_id??'no-patient'} session={session} state={state} busy={busy} drafts={reviewReasonDrafts} patientAccess={patientAccess} onInvestigations={()=>navigate('Investigations')}/>:recordsSection&&!state.patient?<section data-testid="records-workspace" aria-label={section}><div data-testid="records-no-patient">{patientAccess}</div></section>:recordsSection&&state.patient?<section className="panel records-workspace" data-testid="records-workspace" aria-labelledby="records-heading">
      <h2 id="records-heading" data-workspace-anchor={reportKind?'Case selection':'Records'}>{reportKind?section+' reports':view==='patient'?'Records available to you':'Original source records'}</h2>
      <p>{reportKind?'Choose a case to read its structured reports. Text and PDF uploads have their own reader in Records.':'Select a case to inspect reported findings, original files and version history.'}</p>
      <div>
@@ -254,8 +254,9 @@ function App(){
         onAskQuestion={(sourceId,line)=>{const caseId=state.sourceIndex!.case_id;
           navigate('Investigations');
           void session.beginQuestionFromSourceReading(caseId,sourceId,line);}}/>
-       {!reportKind&&<SourceHistory key={'history:'+state.sourceIndex.access_receipt_id} session={session} index={state.sourceIndex} busy={busy||state.recordsPhase.startsWith('loading')}
-        onOpenOriginal={(sourceId,trigger)=>{originalReturn.current={sourceId,trigger,pending:true};void session.loadOriginal(sourceId)}}/>}
+       {!reportKind&&<SourceHistoryView key={'history:'+state.sourceIndex.access_receipt_id} session={session} state={state}
+        basis="records" busy={busy||state.recordsPhase.startsWith('loading')}
+        onOpenOriginal={(sourceId,trigger)=>{taskOriginal.current=null;originalReturn.current={sourceId,trigger,pending:true};void session.openHistoricalOriginal(sourceId)}}/>}
        {!reportKind&&<EncounterSourceLinks key={state.sourceIndex.access_receipt_id} session={session} patientId={state.patient.patient_id} index={state.sourceIndex}
         requestedVisit={recordsVisit?.patient===state.patient?recordsVisit?.id:undefined}
         onOpenOriginal={(sourceId,trigger)=>{originalReturn.current={sourceId,trigger,pending:true};void session.loadOriginal(sourceId)}}/>}

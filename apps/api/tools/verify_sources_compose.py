@@ -18,8 +18,8 @@ import sys
 import tempfile
 import time
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
 from urllib.request import ProxyHandler, Request, build_opener
+from urllib.parse import quote
 import uuid
 
 from oi_api.contracts import SCHEMA_REVISION
@@ -80,7 +80,18 @@ def assert_read_only_recovery(before, after, expected_events):
     assert all(current.get(key) == row for key, row in old.items()), "Historical event changed"
     fresh = sorted((row for key, row in current.items() if key not in old), key=lambda row: row["id"])
     assert expected_events and len(fresh) == len(expected_events), "Missing or unexpected restored access event"
-    receipts = [event["metadata_json"]["receipt_id"] for event in expected_events]
+    # History preparation and its final authority receipt deliberately share
+    # one ID. Require exactly one ordered pair; every actual read ID is fresh.
+    reads = [event for event in expected_events if event['event_type'] != 'source.history_prepared']
+    for index, event in enumerate(expected_events):
+        if event['event_type'] != 'source.history_prepared': continue
+        assert index + 1 < len(expected_events), 'History has no final authority receipt'
+        following = expected_events[index + 1]
+        assert following['event_type'] == 'source.read_authorized', 'History authority must follow preparation'
+        assert following['patient_id'] == event['patient_id']
+        for key in ('receipt_id', 'case_id', 'actor', 'purpose'):
+            assert following['metadata_json'][key] == event['metadata_json'][key], 'History receipt scope differs'
+    receipts = [event["metadata_json"]["receipt_id"] for event in reads]
     assert len(receipts) == len(set(receipts)), "Reused returned receipt"
     old_receipts = {row["metadata_json"].get("receipt_id") for row in old_rows}
     assert not old_receipts.intersection(receipts), "Returned an old access receipt"
@@ -88,8 +99,9 @@ def assert_read_only_recovery(before, after, expected_events):
         assert actual["id"] > max(old, default=0), "Access event is not appended"
         assert {key: actual[key] for key in ("patient_id", "event_type", "metadata_json")} == expected, \
             "Restored receipt differs from returned scope or action"
-        assert actual["event_type"] in {"source.read_authorized", "source.document_read_authorized", "source.original_read_authorized",
-                                        "source.document_selection_read_authorized"}, \
+        assert actual["event_type"] in {"source.document_read_authorized", "source.original_read_authorized",
+                                        "source.document_selection_read_authorized", "source.read_authorized",
+                                        "source.history_prepared"}, \
             "Read/retry emitted a business event"
     assert before["sequences"].keys() == after["sequences"].keys(), "Sequence coverage changed"
     assert event_sequence in before["sequences"], "Access sequence absent"
@@ -218,6 +230,36 @@ def main():
             assert assertion["source_statement"] == expected
             return value
 
+        def read_history(expected=None, restored_events=None):
+            status, value = request(history_path)
+            assert status == 200, 'Historical source context unavailable'
+            model = value['world_model']
+            remember(model, 'source.read_authorized')
+            reference = {**value, 'world_model': {k: v for k, v in model.items() if k != 'access_receipt_id'}}
+            if expected is not None:
+                assert json.dumps(reference, sort_keys=True) == json.dumps(expected, sort_keys=True), 'Historical reconstruction changed'
+            assert value['historical_only'] is True and value['current_authority_required'] is True
+            assert value['received_through'] == first_source['received_at']
+            assert model['current_sources'] == [first_source]
+            assert model['history'] == []
+            observation, = model['observations']
+            assert observation['source_id'] == first_source['source_id']
+            assert observation['source_statement'] == 'Independently fictional café marker — pending.'
+            assert observation['source_line'] == 8 and observation['reported_state'] == 'pending'
+            if restored_events is not None:
+                common = {'receipt_id': model['access_receipt_id'], 'case_id': CASE,
+                          'actor': credential['actor'], 'purpose': 'operations'}
+                restored_events.append({'patient_id': patient, 'event_type': 'source.history_prepared',
+                    'metadata_json': {**common, 'received_through': first_source['received_at'],
+                                      'source_count': 1, 'assertion_count': 1}})
+                context = {k: v for k, v in latest_index.items() if k != 'access_receipt_id'}
+                digest = hashlib.sha256(json.dumps(context, sort_keys=True, ensure_ascii=False,
+                                                   separators=(',', ':')).encode()).hexdigest()
+                restored_events.append({'patient_id': patient, 'event_type': 'source.read_authorized',
+                    'metadata_json': {**common, 'binding_revision': 1, 'snapshot_sha256': digest,
+                                      'source_count': 2, 'assertion_count': 1}})
+            return reference
+
         def read_original(source_id, original, version, state):
             status, value = request(source_path + "/" + source_id)
             assert status == 200, "Exact original unavailable"
@@ -329,15 +371,14 @@ def main():
                 assert (status, receipt["result"], receipt["version"]) == (201, "imported", version)
                 assert re.fullmatch(r"SRC-[0-9A-F]{32}", receipt["source_id"])
                 source_ids.append(receipt["source_id"])
-                source_index = read_index(source_ids)
+                latest_index = read_index(source_ids)
+                if version == 1:
+                    first_source = dict(latest_index['sources'][0])
+                    history_path = patient_path + '/cases/' + CASE + '/world-model/history?received_through=' + quote(first_source['received_at'], safe='')
+                    historical_reference = read_history()
+                else:
+                    read_history(historical_reference)
                 read_original(source_ids[-1], original, version, "current")
-            history_path = source_path.removesuffix('/sources') + '/source-history?' + urlencode({
-                'received_through': source_index['sources'][0]['received_at']})
-            status, historical = request(history_path)
-            assert status == 200
-            remember(historical, 'source.read_authorized')
-            historical_content = {k:v for k,v in historical.items() if k != 'access_receipt_id'}
-            assert historical['sources'] == [{k:v for k,v in source_index['sources'][0].items() if k != 'state'}]
             read_original(source_ids[0], ORIGINAL, 1, "superseded")
             original_path = source_path + "/" + source_ids[0]
             check_history()
@@ -428,9 +469,9 @@ def main():
             # Each grant is independent. Changing the mounted fixture takes
             # effect without restarting; denied requests cannot mint receipts.
             for missing, paths in (
-                ("source_read", [source_path]),
+                ("source_read", [source_path, history_path]),
                 ("source_original_read", [original_path]),
-                ("patient_read", [source_path, original_path]),
+                ("patient_read", [source_path, original_path, history_path]),
             ):
                 credential["actions"] = [action for action in actions if action != missing]
                 save_access()
@@ -454,12 +495,9 @@ def main():
                 assert snapshot() == before, "Restart changed durable sources or history"
                 check_history()
                 read_index(source_ids)
+                read_history(historical_reference)
                 read_original(source_ids[0], ORIGINAL, 1, "superseded")
                 read_original(source_ids[1], AMENDED, 2, "current")
-                status, recovered_history = request(history_path)
-                assert status == 200
-                assert {k:v for k,v in recovered_history.items() if k != 'access_receipt_id'} == historical_content
-                remember(recovered_history, 'source.read_authorized')
                 check_history()
                 status, recovered_document = request(saved_path)
                 assert status == 200 and recovered_document["preview"] == document["preview"]
@@ -486,17 +524,6 @@ def main():
                 assert stored["sha256"] == hashlib.sha256(item["raw"]).hexdigest()
 
             restored_events = []
-
-            def restored_history():
-                status, value = request(history_path)
-                assert status == 200
-                content = {k:v for k,v in value.items() if k != 'access_receipt_id'}
-                assert content == historical_content, 'Restored receipt-time source membership changed'
-                restored_events.append({'patient_id':patient,'event_type':'source.read_authorized',
-                    'metadata_json':{'receipt_id':value['access_receipt_id'],'case_id':CASE,
-                        'actor':credential['actor'],'purpose':'operations','binding_revision':1,
-                        'snapshot_sha256':hashlib.sha256(json.dumps(content,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest(),
-                        'source_count':1,'assertion_count':0,'received_through':content['received_through']}})
 
             def document_receipt(receipt_id, event_type, item=None):
                 assert re.fullmatch(r"ACCESS-[A-F0-9]{32}", receipt_id)
@@ -549,7 +576,7 @@ def main():
                     assert status == 200 and value == {**prior, "duplicate": True}, "Restored retry identity changed"
 
             def readable_cycle():
-                restored_history()
+                read_history(historical_reference, restored_events)
                 restored_index()
                 for item in documents:
                     restored_document(item)
@@ -577,10 +604,10 @@ def main():
                 credential["actions"] = [action for action in actions if action != missing]
                 save_access()
                 if missing in ("source_read", "patient_read"):
-                    no_effect_denial(history_path)
                     no_effect_denial(document_path)
+                    no_effect_denial(history_path)
                 else:
-                    restored_history()
+                    read_history(historical_reference, restored_events)
                     restored_index()
                 for item in documents:
                     if missing in ("source_read", "source_original_read", "patient_read"):
@@ -614,6 +641,7 @@ def main():
                 credential[field] = unavailable
                 save_access()
                 no_effect_denial(document_path)
+                no_effect_denial(history_path)
                 for item in documents:
                     no_effect_denial(item["path"])
                     no_effect_denial(item["path"] + "/original")
@@ -623,6 +651,8 @@ def main():
                 credential[field] = previous
                 save_access()
             no_effect_denial(document_path, authenticated=False)
+            no_effect_denial(history_path, authenticated=False)
+            no_effect_denial(history_path.replace(CASE, "CASE-NOT-BOUND"))
             for item in documents:
                 no_effect_denial(item["path"].replace(CASE, "CASE-NOT-BOUND"))
                 no_effect_denial(item["path"].replace(CASE, "CASE-NOT-BOUND") + "/original")
@@ -655,7 +685,7 @@ def main():
                     no_effect_denial(path, body, database=revoked_database)
                 for selected in item["selections"]:
                     no_effect_denial(selected["path"], database=revoked_database)
-            for path in (source_path, history_path, original_path, source_path + "/" + source_ids[1]):
+            for path in (history_path, source_path, original_path, source_path + "/" + source_ids[1]):
                 status, value = request(path)
                 assert status == 404 and "access_receipt_id" not in value and "original_text" not in value
             assert snapshot(revoked_database) == revoked_before, "Restored revoked requests changed state"
@@ -670,7 +700,10 @@ def main():
                     "selection_anchor_sha256": [selected["reference"]["anchor_sha256"]
                                                for selected in item["selections"]]}
                     for item in documents],
-                "restored_access_receipts": len(restored_events), "restored_readable_http": True,
+                "historical_snapshot_fingerprint": historical_reference['world_model']['snapshot_fingerprint'],
+                "restored_history_current_authority": True, "restored_history_exact_context": True,
+                "restored_access_receipts": sum(e['event_type'] != 'source.history_prepared' for e in restored_events),
+                "restored_audit_events": len(restored_events), "restored_readable_http": True,
                 "restored_binary_originals": True, "restored_exact_retries": True,
                 "restored_exact_selection_references": sum(len(item["selections"]) for item in documents),
                 "restored_independent_grants": True, "restored_api_database_restart": True,
