@@ -19,7 +19,8 @@
         "oi_api.request_limits",
         "oi_api.registry_context",
         "oi_api.encounter_event_contract",
-        "oi_api.source_event_delivery"
+        "oi_api.source_event_delivery",
+        "oi_api.execution_capabilities"
       ],
       "exports": {
         "oi_api": [
@@ -65,6 +66,10 @@
         "oi_api.source_event_delivery": [
           "EventLeaseLost",
           "PostgresSourceEventDelivery"
+        ],
+        "oi_api.execution_capabilities": [
+          "CapabilityCatalog",
+          "CapabilityDescriptor"
         ]
       },
       "depends_on": []
@@ -173,7 +178,8 @@
         "oi_api.composer_runs",
         "oi_api.composer_run_routes",
         "oi_api.worker",
-        "oi_api.event_worker"
+        "oi_api.event_worker",
+        "oi_api.composer_capabilities"
       ],
       "exports": {
         "oi_api.question_passage_contracts": [
@@ -960,7 +966,7 @@
         "_reference",
         "LaboratoryBundleRejected"
       ],
-      "reason": "The typed anchor and coordination paths use the laboratory owner’s reference validation. Keep validation consistent until a qualified public reference contract is available.",
+      "reason": "The typed anchor and coordination paths use the laboratory owner\u2019s reference validation. Keep validation consistent until a qualified public reference contract is available.",
       "backlog": "OI-005"
     },
     {
@@ -987,7 +993,7 @@
       "symbols": [
         "_reference"
       ],
-      "reason": "The typed anchor and coordination paths use the laboratory owner’s reference validation. Keep validation consistent until a qualified public reference contract is available.",
+      "reason": "The typed anchor and coordination paths use the laboratory owner\u2019s reference validation. Keep validation consistent until a qualified public reference contract is available.",
       "backlog": "OI-005"
     },
     {

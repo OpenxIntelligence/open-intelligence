@@ -17,14 +17,15 @@ from open_intelligence.patient_registry import (
 )
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
+from .composer_capabilities import COMPOSER_CAPABILITIES, SOURCE_BRIEF_CAPABILITY
 from .composer_run_contracts import ComposerRunResult, ComposerRunStatus, EnqueueComposerRun
 from .source_question_contracts import SourceQuestionBrief
 from .question_review_returns import PostgresQuestionReviewReturns
 from .source_questions import PostgresSourceQuestions
 from .source_event_delivery import EventLeaseLost, PostgresSourceEventDelivery
 
-KIND = "source-question-brief/1"
-ACTIONS = ("patient_read", "question_read", "source_read", "source_brief_export")
+KIND = SOURCE_BRIEF_CAPABILITY.kind
+ACTIONS = SOURCE_BRIEF_CAPABILITY.required_actions
 TERMINAL = frozenset({"completed", "blocked", "stale", "cancelled", "failed"})
 RUN_FIELDS = (
     "run_id", "patient_id", "case_id", "question_id", "origin_org", "actor", "purpose",
@@ -226,6 +227,8 @@ class PostgresComposerRuns:
                 recheck_authority()
                 return result
 
+        self._capability({"kind": KIND, "source_snapshot_contract": source_snapshot_contract}, execution=True)
+
         def queue(brief):
             validated = SourceQuestionBrief(**brief)
             recheck_authority()
@@ -341,8 +344,21 @@ class PostgresComposerRuns:
         return row
 
     @staticmethod
+    def _capability(row, *, execution=False):
+        try:
+            capability = (COMPOSER_CAPABILITIES.require if execution else COMPOSER_CAPABILITIES.get)(row.get("kind"))
+        except ValueError:
+            raise PatientRegistryError("Execution capability unavailable") from None
+        if row.get("source_snapshot_contract") != capability.input_contract:
+            raise PatientRegistryError("Execution input contract does not match its capability")
+        return capability
+
+    @staticmethod
     def _validate_artifact(row, brief):
+        capability = PostgresComposerRuns._capability(row)
         result = SourceQuestionBrief(**brief).model_dump(mode="json")
+        if result["contract"] != capability.output_contract:
+            raise PatientRegistryError("Execution output contract does not match its capability")
         question, selected = result["question"], result["selected_source"]
         if ((result["patient_id"], result["case_id"], question["question_id"],
              result["source_snapshot_contract"], result["source_snapshot_sha256"],
@@ -355,8 +371,11 @@ class PostgresComposerRuns:
         return result
 
     def complete(self, claim: dict, *, recheck_authority: Callable[[], None]):
+        self._capability(claim, execution=True)
+
         def persist(brief):
             row = self._fence(claim)
+            self._capability(row, execution=True)
             artifact = self._validate_artifact(row, brief)
             encoded = canonical_result(artifact)
             digest = hashlib.sha256(encoded).hexdigest()
