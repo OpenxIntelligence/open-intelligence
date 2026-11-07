@@ -142,7 +142,8 @@
         "oi_api.source_world_model",
         "oi_api.composer_preflight",
         "oi_api.source_anchor",
-        "oi_api.question_anchors"
+        "oi_api.question_anchors",
+        "oi_api.source_semantics"
       ],
       "exports": {
         "oi_api.source_world_model": [
@@ -155,6 +156,10 @@
         ],
         "oi_api.question_anchors": [
           "legacy_text_question_anchor"
+        ],
+        "oi_api.source_semantics": [
+          "SourceSemantics",
+          "project_source_semantics"
         ]
       },
       "depends_on": [
@@ -412,6 +417,16 @@
         "PostgresClinicalEncounters"
       ],
       "reason": "The H1 encounter routes call the PostgreSQL encounter and note owner for scope checks, commands and reads."
+    },
+    {
+      "module": "open_intelligence.semantic_contract",
+      "path": "src/open_intelligence/semantic_contract.py",
+      "symbols": [
+        "Concept",
+        "SemanticReference",
+        "SemanticRegistry"
+      ],
+      "reason": "Reuse the pure versioned semantic validator from #606 for authorized source projections; no reference-prototype persistence."
     }
   ],
   "legacy_imports": [

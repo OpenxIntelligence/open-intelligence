@@ -25,6 +25,7 @@ from .record_requests import PostgresRecordRequests
 from .case_bindings import CanonicalCaseBindings
 from .sources import PostgresSourceVersions
 from .source_world_model import project_source_world_model
+from .source_semantics import SourceSemantics, project_source_semantics
 from .laboratory_fhir_store import PostgresLaboratoryFHIR
 from .composer_preflight import PostgresSourceComposerPreflight, SHA256
 from .source_questions import PostgresSourceQuestions
@@ -1119,6 +1120,24 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                     actor=context.actor, purpose=context.purpose,
                     prepare_response=lambda index: SourceWorldModel(**project_source_world_model(
                         index, PostgresLaboratoryFHIR(patients).current_observations_locked(case_id))),
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "source_read"))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source unavailable") from None
+
+    @router.get("/{patient_id}/cases/{case_id}/world-model/semantics",
+                response_model=SourceSemantics, responses=errors,
+                operation_id="read_source_semantics_v1")
+    def source_semantics(request: Request, patient_id: str, case_id: str,
+                         context: Principal = Depends(principal)):
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "source_read")
+                return PostgresSourceVersions(patients).list(
+                    patient_id, case_id, organization=context.organization,
+                    actor=context.actor, purpose=context.purpose,
+                    prepare_response=lambda index: JSONResponse(content=project_source_semantics(project_source_world_model(
+                        index, PostgresLaboratoryFHIR(patients).current_observations_locked(case_id))).model_dump(mode="json")),
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "source_read"))
         except PatientRegistryDenied:
