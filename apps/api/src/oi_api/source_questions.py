@@ -258,15 +258,33 @@ class PostgresSourceQuestions:
         if (source_index.get("patient_id"), source_index.get("case_id")) != (patient_id, case_id):
             raise PatientRegistryDenied("Question source context unavailable")
         world = project_source_world_model(source_index)
+        # Published pre-0018 migration fixtures have no laboratory child table.
+        # At the current head, its absence is a schema-integrity failure.
+        table = self.registry._fetchone(
+            "SELECT to_regclass('investigation.laboratory_question_anchors')")
+        if table is None:
+            raise PatientRegistryError("Question anchor schema status unavailable")
+        if table[0] is None:
+            revisions = self.registry._fetchall(
+                "SELECT version_num FROM public.alembic_version ORDER BY version_num")
+            if (not revisions or len(revisions) > 2
+                    or any(row[0] == "0018_laboratory_questions" for row in revisions)):
+                raise PatientRegistryError("Laboratory question anchor owner unavailable")
+            # Historical text-only schemas cannot contain a laboratory child.
+            child_columns = ",NULL::text,NULL::text"
+            child_join = ""
+        else:
+            child_columns = ",a.source_id,a.observation_reference"
+            child_join = (" LEFT JOIN investigation.laboratory_question_anchors a"
+                          " ON a.question_id=q.question_id")
         rows = self.registry._fetchall(
             "SELECT q.question_id,q.patient_id,q.case_id,q.question,q.source_id,"
             "q.source_line,q.source_sha256,q.source_version,q.source_snapshot_sha256,"
-            "q.preflight_sha256,q.created_at,q.source_snapshot_contract,"
-            "a.source_id,a.observation_reference "
-            "FROM investigation.source_questions q "
-            "LEFT JOIN investigation.laboratory_question_anchors a ON a.question_id=q.question_id "
-            "WHERE q.patient_id=%s AND q.case_id=%s AND q.origin_org=%s AND q.source_line IS NOT NULL "
-            "ORDER BY q.created_at,q.question_id LIMIT 251",
+            "q.preflight_sha256,q.created_at,q.source_snapshot_contract"
+            + child_columns + " FROM investigation.source_questions q"
+            + child_join
+            + " WHERE q.patient_id=%s AND q.case_id=%s AND q.origin_org=%s"
+            " AND q.source_line IS NOT NULL ORDER BY q.created_at,q.question_id LIMIT 251",
             (patient_id, case_id, organization),
         )
         if len(rows) > 250:
