@@ -1,3 +1,5 @@
+import {parseInstitutions,parseInstitutionReceipt,parseSourceInstitution} from './institution-identities.js';
+import type {InstitutionCommand} from './institution-identities.js';
 import {readLaboratoryCitationReport} from './laboratory-citation-report.js';
 /** Transient UI state over the canonical patient API; never an authority or ledger. */
 export {patientContinuity} from './patient-continuity.js';
@@ -1870,15 +1872,56 @@ export class RegistrySession {
       if(res.status===401){this.#httpError(401);return;}
       if(res.status!==200){this.#publish({original:null,recordsPhase:'error',recordMessage:'Original unavailable or permission denied. No previously opened text is retained.'});return;}
       // A 64 KiB original can expand under JSON escaping. Keep the envelope bounded too.
+      const raw=await json(res,524288);
       const subject=this.#state.cases?.find(item=>item.case_id===caseId&&item.status==='active')?.source_subject_ref;
-      const original=await verifyOriginal(await json(res,524288),caseId,source,subject?'Patient/'+subject:undefined);
+      let expectedSubject=subject?'Patient/'+subject:undefined,reportReference:string|undefined;
+      if(source.kind==='laboratory'&&/^F-[A-F0-9]{32}$/.test(source.document_id)){
+        const attribution=await this.transport('/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+
+          encodeURIComponent(caseId)+'/sources/'+encodeURIComponent(sourceId)+'/institution',this.#init(control));
+        if(!current())return;
+        if(attribution.status!==200)throw Error('Institution source unavailable');
+        const qualified=parseSourceInstitution(await json(attribution),patientId,caseId,sourceId,source.document_id,source.sha256);
+        expectedSubject=qualified.subject;reportReference=qualified.report;
+      }
+      const original=await verifyOriginal(raw,caseId,source,expectedSubject,reportReference);
       if(!current())return;
       this.#publish({original,recordsPhase:'ready',recordMessage:'Exact original bytes verified against the selected source hash. Clinical review remains not established.'});
     }catch(_){if(current())this.#publish({original:null,recordsPhase:'error',recordMessage:'Original failed verification or service unavailable. Reload metadata before trying again.'});}
     finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
+  async institutionRequest(caseId:string,signal:AbortSignal,command?:InstitutionCommand){
+    const patientId=this.#state.patient?.patient_id,scope=this.#scope,read=this.#read;
+    const current=()=>scope===this.#scope&&read===this.#read&&this.#state.phase==='ready'&&
+      this.#state.patient?.patient_id===patientId&&this.#state.sourceIndex?.case_id===caseId;
+    if(!this.#token||!patientId||!current())throw Error('Reopen the current patient and case.');
+    const control=new AbortController();
+    const abort=()=>control.abort();signal.addEventListener('abort',abort,{once:true});
+    if(signal.aborted)control.abort();
+    this.#controllers.add(control);const timeout=setTimeout(()=>control.abort(),10000);
+    let failure='Outcome unknown. Retry the same request to recover its receipt.';
+    const fail=(message:string):never=>{failure=message;throw Error(message);};
+    try{
+      const path='/v1/patients/'+encodeURIComponent(patientId)+'/cases/'+encodeURIComponent(caseId)+
+        '/institution-identities'+(command?.identityId?'/'+encodeURIComponent(command.identityId)+'/decision':'');
+      const response=await this.transport(path,this.#init(control,command?.body));
+      if(!current()||signal.aborted)fail('Patient or case access changed.');
+      if(response.status===401){this.#httpError(401);fail('Reconnect current access.');}
+      if([403,404].includes(response.status)){
+        this.#publish({...emptyRecords(),...this.#resetInvestigation(),recordsPhase:'error',
+          recordMessage:'Institution identity access is unavailable. Reopen the patient and case.'});
+        fail('Institution identity access is unavailable.');
+      }
+      if(response.status===409)fail('The identity remains unresolved or the saved decision differs. Refresh identities to inspect it.');
+      if(response.status===422)fail('The identity request was rejected. Check the identifiers and review reference.');
+      if(![200,201].includes(response.status))throw Error('Outcome unknown. Retry the same request to recover its receipt.');
+      const value=await json(response,65536);
+      if(!current()||signal.aborted)fail('Patient or case access changed.');
+      return command?parseInstitutionReceipt(value):parseInstitutions(value,patientId,caseId);
+    }catch(_){throw Error(failure);}
+    finally{clearTimeout(timeout);signal.removeEventListener('abort',abort);this.#controllers.delete(control);}
+  }
   /** Preserve one exact in-memory command until its receipt is known or this patient/case is withdrawn. */
-  async importLaboratory(caseId:string,text:string,confirmed:boolean,previousSourceId:string|null=null):Promise<void>{
+  async importLaboratory(caseId:string,text:string,confirmed:boolean,previousSourceId:string|null=null,identityId:string|null=null):Promise<void>{
     if(this.#laboratoryWriting||this.#uploading)return;
     if(this.#state.laboratoryPhase==='unknown'){
       this.#publish({laboratoryMessage:'Resolve the uncertain import with Retry exact import before choosing another original.'});return;
@@ -1896,7 +1939,7 @@ export class RegistrySession {
       if(file.text!==text)throw Error('changed bytes');
       if(preparing!==this.#laboratoryWrite||scope!==this.#scope||read!==this.#read||records!==this.#records||this.#state.sourceIndex!==index)return;
       const body=JSON.stringify({synthetic:true,request_key:crypto.randomUUID(),
-        expected_previous_source_id:previousSourceId,bundle_json:file.text});
+        expected_previous_source_id:previousSourceId,bundle_json:file.text,...(identityId?{identity_id:identityId}:{})});
       if(new TextEncoder().encode(body).length>524288)throw Error('envelope');
       const intent=Object.freeze({patient_id:patientId,case_id:caseId,body,sha256:file.sha256});
       this.#laboratoryWriting=false;

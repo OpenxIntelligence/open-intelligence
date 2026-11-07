@@ -347,6 +347,8 @@ def main():
             exercise_image_evidence(cd,pid,tokens[0],credentials,write_grants,directory,out,restart_api)
             from laboratory_fhir_journey import exercise as exercise_laboratory
             exercise_laboratory(cd,pid,directory,tokens[0],credentials,write_grants,out)
+            from institution_identity_journey import exercise as exercise_institutions
+            exercise_institutions(cd,pid,directory,tokens[0],credentials,write_grants,out)
             from oncology_episode_journey import exercise as exercise_episodes
             exercise_episodes(cd,pid,tokens[0],credentials,write_grants,out)
             credentials[0]['patient_ids']=[];write_grants();read()

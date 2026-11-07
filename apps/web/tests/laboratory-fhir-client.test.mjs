@@ -174,3 +174,36 @@ test('an overlapping text import cannot leave the laboratory preflight mutex stu
   assert.equal(calls.filter(x=>x[0].endsWith('/laboratory/fhir-r4/sources')).length,1);
  }finally{crypto.subtle.digest=digest;}
 });
+
+test('qualified institution is pinned in the exact unknown import retry',async()=>{
+ let attempt=0;const{session,calls}=await ready(()=>{if(++attempt===1)throw Error('lost acknowledgement');return reply({...RECEIPT,duplicate:true},200);});
+ const identity='IDENTITY-'+'C'.repeat(32);
+ await session.importLaboratory(CID,RAW,true,null,identity);
+ assert.equal(session.snapshot().laboratoryPhase,'unknown');
+ await session.retryLaboratoryImport();
+ const posts=calls.filter(x=>x[1].method==='POST');
+ assert.equal(JSON.parse(posts[0][1].body).identity_id,identity);assert.equal(posts[0][1].body,posts[1][1].body);
+});
+test('institution list is case scoped and rejects stale or elevated responses',async()=>{
+ const identity={identity_id:'IDENTITY-'+'D'.repeat(32),source_organization:'ORG-SECOND',source_system:'SYS-SECOND',
+  source_subject_ref:'PAT-SECOND',primary_identity:false,status:'quarantined',review_ref:null};
+ const payload={patient_id:PID,case_id:CID,identities:[identity],source_identity_verified:false};
+ const{session,calls}=await ready(()=>reply(payload));
+ const rows=await session.institutionRequest(CID,new AbortController().signal);
+ assert.equal(rows[0].status,'quarantined');assert.match(calls[0][0],/\/CASE-LAB\/institution-identities$/);
+ const other=await ready(()=>reply({...payload,case_id:'CASE-OTHER'}));
+ await assert.rejects(()=>other.session.institutionRequest(CID,new AbortController().signal));
+ const elevated=await ready(()=>reply({...payload,source_identity_verified:true}));
+ await assert.rejects(()=>elevated.session.institutionRequest(CID,new AbortController().signal));
+});
+test('institution denial clears previously inspected source context',async()=>{
+ const{session}=await ready(()=>reply({},404));
+ await assert.rejects(()=>session.institutionRequest(CID,new AbortController().signal));
+ assert.equal(session.snapshot().sourceIndex,null);assert.equal(session.snapshot().cases,null);
+});
+test('a late institution response cannot cross credential changes',async()=>{
+ const hold=deferred();const{session}=await ready(()=>hold.promise);
+ const work=session.institutionRequest(CID,new AbortController().signal);
+ session.disconnect();hold.resolve(reply({patient_id:PID,case_id:CID,identities:[],source_identity_verified:false}));
+ await assert.rejects(()=>work);assert.equal(session.snapshot().patient,null);
+});

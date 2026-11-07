@@ -22,6 +22,7 @@ from .laboratory_questions import PostgresLaboratoryQuestions
 
 
 class LabFHIRPreviewRequest(Contract):
+    identity_id: str | None = Field(default=None, pattern=r'^IDENTITY-[A-F0-9]{32}$')
     synthetic: StrictBool
     bundle_json: str = Field(min_length=1, max_length=65_536)
 
@@ -40,6 +41,7 @@ class LabObservationPreview(Contract):
 
 
 class LabFHIRImportRequest(Contract):
+    identity_id: str | None = Field(default=None, pattern=r'^IDENTITY-[A-F0-9]{32}$')
     synthetic: StrictBool
     request_key: str = Field(min_length=3, max_length=128)
     expected_previous_source_id: str | None = Field(
@@ -275,25 +277,18 @@ def register_laboratory_fhir_routes(router, *, principal, registry,
                 # the incoming bundle. The write owner locks and rechecks this
                 # same binding again before any persistence.
                 with patients.transaction():
-                    PostgresSourceVersions(patients)._binding(
-                        patient_id, case_id, context.organization, context.purpose)
-                    binding = patients._fetchone(
-                        "SELECT source_subject_ref FROM coordination.patient_case_bindings "
-                        "WHERE case_id=%s AND patient_id=%s AND status='active'",
-                        (case_id, patient_id),
-                    )
-                    if binding is None:
-                        raise PatientRegistryDenied("Source mapping unavailable")
+                    _, _, _, source_subject = PostgresLaboratoryFHIR(patients)._binding_metadata(
+                        patient_id, case_id, context.organization, context.purpose, payload.identity_id)
                 try:
                     parsed = prepare_laboratory_bundle(
                         payload.bundle_json.encode("utf-8"),
-                        expected_subject_reference="Patient/" + binding[0])
+                        expected_subject_reference="Patient/" + source_subject)
                 except LaboratoryBundleRejected:
                     raise HTTPException(422, "Unsupported fictional laboratory bundle") from None
                 return PostgresLaboratoryFHIR(patients).import_bundle(
                     patient_id, case_id, parsed,
                     organization=context.organization, actor=context.actor,
-                    purpose=context.purpose, request_key=payload.request_key,
+                    purpose=context.purpose, request_key=payload.request_key, identity_id=payload.identity_id,
                     expected_previous_source_id=payload.expected_previous_source_id,
                     prepare_response=lambda result: JSONResponse(
                         content=LabFHIRImportReceipt(**result).model_dump(mode="json"),
@@ -321,17 +316,8 @@ def register_laboratory_fhir_routes(router, *, principal, registry,
                 # binding. Never trust the FHIR Patient resource or a caller
                 # submitted mapping to choose the destination case.
                 with patients.transaction():
-                    PostgresSourceVersions(patients)._binding(
-                        patient_id, case_id, context.organization, context.purpose)
-                    binding = patients._fetchone(
-                        "SELECT source_organization,source_system,source_subject_ref "
-                        "FROM coordination.patient_case_bindings "
-                        "WHERE case_id=%s AND patient_id=%s AND status='active'",
-                        (case_id, patient_id),
-                    )
-                    if binding is None:
-                        raise PatientRegistryDenied("Source mapping unavailable")
-                    external_org, external_system, source_subject = binding
+                    _, external_org, external_system, source_subject = PostgresLaboratoryFHIR(patients)._binding_metadata(
+                        patient_id, case_id, context.organization, context.purpose, payload.identity_id)
                     try:
                         parsed = prepare_laboratory_bundle(
                             payload.bundle_json.encode("utf-8"),

@@ -107,3 +107,29 @@ authored fictional metadata for this workflow.
 `apps/web/tools/demo_journey.py` exercises these exact fixtures through a real built browser and a separately owned Docker/PostgreSQL application, then checks repeated setup and persistence after stopping and resuming. It deletes only its own newly created disposable test project. The ordinary launcher never deletes volumes.
 
 The full integration workflow separately exercises wrong-scope and revoked access, text/PDF passages, immutable reports, uncertain saves, images, laboratory sources, keyboard/mobile flows, migration history, and seven backup/recovery stages. Final acceptance belongs to the exact candidate revision and its CI receipts in the PR; this guide alone is not a passing test or a deployment claim.
+
+
+## Review institution identities before laboratory import
+
+In **Records → Add original records → Add structured laboratory results**, open
+**Institution identities and unresolved matches** and choose **Refresh identities**.
+The initial case mapping is preserved as the original institution. To add another,
+enter its organization, source system and local patient reference, then choose
+**Add identity for review**. This creates a quarantined proposal, without importing
+clinical data. Supply a fictional linkage review reference and explicitly link or
+reject it. A conflicting subject or existing institution namespace remains quarantined.
+
+Refresh identities and select an active institution before importing its independently
+fictional laboratory JSON. The exact local report and patient IDs remain in the original;
+the stored document lineage is qualified by institution so equal local report numbers
+cannot overwrite one another. Inspect the original through the existing Records reader.
+Amendments still require their exact current predecessor. Previously saved questions
+are flagged for reassessment when their source context changes.
+
+A lost identity acknowledgement can be retried with **Retry exact identity request**
+while the panel remains open. Refresh exposes current saved decisions. These are
+fixture-scoped linkage decisions, not verified identity or consent. A disputed active
+link requires the existing case-withdrawal workflow; there is no silent reassignment.
+Upgrading to `0023_institution_identities` preserves existing mappings and originals.
+Downgrade refuses additional institutional proposals or decisions, including rejected
+ones. The full foundation and MRT-01 requirements remain under construction.

@@ -891,3 +891,31 @@ Each list takes `limit` (1–25) and its corresponding cursor (`after_id` or `af
 The scheduling, transition, versioning, content-integrity and retry rules reuse the [first-party encounter implementation](https://github.com/OpenxIntelligence/open-intelligence/pull/301). The H1 adapter binds them to current request authority and the existing patient transaction. The independent PostgreSQL HTTP and restart/restore exercises use fictional records. Production identity, clinical signatures, treatment orders, note-to-source provenance and a clinician-facing editor remain separate work.
 
 Consumers persist their own cursor per patient and deduplicate using the immutable journal ID. The feed contains encounter IDs/revisions and note keys/versions, with no note bodies. Audit reads produce no new feed item. This is a pull interface for these three event types; push delivery, consumer acknowledgments and a general-purpose worker are separate capabilities.
+
+
+### Multiple institutional identities within one case
+
+Migration `0023_institution_identities` extends the existing coordination owner.
+Each original case tuple is preserved and seeded as its primary source identity.
+`GET/POST /v1/patients/{patient}/cases/{case}/institution-identities` lists or proposes
+additional qualified tuples; `POST .../{identity}/decision` records an explicit
+`link` or `reject` with a review reference. Proposals remain quarantined and unusable
+by FHIR import until accepted. Patient, organization, purpose and current independent
+`case_binding_read` plus `case_binding_create` grants are enforced before writes and
+after actual JSON preparation, within the existing patient transaction and case lock.
+Immutable identity-domain events commit with each decision. Conflicts reveal no
+other patient/case. Exact retries preserve the original identity and current state.
+
+FHIR preview/import optionally accepts `identity_id`. Omission preserves the original
+primary mapping and legacy retry fingerprints. Additional institutions get a qualified
+document lineage derived from organization/system/local report reference; the supplied
+local references and original bytes remain unchanged in the existing FHIR/source owner.
+`GET .../sources/{source}/institution` exposes qualified attribution under independent
+original-read authority, after original integrity validation. Source lists, World Model,
+questions and original inspection require the case's persisted FHIR identities to remain
+consistent. Case revocation disables every institutional link. No per-identity reassignment,
+automatic matching, remote data acquisition, real identity proof or clinical approval.
+
+Acceptance: `test_institution_identities.py`, `institution_identity_journey.py` and the
+extended FHIR Compose recovery probe. Candidate and hosted results are recorded in the
+continuation PR; inherited parent checks do not verify these new changes.

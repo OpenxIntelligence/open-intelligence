@@ -35,7 +35,8 @@ export function readLaboratoryCitationReport(raw:unknown,model:SourceWorldModel,
       'review_state','kind','anchor_kind','status','value_text','unit_code','absent_reason'])||
     r.source_id!==q.source_id||r.sha256!==q.source_sha256||r.version!==q.source_version||
     r.document_id!==source.document_id||r.resource_reference!==q.observation_reference||
-    r.report_reference!=='DiagnosticReport/'+source.document_id||!source.specimen_id||r.specimen_reference!=='Specimen/'+source.specimen_id||
+    (!/^F-[A-F0-9]{32}$/.test(source.document_id)?r.report_reference!=='DiagnosticReport/'+source.document_id:
+      typeof r.report_reference!=='string'||!/^DiagnosticReport\/[A-Z][A-Z0-9-]{1,39}$/.test(r.report_reference))||!source.specimen_id||r.specimen_reference!=='Specimen/'+source.specimen_id||
     !visible(r.specimen_type_text,100)||!visible(r.loinc_code,8)||!/^\d{1,6}-\d$/.test(r.loinc_code)||
     !citationEvidenceTimestamp(r.specimen_collected_at)||!citationEvidenceTimestamp(r.effective_at)||!citationEvidenceTimestamp(r.issued_at)||
     r.source_reported!==true||r.clinical_review!=='not_performed'||r.review_state!=='not_established'||
@@ -47,7 +48,7 @@ export function readLaboratoryCitationReport(raw:unknown,model:SourceWorldModel,
       !isLaboratoryAbsentReason(r.absent_reason))throw Error('Invalid reported absence');
   const current=model.laboratory_observations.find(o=>o.source_id===q.source_id&&o.observation_reference===q.observation_reference);
   if((source.state==='current'&&!current)||(current&&(
-    r.loinc_code!==current.loinc_code||r.specimen_type_text!==current.specimen_type_text||
+    r.report_reference!==current.report_reference||r.loinc_code!==current.loinc_code||r.specimen_type_text!==current.specimen_type_text||
     !sameInstant(r.effective_at,current.effective_at)||!sameInstant(r.issued_at,current.issued_at)||
     !sameInstant(r.specimen_collected_at,current.specimen_collected_at)||r.status!==current.status||
     r.value_text!==current.value_text||r.unit_code!==current.unit_code||r.absent_reason!==current.absent_reason)))throw Error('Result changed');
