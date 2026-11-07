@@ -354,6 +354,62 @@ def main():
             assert status == 200 and history["versions"] == []
             assert snapshot() == original
 
+            # A restriction must survive a real restore, not only an API restart.
+            # Reuse the existing canonical patient and append-only identity journal.
+            credentials[0]["actions"].extend(["data_use_manage", "data_use_read", "note.read"])
+            save_access()
+            restriction_path = "/v1/patients/" + patient + "/data-use"
+            restriction = {"synthetic": True, "request_key": "RESTORE-RESTRICT-ONE",
+                           "expected_revision": 0, "target_purpose": "operations",
+                           "state": "restricted"}
+            restricted = (200, {"patient_id": patient, "target_purpose": "operations",
+                                "state": "restricted", "revision": 1,
+                                "consent_established": False})
+            assert request(restriction_path, tokens[0], restriction) == restricted
+            assert request(note_path, tokens[0])[0] == 404
+            restricted_state = snapshot("oi_api_test_restore")
+            for service in ("api", "db"):
+                command(["restart", service])
+                ready()
+                assert request(restriction_path + "/operations", tokens[0]) == restricted
+                assert request(restriction_path, tokens[0], restriction) == restricted
+                assert request(note_path, tokens[0])[0] == 404
+                assert snapshot("oi_api_test_restore") == restricted_state
+            restricted_dump = command(["exec", "-T", "db", "pg_dump", "-U", "oi_api", "-d",
+                                       "oi_api_test_restore", "--format=custom"], capture_output=True).stdout
+            command(["exec", "-T", "db", "createdb", "-U", "oi_api", "oi_api_test_restricted"])
+            command(["exec", "-T", "db", "pg_restore", "-U", "oi_api", "-d", "oi_api_test_restricted",
+                     "--exit-on-error", "--no-owner"], input=restricted_dump)
+            serve_database("oi_api_test_restricted")
+            assert snapshot("oi_api_test_restricted") == restricted_state
+            assert request(restriction_path + "/operations", tokens[0]) == restricted
+            assert request(restriction_path, tokens[0], restriction) == restricted
+            assert request(note_path, tokens[0])[0] == 404
+            assert request(restriction_path, tokens[0], {**restriction, "state": "unrestricted"})[0] == 409
+            credentials[0]["actions"].remove("data_use_manage")
+            save_access()
+            assert request(restriction_path, tokens[0], restriction)[0] == 404
+            assert snapshot("oi_api_test_restricted") == restricted_state
+            credentials[0]["actions"].append("data_use_manage")
+            save_access()
+            lift = {**restriction, "request_key": "RESTORE-LIFT-ONE",
+                    "expected_revision": 1, "state": "unrestricted"}
+            lifted = (200, {**restricted[1], "state": "unrestricted", "revision": 2})
+            assert request(restriction_path, tokens[0], lift) == lifted
+            # Historical replay never reinstates the old restriction.
+            assert request(restriction_path, tokens[0], restriction) == restricted
+            assert request(restriction_path + "/operations", tokens[0]) == lifted
+            assert request(note_path, tokens[0])[0] == 200
+            assert snapshot("oi_api_test_restore") == restricted_state
+            assert snapshot() == original
+            # Resume the inherited suspension scenario on its original restored DB.
+            serve_database("oi_api_test_restore")
+            assert request(restriction_path + "/operations", tokens[0]) == restricted
+            assert request(restriction_path, tokens[0], lift) == lifted
+            print("PASS data-use recovery: API/DB restart, actual dump/restore, denied notes, "
+                  "exact historical retry, changed-intent and revoked-grant denial, restored-only "
+                  "lifting and original database unchanged; no patient consent inferred")
+
             # The suspension uses the original patient/journal owners. Recover
             # its exact receipt after process restart and a second actual dump.
             credentials[0]["actions"].extend(["patient_suspend", "note.read"])

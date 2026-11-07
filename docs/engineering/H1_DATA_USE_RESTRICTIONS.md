@@ -37,7 +37,7 @@ the API. Previously displayed data in other sessions is not remotely erased.
 
 ## Verification checkpoint
 
-Local: 11 HTTP/OpenAPI/typed-contract tests passed, 719 client tests
+Local: 14 authority-port/OpenAPI/typed-contract tests passed, 719 client tests
 passed, including delayed-response/strict-decoder and authentication-loss checks; TypeScript/Vite build,
 61-module architecture check, Python compilation and synthetic boundary check
 passed. Database methods are implemented but were skipped locally because no
@@ -46,14 +46,13 @@ independent grants, purpose/patient isolation, encoding/final-authority rollback
 concurrent retry, API restart, and queued/claimed/completed Composer work.
 Added a real browser scenario for denied status permission, restriction/source denial, API restart, exact retry, lifting and an unchanged control patient. Hosted verification is pending; no PostgreSQL or browser acceptance is claimed.
 
-Broader local API discovery ran 1,014 tests: 75 errors were socket PermissionError from the execution sandbox and 611 tests skipped for missing PostgreSQL. This run failed; it is not regression acceptance. The separate 11-test contract run passed.
+Broader local API discovery ran 1,014 tests: 75 errors were socket PermissionError from the execution sandbox and 611 tests skipped for missing PostgreSQL. This run failed; it is not regression acceptance. The separate 14-test authority/contract run passed. The three new authority-port tests exercise all current data actions, fresh purpose-specific decisions, independent grants, malformed recorded state and cross-organization refusal. They use a database-port double and are not PostgreSQL execution evidence.
 
 ## Remaining foundation work
 
 This is only the restriction part of PF-02. Positive consent decisions, evidence
 of authorization, validity/expiry, delegated authority, granular data classes,
-and a safe mutation/recovery UI remain unfinished. Complete PostgreSQL
-backup/restore and connected browser acceptance for this increment are required.
+and a safe mutation/recovery UI remain unfinished. The existing Compose recovery harness now includes a restriction before API/database restarts and an actual pg_dump/pg_restore into a separate database. It checks denial, exact historical retry, changed intent, revoked manage grant, restored-only lifting, and unchanged source database. This harness compiles but its hosted execution, together with connected browser acceptance, is still pending.
 Do not infer transaction-wide distributed revocation from callback checks:
 existing action boundaries retain their own locking/refresh semantics.
 

@@ -95,7 +95,7 @@ jobs:
         run: python -m oi_api.migrate upgrade head
       - name: Verify purpose restrictions before broad regression
         run: |
-          PYTHONPATH=apps/api/src:src:apps/api/tests python -m unittest -v test_data_use_restrictions test_composer_runs_postgres.ComposerRunsPostgresTests.test_data_use_restriction_blocks_queued_worker test_composer_runs_postgres.ComposerRunsPostgresTests.test_data_use_restriction_fences_claimed_result test_composer_runs_postgres.ComposerRunsPostgresTests.test_data_use_restriction_withholds_completed_result
+          PYTHONPATH=apps/api/src:src:apps/api/tests python -m unittest -v test_data_use_authority test_data_use_restrictions test_composer_runs_postgres.ComposerRunsPostgresTests.test_data_use_restriction_blocks_queued_worker test_composer_runs_postgres.ComposerRunsPostgresTests.test_data_use_restriction_fences_claimed_result test_composer_runs_postgres.ComposerRunsPostgresTests.test_data_use_restriction_withholds_completed_result
       - name: Verify source purpose compatibility and published-history preservation first
         run: |
           python - <<'PYTEST'
