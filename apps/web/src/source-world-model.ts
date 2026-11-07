@@ -48,6 +48,31 @@ export type SourceWorldModel=Readonly<{
   unresolved_refs:readonly WorldRef[];
   conflicts:readonly WorldConflict[];limitations:readonly string[];
 }>;
+export type SourceHistory=Readonly<{
+  contract:'oi.pg-source-history/1';received_through:string;
+  selection_basis:'received_at_inclusive';current_authority_required:true;historical_only:true;
+  world_model:SourceWorldModel;
+}>;
+
+export function parseSourceHistory(raw:unknown,patient:string,caseId:string,cutoff:string):SourceHistory{
+  const v=shape(raw,['contract','received_through','selection_basis','current_authority_required','historical_only','world_model']);
+  const received=stamp(v.received_through);
+  // Preserve PostgreSQL microseconds: JS Date alone would accept a different
+  // cutoff in the same millisecond. The server emits ISO text, including Z.
+  const instant=(s:string)=>{
+    stamp(s);
+    const fraction=s.match(/\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/)?.[1]??'';
+    if(fraction.length>6)return error();
+    return BigInt(Date.parse(s))*1000n+BigInt(fraction.padEnd(6,'0').slice(3));
+  };
+  const boundary=instant(cutoff);
+  if(v.contract!=='oi.pg-source-history/1'||v.selection_basis!=='received_at_inclusive'||
+     v.current_authority_required!==true||v.historical_only!==true||instant(received)!==boundary)return error();
+  const model=parseSourceWorldModel(v.world_model,patient,caseId);
+  if([...model.current_sources,...model.history].some(s=>instant(s.received_at)>boundary))return error();
+  return Object.freeze({contract:'oi.pg-source-history/1',received_through:received,
+    selection_basis:'received_at_inclusive',current_authority_required:true,historical_only:true,world_model:model});
+}
 const PID=/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$/;
 const CASE=/^CASE-[A-Z0-9-]{1,35}$/;
 const SOURCE=/^SRC-[0-9A-F]{32}$/;

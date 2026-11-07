@@ -7,6 +7,7 @@ import {LaboratoryQuestionPanel,SavedLaboratoryQuestions} from './laboratory-que
 import {questionSaveBlocksSourceChange} from './source-questions-view.js';
 import type {RegistrySession,ViewState} from './registry-client';
 import {SourceQuestionPanel} from './source-question-panel';
+import {SourceHistoryView} from './source-history-view';
 
 type Props={
   session:RegistrySession;
@@ -111,6 +112,7 @@ export function WorldModelView({session,state,patientAccess,busy,showQuestions=f
           <div><strong data-testid="world-unresolved-count">{model.summary.unresolved_observations}</strong><span>Unresolved statements</span></div>
           <div><strong data-testid="world-conflict-count">{model.summary.source_disagreements}</strong><span>Source disagreements</span></div>
         </div>
+        {!showQuestions&&<SourceHistoryView key={model.access_receipt_id} session={session} state={state} busy={busy||loading}/>}
         <h3>Source chronology</h3>
         {model.current_sources.length===0?<p>No current fictional original was imported.</p>:
         <ol className="world-timeline">{model.current_sources.map(item=><li key={item.source_id} data-testid="world-source">

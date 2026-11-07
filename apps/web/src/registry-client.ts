@@ -15,8 +15,8 @@ import {LABORATORY_PREVIEW_REJECTED,LaboratoryPreviewRejected,readLaboratoryPrev
 import type {LaboratoryFile,LaboratoryImportState,LaboratoryIntent} from './laboratory-fhir.js';
 import {readLabPreparation,validLabQuestion,emptyLabQuestions,readLabQuestionList} from './laboratory-question.js';
 import type {LabPreparation,LabQuestionView} from './laboratory-question.js';
-import {parseSourceWorldModel} from './source-world-model.js';
-import type {SourceWorldModel} from './source-world-model.js';
+import {parseSourceWorldModel,parseSourceHistory} from './source-world-model.js';
+import type {SourceWorldModel,SourceHistory} from './source-world-model.js';
 import {decodeComposerPreflight,DEFAULT_SOURCE_QUESTION} from './composer-preflight-view.js';
 import type {ComposerPreflight} from './composer-preflight-view.js';
 import {decodeSavedQuestion,decodeSourceQuestions,questionSaveBlocksSourceChange} from './source-questions-view.js';
@@ -64,6 +64,7 @@ export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryI
   original:OriginalSource|null; importReceipt:ImportReceipt|null;
   importOutcome:'idle'|'sending'|'confirmed'|'rejected'|'unknown'; importMessage:string;
   recordMessage: string;
+  sourceHistory:SourceHistory|null;historyPhase:'idle'|'loading'|'ready'|'error';historyMessage:string;
   worldModel:SourceWorldModel|null;
   worldPhase:'idle'|'loading'|'ready'|'error';
   worldMessage:string;
@@ -106,7 +107,8 @@ const messages: Record<number,string> = {
   503:'The patient registry or access service is unavailable. No cached patient is shown.',
 };
 const emptyIntake=()=>({original:null,importReceipt:null,importOutcome:'idle' as const,importMessage:''});
-const emptyWorld=()=>({worldModel:null,worldPhase:'idle' as const,worldMessage:'Choose an authorized active fictional case to inspect its source-derived World Model.'});
+const emptyHistory=()=>({sourceHistory:null,historyPhase:'idle' as const,historyMessage:''});
+const emptyWorld=()=>({...emptyHistory(),worldModel:null,worldPhase:'idle' as const,worldMessage:'Choose an authorized active fictional case to inspect its source-derived World Model.'});
 const emptyReview=()=>({reviewQueue:null,reviewPhase:'idle' as const,
   reviewMessage:'Open the current patient case to inspect saved questions and verification returns.',
   reviewReturn:null,reviewReturnPhase:'idle' as const,reviewReturnIntent:null,
@@ -375,6 +377,7 @@ export class RegistrySession {
       return{status:response.status,body:value,headers:response.headers};
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
+  #historyRead=0;
   #token=''; #scope=0; #read=0; #records=0; #state:ViewState=fresh();
   #suspensionIntent:{target:Patient;body:string;uncertain:boolean}|null=null;
   #worldRead=0; #composerRead=0; #questionRead=0; #questionWrite=0; #briefRead=0;
@@ -420,6 +423,10 @@ export class RegistrySession {
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){
     let next={...this.#state,...patch};
+    if(next.worldModel!==this.#state.worldModel||next.worldPhase!=='ready'||
+       next.patient!==this.#state.patient||!next.connected||next.phase!=='ready'){
+      this.#historyRead++;next={...next,...emptyHistory()};
+    }
     const prior=this.#state.laboratoryIntent,intent=next.laboratoryIntent;
     let invalidated=prior!==null&&intent===null;
     if(intent&&(next.patient!==null&&next.patient.patient_id!==intent.patient_id||
@@ -1068,6 +1075,35 @@ export class RegistrySession {
     }catch(_){
       if(current())this.#publish({...emptyWorld(),worldPhase:'error',
         worldMessage:'World Model response failed validation or transport. Previous snapshot cleared.'});
+    }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+  }
+
+  dismissSourceHistory=()=>{this.#historyRead++;this.#publish(emptyHistory());};
+
+  async loadSourceHistory(cutoff:string):Promise<void>{
+    const model=this.#state.worldModel;
+    if(!model||this.#state.worldPhase!=='ready'||!this.#token||this.#uploading||
+       ![...model.current_sources,...model.history].some(s=>s.received_at===cutoff))return;
+    const scope=this.#scope,read=this.#read,generation=++this.#historyRead;
+    const current=()=>scope===this.#scope&&read===this.#read&&generation===this.#historyRead&&
+      model===this.#state.worldModel&&this.#state.worldPhase==='ready';
+    const control=new AbortController();this.#controllers.add(control);
+    const timeout=setTimeout(()=>control.abort(),10000);
+    this.#publish({...emptyHistory(),historyPhase:'loading',historyMessage:'Checking historical sources and current access…'});
+    try{
+      const url='/v1/patients/'+encodeURIComponent(model.patient_id)+'/cases/'+encodeURIComponent(model.case_id)+
+        '/world-model/history?received_through='+encodeURIComponent(cutoff);
+      const response=await this.transport(url,this.#init(control));
+      if(!current())return;
+      if(response.status===401){this.#httpError(401);return;}
+      if(response.status===403||response.status===404){
+        this.#publish(this.#resetDeniedCaseSources('Historical source access unavailable. Recheck patient and case permissions.'));return;
+      }
+      if(response.status!==200)throw Error('Historical view unavailable');
+      const history=parseSourceHistory(await json(response,1048576),model.patient_id,model.case_id,cutoff);
+      if(current())this.#publish({sourceHistory:history,historyPhase:'ready',historyMessage:'Historical source context checked under current access.'});
+    }catch(_){
+      if(current())this.#publish({...emptyHistory(),historyPhase:'error',historyMessage:'Historical context could not be verified. Retry to check access and sources again.'});
     }finally{clearTimeout(timeout);this.#controllers.delete(control);}
   }
 

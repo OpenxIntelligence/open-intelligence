@@ -248,9 +248,16 @@ class PostgresLaboratoryFHIR:
             return complete(self._receipt(source_id, duplicate=False))
 
     def current_observations_locked(self, case_id: str) -> list[dict]:
+        return self.observations_for_sources_locked(case_id)
+
+    def observations_for_sources_locked(self, case_id: str,
+                                       source_ids: list[str] | None = None) -> list[dict]:
+        """Read current rows, or exact sources from an already validated owner index."""
         if not self.registry._transaction_active:
             raise PatientRegistryError("Laboratory projection requires caller transaction")
         case_id = _case_id(case_id)
+        if source_ids is not None and (type(source_ids) is not list or len(source_ids) > 512):
+            raise PatientRegistryError("Invalid laboratory source selection")
         rows = self.registry._fetchall(
             "SELECT o.source_id,s.document_id,s.version,s.sha256,o.observation_reference,"
             "o.loinc_code,o.effective_at,o.issued_at,f.specimen_reference,"
@@ -259,9 +266,10 @@ class PostgresLaboratoryFHIR:
             "FROM clinical_source.fhir_laboratory_observations o "
             "JOIN clinical_source.fhir_laboratory_sources f ON f.source_id=o.source_id "
             "JOIN clinical_source.source_versions s ON s.source_id=o.source_id "
-            "WHERE s.case_id=%s AND s.state='current' "
+            "WHERE s.case_id=%s AND "
+            + ("s.state='current' " if source_ids is None else "s.source_id=ANY(%s) ") +
             "ORDER BY o.effective_at,s.document_id,s.version,o.position",
-            (case_id,),
+            (case_id,) if source_ids is None else (case_id, source_ids),
         )
         return [{
             "source_id": r[0], "document_id": r[1], "document_version": r[2],

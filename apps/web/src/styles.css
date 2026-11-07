@@ -278,3 +278,8 @@ footer a { color: #285b49; min-height: 44px; display: inline-flex; align-items: 
 .source-image-series>li{border-left:3px solid #91b0a3;padding:8px 0 8px 15px;min-width:0}
 .source-image-study code{overflow-wrap:anywhere;word-break:break-word}
 @media(max-width:600px){.source-image-study{padding:12px}.source-image-series>li{padding-left:9px}}
+/* Historical context keeps long original identifiers within the workspace. */
+.source-history { margin: 1.5rem 0; padding: 1rem; border: 1px solid #cbd5e1; border-radius: .75rem; }
+.source-history select { display: block; max-width: 100%; margin: .5rem 0; }
+.source-history code, .source-history blockquote { overflow-wrap: anywhere; }
+.source-history li { margin-block: 1rem; }

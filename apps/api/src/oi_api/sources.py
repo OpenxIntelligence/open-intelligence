@@ -11,7 +11,7 @@ import hashlib
 import json
 import uuid
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TypeVar
 
 from pydantic import TypeAdapter
@@ -186,6 +186,73 @@ class PostgresSourceVersions:
                 purpose=purpose, recheck_authority=recheck_authority,
                 prepare_response=prepare_response,
             )
+
+    def history(self, patient_id: str, case_id: str, *, received_through: datetime,
+                organization: str, actor: str, purpose: str,
+                recheck_authority: Callable[[], None],
+                prepare_response: Callable[[dict], PreparedResponse]) -> PreparedResponse:
+        """Reconstruct a past source view under today's authority and owner locks.
+
+        Receipt time, not clinical event time, determines what was available.
+        The full live index is validated first; historical assertions are then
+        reconstructed from those verified originals, never today's assertion rows.
+        No persisted source state is rewritten and no earlier grant is revived.
+        """
+        if (not isinstance(received_through, datetime) or received_through.tzinfo is None
+                or received_through.utcoffset() is None
+                or received_through > datetime.now(timezone.utc)):
+            raise PatientRegistryError("A past timezone-aware receipt cutoff is required")
+        cutoff = received_through.astimezone(timezone.utc)
+        with self.registry.transaction():
+            def reconstruct(index):
+                sources = index["sources"]
+                if len(sources) > 512:
+                    raise PatientRegistryError("Source history exceeds bounds")
+                visible = [dict(s) for s in sources
+                           if datetime.fromisoformat(s["received_at"]) <= cutoff]
+                latest = {}
+                for source in visible:
+                    if source["version"] > latest.get(source["document_id"], 0):
+                        latest[source["document_id"]] = source["version"]
+                selected = set()
+                for source in visible:
+                    source["state"] = ("current" if source["version"] == latest[source["document_id"]]
+                                       else "superseded")
+                    if source["state"] == "current":
+                        selected.add(source["source_id"])
+                # The outer list_locked validates all originals and FHIR rows in
+                # this transaction. Read the same owner bytes without an N+1 query.
+                rows = self.registry._fetchall(
+                    "SELECT s.source_id,s.raw,f.source_id FROM clinical_source.source_versions s "
+                    "LEFT JOIN clinical_source.fhir_laboratory_sources f ON f.source_id=s.source_id "
+                    "WHERE s.case_id=%s ORDER BY s.document_id,s.version", (case_id,))
+                findings = []
+                for source_id, raw, fhir_source in rows:
+                    if source_id not in selected or fhir_source is not None:
+                        continue
+                    for finding in parse_report(bytes(raw), allow_oncology=True).findings:
+                        item = {"source_id": source_id, "finding_key": finding.key,
+                                "reported_state": finding.state, "source_statement": finding.quote,
+                                "source_line": finding.line, "clinical_review_state": "not_established"}
+                        if finding.oncology is not None:
+                            item["oncology"] = {"role": finding.oncology.role,
+                                                "episode_id": finding.oncology.episode_id}
+                        findings.append(item)
+                historical = dict(index, sources=visible, source_reported_assertions=findings)
+                prepared = prepare_response(historical)
+                self.registry.append_event(
+                    patient_id, "source.history_prepared", case_id=case_id, actor=actor,
+                    purpose=purpose, receipt_id=index["access_receipt_id"],
+                    received_through=_TIMESTAMP_JSON.dump_python(cutoff, mode="json"),
+                    source_count=len(visible), assertion_count=len(findings),
+                )
+                return prepared
+
+            # A failed preparation, journal append or final current-authority
+            # check rolls back both events and withholds the whole response.
+            return self.list_locked(
+                patient_id, case_id, organization=organization, actor=actor, purpose=purpose,
+                recheck_authority=recheck_authority, prepare_response=reconstruct)
 
     def list_locked(self, patient_id: str, case_id: str, *, organization: str,
                     actor: str, purpose: str, recheck_authority: Callable[[], None],

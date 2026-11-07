@@ -5,7 +5,7 @@ from datetime import datetime
 import hashlib
 from typing import Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import Field, StrictBool, field_validator
@@ -389,6 +389,15 @@ class SourceWorldModel(Contract):
     unresolved_refs: list[WorldSourceRef]
     conflicts: list[WorldConflict]
     limitations: list[str]
+
+
+class SourceHistory(Contract):
+    contract: Literal["oi.pg-source-history/1"] = "oi.pg-source-history/1"
+    received_through: datetime
+    selection_basis: Literal["received_at_inclusive"] = "received_at_inclusive"
+    current_authority_required: Literal[True] = True
+    historical_only: Literal[True] = True
+    world_model: SourceWorldModel
 
 
 class PrepareSourceComposer(Contract):
@@ -1119,6 +1128,35 @@ def patient_router(database: Database, authentication: Authentication, *, image_
                     actor=context.actor, purpose=context.purpose,
                     prepare_response=lambda index: SourceWorldModel(**project_source_world_model(
                         index, PostgresLaboratoryFHIR(patients).current_observations_locked(case_id))),
+                    recheck_authority=lambda: refresh_source_authority(
+                        request, context, patients, patient_id, "source_read"))
+        except PatientRegistryDenied:
+            raise HTTPException(404, "Source unavailable") from None
+
+    @router.get("/{patient_id}/cases/{case_id}/world-model/history",
+                response_model=SourceHistory, responses=errors,
+                operation_id="read_source_history_v1")
+    def source_history(request: Request, patient_id: str, case_id: str,
+                       received_through: str = Query(min_length=20, max_length=40),
+                       context: Principal = Depends(principal)):
+        try:
+            cutoff = datetime.fromisoformat(received_through)
+        except ValueError:
+            raise HTTPException(422, "Use a timezone-aware ISO receipt cutoff") from None
+        try:
+            with registry(context) as patients:
+                records_authorized(patients, context, patient_id, "source_read")
+                def prepare(index):
+                    labs = PostgresLaboratoryFHIR(patients).observations_for_sources_locked(
+                        case_id, [s["source_id"] for s in index["sources"] if s["state"] == "current"])
+                    result = SourceHistory(received_through=cutoff,
+                        world_model=SourceWorldModel(**project_source_world_model(index, labs)))
+                    # Encode under the owner's locks and before final authority.
+                    return JSONResponse(result.model_dump(mode="json"))
+                return PostgresSourceVersions(patients).history(
+                    patient_id, case_id, received_through=cutoff,
+                    organization=context.organization, actor=context.actor, purpose=context.purpose,
+                    prepare_response=prepare,
                     recheck_authority=lambda: refresh_source_authority(
                         request, context, patients, patient_id, "source_read"))
         except PatientRegistryDenied:

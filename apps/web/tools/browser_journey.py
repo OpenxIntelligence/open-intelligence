@@ -277,6 +277,14 @@ def main():
                 assert cd.evaluate("document.querySelector('[data-testid=world-reported-state]').textContent==='negative'")
                 assert cd.evaluate("document.querySelector('[data-testid=world-fingerprint]').textContent") != initial_world_fingerprint
                 assert cd.evaluate(f"document.querySelector('[data-testid=world-projection]').textContent.includes({json.dumps(original_id)})")
+                cd.evaluate("document.querySelector('[data-testid=history-load]').click()")
+                cd.wait("Boolean(document.querySelector('[data-testid=history-result]'))", 'historical source context after amendment')
+                assert cd.evaluate("document.querySelector('[data-testid=history-fingerprint]').textContent") == initial_world_fingerprint
+                assert cd.evaluate("document.querySelector('[data-testid=history-result]').textContent.includes('not-reported')")
+                assert cd.evaluate("document.querySelector('[data-testid=history-result]').textContent.includes('<script>literal</script>')")
+                assert cd.evaluate("document.querySelectorAll('[data-testid=history-result] script').length===0")
+                assert cd.evaluate("document.querySelectorAll('[data-testid=history-result] [data-testid=choose-question-draft]').length===0")
+                assert cd.evaluate("document.querySelector('[data-testid=world-reported-state]').textContent==='negative'")
                 questions.finish(new_receipt['source_id'],credentials,write_grants,
                     Path(os.environ.get('OI_WEB_ARTIFACT_DIR',ROOT/'apps/web/.evidence')))
                 # Actual brief responses identify the three already-persisted
