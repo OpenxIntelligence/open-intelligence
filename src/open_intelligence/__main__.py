@@ -519,30 +519,34 @@ class Handler(BaseHTTPRequestHandler):
                 # store; the section reports not_composed only when
                 # none is stored (never invented here).
                 case_id = hypothesis_report[1]
-                kept_claims = []
-                abstentions = []
-                stale_excluded = 0
-                for inv in store.list_investigations(case_id):
-                    if inv.get("stale"):
-                        stale_excluded += 1
-                        continue
-                    full = store.get_investigation(case_id, inv["id"])
-                    for index, claim in enumerate(full.get("claims", []), start=1):
-                        kept_claims.append({
-                            "id": claim_id(inv["id"], index),
-                            "text": claim.get("text", ""),
-                            "uncertainty": claim.get("uncertainty", ""),
-                            "citations": claim.get("citations", []),
-                        })
-                    abstentions.extend(full.get("abstentions", []))
-                stored = store.get_composed_hypothesis(case_id)
-                report = assemble_hypothesis_report(
-                    case_id, kept_claims, list_records(),
-                    [render_listing(item) for item in list_listings()],
-                    abstentions=abstentions, hypothesis=stored)
-                report["stale_investigations_excluded"] = stale_excluded
-                report["stale_hypotheses_excluded"] = len(
-                    [h for h in store.list_composed_hypotheses(case_id) if h["stale"]])
+                # A report describes one database revision: an amendment may
+                # commit while claims, composition and exclusion counts load.
+                with store.db:
+                    store.db.execute("BEGIN")
+                    kept_claims = []
+                    abstentions = []
+                    stale_excluded = 0
+                    for inv in store.list_investigations(case_id):
+                        if inv.get("stale"):
+                            stale_excluded += 1
+                            continue
+                        full = store.get_investigation(case_id, inv["id"])
+                        for index, claim in enumerate(full.get("claims", []), start=1):
+                            kept_claims.append({
+                                "id": claim_id(inv["id"], index),
+                                "text": claim.get("text", ""),
+                                "uncertainty": claim.get("uncertainty", ""),
+                                "citations": claim.get("citations", []),
+                            })
+                        abstentions.extend(full.get("abstentions", []))
+                    stored = store.get_composed_hypothesis(case_id)
+                    report = assemble_hypothesis_report(
+                        case_id, kept_claims, list_records(),
+                        [render_listing(item) for item in list_listings()],
+                        abstentions=abstentions, hypothesis=stored)
+                    report["stale_investigations_excluded"] = stale_excluded
+                    report["stale_hypotheses_excluded"] = len(
+                        [h for h in store.list_composed_hypotheses(case_id) if h["stale"]])
                 return self._json(200, report)
             hypothesis = re.fullmatch(rf"/api/cases/{ID_PART}/hypothesis", path)
             if hypothesis:

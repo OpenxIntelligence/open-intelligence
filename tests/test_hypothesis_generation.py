@@ -954,6 +954,54 @@ class StoredHypothesisHttpTests(unittest.TestCase):
         self.assertTrue(data["kept_claims"])
         self.assertIn(expected, [c["id"] for c in data["kept_claims"]])
 
+    def test_report_uses_one_snapshot_during_concurrent_invalidation(self):
+        from unittest.mock import patch
+
+        writer = CaseStore(self.path)
+        writer.db.execute("PRAGMA journal_mode=WAL")
+        original = CaseStore.list_investigations
+        changed = False
+
+        def invalidate_after_listing(reader, case_id):
+            nonlocal changed
+            rows = original(reader, case_id)
+            if not changed:
+                # Publish the same two freshness flags changed by an amendment,
+                # after the report has already read its investigation list.
+                import sqlite3
+                concurrent = sqlite3.connect(self.path)
+                try:
+                    with concurrent:
+                        concurrent.execute("UPDATE investigations SET stale=1 WHERE id=?",
+                                           (self.run_id,))
+                        concurrent.execute("UPDATE composed_hypotheses SET stale=1 WHERE case_id=?",
+                                           (case_id,))
+                finally:
+                    concurrent.close()
+                changed = True
+            return rows
+
+        try:
+            with patch.object(CaseStore, "list_investigations", invalidate_after_listing):
+                status, report = self.request("/api/cases/CASE-ALPHA/hypothesis-report")
+            self.assertTrue(changed)
+            self.assertEqual(status, 200)
+            self.assertEqual(report["hypothesis"]["status"], "composed")
+            self.assertTrue(report["kept_claims"])
+            self.assertEqual(report["stale_investigations_excluded"], 0)
+            self.assertEqual(report["stale_hypotheses_excluded"], 0)
+            status, next_report = self.request("/api/cases/CASE-ALPHA/hypothesis-report")
+            self.assertEqual(status, 200)
+            self.assertEqual(next_report["kept_claims"], [])
+            self.assertEqual(next_report["hypothesis"]["status"], "not_composed")
+            self.assertEqual(next_report["stale_investigations_excluded"], 1)
+            self.assertEqual(next_report["stale_hypotheses_excluded"], 1)
+        finally:
+            with writer.db:
+                writer.db.execute("UPDATE investigations SET stale=0 WHERE id=?", (self.run_id,))
+                writer.db.execute("UPDATE composed_hypotheses SET stale=0 WHERE case_id='CASE-ALPHA'")
+            writer.close()
+
     def test_hypothesis_route_returns_stored_hypothesis(self):
         status, data = self.request("/api/cases/CASE-ALPHA/hypothesis")
         self.assertEqual(status, 200)

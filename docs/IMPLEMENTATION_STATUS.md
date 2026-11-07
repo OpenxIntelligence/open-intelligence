@@ -2020,3 +2020,20 @@ acceptance remains separate; the stacked PR's UI workflow runs the full referenc
 suite even though the main-only ledger workflow does not trigger on its base.
 Next: finish hosted acceptance and reconcile the existing parent/integration
 owners before adding a new scientific persistence path.
+
+### W2 coherent hypothesis report reads — 7 November 2026
+
+The reference HTTP hypothesis-report route now loads investigations, composed
+hypotheses and stale exclusion counts in one explicit SQLite read transaction,
+released before sending the response. Previously concurrent invalidation could
+leave retained claims alongside a missing composition and contradictory counts.
+A live HTTP regression uses a second WAL connection to commit invalidation after
+the investigation list loads. It failed against the old route and now verifies
+both the coherent earlier snapshot and the invalidated state on the next request.
+The fixture changes the same freshness flags as amendment propagation; it does
+not replace the existing amendment-cascade tests. An initial test harness thread
+ownership error was corrected before reproducing the application assertion.
+The four focused suites pass 156 tests, no skips; git diff --check passes.
+This remains the Python/SQLite reference implementation, stacked on #609; no
+connected API, assignment policy, schema, clinical release or deployment claim.
+Hosted acceptance and parent integration remain pending.
