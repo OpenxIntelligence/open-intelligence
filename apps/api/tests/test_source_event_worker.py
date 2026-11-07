@@ -76,6 +76,37 @@ class SourceEventWorkerTests(unittest.TestCase):
                                                 "PATIENT-ONE", "CASE-ALPHA"),
                          {"status": "blocked"})
 
+    def test_retry_requires_a_separate_current_grant_before_database_access(self):
+        class Provider:
+            def authenticate(self, token):
+                return Principal(actor="ACTOR-ONE", organization="ORG-ONE", purpose="operations",
+                                 actions=ACTIONS, patient_ids=frozenset({"PATIENT-ONE"}),
+                                 expires_at=datetime.now(timezone.utc) + timedelta(minutes=1))
+        self.assertEqual(self.worker().retry_delivery(
+            Settings(), lambda: TOKEN, "PATIENT-ONE", "CASE-ALPHA", delivery_id="DELIVERY-" + "A" * 32,
+            expected_revision=3, authentication=Provider()), {"status": "blocked"})
+
+    def test_invalid_recovery_intent_never_reads_credentials(self):
+        def forbidden_read():
+            self.fail("Invalid retry read a credential")
+        for identifier, revision in (("bad", 3), ("DELIVERY-" + "A" * 32, 0),
+                                     ("DELIVERY-" + "A" * 32, True),
+                                     ("DELIVERY-" + "A" * 32, 2**31 - 1)):
+            with self.subTest(identifier=identifier, revision=revision), self.assertRaises(ValueError):
+                self.worker().retry_delivery(Settings(), forbidden_read, "PATIENT-ONE", "CASE-ALPHA",
+                                             delivery_id=identifier, expected_revision=revision)
+
+    def test_cli_rejects_partial_or_mixed_recovery_intents(self):
+        for flags in (("--retry-delivery", "bad", "--expected-revision", "3"),
+                      ("--once", "--expected-revision", "3"),
+                      ("--retry-delivery", "DELIVERY-" + "A" * 32),
+                      ("--once", "--retry-delivery", "DELIVERY-" + "A" * 32, "--expected-revision", "3")):
+            result = subprocess.run([sys.executable, "-m", "oi_api.event_worker", *flags,
+                                     "--patient", "PATIENT-ONE", "--case", "CASE-ALPHA"],
+                                    capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertEqual(result.stdout, "")
+
     def test_invalid_lease_never_reads_a_credential(self):
         worker = self.worker()
         def forbidden_read():

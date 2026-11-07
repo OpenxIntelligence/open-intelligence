@@ -86,7 +86,7 @@ multi-page snapshot. Restart at zero to refresh: an earlier event can become
 terminal later, so this cursor must never be used as a durable delivery
 watermark. All three command modes are mutually exclusive; pagination options
 require `--dead-letters`. Exit zero means the read succeeded, not that failures
-were repaired. Explicit repair/replay remains outstanding under #104 / OI-013.
+were repaired. The controlled retry command below continues #104 / OI-013.
 
 Use the existing [persistent demo setup](../H1_DEMO.md), dependency lock and
 PostgreSQL 16 configuration. The event worker uses `OI_API_DATABASE_URL`,
@@ -100,7 +100,7 @@ Apply the explicit additive migration through the normal migration command:
 PYTHONPATH=apps/api/src:src python -m oi_api.migrate upgrade head
 ```
 
-The application requires `0027_source_event_purpose`, the single successor of
+The application requires `0028_source_delivery_retry`, the single successor of
 `0026_integrated_core`. The existing 0026 no-DDL join retains
 `0025_clinical_source_events`, `0023_composer_clinical_join` and
 `0023_ehr_lab_ownership_join` as its three published parents.
@@ -219,10 +219,43 @@ explicitly instead of reporting idle. An obsolete token cannot publish an
 effect, receipt or acknowledgment.
 
 Dead-letter state is specific to this actor's delivery and preserves its history.
-There is currently **no dead-letter replay/reset command**. Repeating `--once`
-does not reopen it. Inspect the original source/journal and delivery/receipt
-evidence through authorized engineering access; a replay workflow requires a
-separate reviewed contract.
+An operator with all worker grants and the separate patient-scoped
+`source_delivery_retry` grant can retry an inspected, recoverable failure.
+
+### Authorize recovery of a failed delivery
+
+Use `--dead-letters` to read the delivery identity, current revision and reason.
+Failures caused by `lease_expired`, `retryable_failure` or
+`authority_unavailable` may be requeued. Repair the underlying cause first.
+
+```bash
+PYTHONPATH=apps/api/src:src python -m oi_api.event_worker \
+  --retry-delivery "$OI_FAILED_DELIVERY" --expected-revision "$OI_FAILED_REVISION" \
+  --patient "$OI_PATIENT" --case "$OI_CASE"
+```
+
+A successful `retry_authorized` response records the delivery, failed revision
+and immutable journal audit ID. The authorization, queued transition and
+history link commit together. Repeating that exact request recovers its
+receipt, even after the worker progresses or encounters a later failure.
+The later failure requires inspection and its own explicit authorization.
+An obsolete request never resets a newer attempt. A mismatched state returns
+`conflict`; revoked grants or another actor's delivery return `blocked`.
+Only the original actor, organization, patient, case and operations purpose
+can authorize this retry. Cross-actor delegation remains open.
+
+Requeueing preserves the event ID, lifetime attempt count and prior receipts,
+and resets the consecutive failure budget. A subsequent `--once` invocation
+rechecks current source context and authority before Composer reconciles its
+pending runs. Completed results and human decisions retain their owners.
+`invalid_event` failures require explicit investigation and remain held.
+This command supports the existing internal Composer consumer, which has no
+external effects. Future consumers require their own recovery contract.
+
+Migration `0028_source_delivery_retry` extends the published
+`0027_source_event_purpose` lineage. Existing history receives a nullable
+retry-audit link. Every operator retry requires its exact immutable journal
+entry. A downgrade is refused once a retry authorization is stored.
 
 ## Correctness while the worker is stopped
 

@@ -607,6 +607,94 @@ class SourceEventDeliveryPostgresTests(source_fixture.SourceVersionFixture):
         for claim in claims:
             self.assertEqual(self.fail_event(claim), "fenced")
 
+    def recover(self, patient, *, token=TOKEN, settings=None, **command):
+        from oi_api.event_worker import retry_delivery
+        return retry_delivery(settings or self.settings, lambda: token, patient, CASE, **command)
+
+    def failed_amendment(self, reason):
+        with running_server(create_app(self.settings)) as base:
+            patient, _, _, run = self.seeded_run(base)
+            self.drain(patient)
+            self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
+        claim = self.claim_event(patient)
+        self.assertEqual(self.fail_event(claim, reason), "dead_letter")
+        revision = self.delivery(claim["delivery_id"])["revision"]
+        return patient, run, claim, dict(delivery_id=claim["delivery_id"], expected_revision=revision)
+
+    def test_authorized_exact_retry_survives_response_loss_and_only_fresh_worker_changes_run(self):
+        patient, run, claim, command = self.failed_amendment("authority_unavailable")
+        self.assertEqual(self.recover(patient, **command), {"status": "blocked"})
+        self.creds[0]["actions"].append("source_delivery_retry")
+        self.write()
+        page = self.event_dead_letters(patient)
+        self.assertEqual(page["status"], "observed")
+        item, = page["items"]
+        self.assertEqual((item["delivery_id"], item["revision"], item["reason_code"]),
+                         (claim["delivery_id"], command["expected_revision"], "authority_unavailable"))
+        self.assertEqual(self.event_dead_letters(patient, after_event=claim["event_id"])["items"], [])
+        self.add_other_actor(patient)
+        self.assertEqual(self.event_dead_letters(patient, token=OTHER_TOKEN)["items"], [])
+        self.assertEqual(self.recover(patient, token=OTHER_TOKEN, **command), {"status": "blocked"})
+        self.assertEqual(self.recover(patient, delivery_id=claim["delivery_id"],
+                                      expected_revision=command["expected_revision"]-1), {"status": "conflict"})
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first, second = [f.result(timeout=10) for f in
+                             [pool.submit(self.recover, patient, **command) for _ in range(2)]]
+        self.assertEqual({first["duplicate"], second["duplicate"]}, {True, False})
+        self.assertEqual(first["audit_id"], second["audit_id"])
+        self.assertEqual(first["status"], "retry_authorized")
+        self.assertEqual(self.receipts(claim["delivery_id"]), [])
+        self.assertEqual(self.stored(run)[0]["state"], "queued")
+        self.creds[0]["actions"].remove("source_read")
+        self.write()
+        self.assertEqual(self.event_work(patient), {"status": "blocked"})
+        self.assertEqual(self.recover(patient, **command), {"status": "blocked"})
+        self.creds[0]["actions"].append("source_read")
+        self.write()
+        restarted = subprocess.run([sys.executable, "-m", "oi_api.event_worker", "--once",
+                                    "--patient", patient, "--case", CASE], env=self.event_worker_env(),
+                                   text=True, capture_output=True, timeout=15)
+        self.assertEqual(restarted.returncode, 0, restarted.stderr)
+        self.assertEqual(json.loads(restarted.stdout), {"status": "delivered", "attempt_count": 2,
+                                                       "invalidated_count": 1})
+        again = self.recover(patient, **command)
+        self.assertEqual(again, {**first, "duplicate": True})
+        self.assertEqual(self.event_dead_letters(patient)["items"], [])
+        self.assertEqual(self.stored(run)[0]["state"], "stale")
+        self.assertEqual(len(self.receipts(claim["delivery_id"])), 1)
+        history = [row for row in self.rows(HISTORY, "revision") if row["delivery_id"] == claim["delivery_id"]]
+        self.assertEqual([row["reason_code"] for row in history],
+                         ["queued", "claimed", "authority_unavailable", "operator_retry", "claimed", "delivered"])
+        self.assertEqual(history[3]["retry_audit_id"], first["audit_id"])
+        self.assertEqual(self.fail_event(claim), "fenced")
+
+    def test_invalid_event_remains_visible_and_cannot_be_requeued(self):
+        patient, run, claim, command = self.failed_amendment("invalid_event")
+        self.creds[0]["actions"].append("source_delivery_retry")
+        self.write()
+        item, = self.event_dead_letters(patient)["items"]
+        self.assertEqual(item["reason_code"], "invalid_event")
+        before = self.snapshot()
+        self.assertEqual(self.recover(patient, **command), {"status": "conflict"})
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.stored(run)[0]["state"], "queued")
+
+    def test_recovery_grant_revocation_at_commit_rolls_back_audit_and_requeue(self):
+        patient, _, _, command = self.failed_amendment("authority_unavailable")
+        self.creds[0]["actions"].append("source_delivery_retry")
+        self.write()
+        before = self.snapshot()
+        original = PostgresPatientRegistry.append_event_with_id
+        def revoke(registry, pid, kind, **details):
+            audit_id = original(registry, pid, kind, **details)
+            if kind == "source.delivery.retry_authorized":
+                self.creds[0]["actions"].remove("source_delivery_retry")
+                self.write()
+            return audit_id
+        with patch.object(PostgresPatientRegistry, "append_event_with_id", revoke):
+            self.assertEqual(self.recover(patient, **command), {"status": "blocked"})
+        self.assertEqual(self.snapshot(), before)
+
     def test_three_retryable_failures_use_backoff_then_dead_letter(self):
         with running_server(create_app(self.settings)) as base:
             patient, _, _, run = self.seeded_run(base)
@@ -853,6 +941,12 @@ raise SystemExit(main(["--once", "--patient", sys.argv[2], "--case", "CASE-ALPHA
             self.deliver_event(claim)
 
     def test_populated_restore_retains_pending_running_completed_and_delivery_replay(self):
+        self.check_populated_restore()
+
+    def test_populated_restore_retains_authorized_retry_and_lost_response_receipt(self):
+        self.check_populated_restore(recovery=True)
+
+    def check_populated_restore(self, *, recovery=False):
         for binary in ("pg_dump", "pg_restore", "psql"):
             self.assertIsNotNone(shutil.which(binary), f"PostgreSQL acceptance needs {binary}")
             version = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=5)
@@ -866,7 +960,15 @@ raise SystemExit(main(["--once", "--patient", sys.argv[2], "--case", "CASE-ALPHA
             self.assertEqual(self.claim(patient)["run_id"], running)
             queued = self.enqueue_as(base, patient, question, preflight, key="RUN-RESTORE-QUEUED")
             self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
-        claim = self.claim_event(patient, lease=1)
+        claim = self.claim_event(patient, lease=30 if recovery else 1)
+        if recovery:
+            self.assertEqual(self.fail_event(claim, "authority_unavailable"), "dead_letter")
+            self.creds[0]["actions"].append("source_delivery_retry")
+            self.write()
+            retry_intent = dict(delivery_id=claim["delivery_id"],
+                                expected_revision=self.delivery(claim["delivery_id"])["revision"])
+            authorization = self.recover(patient, **retry_intent)
+            self.assertEqual(authorization["status"], "retry_authorized")
         before = self.snapshot()
         original_runs = {run: self.stored(run) for run in (completed, running, queued)}
         url = make_url(self.admin.database_url)
@@ -884,6 +986,14 @@ raise SystemExit(main(["--once", "--patient", sys.argv[2], "--case", "CASE-ALPHA
             restored = Settings(database_url=url.set(database=name).render_as_string(hide_password=False),
                                 access_file=str(self.access))
             self.assertEqual(self.snapshot(settings=restored), before)
+            if recovery:
+                retry = subprocess.run(
+                    [sys.executable, "-m", "oi_api.event_worker", "--retry-delivery", claim["delivery_id"],
+                     "--expected-revision", str(retry_intent["expected_revision"]), "--patient", patient,
+                     "--case", CASE], env=self.event_worker_env(restored),
+                    capture_output=True, text=True, timeout=15)
+                self.assertEqual(retry.returncode, 0, retry.stderr)
+                self.assertEqual(json.loads(retry.stdout), {**authorization, "duplicate": True})
             time.sleep(1.1)
             resumed = subprocess.run([sys.executable, "-m", "oi_api.event_worker", "--once", "--patient", patient,
                                       "--case", CASE], env=self.event_worker_env(restored),

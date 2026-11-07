@@ -140,6 +140,8 @@ class EvidenceConvergenceMigrationTests(PublishedEvidenceFixture, SourceVersionF
                 # their snapshots that exact default while preserving every value.
                 row = ("(jsonb_build_object('observation_reference', NULL) || to_jsonb(t))::text"
                        if name == "coordination.question_followthrough_tasks" else "row_to_json(t)::text")
+                if name == "coordination.source_event_delivery_events":
+                    row = "(jsonb_build_object('retry_audit_id', NULL) || to_jsonb(t))::text"
                 tables[name] = connection.execute(text(
                     f"SELECT {row} FROM {name} t ORDER BY 1"
                 )).scalars().all()
