@@ -87,6 +87,26 @@ def _worker_command():
     return [sys.executable, "-m", "oi_api.laboratory_experiments", "--worker"]
 
 
+def _validate_result(result, payload, identity):
+    _shape(result, ("outputs", "checkpoint", "fit_performed", "fitted_examples",
+                    "neural_training_performed", "cpu_seconds", "peak_rss_kib", "source_identity"))
+    _require(result["source_identity"] == identity, "Worker source differs from plan")
+    memory_fit = payload["technique"] == "exact_source_memory"
+    expected_count = len(payload["training"]) if memory_fit else 0
+    _require(type(result["fitted_examples"]) is int and result["fitted_examples"] == expected_count
+             and result["fit_performed"] is memory_fit and result["neural_training_performed"] is False,
+             "Worker fit receipt differs from recipe inputs")
+    for key in ("cpu_seconds", "peak_rss_kib"):
+        value = result[key]
+        _require(type(value) in (int, float) and math.isfinite(value) and value >= 0,
+                 "Invalid worker resource measurement")
+    expected_checkpoint = ({"kind": "exact-source-memory", "version": 1,
+                            "entries": {e["source_sha256"]: e["observations"] for e in payload["training"]}}
+                           if memory_fit else {"kind": "deterministic-parser",
+                                               "source_sha256": identity["laboratory_fhir_r4.py"]})
+    _require(result["checkpoint"] == expected_checkpoint, "Checkpoint does not match fitted inputs")
+
+
 def run_worker(payload, timeout):
     # Only built-in source code is executed. This is process isolation and time
     # limiting, not a security sandbox for third-party or malicious model code.
@@ -205,9 +225,7 @@ class LaboratoryExperiments:
                     payload = {"technique": recipe["technique"], "validation": validation,
                                "training": training if recipe["technique"] == "exact_source_memory" else []}
                     result = run_worker(payload, min(remaining, spec["max_trial_wall_seconds"]))
-                    _shape(result, ("outputs", "checkpoint", "fit_performed", "fitted_examples",
-                                    "neural_training_performed", "cpu_seconds", "peak_rss_kib", "source_identity"))
-                    _require(result["source_identity"] == plan["source_identity"], "Worker source differs from plan")
+                    _validate_result(result, payload, plan["source_identity"])
                     # No weight-execution claim is inferred from supplied output
                     # registration. The separate trial proves this adapter call.
                     registry.record_run(trial_key, spec["dataset"],

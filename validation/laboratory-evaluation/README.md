@@ -76,7 +76,7 @@ The executable verification script supplies complete recipe and plan examples.
 Unsupported techniques, remote models, arbitrary commands and hyperparameters
 are rejected rather than presented as implemented integrations. No third-party
 model weights or new dependency are introduced. This extension is verified by
-13 new execution/isolation/budget/recovery tests and the original 38 checks;
+14 new execution/isolation/budget/recovery tests and the original 38 checks;
 the updated hosted workflow executes both practice exercises on its exact head.
 
 ## Implemented behavior

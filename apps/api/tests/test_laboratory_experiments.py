@@ -159,6 +159,20 @@ class LaboratoryExperimentTests(unittest.TestCase):
         self.assertTrue(all(t["status"] == "failed" for t in receipt["trials"]))
         self.assertIsNone(receipt["selected_recipe"])
 
+    def test_false_fit_checkpoint_or_resource_receipt_is_rejected(self):
+        for number, field, value in ((0, "checkpoint", {"kind": "invented-weights"}),
+                                     (1, "cpu_seconds", True), (2, "fitted_examples", 999)):
+            experiment_id = "forged-" + str(number)
+            self.service.plan(self.spec(experiment_id))
+            def forged(payload, timeout):
+                result = run_worker(payload, timeout)
+                result[field] = value
+                return result
+            with patch("oi_api.laboratory_experiments.run_worker", side_effect=forged):
+                receipt = self.service.execute(experiment_id)
+            self.assertTrue(all(t["status"] == "failed" and t["checkpoint_sha256"] is None
+                                and t["run_id"] is None for t in receipt["trials"]))
+
     def test_code_drift_and_existing_claim_prevent_reexecution(self):
         self.service.plan(self.spec())
         with patch("oi_api.laboratory_experiments.source_identity", return_value={}):
