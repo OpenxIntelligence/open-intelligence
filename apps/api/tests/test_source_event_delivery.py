@@ -260,6 +260,68 @@ class SourceEventDeliveryPostgresTests(source_fixture.SourceVersionFixture):
             self.assertEqual(self.event_dead_letters(patient), {"status": "blocked"})
         self.assertEqual(self.snapshot(), before)
 
+    def test_bounded_drain_budget_and_cli_resume_preserve_exact_delivery_receipts(self):
+        from oi_api.event_worker import run_bounded
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            self.assertEqual(self.ingest(base, patient)[0], 201)
+            self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
+        result = run_bounded(self.settings, lambda: TOKEN, patient, CASE, max_batches=1)
+        self.assertEqual(result, {"status": "limit_reached", "batches_attempted": 1,
+                                  "delivered_batches": 1, "continued_batches": 0})
+        self.assertEqual(self.event_status(patient)["unclaimed"], 1)
+        cli = subprocess.run([sys.executable, "-m", "oi_api.event_worker", "--drain",
+                              "--patient", patient, "--case", CASE, "--max-batches", "10"],
+                             env=self.event_worker_env(), capture_output=True, text=True, timeout=30)
+        self.assertEqual(cli.returncode, 0, cli.stderr)
+        self.assertEqual(json.loads(cli.stdout), {"status": "idle", "batches_attempted": 2,
+                                                 "delivered_batches": 1, "continued_batches": 0})
+        self.assertEqual(cli.stderr, "")
+        self.assertEqual(self.event_status(patient)["delivered"], 2)
+        rows = self.rows(DELIVERIES, "event_id")
+        self.assertEqual(len(rows), 2)
+        for row in rows:
+            self.assertEqual(row["attempt_count"], 1)
+            self.assertEqual(len(self.receipts(row["delivery_id"])), 1)
+
+    def test_bounded_drain_rechecks_revocation_and_pins_identity_between_batches(self):
+        import oi_api.event_worker as worker
+        for change in ("grant", "actor"):
+            with self.subTest(change=change):
+                # A new fixture per subcase preserves each immutable delivery history.
+                with running_server(create_app(self.settings)) as base:
+                    patient = self.setup_case(base, key="CREATE-DRAIN-" + change.upper(),
+                                              source_subject="SUBJECT-DRAIN-" + change.upper())
+                    self.assertEqual(self.ingest(base, patient)[0], 201)
+                    self.assertEqual(self.ingest(base, patient, source_fixture.AMENDED)[0], 201)
+                original = worker.run_once
+                original_actor = self.creds[0]["actor"]
+                calls = []
+                def revoke_after_batch(*args, **kwargs):
+                    result = original(*args, **kwargs)
+                    calls.append(result)
+                    if len(calls) == 1:
+                        self.assertEqual(result["status"], "delivered")
+                        if change == "grant":
+                            self.creds[0]["actions"].remove("source_read")
+                        else:
+                            self.creds[0]["actor"] = "ACTOR-ROTATED"
+                        self.write()
+                    return result
+                try:
+                    with patch.object(worker, "run_once", revoke_after_batch):
+                        result = worker.run_bounded(self.settings, lambda: TOKEN, patient, CASE)
+                    self.assertEqual(result, {"status": "blocked", "batches_attempted": 2,
+                                              "delivered_batches": 1, "continued_batches": 0})
+                    scoped = [row for row in self.rows(DELIVERIES, "event_id") if row["patient_id"] == patient]
+                    self.assertEqual(len(scoped), 1)
+                    self.assertEqual(scoped[0]["state"], "delivered")
+                finally:
+                    self.creds[0]["actor"] = original_actor
+                    if "source_read" not in self.creds[0]["actions"]:
+                        self.creds[0]["actions"].append("source_read")
+                    self.write()
+
     def drain(self, patient, *, case=CASE, token=TOKEN):
         outcomes = []
         for _ in range(20):
