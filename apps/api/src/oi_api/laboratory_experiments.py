@@ -301,6 +301,64 @@ class LaboratoryExperiments:
                     "source_identity": plan["source_identity"], "clinical_validation": False,
                     "promotion_authorized": False}
 
+    def compare(self, request):
+        """Compare completed experiments only on identical validation evidence."""
+        _shape(request, ("experiments",))
+        ids = request["experiments"]
+        _require(type(ids) is list and 2 <= len(ids) <= 8
+                 and all(type(value) is str for value in ids) and len(set(ids)) == len(ids),
+                 "Comparison requires 2-8 unique experiment IDs")
+        signature, rows, inputs = None, [], []
+        for experiment_id in sorted(ids):
+            # Finished records are immutable; validate every referenced artifact.
+            self.lineage(experiment_id)
+            state = self.inspect(experiment_id)
+            _require(state["status"] == "finished", "Comparison requires finished experiments")
+            plan, receipt = state["plan"], state["record"]
+            _require(state["cancellation"] is None, "Cancelled experiments cannot enter comparison")
+            spec = plan["spec"]
+            reference = self.registry.run(spec["reference_run"])
+            cases = []
+            for case in self.registry.dataset(spec["dataset"])["cases"]:
+                if case["split"] != "validation":
+                    continue
+                review = self.registry._get("review", spec["reference_run"] + ":" + case["case_id"])
+                expected = (review["corrected_observations"] if review["decision"] == "correct"
+                            else reference["outputs"][case["case_id"]]["observations"])
+                cases.append({"case_id": case["case_id"], "source_sha256": case["source_sha256"],
+                              "source_version": case["source_version"], "decision": review["decision"],
+                              "reviewer_id": review["reviewer_id"],
+                              "independence_declared": review["independence_declared"], "expected": expected})
+            current = fingerprint({"validation": sorted(cases, key=lambda c: c["case_id"]),
+                                   "objective": plan["objective"],
+                                   "scorer_source": plan["source_identity"]["laboratory_evaluation.py"]})
+            _require(signature is None or signature == current,
+                     "Incomparable validation sources, judgments, objective or scorer")
+            signature = current
+            inputs.append({"experiment_id": experiment_id, "plan_sha256": fingerprint(plan),
+                           "receipt_sha256": fingerprint(receipt), "dataset": spec["dataset"],
+                           "training_sha256": plan["training_sha256"]})
+            for trial in receipt["trials"]:
+                validation = trial.get("validation")
+                eligible = (trial["status"] == "completed" and validation is not None
+                            and validation["field_opportunities"] > 0 and validation["unassessable_cases"] == 0)
+                rows.append({"experiment_id": experiment_id, "recipe": trial["recipe"],
+                             "run_id": trial["run_id"], "status": trial["status"], "eligible": eligible,
+                             "validation": validation, "rank": None,
+                             "cpu_seconds": trial["cpu_seconds"], "wall_seconds": trial["wall_seconds"],
+                             "peak_rss_kib": trial["peak_rss_kib"], "total_cost_usd": trial["total_cost_usd"]})
+        objective = plan["objective"]
+        scores = sorted(set(tuple(row["validation"][key] for key in objective) for row in rows if row["eligible"]))
+        for row in rows:
+            if row["eligible"]:
+                row["rank"] = scores.index(tuple(row["validation"][key] for key in objective)) + 1
+        rows.sort(key=lambda row: (row["rank"] is None, row["rank"] or 0, row["experiment_id"], row["recipe"]))
+        result = {"validation_signature": signature, "inputs": inputs, "objective": objective, "rows": rows,
+                  "ranking_basis": "dense ranks on frozen validation counts; equal scores remain tied",
+                  "resource_measurements_are_single_runs": True, "test_scored": False,
+                  "clinical_validation": False, "promotion_authorized": False}
+        return {**result, "comparison_sha256": fingerprint(result)}
+
     def execute(self, experiment_id):
         state = self.inspect(experiment_id)
         if state["status"] == "finished":
@@ -398,7 +456,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--registry", type=Path)
-    parser.add_argument("command", nargs="?", choices=("recipe", "plan", "execute", "inspect", "cancel", "lineage"))
+    parser.add_argument("command", nargs="?", choices=("recipe", "plan", "execute", "inspect", "cancel", "lineage", "compare"))
     parser.add_argument("--input", type=Path)
     parser.add_argument("--experiment")
     parser.add_argument("--reason", help="Required cancellation reason")
@@ -412,7 +470,7 @@ def main(argv=None):
             _require(args.registry is not None and args.command is not None, "Registry and command required")
             with LaboratoryEvaluationRegistry(args.registry) as registry:
                 service = LaboratoryExperiments(registry)
-                if args.command in ("recipe", "plan"):
+                if args.command in ("recipe", "plan", "compare"):
                     _require(args.input is not None, "Input required")
                     result = getattr(service, args.command)(read_json(args.input.read_bytes()))
                 else:

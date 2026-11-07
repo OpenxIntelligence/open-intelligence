@@ -234,3 +234,26 @@ Local verification: **59 focused tests passed, zero skips**. Three added tests
 cover complete graph/reopen/CLI and byte-preserving reads, planned/cancelled state,
 and missing or inconsistent artifacts. The executable practice now exports its
 lineage graph in the CI artifact alongside the actual execution receipt.
+
+## Compare completed experiments
+
+Write a JSON request such as `{"experiments":["experiment-a","experiment-b"]}`,
+then run `python -m oi_api.laboratory_experiments --registry /path/to/registry.sqlite compare --input comparison.json`.
+The read-only comparison accepts 2–8 distinct finished, uncancelled experiments.
+It verifies each lineage, then requires identical validation case identities,
+source hashes/versions, reference judgments and reviewer declarations, scoring
+code identity and frozen objective. Dataset versions and eligible training sets
+may differ. Test labels are neither read nor scored.
+
+The output retains plan/receipt/training hashes and every trial, including failed
+or unassessable candidates. Eligible candidates receive dense ranks on the frozen
+validation objective; equal scores remain tied. CPU, wall time, peak memory and
+unknown total cost stay visible but single-run measurements do not establish
+performance superiority or break quality ties. No deployment selection is made.
+The returned comparison digest identifies the exact report; the command does not
+save a new registry record or establish an independent final evaluation.
+
+**63 focused local tests passed, zero skips.** Four additional tests verify actual
+execution across differing training eligibility, stable tied ranks and CLI/reopen,
+incompatible adjudication rejection, unfinished/cancelled/duplicate rejection,
+and visible unranked failures.

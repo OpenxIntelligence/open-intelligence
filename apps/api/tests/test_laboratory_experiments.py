@@ -354,6 +354,69 @@ class LaboratoryExperimentTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.service.lineage("search")
 
+    def comparison_variant(self, reviewer="fixture-author"):
+        manifest = deepcopy(self.manifest)
+        manifest["version"] = 3
+        manifest["cases"][0]["training_eligible"] = False
+        dataset = self.registry.freeze(manifest)["dataset"]
+        self.registry.baseline("variant-reference", dataset, "a" * 40)
+        case_id = manifest["cases"][1]["case_id"]
+        review = self.registry._get("review", "reference:" + case_id)
+        review.update(run_id="variant-reference", reviewer_id=reviewer)
+        self.registry.review(review)
+        spec = self.spec("variant")
+        spec.update(dataset=dataset, reference_run="variant-reference", recipes=[self.keys[1]], max_training_examples=0)
+        self.service.plan(spec)
+        return self.service.execute("variant")
+
+    def test_compare_training_variants_preserves_ties_and_is_read_only(self):
+        self.service.plan(self.spec())
+        self.service.execute("search")
+        self.comparison_variant()
+        before = self.path.read_bytes()
+        report = self.service.compare({"experiments": ["search", "variant"]})
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual([row["rank"] for row in report["rows"]], [1, 1, 2])
+        self.assertNotEqual(report["inputs"][0]["training_sha256"], report["inputs"][1]["training_sha256"])
+        self.assertFalse(report["test_scored"])
+        self.assertFalse(report["promotion_authorized"])
+        self.assertEqual(self.service.compare({"experiments": ["variant", "search"]}), report)
+        request = Path(self.tmp.name) / "compare.json"
+        request.write_text(json.dumps({"experiments": ["search", "variant"]}))
+        cmd = [sys.executable, "-m", "oi_api.laboratory_experiments", "--registry", str(self.path),
+               "compare", "--input", str(request)]
+        result = subprocess.run(cmd, capture_output=True, check=True)
+        self.assertEqual(json.loads(result.stdout), report)
+
+    def test_compare_rejects_changed_reference_judgment(self):
+        self.service.plan(self.spec())
+        self.service.execute("search")
+        self.comparison_variant(reviewer="different-adjudicator")
+        with self.assertRaisesRegex(ValueError, "Incomparable"):
+            self.service.compare({"experiments": ["search", "variant"]})
+
+    def test_compare_rejects_unfinished_cancelled_or_duplicate_inputs(self):
+        self.service.plan(self.spec())
+        self.comparison_variant()
+        with self.assertRaisesRegex(ValueError, "finished"):
+            self.service.compare({"experiments": ["search", "variant"]})
+        self.service.cancel("search", "Stop")
+        self.service.execute("search")
+        with self.assertRaisesRegex(ValueError, "Cancelled"):
+            self.service.compare({"experiments": ["search", "variant"]})
+        for values in (["variant"], ["variant", "variant"], "variant", [None, "variant"]):
+            with self.assertRaises(ValueError):
+                self.service.compare({"experiments": values})
+
+    def test_compare_keeps_failed_candidates_visible_and_unranked(self):
+        self.service.plan(self.spec())
+        with patch("oi_api.laboratory_experiments.run_worker", side_effect=ValueError("Worker failed")):
+            self.service.execute("search")
+        self.comparison_variant()
+        report = self.service.compare({"experiments": ["search", "variant"]})
+        self.assertEqual([row["rank"] for row in report["rows"]], [1, None, None])
+        self.assertEqual([row["status"] for row in report["rows"]], ["completed", "failed", "failed"])
+
     def test_cli_executes_and_reopens_existing_plan(self):
         self.service.plan(self.spec())
         cmd = [sys.executable, "-m", "oi_api.laboratory_experiments", "--registry", str(self.path)]
