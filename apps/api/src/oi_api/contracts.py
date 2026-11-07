@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_REVISION = "0026_integrated_core"
+SCHEMA_REVISION = "0027_source_purpose"
 POSTGRES_MAJOR = 16
 
 

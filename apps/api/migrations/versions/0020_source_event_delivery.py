@@ -16,7 +16,7 @@ def upgrade():
         patient_id text NOT NULL REFERENCES identity.identity_patients(patient_id),
         case_id text NOT NULL REFERENCES coordination.patient_case_bindings(case_id),
         origin_org text NOT NULL,
-        purpose text NOT NULL CHECK(purpose='operations'),
+        purpose text NOT NULL CHECK(purpose IN ('operations','research')),
         source_id text NOT NULL REFERENCES clinical_source.source_versions(source_id),
         source_version integer NOT NULL CHECK(source_version>=1),
         contract text NOT NULL DEFAULT 'oi.h1-source-context-event/1'
@@ -48,7 +48,7 @@ def upgrade():
           JOIN identity.identity_patients p ON p.patient_id=b.patient_id AND p.origin_org=b.origin_org
           WHERE s.source_id=journal.metadata_json->>'source_id'
             AND b.case_id=journal.metadata_json->>'case_id' AND b.patient_id=journal.patient_id
-            AND s.version::text=journal.metadata_json->>'version' AND b.purpose='operations';
+            AND s.version::text=journal.metadata_json->>'version' AND b.purpose IN ('operations','research');
         IF NOT FOUND OR ROW(NEW.patient_id,NEW.case_id,NEW.origin_org,NEW.purpose,NEW.source_id,NEW.source_version,NEW.occurred_at)
            IS DISTINCT FROM ROW(bound.patient_id,bound.case_id,bound.origin_org,bound.purpose,bound.source_id,bound.version,journal.occurred_at) THEN
             RAISE EXCEPTION 'OI-SOURCE-EVENT-LINEAGE';

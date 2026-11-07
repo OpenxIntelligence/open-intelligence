@@ -121,7 +121,13 @@ class SourceReadAuthorityTests(SourceVersionFixture):
             self.creds[0]["purpose"] = "research"
             self.write()
             patient = self.setup_case(base)
-            source = self.ingest(base, patient)[1]["source_id"]
+            status, imported, _ = self.ingest(base, patient)
+            self.assertEqual(status, 201, imported)
+            source = imported["source_id"]
+            with self.engine.connect() as db:
+                self.assertEqual(db.execute(text("SELECT purpose,source_id FROM coordination.source_event_outbox")).all(),
+                                 [("research", source)])
+                self.assertEqual(db.execute(text("SELECT count(*) FROM coordination.source_event_deliveries")).scalar_one(), 0)
             self.creds[0]["purpose"] = "operations"
             self.write()
             for path in (self.url(patient), self.url(patient) + "/" + source):

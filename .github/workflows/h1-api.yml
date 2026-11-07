@@ -96,6 +96,15 @@ jobs:
           python --version
       - name: Apply the explicit migration to the disposable database
         run: python -m oi_api.migrate upgrade head
+      - name: Verify source purpose compatibility before the full suite
+        run: |
+          python - <<'PYTEST'
+          import unittest
+          suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_read_authority.py')
+          suite.addTests(unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_purpose_migrations.py'))
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          assert result.testsRun and result.wasSuccessful() and not result.skipped
+          PYTEST
       - name: Verify governed encounter relay and process-death recovery
         run: |
           python - <<'PYTEST'

@@ -163,3 +163,11 @@ Temporal, DBOS, service-delegated authentication, production database roles,
 model execution or cloud deployment is installed. Clinical and scientific
 consumers, production identity/consent, real-PHI qualification and the remainder
 of the full platform remain separate construction and release work.
+
+## Research source compatibility repair
+
+The full API run at `af9e24e2673111ae0980030f74c90ebb55b06557` ran 1,005 tests and failed one source-purpose regression. The operations-only outbox constraint rejected an otherwise authorized research source import. The combined recovery gates did not run after that failure.
+
+Revision `0027_source_purpose` accepts source envelopes for both supported binding purposes and retains exact journal/source/patient lineage checks. Research envelopes are preserved without enabling research brief execution. Delivery constraints and Composer scope remain operations-only. The `0020_source_event_delivery` bootstrap is also corrected because a later migration cannot repair an earlier backfill that aborts on existing research history. Existing installations receive the replacement guard and constraint in 0027. Downgrading to the corrected bootstrap retains this compatibility repair.
+
+Regression coverage exercises pre-outbox research history, exact retry, amendment, upgrade from the legacy operations-only constraint/function, current-purpose denial, and rejection of research delivery. PostgreSQL acceptance for this repair must run on its own published head.
