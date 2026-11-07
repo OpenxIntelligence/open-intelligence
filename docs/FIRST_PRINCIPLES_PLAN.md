@@ -14,6 +14,31 @@ Keep the full ambition: an accessible, AI-native operating environment for under
 
 This document preserves the existing architecture. The explicit founder mandate fixes the complete first-party healthcare destination and the patient-centered clinical/scientific intelligence priority. Technical proposals below remain proposals unless separately accepted. Main now contains a functioning synthetic Python/SQLite application; domain extensions in draft PRs are not merged capabilities. The bounded H1 target is Python/FastAPI/PostgreSQL and React/Vite/TypeScript, with Next.js excluded; migration and production qualification remain work to prove. Partner, jurisdiction, cohort, commercial model, deployment and distribution license are not established by this decision. See the [H1 engineering decision register](https://docs.google.com/document/d/1YrORrdNxzT6MN-WuKVdk2vWVtVXVw9OSo0z5ARvMypg/edit).
 
+### Founder clarification: Patient Oncology and one traceable history — 7 November 2026
+
+**Patient Oncology** is the unified oncology domain. The clinical entity is the
+**Patient**, with sourced species classification and applicable biological,
+clinical and representative-authority context. Share the patient registry,
+clinical records, diagnostic and treatment infrastructure, research and timeline;
+do not create separate human and veterinary product ecosystems. This preserves
+the wider platform ambition and existing domain owners.
+
+Every represented event, source, finding, calculation and interpretation needs an
+identity, provenance, temporal context and explicit status. The timeline joins
+these objects without conflating them. Distinguish the current reconstruction of
+past events from the records available in Open Intelligence at an earlier cutoff,
+and from the exact evidence a documented review actually used. Dates, missingness,
+amendments, uncertain links and current permissions remain visible. Species alone
+does not determine a clinical rule: method, specimen, age, anatomy, disease,
+intended use and the qualified rule version also matter.
+
+The [temporal history and species-context contract](engineering/PATIENT_ONCOLOGY_TEMPORAL_CONTRACT.md)
+records the governing requirements, owner mapping, illustrative acceptance cases
+and next integration work. The naming and product requirements are adopted by
+explicit founder instruction; the detailed implementation is still construction
+scope. Existing drafts and prototype timelines do not establish a complete shared
+timeline, qualified clinical intelligence or a production release.
+
 ### Founder clarification: learn workflows without using personal medical data
 
 Public descriptions of Sid Sijbrandij's journey may inform what information, expertise, tools and coordination a person needed. They do not authorize downloading, ingesting, indexing, embedding, analyzing, redistributing, training on or evaluating on his medical data. The earlier D-08/D-09 and OI-09.15 exceptions are superseded. No manual opt-in remains. All current engineering, development, testing and evaluation uses independently authored synthetic patients, never disguised or pseudonymized copies of an individual case.
@@ -152,7 +177,7 @@ The durable data model needs the following objects:
 
 | Object group | Purpose |
 |---|---|
-| Person, identity links and authority grants | Who the record concerns and who may access, contribute, review or delegate |
+| Patient, species/context, actor identities and authority grants | Who the record concerns and who may access, contribute, review or delegate; representatives remain distinct from the patient |
 | Source artifact, version and receipt | Original evidence, origin, permitted use, custody and processing state |
 | Assertion and clinical event | What is reported, when it concerns the patient, its uncertainty and its exact source |
 | Tumor, lesion, specimen, assay and asset | The biological and technical context of a measurement or finding |
