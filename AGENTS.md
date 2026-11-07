@@ -9,6 +9,8 @@ The repository contains a synthetic implementation and a planning foundation. Im
 ## Project identity and complementary research
 
 - The current project name is **Open Intelligence**. Use the former name CEVax only when identifying historical source material; preserve original archival titles and provenance.
+- **Founder direction, 7 November 2026:** **Patient Oncology** is the unified oncology product domain. **Patient** is the clinical entity; species is a sourced patient attribute that helps determine applicable clinical context. Use **Unified Patient Registry**, **Species-aware Clinical Intelligence**, and **Patient Oncology Research** in current product architecture and navigation. Do not split human and veterinary oncology into separate patient masters or products. Preserve accurate professional, regulatory, source and historical terminology where it describes actual context.
+- Apply the [Patient Oncology and temporal history contract](docs/engineering/PATIENT_ONCOLOGY_TEMPORAL_CONTRACT.md) across existing owners. Unknown species must not default to human. Shared infrastructure does not establish interchangeable reference ranges, anatomy, staging, therapies, evidence or representative authority; clinical rules require versioned applicability and qualification.
 - Research dossiers, diagrams, vendor comparisons, Notion pages and Google Drive/Docs additions are **complementary inputs**, not a new architecture or replacement baseline merely because they are published.
 - Map each useful finding to the existing case, source, evidence, investigation, review, authority or evaluation contract and its existing backlog item. Do not create a parallel canonical state, source ledger or competing roadmap.
 - Keep research findings, extension proposals, accepted decisions, implemented behavior and validation evidence distinct. An architectural change requires an explicit scoped proposal and accepted review; a research document cannot approve a vendor, dependency, product pivot or clinical function.
@@ -21,6 +23,8 @@ The repository contains a synthetic implementation and a planning foundation. Im
 - Distinguish reported observations, extraction proposals, calculations, clinical interpretations, and research hypotheses.
 - Preserve missing, negative, pending, indeterminate, and conflicting states separately.
 - Keep source versions, specimen/assay context, relevant dates, and exact source anchors.
+- The patient timeline is an authorized projection across domain-owned events and records. Distinguish the event, source version, reported finding, derivation and review; do not create a competing universal source/event ledger. Preserve occurrence/collection, issuer release, platform receipt/commit, review and amendment times, including unknown or partial dates.
+- Historical reconstruction states its availability boundary. Platform receipt is not proof of external availability or human review. A hash establishes a byte-integrity comparison, not the clinical truth, authenticity or completeness of a record. Current permissions apply to historical retrieval and derived views.
 - Receipt of an amendment changes freshness and review status. A new reviewed conclusion requires the appropriate scoped review; previous versions remain recoverable.
 - Patient explanations must preserve the uncertainty and status of the underlying information.
 

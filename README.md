@@ -107,6 +107,7 @@ an unmerged engineering candidate, with no clinical approval or deployment claim
 | Document | Purpose |
 |---|---|
 | [First-principles plan](docs/FIRST_PRINCIPLES_PLAN.md) | Product direction, workflow, architecture, evidence, evaluation, and expansion |
+| [Patient Oncology and temporal history](docs/engineering/PATIENT_ONCOLOGY_TEMPORAL_CONTRACT.md) | Unified patient/species rule, source-linked chronology, historical context and construction acceptance |
 | [Execution backlog](docs/EXECUTION_BACKLOG.csv) | Bounded work packages with dependencies and acceptance evidence |
 | [Contributor instructions](AGENTS.md) | How humans and coding agents should work in this repository |
 
