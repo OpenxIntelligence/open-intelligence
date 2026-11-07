@@ -1,7 +1,7 @@
 """H1 source/question projection contract tests for unittest discovery."""
 import unittest
 
-from open_intelligence.h1_semantic_bridge import bind_authorized_h1_question
+from open_intelligence.h1_semantic_bridge import (\n    bind_authorized_h1_question, bind_authorized_h1_question_list,\n)
 from open_intelligence.semantic_contract import (
     Concept, Relationship, SemanticContractError, SemanticRegistry,
 )
@@ -70,6 +70,42 @@ class H1SemanticBridgeTests(unittest.TestCase):
                 q, s = projections()
                 q[target] = value
                 self.assert_rejected(reason, lambda: bind(q, s))
+
+    def test_authorized_full_snapshot_binding(self):
+        q, source = projections()
+        q["source_context_state"] = "source_reassessment_required"
+        questions = dict(contract="oi.synthetic-source-questions/2",
+                         patient_id="P1", case_id="CASE-1", questions=[q])
+        sources = dict(contract="oi.synthetic-original-sources/1",
+                       patient_id="P1", case_id="CASE-1", sources=[source])
+        result = bind_authorized_h1_question_list(
+            registry=registry(), question_list=questions, source_index=sources,
+            authorized_patient_id="P1", authorized_case_id="CASE-1",
+        )
+        self.assertEqual(len(result), 1)
+        self.assertTrue(result[0].requires_reassessment)
+
+    def test_full_snapshot_rejects_duplicate_source(self):
+        q, source = projections()
+        questions = dict(contract="oi.synthetic-source-questions/2",
+                         patient_id="P1", case_id="CASE-1", questions=[q])
+        sources = dict(contract="oi.synthetic-original-sources/1",
+                       patient_id="P1", case_id="CASE-1", sources=[source, dict(source)])
+        self.assert_rejected("duplicate_or_invalid_source", lambda: bind_authorized_h1_question_list(
+            registry=registry(), question_list=questions, source_index=sources,
+            authorized_patient_id="P1", authorized_case_id="CASE-1",
+        ))
+
+    def test_full_snapshot_rejects_foreign_case(self):
+        q, source = projections()
+        questions = dict(contract="oi.synthetic-source-questions/2",
+                         patient_id="P1", case_id="CASE-1", questions=[q])
+        sources = dict(contract="oi.synthetic-original-sources/1",
+                       patient_id="P1", case_id="CASE-OTHER", sources=[source])
+        self.assert_rejected("scope_mismatch", lambda: bind_authorized_h1_question_list(
+            registry=registry(), question_list=questions, source_index=sources,
+            authorized_patient_id="P1", authorized_case_id="CASE-1",
+        ))
 
     def test_mismatched_source_projection(self):
         for target, value in (
