@@ -719,6 +719,142 @@ class ComposedHypothesisPersistenceTests(unittest.TestCase):
         self.assertIs(rows[0]["stale"], True)
         self.assertEqual(rows[0]["stale_reason"], "source_changed")
 
+    def test_amendment_before_write_lock_rejects_hypothesis(self):
+        # A second connection commits an amendment at the save boundary.
+        # The cited investigation must be checked after taking the lock.
+        self.store.close()
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "race.sqlite")
+            self.store = CaseStore(path)
+            self.source_id, self.question_id = seed_case(self.store)
+            inv_id = self.run_once()
+            composed = self.compose(inv_id)
+            peer = CaseStore(path)
+            amended = (Path(__file__).resolve().parents[1] / "examples"
+                       / "synthetic" / "alpha-pathology-amended.txt").read_bytes()
+            fired = []
+            def before_lock(sql):
+                if sql == "BEGIN IMMEDIATE" and not fired:
+                    fired.append(True)
+                    peer.import_report("CASE-ALPHA", amended)
+            self.store.db.set_trace_callback(before_lock)
+            try:
+                with self.assertRaises(InvalidInput):
+                    self.store_hypothesis(composed)
+                self.assertEqual(fired, [True])
+                self.assertTrue(self.store.get_investigation(
+                    "CASE-ALPHA", inv_id)["stale"])
+                self.assertEqual(self.store.list_composed_hypotheses("CASE-ALPHA"), [])
+            finally:
+                self.store.db.set_trace_callback(None)
+                peer.close()
+
+    def test_inconsistent_composition_envelope_is_rejected(self):
+        import copy
+        composed = self.compose(self.run_once())
+        variants = []
+        for mutation in ("empty", "citation", "text", "count"):
+            changed = copy.deepcopy(composed)
+            if mutation == "empty":
+                changed["sentences"] = []
+            elif mutation == "citation":
+                changed["sentences"][0]["claim_ids"] = ["inv999:c1"]
+            elif mutation == "text":
+                changed["text"] = "Different unsupported text."
+            else:
+                changed["char_count"] = 0
+            variants.append((mutation, changed))
+        for mutation, changed in variants:
+            with self.subTest(mutation=mutation):
+                before = self.store.db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+                with self.assertRaises(InvalidInput):
+                    self.store_hypothesis(changed)
+                self.assertEqual(self.store.list_composed_hypotheses("CASE-ALPHA"), [])
+                self.assertEqual(self.store.db.execute(
+                    "SELECT COUNT(*) FROM events").fetchone()[0], before)
+
+    def test_exact_retry_returns_original_receipt_after_reopen(self):
+        self.store.close()
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "retry.sqlite")
+            self.store = CaseStore(path)
+            self.source_id, self.question_id = seed_case(self.store)
+            composed = self.compose(self.run_once())
+            contract = self.contract()
+            original = self.store_hypothesis(composed, contract)
+            events = self.store.db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+            self.store.close()
+            self.store = CaseStore(path)
+            self.assertEqual(self.store_hypothesis(composed, contract), original)
+            self.assertEqual(len(self.store.list_composed_hypotheses("CASE-ALPHA")), 1)
+            self.assertEqual(self.store.db.execute(
+                "SELECT COUNT(*) FROM events").fetchone()[0], events)
+
+    def test_retry_after_amendment_does_not_revive_hypothesis(self):
+        composed = self.compose(self.run_once())
+        contract = self.contract()
+        original = self.store_hypothesis(composed, contract)
+        self.amend()
+        events = self.store.db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        self.assertEqual(self.store_hypothesis(composed, contract), original)
+        self.assertIsNone(self.store.get_composed_hypothesis("CASE-ALPHA"))
+        self.assertTrue(self.store.list_composed_hypotheses("CASE-ALPHA")[0]["stale"])
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM events").fetchone()[0], events)
+
+    def test_reused_write_id_with_changed_payload_is_rejected(self):
+        inv_id = self.run_once()
+        contract = self.contract()
+        self.store_hypothesis(self.compose(inv_id), contract)
+        with self.assertRaises(InvalidInput):
+            self.store_hypothesis(self.compose(inv_id, "The sources report a finding again."), contract)
+        with self.assertRaises(InvalidInput):
+            self.store_hypothesis(self.compose(inv_id), dict(contract, promptVersion="changed"))
+        self.assertEqual(len(self.store.list_composed_hypotheses("CASE-ALPHA")), 1)
+
+    def test_concurrent_exact_retries_share_one_receipt(self):
+        from concurrent.futures import ThreadPoolExecutor
+        self.store.close()
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "concurrent.sqlite")
+            self.store = CaseStore(path)
+            self.source_id, self.question_id = seed_case(self.store)
+            composed = self.compose(self.run_once())
+            contract = self.contract()
+            barrier = threading.Barrier(2)
+            def save():
+                peer = CaseStore(path)
+                try:
+                    barrier.wait(timeout=10)
+                    return peer.save_composed_hypothesis(
+                        "CASE-ALPHA", composed, write_contract=contract)
+                finally:
+                    peer.close()
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [pool.submit(save) for _ in range(2)]
+                ids = [future.result(timeout=20) for future in futures]
+            self.assertEqual(ids[0], ids[1])
+            self.assertEqual(len(self.store.list_composed_hypotheses("CASE-ALPHA")), 1)
+            self.assertEqual(self.store.db.execute(
+                "SELECT COUNT(*) FROM events WHERE kind='composed_hypothesis_stored'"
+            ).fetchone()[0], 1)
+
+    def test_audit_failure_rolls_back_and_allows_same_write_retry(self):
+        from unittest.mock import patch
+        composed = self.compose(self.run_once())
+        contract = self.contract()
+        before = self.store.db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        with patch.object(self.store, "_event", side_effect=RuntimeError("audit unavailable")):
+            with self.assertRaisesRegex(RuntimeError, "audit unavailable"):
+                self.store_hypothesis(composed, contract)
+        self.assertEqual(self.store.list_composed_hypotheses("CASE-ALPHA"), [])
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM events").fetchone()[0], before)
+        saved = self.store_hypothesis(composed, contract)
+        self.assertEqual(self.store_hypothesis(composed, contract), saved)
+        self.assertEqual(self.store.db.execute(
+            "SELECT COUNT(*) FROM events").fetchone()[0], before + 1)
+
     def test_latest_stored_hypothesis_is_current(self):
         inv_id = self.run_once()
         second_text = "The sources report a finding again."
@@ -817,6 +953,54 @@ class StoredHypothesisHttpTests(unittest.TestCase):
         self.assertEqual(data["hypothesis"]["claim_ids"], [expected])
         self.assertTrue(data["kept_claims"])
         self.assertIn(expected, [c["id"] for c in data["kept_claims"]])
+
+    def test_report_uses_one_snapshot_during_concurrent_invalidation(self):
+        from unittest.mock import patch
+
+        writer = CaseStore(self.path)
+        writer.db.execute("PRAGMA journal_mode=WAL")
+        original = CaseStore.list_investigations
+        changed = False
+
+        def invalidate_after_listing(reader, case_id):
+            nonlocal changed
+            rows = original(reader, case_id)
+            if not changed:
+                # Publish the same two freshness flags changed by an amendment,
+                # after the report has already read its investigation list.
+                import sqlite3
+                concurrent = sqlite3.connect(self.path)
+                try:
+                    with concurrent:
+                        concurrent.execute("UPDATE investigations SET stale=1 WHERE id=?",
+                                           (self.run_id,))
+                        concurrent.execute("UPDATE composed_hypotheses SET stale=1 WHERE case_id=?",
+                                           (case_id,))
+                finally:
+                    concurrent.close()
+                changed = True
+            return rows
+
+        try:
+            with patch.object(CaseStore, "list_investigations", invalidate_after_listing):
+                status, report = self.request("/api/cases/CASE-ALPHA/hypothesis-report")
+            self.assertTrue(changed)
+            self.assertEqual(status, 200)
+            self.assertEqual(report["hypothesis"]["status"], "composed")
+            self.assertTrue(report["kept_claims"])
+            self.assertEqual(report["stale_investigations_excluded"], 0)
+            self.assertEqual(report["stale_hypotheses_excluded"], 0)
+            status, next_report = self.request("/api/cases/CASE-ALPHA/hypothesis-report")
+            self.assertEqual(status, 200)
+            self.assertEqual(next_report["kept_claims"], [])
+            self.assertEqual(next_report["hypothesis"]["status"], "not_composed")
+            self.assertEqual(next_report["stale_investigations_excluded"], 1)
+            self.assertEqual(next_report["stale_hypotheses_excluded"], 1)
+        finally:
+            with writer.db:
+                writer.db.execute("UPDATE investigations SET stale=0 WHERE id=?", (self.run_id,))
+                writer.db.execute("UPDATE composed_hypotheses SET stale=0 WHERE case_id='CASE-ALPHA'")
+            writer.close()
 
     def test_hypothesis_route_returns_stored_hypothesis(self):
         status, data = self.request("/api/cases/CASE-ALPHA/hypothesis")

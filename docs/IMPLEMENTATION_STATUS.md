@@ -1959,3 +1959,81 @@ This second local iteration makes the question-driven case review the main workf
 - Limits: the browser journey itself could not run because Chrome/Chromium is unavailable. Hallmark's render tier is unavailable because `puppeteer-core` is absent. Responsive CSS stacks the workbench below 60rem, but this iteration has not had a new narrow-width visual review, physical-device test, or screen-reader test.
 
 This remains a synthetic-only workflow refinement, not the AI research copilot or a clinically validated system. It does not call the model API or change provider configuration. No deployment or real-data use is part of this change.
+
+### W2 hypothesis publication freshness repair — 6 November 2026
+
+Child of hypothesis persistence #609 at `b67e4109`. Citation validation now
+runs inside the same `BEGIN IMMEDIATE` transaction as hypothesis insertion.
+Previously an amendment could commit after validation and before insertion,
+staling the investigation but missing the not-yet-created hypothesis.
+
+A deterministic two-connection SQLite regression commits an independently
+fictional source amendment immediately before write-lock acquisition. It failed
+before repair (save incorrectly succeeded), and passes after repair (InvalidInput,
+no hypothesis row, cited investigation remains stale). The four local suites
+`test_hypothesis_generation`, `test_patient_analytics`, `test_analysis`, and
+`test_vertical_boundary` passed 149 tests with no skips. `git diff --check`
+passed. These results belong to this child, not a merged-main integration.
+
+No composition rules, assignment policy, schema, provider or clinical authority
+changed. Parent #609 remains required and unmerged; assignment enforcement is
+still explicitly deferred by that owner. Hosted acceptance and broader
+PostgreSQL/product integration remain unverified. Next: verify the exact child
+on CI and reconcile the existing W4/W8 assignment work before extending writes.
+
+### W2 hypothesis envelope consistency continuation
+
+The publication boundary also rejects empty sentence lists, mismatched
+sentence/top-level citation sets, text differing from joined sentences and
+incorrect character counts. These checks preserve the composer's existing
+representation contract; semantic composition rules remain in hypothesis.py.
+Four adversarial variants were accepted before the repair and are rejected
+afterwards, with neither hypothesis rows nor new audit events. The same four
+focused suites now pass 150 tests with zero skips; diff checks pass. Valid
+composition round trips and the amendment race regression remain covered.
+Hosted acceptance is pending for this new source; earlier CI does not certify
+it. Continue with exact-head verification before integrating the parent owner.
+
+### W2 exact-retry recovery continuation
+
+An identical normalized write contract and hypothesis envelope now recover the
+original save ID under the publication transaction, without another row or audit
+event. A reused write ID with changed case/content/contract raises InvalidInput.
+Recovery returns a historical receipt, not a freshness assertion: amendment
+staleness remains unchanged and the current-hypothesis getter still returns None.
+Three new tests reproduced uniqueness errors and failed receipt recovery before
+repair. After repair, the four focused suites passed 153 tests, zero skips,
+including file-backed close/reopen recovery and unchanged-event checks.
+Only a docstring clarification and this evidence note followed that run.
+No schema or authority expansion. Hosted checks remain pending for the new head;
+parent #609 and its deferred assignment work remain explicit dependencies.
+
+### W2 concurrent-save and audit rollback verification — 7 November 2026
+
+Two additional recovery checks pass without runtime changes: independent SQLite
+connections concurrently submitting the same contract obtain the same receipt,
+with one hypothesis and one audit event; injected audit failure rolls back the
+hypothesis and permits a later successful retry of the same write ID. The four
+focused suites passed 155 tests with no skips. This is bounded concurrency and
+failure evidence, not proof of arbitrary distributed operation. Exact-head hosted
+acceptance remains separate; the stacked PR's UI workflow runs the full reference
+suite even though the main-only ledger workflow does not trigger on its base.
+Next: finish hosted acceptance and reconcile the existing parent/integration
+owners before adding a new scientific persistence path.
+
+### W2 coherent hypothesis report reads — 7 November 2026
+
+The reference HTTP hypothesis-report route now loads investigations, composed
+hypotheses and stale exclusion counts in one explicit SQLite read transaction,
+released before sending the response. Previously concurrent invalidation could
+leave retained claims alongside a missing composition and contradictory counts.
+A live HTTP regression uses a second WAL connection to commit invalidation after
+the investigation list loads. It failed against the old route and now verifies
+both the coherent earlier snapshot and the invalidated state on the next request.
+The fixture changes the same freshness flags as amendment propagation; it does
+not replace the existing amendment-cascade tests. An initial test harness thread
+ownership error was corrected before reproducing the application assertion.
+The four focused suites pass 156 tests, no skips; git diff --check passes.
+This remains the Python/SQLite reference implementation, stacked on #609; no
+connected API, assignment policy, schema, clinical release or deployment claim.
+Hosted acceptance and parent integration remain pending.

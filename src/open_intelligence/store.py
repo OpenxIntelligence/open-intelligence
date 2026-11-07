@@ -7265,6 +7265,8 @@ class CaseStore:
         The store checks shape only; compose_hypothesis owns the
         REQ-09-10 composition rules (length, sentence citation, and the
         rest) and the store follows them, never the reverse.
+        Exact retries recover the original id without changing currentness;
+        the returned id is a save receipt, not an assertion of fresh inputs.
         """
         from .agent_writes import (
             WriteContractRejected,
@@ -7284,8 +7286,8 @@ class CaseStore:
                 or not all(isinstance(c, str) and c for c in claim_ids)):
             raise InvalidInput("Composed hypothesis claim_ids must be a non-empty list of strings")
         sentences = composed.get("sentences")
-        if not isinstance(sentences, list):
-            raise InvalidInput("Composed hypothesis sentences must be a list")
+        if not isinstance(sentences, list) or not sentences:
+            raise InvalidInput("Composed hypothesis sentences must be a non-empty list")
         for sentence in sentences:
             if not isinstance(sentence, dict):
                 raise InvalidInput("Each hypothesis sentence must be an object")
@@ -7296,6 +7298,16 @@ class CaseStore:
             if (not isinstance(s_claims, list) or not s_claims
                     or not all(isinstance(c, str) and c for c in s_claims)):
                 raise InvalidInput("Each hypothesis sentence needs a non-empty list of claim ids")
+        # Validate the redundant envelope without duplicating composition
+        # policy: sentence citations must be precisely the cited claim set,
+        # and stored text/count must describe those same sentences.
+        sentence_claims = {c for sentence in sentences for c in sentence["claim_ids"]}
+        if set(claim_ids) != sentence_claims:
+            raise InvalidInput("Hypothesis claim ids do not match sentence citations")
+        if text != " ".join(sentence["text"] for sentence in sentences):
+            raise InvalidInput("Hypothesis text does not match its sentences")
+        if type(composed.get("char_count")) is not int or composed["char_count"] != len(text):
+            raise InvalidInput("Hypothesis character count does not match its text")
         if write_contract is None:
             raise WriteContractRejected("missing_write_contract")
         contract = validate_write_contract(write_contract)
@@ -7316,29 +7328,45 @@ class CaseStore:
         # until W4's route policy v2 assigns them. The contract still
         # records the route for replay; assignment enforcement arrives
         # with W4/W8.
-        loaded: dict[int, dict | None] = {}
-        for claim_id in claim_ids:
-            match = re.fullmatch(r"inv(\d+):c(\d+)", claim_id)
-            unresolved = InvalidInput(
-                f"Cited claim {claim_id} does not resolve to a kept claim in this case")
-            if not match:
-                raise unresolved
-            inv_id, index = int(match.group(1)), int(match.group(2))
-            if inv_id not in loaded:
-                try:
-                    loaded[inv_id] = self.get_investigation(case_id, inv_id)
-                except InvalidInput:
-                    loaded[inv_id] = None
-            inv = loaded[inv_id]
-            if not isinstance(inv, dict) or inv.get("case_id", case_id) != case_id:
-                raise unresolved
-            if inv.get("stale"):
-                raise unresolved
-            claims = inv.get("claims")
-            if not isinstance(claims, list) or index < 1 or index > len(claims):
-                raise unresolved
         with self.db:
+            # Check cited inputs under the same write lock as publication.
+            # Otherwise an amendment can commit after validation and leave
+            # a newly inserted hypothesis incorrectly marked current.
             self.db.execute("BEGIN IMMEDIATE")
+            prior = self.db.execute(
+                """SELECT id,case_id,text,claim_ids_json,sentences_json,char_count,
+                contract_json FROM composed_hypotheses WHERE write_id=?""",
+                (contract["writeId"],)).fetchone()
+            if prior is not None:
+                expected = (case_id, text, json.dumps(claim_ids),
+                            json.dumps(sentences, sort_keys=True), len(text),
+                            json.dumps(contract, sort_keys=True))
+                if tuple(prior)[1:] != expected:
+                    raise InvalidInput("Hypothesis write id was already used with different content")
+                # Receipt recovery only: do not recreate, re-review or revive
+                # a historical hypothesis whose inputs have since changed.
+                return int(prior[0])
+            loaded: dict[int, dict | None] = {}
+            for claim_id in claim_ids:
+                match = re.fullmatch(r"inv(\d+):c(\d+)", claim_id)
+                unresolved = InvalidInput(
+                    f"Cited claim {claim_id} does not resolve to a kept claim in this case")
+                if not match:
+                    raise unresolved
+                inv_id, index = int(match.group(1)), int(match.group(2))
+                if inv_id not in loaded:
+                    try:
+                        loaded[inv_id] = self.get_investigation(case_id, inv_id)
+                    except InvalidInput:
+                        loaded[inv_id] = None
+                inv = loaded[inv_id]
+                if not isinstance(inv, dict) or inv.get("case_id", case_id) != case_id:
+                    raise unresolved
+                if inv.get("stale"):
+                    raise unresolved
+                claims = inv.get("claims")
+                if not isinstance(claims, list) or index < 1 or index > len(claims):
+                    raise unresolved
             cur = self.db.execute(
                 """INSERT INTO composed_hypotheses
                 (case_id,write_id,text,claim_ids_json,sentences_json,char_count,
