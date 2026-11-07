@@ -79,7 +79,8 @@ class SemanticRegistry:
     def validate_reference(self, ref: SemanticReference) -> None:
         if (ref.concept_id, ref.concept_version) not in self.concepts:
             raise SemanticContractError("unknown_concept_version")
-        if any(not isinstance(value, str) or not value.strip() or value != value.strip()\n               for value in (ref.owner, ref.record_id, ref.source_version_id)):
+        if any(not isinstance(value, str) or not value.strip() or value != value.strip()
+               for value in (ref.owner, ref.record_id, ref.source_version_id)):
             raise SemanticContractError("missing_provenance")
         if ref.knowledge_kind not in ("observed", "reported", "inferred", "calculated", "hypothesis"):
             raise SemanticContractError("invalid_knowledge_kind")
