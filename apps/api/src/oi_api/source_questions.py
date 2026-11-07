@@ -19,6 +19,7 @@ from open_intelligence.patient_registry import (
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 
 from .case_bindings import _case_id
+from .question_origin import classify_question_origin
 from .composer_preflight import PostgresSourceComposerPreflight, SHA256, SOURCE_SNAPSHOT_CONTRACT
 from .sources import PostgresSourceVersions, _source_id
 from .source_world_model import project_source_world_model
@@ -274,6 +275,13 @@ class PostgresSourceQuestions:
         results = []
         for (qid, pid, cid, question, sid, line, digest, version,
              old_fingerprint, preflight_sha, created_at, snapshot_contract) in rows:
+            try:
+                origin = classify_question_origin(question_id=qid, source_id=sid,
+                                                  source_line=line, observation_reference=None)
+            except ValueError as exc:
+                raise PatientRegistryError("Stored source-line question origin is invalid") from exc
+            if origin.kind != "source_line":
+                raise PatientRegistryError("Stored source-line question origin is inconsistent")
             current = (snapshot_contract == SOURCE_SNAPSHOT_CONTRACT
                        and anchors.get((sid, line)) == (digest, version)
                        and hmac.compare_digest(old_fingerprint, world["snapshot_fingerprint"]))
