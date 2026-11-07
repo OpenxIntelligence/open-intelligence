@@ -24,11 +24,12 @@ const item=(overrides={})=>({question_id:questionId,patient_id:patientId,case_id
  preflight_sha256:'b'.repeat(64),created_at:'2026-11-03T10:00:00Z',kind:'source-question',
  queue_fingerprint:fingerprint,queue_fingerprint_contract:currentFingerprint,
  source_context_state:'current_unreviewed_question',review_state:'awaiting_independent_verification',
- current_return_receipt_id:null,return_count:0,prior_return_count:0,clinical_approval:false,
+ current_return_receipt_id:null,return_count:0,prior_return_count:0,manual_reassessment_required:false,clinical_approval:false,
  reviewer_identity_verified:false,...overrides});
 const receipt=(overrides={})=>({receipt_id:receiptId,question_id:questionId,queue_fingerprint:fingerprint,
  queue_fingerprint_contract:currentFingerprint,source_snapshot_contract:canonical,source_snapshot_sha256:'a'.repeat(64),
  actor_label:'ACTOR-FICTIONAL',action:'returned',reason,created_at:'2026-11-03T10:05:00Z',
+ manual_dependency_revision_id:null,manual_context_state:null,
  reviewer_identity_verified:false,external_notification_sent:false,clinical_approval:false,...overrides});
 const queue=(items=[item()],receipts=[],overrides={})=>({contract:'oi.synthetic-question-review-return-queue/2',
  access_receipt_id:'ACCESS-'+'D'.repeat(32),patient_id:patientId,case_id:caseId,synthetic:true,items,receipts,
@@ -157,6 +158,34 @@ test('old queue packets, missing provenance, malformed receipts and fabricated a
  for(const packet of bad){const s=session(async()=>response(packet));await opened(s);
   assert.equal(s.snapshot().reviewQueue,null);assert.equal(s.snapshot().reviewPhase,'error');}
 });
+test('manual-dependent Review history stales selectively without exposing quotations',async()=>{
+ const revision='PASSAGES-'+'E'.repeat(32),second='REVIEW-'+'F'.repeat(32);
+ const stale=receipt({manual_dependency_revision_id:revision,manual_context_state:'reassessment_required'});
+ const pending=item({review_state:'manual_reassessment_required',
+   manual_reassessment_required:true,prior_return_count:1});
+ const first=decodeReviewQueue(queue([pending],[stale]),patientId,caseId);
+ assert.equal(first.items[0].review_state,'manual_reassessment_required');
+ assert.equal(first.receipts[0].manual_dependency_revision_id,revision);
+ assert.doesNotMatch(JSON.stringify(first),/Marker pending/);
+ const sourceOnly=receipt({receipt_id:second});
+ const current=item({review_state:'returned_for_independent_verification',
+   manual_reassessment_required:true,prior_return_count:1,return_count:1,
+   current_return_receipt_id:second});
+ const actual=decodeReviewQueue(queue([current],[stale,sourceOnly]),patientId,caseId);
+ assert.equal(actual.items[0].return_count,1);
+ assert.equal(actual.items[0].prior_return_count,1);
+ assert.equal(actual.receipts[1].manual_context_state,null);
+ for(const forged of [
+   queue([pending],[receipt({manual_dependency_revision_id:revision,manual_context_state:null})]),
+   queue([item({...pending,manual_reassessment_required:false})],[stale]),
+   queue([item({...pending,review_state:'awaiting_independent_verification'})],[stale]),
+   queue([item({...pending,return_count:1,prior_return_count:0,
+     current_return_receipt_id:receiptId,review_state:'returned_for_independent_verification'})],[stale]),
+   queue([pending],[receipt({...stale,manual_dependency_revision_id:'PASSAGES-INVALID'})]),
+   queue([pending],[receipt({...stale,quote:'Marker pending.'})]),
+ ])assert.throws(()=>decodeReviewQueue(forged,patientId,caseId));
+});
+
 test('legacy questions remain reassessment even if their hash equals current canonical content',async()=>{
  const s=session(async()=>response(queue([historyItem({source_snapshot_contract:legacy})])));
  await opened(s);assert.equal(s.snapshot().reviewQueue.items[0].review_state,'source_reassessment_required');

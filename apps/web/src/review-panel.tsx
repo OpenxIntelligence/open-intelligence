@@ -100,21 +100,29 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,draf
       const draft=captured&&(returning||uncertain)?captured.reason:
        drafts.values[item.question_id]??captured?.reason??FICTIONAL_RETURN_REASON;
       const historical=item.source_context_state==='source_reassessment_required';
+      const manualNeeds=item.manual_reassessment_required;
       return <li key={item.question_id} data-testid="review-queue-item" data-question-id={item.question_id}
        data-source-id={item.source_id} data-state={item.review_state} className="review-item">
        <div className="question-status-title">
         <h4>{item.question}</h4>
-        <span className={'question-status '+(historical?'reassessment':'')}>
-         {historical?'Reassessment required':item.review_state==='returned_for_independent_verification'?
+        <span className={'question-status '+(historical||manualNeeds?'reassessment':'')}>
+         {historical?'Source reassessment required':item.review_state==='manual_reassessment_required'?
+          'Manual passage reassessment required':item.review_state==='returned_for_independent_verification'?
           'Returned for verification · unreviewed':'Current source · unreviewed'}</span>
        </div>
        <p><strong>Original anchor:</strong> version {item.source_version}, line {item.source_line}.</p>
        <p>{historical?(item.source_snapshot_contract==='oi.pg-source-world-model/1'?
          'Source context changed. The original question and earlier returns remain historical.':
          'This question uses an earlier source contract and needs a new canonical source context.'):
+         item.review_state==='manual_reassessment_required'?
+         'A previous return depended on an amended or unavailable manual passage. Verify that exact passage again before recording a new manually dependent return.':
          item.review_state==='returned_for_independent_verification'?
-         'A verification return was recorded for this exact context. No reviewer decision is recorded.':
+         'A verification return was recorded for the current source context. No reviewer decision is recorded.':
          'A separate permission is required to record a verification return.'}</p>
+       {manualNeeds&&<p className="status reassessment" data-testid="review-manual-reassessment">
+        At least one earlier return selected a manual passage that now needs reassessment.
+        Independent source-only returns remain separate. The original quotation is not exposed in this status.
+       </p>}
        <p><strong>Earlier return receipts:</strong> {item.prior_return_count}{' '}·{' '}
         <strong>Returns matching this context:</strong> {item.return_count}</p>
        <details><summary>Question and original provenance</summary>
@@ -144,6 +152,11 @@ export function ReviewPanel({state,session,busy,onOverview,onInvestigations,draf
       <p><strong>Reason:</strong> {receipt.reason}</p>
       <p><time dateTime={receipt.created_at}>{receipt.created_at}</time> · {receipt.source_snapshot_contract==='oi.pg-source-world-model/1'?
        'Canonical source context at recording':'Earlier source context; retained as history'}</p>
+      {receipt.manual_dependency_revision_id&&<p data-testid="review-manual-origin-status">
+       <strong>Selected manual passage set:</strong> <code>{receipt.manual_dependency_revision_id}</code>
+       {' · '}{receipt.manual_context_state==='reassessment_required'?
+        'Reassessment required after a correction or lost source context':'Current selection, not clinically reviewed'}.
+      </p>}
       <details><summary>Immutable receipt and provenance</summary>
        <p><code>{receipt.receipt_id}</code> · question <code>{receipt.question_id}</code></p>
        <p>Source context <code>{receipt.source_snapshot_contract}</code> · <code>{receipt.source_snapshot_sha256}</code></p>

@@ -652,7 +652,7 @@ test('merged question and task workflows preserve both exact unknown writes thro
   clinical_approval:false,review_completion_supported:false,items:[{...savedQuestion,kind:'source-question',
    queue_fingerprint:'d'.repeat(64),queue_fingerprint_contract:'oi.synthetic-source-review-return/2',
    review_state:'awaiting_independent_verification',current_return_receipt_id:null,return_count:0,prior_return_count:0,
-   reviewer_identity_verified:false}]};
+   manual_reassessment_required:false,reviewer_identity_verified:false}]};
  const s=new RegistrySession(async(url,init)=>{
   if(url.endsWith('/case-bindings'))return unavailable?response({},503):response(cases());
   if(url==='/v1/patients/'+pid)return response(patient());

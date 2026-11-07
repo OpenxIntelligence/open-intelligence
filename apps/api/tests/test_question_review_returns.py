@@ -5,6 +5,7 @@ canonical source_questions; the single new durable owner stores immutable
 returned-only receipts, never clinical approval or professional signature.
 """
 from concurrent.futures import ThreadPoolExecutor
+import base64
 import asyncio
 import copy
 from datetime import datetime, timedelta, timezone
@@ -22,12 +23,14 @@ from oi_api.config import Settings
 from oi_api.contracts import SCHEMA_REVISION
 from oi_api.migrate import migrate
 from oi_api.request_limits import PatientRequestLimit
+from oi_api.reviewed_documents import fingerprint as provenance_fingerprint
 from oi_api import patients as patient_routes
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 from test_patients import TOKEN_A, TOKEN_B, request
 from test_source_questions import QUESTION
 import test_source_questions as question_fixtures
 from test_source_versions import AMENDED, SourceVersionFixture
+from test_reviewed_documents import RAW as FICTIONAL_DOCUMENT_RAW
 
 REASON = "Please independently verify this fictional source quotation and uncertainty."
 SOURCE_CONTRACT = "oi.pg-source-world-model/1"
@@ -133,6 +136,142 @@ class QuestionReviewReturnHTTPTests(SourceVersionFixture):
         save=self.save(base,patient,preflight,request_key=key)
         self.assertEqual(save[0],201,save)
         return save[1]["question_id"],source
+
+    def test_explicit_manual_review_dependency_reassesses_without_staling_source_only(self):
+        if "source_original_read" not in self.creds[0]["actions"]:
+            self.creds[0]["actions"].append("source_original_read")
+        self.write()
+        with running_server(create_app(self.settings)) as base:
+            patient = self.setup_case(base)
+            question, _ = self.prepared_question(base, patient)
+            prefix = f"/v1/patients/{patient}/cases/CASE-ALPHA"
+            docs = prefix + "/documents"
+            payload = dict(synthetic=True, filename="fictional-review.txt",
+                           original_base64=base64.b64encode(FICTIONAL_DOCUMENT_RAW).decode())
+            status, preview, _ = request(base, docs + "/preview", token=TOKEN_A, body=payload)
+            self.assertEqual(status, 200, preview)
+            payload.update(confirmed_case_id="CASE-ALPHA",
+                expected_sha256=preview["sha256"],
+                metadata=dict(document_id="DOC-REVIEW-DEPENDENCY", kind="pathology",
+                              event_date="2026-01-10", issued_at="2026-01-11",
+                              manual_transcription_confirmed=True),
+                findings=[dict(key="marker", state="pending", quote="Marker pending.", line=2)])
+            status, saved, _ = request(base, docs, token=TOKEN_A, body=payload)
+            self.assertEqual(status, 201, saved)
+            selection_path = (docs + "/" + saved["source_id"] + "/selections/"
+                              + saved["annotation_revision_id"] + "/marker")
+            status, selection, _ = request(base, selection_path, token=TOKEN_A)
+            self.assertEqual(status, 200, selection)
+            ref = dict(source_id=saved["source_id"],
+                annotation_revision_id=saved["annotation_revision_id"],
+                selection_key="marker", anchor_sha256=selection["anchor_sha256"])
+            passage_path = prefix + "/questions/" + question + "/manual-passages"
+            status, before, _ = request(base, passage_path, token=TOKEN_A)
+            self.assertEqual(status, 200, before)
+            status, passage, _ = request(base, passage_path, token=TOKEN_A, body=dict(
+                synthetic=True, request_key="REVIEW-SELECT-PASSAGES",
+                expected_context_sha256=before["context_sha256"], references=[ref]))
+            self.assertEqual(status, 201, passage)
+            manual = dict(patient_id=patient, case_id="CASE-ALPHA",
+                question_id=question, revision_id=passage["revision_id"],
+                references_sha256=provenance_fingerprint([ref]))
+            fp = self.inbox(base, patient)[1]["items"][0]["queue_fingerprint"]
+            for changed, status_expected in (
+                ({"patient_id": "PAT-FOREIGN"}, 404),
+                ({"case_id": "CASE-BETA"}, 404),
+                ({"question_id": "QUESTION-" + "F"*32}, 404),
+                ({"references_sha256": "0"*64}, 422),
+            ):
+                with self.subTest(forged=changed):
+                    status, withheld, _ = self.returning(base, patient, question, fp,
+                        request_key="REVIEW-BAD-" + next(iter(changed)).upper(),
+                        manual_dependency=manual | changed)
+                    self.assertEqual(status, status_expected, withheld)
+            with self.engine.connect() as db:
+                self.assertEqual(db.execute(text(
+                    "SELECT count(*) FROM investigation.question_review_receipts"
+                )).scalar_one(), 0)
+                self.assertEqual(db.execute(text(
+                    "SELECT count(*) FROM investigation.question_review_manual_dependencies"
+                )).scalar_one(), 0)
+            status, receipt, _ = self.returning(base, patient, question, fp,
+                request_key="REVIEW-EXPLICIT-MANUAL", manual_dependency=manual)
+            self.assertEqual(status, 201, receipt)
+            status, duplicate, _ = self.returning(base, patient, question, fp,
+                request_key="REVIEW-EXPLICIT-MANUAL", manual_dependency=manual)
+            self.assertEqual((status, duplicate), (200, receipt | {"duplicate": True}))
+            self.assertEqual(self.returning(base, patient, question, fp,
+                request_key="REVIEW-EXPLICIT-MANUAL")[0], 409)
+            self.assertEqual(self.returning(base, patient, question, fp,
+                request_key="REVIEW-EXPLICIT-MANUAL",
+                manual_dependency=manual | {"references_sha256": "0"*64})[0], 409)
+            current = self.inbox(base, patient)[1]
+            self.assertEqual(current["items"][0]["review_state"],
+                             "returned_for_independent_verification")
+            self.assertFalse(current["items"][0]["manual_reassessment_required"])
+            self.assertEqual(current["receipts"][0]["manual_context_state"], "current_unreviewed")
+            self.assertEqual(current["receipts"][0]["manual_dependency_revision_id"],
+                             passage["revision_id"])
+            self.assertNotIn("Marker pending.", json.dumps(current))
+            with self.engine.connect() as db:
+                self.assertEqual(db.execute(text(
+                    "SELECT count(*) FROM investigation.question_review_manual_dependencies"
+                )).scalar_one(), 1)
+            correction = dict(synthetic=True, request_key="REVIEW-ANNOTATION-CORRECTION",
+                confirmed_case_id="CASE-ALPHA",
+                expected_revision_id=saved["annotation_revision_id"],
+                expected_sha256=preview["sha256"],
+                reason="Correct independently fictional annotation evidence.",
+                findings=[dict(key="marker", state="indeterminate",
+                               quote="pending.", line=2)])
+            status, amended, _ = request(base, docs + "/" + saved["source_id"]
+                + "/annotations", token=TOKEN_A, body=correction)
+            self.assertEqual(status, 201, amended)
+            after = self.inbox(base, patient)[1]
+            item = after["items"][0]
+            self.assertEqual(item["source_context_state"], "current_unreviewed_question")
+            self.assertEqual(item["review_state"], "manual_reassessment_required")
+            self.assertTrue(item["manual_reassessment_required"])
+            self.assertEqual((item["return_count"], item["prior_return_count"]), (0, 1))
+            self.assertIsNone(item["current_return_receipt_id"])
+            self.assertEqual(after["receipts"][0]["manual_context_state"], "reassessment_required")
+            self.assertEqual(after["receipts"][0]["receipt_id"], receipt["receipt_id"])
+            self.assertNotIn("Marker pending.", json.dumps(after))
+            self.assertEqual(self.returning(base, patient, question, fp,
+                request_key="REVIEW-EXPLICIT-MANUAL", manual_dependency=manual)[0], 200)
+            self.assertEqual(self.returning(base, patient, question, fp,
+                request_key="REVIEW-MANUAL-STALE", manual_dependency=manual)[0], 409)
+            # Source-only independent return is not falsely invalidated.
+            self.assertEqual(self.returning(base, patient, question, fp,
+                request_key="REVIEW-SOURCE-ONLY")[0], 201)
+            with_source = self.inbox(base, patient)[1]
+            self.assertEqual(with_source["items"][0]["review_state"],
+                             "returned_for_independent_verification")
+            self.assertEqual((with_source["items"][0]["return_count"],
+                              with_source["items"][0]["prior_return_count"]), (1, 1))
+            self.assertTrue(with_source["items"][0]["manual_reassessment_required"])
+            self.assertIsNone(with_source["receipts"][-1]["manual_context_state"])
+            # Losing permission to original bytes cannot authorize new manual
+            # bindings, but quote-free already permitted Review metadata remains.
+            self.creds[0]["actions"].remove("source_original_read")
+            self.write()
+            self.assertEqual(self.inbox(base, patient)[0], 200)
+            self.assertEqual(self.returning(base, patient, question, fp,
+                request_key="REVIEW-WITHOUT-ORIGINAL", manual_dependency=manual)[0], 404)
+        for statement in (
+            "UPDATE investigation.question_review_manual_dependencies "
+            "SET references_sha256='" + "f"*64 + "'",
+            "DELETE FROM investigation.question_review_manual_dependencies",
+        ):
+            with self.subTest(statement=statement), self.assertRaises(SQLAlchemyError):
+                with self.engine.begin() as db:
+                    db.execute(text(statement))
+        with self.assertRaises(CommandError):
+            migrate(self.admin, "downgrade", "0018_laboratory_questions")
+        with self.engine.connect() as db:
+            self.assertEqual(db.execute(text(
+                "SELECT version_num FROM public.alembic_version"
+            )).scalar_one(), SCHEMA_REVISION)
 
     def test_return_is_nonterminal_atomic_idempotent_and_derived_from_question(self):
         with running_server(create_app(self.settings)) as base:
