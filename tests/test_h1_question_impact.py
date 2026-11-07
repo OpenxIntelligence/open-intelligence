@@ -51,12 +51,19 @@ class H1QuestionImpactTests(unittest.TestCase):
     def test_conflicting_question_version_rejected(self):
         first = bound("SRC-OLD", 1, "QUESTION-A")
         second = bound("SRC-OLD", 2, "QUESTION-A")
-        # Two historical versions of one question are distinct nodes; the
-        # owner must decide which immutable versions are actionable.
-        self.assertEqual(plan_h1_question_reassessment(
-            (first, second), case_id="CASE-1",
-            amended_source_version_id=first.source.source_version_id,
-        ), ("QUESTION-A",))
+        with self.assertRaisesRegex(ImpactContractError, "duplicate_or_ambiguous_question"):
+            plan_h1_question_reassessment(
+                (first, second), case_id="CASE-1",
+                amended_source_version_id=first.source.source_version_id,
+            )
+
+    def test_duplicate_question_snapshot_rejected(self):
+        first = bound("SRC-OLD", 1, "QUESTION-A")
+        with self.assertRaisesRegex(ImpactContractError, "duplicate_or_ambiguous_question"):
+            plan_h1_question_reassessment(
+                (first, first), case_id="CASE-1",
+                amended_source_version_id=first.source.source_version_id,
+            )
 
 
 if __name__ == "__main__":
