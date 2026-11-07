@@ -347,12 +347,35 @@ def exercise(cd, patient_id, token, credentials, write_grants, directory, artifa
         assert current_source != source_id
         assert operator(case_path + '/sources/' + source_id + '/images/' + image_id)[0] == 404
         assert operator(case_path + '/sources/' + current_source + '/images/' + image_id)[0] == 404
-        records(current_source);inspect_images(current_source, expected_count=0)
+        records(current_source, section='Imaging')
         for selected_source, expected_state in ((source_id, 'superseded'), (current_source, 'current')):
             selected = cd.evaluate('(()=>{const row=' + source_row(selected_source)
                 + ";return row?{source_id:row.querySelector('[data-testid=source-verify] code')?.textContent,"
                   "state:row.querySelector('.record-state')?.textContent}:null;})()")
             assert selected == {'source_id': selected_source, 'state': expected_state}
+        # A report amendment appears in the same authorized Imaging chronology.
+        # Selecting an old exact source changes only the existing view filter;
+        # historical pixels and fresh image rights remain separately governed.
+        chronology = cd.evaluate("Array.from(document.querySelectorAll('[data-testid=imaging-chronology-version]')).map(e=>({source_id:e.dataset.sourceId,state:e.textContent.includes('superseded')?'superseded':'current'}))")
+        assert len(chronology) == 2 and {item['source_id'] for item in chronology} == {source_id, current_source}
+        assert {item['state'] for item in chronology} == {'superseded', 'current'}
+        before_navigation = len(observed())
+        old_button = f'[data-testid=imaging-chronology-version][data-source-id="{source_id}"] [data-testid=imaging-select-version]'
+        click(cd, old_button)
+        cd.wait('document.querySelectorAll("[data-testid=source-version]").length===1 && Boolean(' + source_row(source_id) + ')',
+                'selecting an earlier report shows only its exact historical source')
+        assert cd.evaluate("document.activeElement?.closest('[data-testid=source-version]')?.dataset.sourceId") == source_id
+        assert not cd.evaluate('Boolean(' + source_row(source_id) + ".querySelector('[data-testid=source-images-open]'))")
+        current_button = f'[data-testid=imaging-chronology-version][data-source-id="{current_source}"] [data-testid=imaging-select-version]'
+        click(cd, current_button)
+        cd.wait('document.querySelectorAll("[data-testid=source-version]").length===1 && Boolean(' + source_row(current_source) + ')',
+                'returning to current report reuses the current authorized source')
+        assert len(observed()) == before_navigation, 'chronology navigation must not read images or download pixels'
+        # Restore both version rows to exercise inherited historical metadata tests.
+        click(cd, '[data-testid=clear-source-filters]')
+        cd.wait('document.querySelectorAll("[data-testid=source-version]").length===2',
+                'clearing chronology selection restores both recorded versions')
+        inspect_images(current_source, expected_count=0)
         assert cd.evaluate('!(' + source_row(source_id) + ").querySelector('[data-testid=source-images-open]')")
         row = question_workspace(question_id)
         cd.wait('document.querySelector(' + json.dumps(row) + ")?.textContent.includes('Source changed — reassessment required')", 'old imaging question requires reassessment')

@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import type {SourceIndex} from './source-contracts';
 import type {SourceImagesState} from './source-images';
 import {groupSourceImages} from './image-study-groups';
+import {ImagingReportChronology} from './imaging-report-chronology-panel';
 
 export type ReadingView = 'patient' | 'clinical';
 export type SourceFilters = {query: string; versionState: string};
@@ -52,6 +53,8 @@ export function SourceReading({index, kind, view, filters, onFiltersChange, busy
   onDismissImages?: () => void;
 }&Partial<SourceImagesState>) {
   const input = useRef<HTMLInputElement>(null);
+  const readingRoot = useRef<HTMLDivElement>(null);
+  const selectedFromChronology = useRef<string|null>(null);
   const previewOpener = useRef<HTMLButtonElement>(null);
   const imageOpeners = useRef(new Map<string,HTMLButtonElement>());
   const search = filters.query.trim().toLowerCase();
@@ -65,9 +68,24 @@ export function SourceReading({index, kind, view, filters, onFiltersChange, busy
     onFiltersChange(emptySourceFilters);
     input.current?.focus();
   }
-  if (kind && reports.length === 0) return <p role="status" data-testid="diagnostic-reports-empty">No structured {kind} reports were returned for this case.</p>;
+  useEffect(()=>{
+    const selected=selectedFromChronology.current;
+    if(!selected)return;
+    selectedFromChronology.current=null;
+    if(filters.query!==selected)return;
+    const row=Array.from(readingRoot.current?.querySelectorAll<HTMLElement>('[data-testid="source-version"]')??[])
+      .find(element=>element.dataset.sourceId===selected);
+    row?.querySelector<HTMLElement>('h4')?.focus();
+  },[filters.query,index]);
+  if (kind && reports.length === 0) return <>
+    {kind==='imaging'&&<ImagingReportChronology sources={index.sources} selectedSourceId={null} onSelect={()=>{}}/>}
+    <p role="status" data-testid="diagnostic-reports-empty">No structured {kind} reports were returned for this case.</p>
+  </>;
   if (index.sources.length === 0) return <p>No structured report sources for this case. Text and PDF originals are available in their section above.</p>;
-  return <div className={'source-reading ' + view}>
+  return <div ref={readingRoot} className={'source-reading ' + view}>
+    {kind==='imaging'&&<ImagingReportChronology sources={index.sources}
+      selectedSourceId={reports.some(source=>source.source_id===filters.query)?filters.query:null}
+      onSelect={sourceId=>{selectedFromChronology.current=sourceId;onFiltersChange({query:sourceId,versionState:'all'});}}/>}
     <div className="source-filters" role="search" aria-label="Filter loaded source versions">
       <div><label htmlFor="source-filter">Filter loaded sources</label><input id="source-filter" ref={input} type="search"
         value={filters.query} onChange={e => onFiltersChange({...filters, query: e.target.value})}
@@ -84,8 +102,8 @@ export function SourceReading({index, kind, view, filters, onFiltersChange, busy
     {sources.length === 0 ? <div className="source-empty" data-testid="source-no-match"><h4>No sources match these filters</h4><p>The loaded records have not changed. Clear the filters to see all versions.</p></div> :
       <ol className="source-list">{sources.map(item => {
         const findings = index.source_reported_assertions.filter(f => f.source_id === item.source_id);
-        return <li key={item.source_id} data-testid="source-version" className={'source-row ' + item.state}>
-          <div className="source-heading"><h4>{item.document_id} · v{item.version}</h4><span className="record-state">{item.state}</span></div>
+        return <li key={item.source_id} data-testid="source-version" data-source-id={item.source_id} className={'source-row ' + item.state}>
+          <div className="source-heading"><h4 tabIndex={-1}>{item.document_id} · v{item.version}</h4><span className="record-state">{item.state}</span></div>
           <dl className="source-metadata source-dates">
             <div><dt>Type</dt><dd>{item.kind}</dd></div><div><dt>Event date</dt><dd><time dateTime={item.event_date}>{item.event_date}</time></dd></div>
             <div><dt>Issued</dt><dd><time dateTime={item.issued_at}>{item.issued_at}</time></dd></div><div><dt>Specimen</dt><dd>{item.specimen_id ?? 'Not recorded'}</dd></div>
