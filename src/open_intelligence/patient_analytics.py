@@ -24,7 +24,9 @@ missing element is flagged as missing, never filled in.
   of the run: |percent| >= 1% rises or falls, |percent| < 1% is
   stable. The 1% band is a pinned display convention, recorded here:
   it exists only so floating-point dust does not read as a trend; it
-  is not a clinical threshold and no improvement/worsening claim is
+  is not a clinical threshold. Direction follows numeric value change,
+  including negative baselines; percent retains the signed-baseline
+  arithmetic convention. No improvement/worsening claim is
   ever attached. A zero first value leaves the percent undefined
   (``undefined_zero_baseline``) and the direction follows the sign of
   the last value. Fewer than two same-unit parseable points is
@@ -156,6 +158,12 @@ def _one_trend(finding_key, points):
     runs, excluded = _trend_runs(points)
     usable = [run for run in runs if len(run) >= 2]
     if not usable:
+        # Every point must remain inspectable even when no run can be used.
+        for run in runs:
+            excluded.extend({"occurred": p.get("occurred"),
+                             "reason": "insufficient_points",
+                             "quote": p.get("quote")} for p in run)
+        excluded.sort(key=lambda e: (e["occurred"] or "", e["reason"]))
         return {
             "finding_key": finding_key,
             "trend": "not_computable",
@@ -189,7 +197,7 @@ def _one_trend(finding_key, points):
         percent_status = "computed"
         if abs(percent) < STABLE_BAND_PERCENT:
             trend = "stable"
-        elif percent > 0:
+        elif last["value"] > first["value"]:
             trend = "rising"
         else:
             trend = "falling"

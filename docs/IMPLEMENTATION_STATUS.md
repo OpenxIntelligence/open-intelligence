@@ -818,6 +818,29 @@ pending). The ledger holds no administered-therapy table — T4's
 regimen keys are a caller declaration. ClinVar linkage is key-prefix
 matching on synthetic ledger evidence, not a catalog lookup.
 
+### D4 numerical direction and exclusion repair — 6 November 2026
+
+Continuation from accepted main `f8ff4f4` under OI-009/OI-010 and D4.
+The shared read-only analytics code now derives direction from the numeric
+first-to-last change even for a negative baseline. The existing signed-baseline
+percent formula and 1% display band are preserved. If no same-unit run has two
+points, every unused parseable point is returned with `insufficient_points`,
+its date and quote; unparseable/ambiguous reasons remain intact.
+
+Two regression methods reproduced three assertion failures before repair.
+After repair, `test_patient_analytics` + `test_hypothesis_generation`: 87 passed;
+`test_analysis` + `test_vertical_boundary`: 48 passed, no skips. Existing
+synthetic HTTP authorization checks are included. An initial invocation used
+nonexistent module `test_lab_series` and failed discovery; the actual T2 tests
+are in `test_analysis`, run successfully above. `git diff --check` passed.
+
+Scope: existing Python reference analytics and its callers, not a new
+FastAPI/PostgreSQL scientific engine or clinical validation. No dependency,
+source ledger, clinical threshold, migration or production change. Hosted
+acceptance and review remain pending. Next: reconcile the hypothesis persistence
+owner (#609) and connected product owners (#602/#608) before adding research-run
+persistence or a competing API; retain the engine contracts in OI-25 §§32–34.
+
 ## Analysis dimension: patient analytics (Slice D4) — 6 November 2026
 
 Branch `program/d4-analysis`, from main `58353304` (post-D3; main

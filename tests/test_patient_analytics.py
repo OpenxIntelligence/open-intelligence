@@ -177,6 +177,33 @@ class LabTrendTests(AnalyticsTestBase):
         self.assertIsNone(trend["percent_change"])
         self.assertEqual(trend["percent_status"], "undefined_zero_baseline")
 
+    def test_negative_baseline_direction_tracks_value_change(self):
+        for first, last, expected in [(-10, -5, "rising"),
+                                      (-5, -10, "falling"),
+                                      (-10, -9.95, "stable")]:
+            with self.subTest(first=first, last=last):
+                points = [{"parse_status": "parseable", "value": value,
+                           "unit": "synthetic-unit", "occurred": date,
+                           "quote": f"Fictional signed measurement {value}"}
+                          for value, date in [(first, "2026-05-01"),
+                                              (last, "2026-05-02")]]
+                result = lab_trends({"case_id": "CASE-ALPHA", "series": {
+                    "signed": {"points": points}}})["trends"]["signed"]
+                self.assertEqual(result["trend"], expected)
+
+    def test_insufficient_runs_account_for_every_point(self):
+        self._lab("LAB-A", "2026-05-03", "Hemoglobin was 10 g/dL.")
+        self._lab("LAB-B", "2026-05-10", "Hemoglobin was 110 g/L.")
+        self._lab("LAB-C", "2026-05-17", "Hemoglobin not measured.")
+        trend = lab_trends(self._lab_series())["trends"]["hemoglobin"]
+        self.assertEqual(trend["trend"], "not_computable")
+        self.assertEqual(trend["points_used"], 0)
+        self.assertEqual(len(trend["excluded_points"]), trend["points_total"])
+        self.assertEqual([p["reason"] for p in trend["excluded_points"]],
+                         ["insufficient_points", "insufficient_points", "unparseable"])
+        self.assertEqual(trend["excluded_points"][0]["quote"],
+                         "Hemoglobin was 10 g/dL.")
+
     def test_malformed_series_is_rejected(self):
         with self.assertRaises(InvalidInput):
             lab_trends({"case_id": "CASE-ALPHA"})
