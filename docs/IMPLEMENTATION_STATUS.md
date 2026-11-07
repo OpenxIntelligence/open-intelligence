@@ -1581,6 +1581,67 @@ verdicts prove wiring only; per-case vertical selection via a
 case-vertical field; per-vertical evidence-catalog resolution;
 the C5 evaluation harness has no cardiology probes yet.
 
+## K7/K2 keep-rate fix (post-program fix slice) — 6 November 2026
+
+Follow-up to the Haiku interim live proof of the Skeptic (6
+November 2026), which showed a live investigation keeping only 1
+in 5–6 claims for diagnosable design reasons: K7 dropped claims
+whose prose carried "Source version N" numbers, and K2 dropped
+cross-source disagreement claims that asserted no single value.
+Two changes, decided from first principles:
+
+* K7 (a) PROMPT CHANGE, not a checker carve-out. `build_prompt`
+  in `investigation.py` now instructs the model to attribute each
+  claim to its sources through the citations array only and never
+  to write source version numbers in the claim text itself. K7's
+  strictness is the safety property; the prompt is what produces
+  the artifact. The same sentence was added to
+  `build_repair_prompt` in `skeptic.py`: the repair round also
+  produces claim text, and without it a repaired claim could
+  reintroduce "Source version N" and be dropped again.
+* K2 (b) NARROW CARVE-OUT in `kchecks.py`. `_check_k2` skips the
+  slot-equality check for a claim whose support is
+  `"contradicts"` and whose cited facets genuinely disagree (two
+  or more distinct normalised values, via the new
+  `_facets_disagree` helper, using the same normalisation as the
+  K2 loop). Such a claim is a disagreement report, not a value
+  assertion; its home is T6 grouping, not K2. A claim that
+  asserts a single value still goes through K2, as does a
+  `"supports"` disagreement claim and a `"contradicts"` claim
+  with no cited facet — all three are pinned by tests.
+
+Proof, deterministic first: the original (c2) raw claims replayed
+through the fixed `validate_output` drop 0 on K2 (was 2) and 5 on
+K7 — every K7 drop is a version-number token in the old prose, as
+expected, since the K7 fix is a prompt change. Proof, live:
+re-running the (c2) probe through Haiku 5.5 against the fixed
+prompt keeps **6 of 6 claims** (was 1 of 6). The model wrote
+"The earliest case statement says … while later statements say
+…" instead of "Source version N"; no kept or raw claim contains
+the word "version". Both disagreement claims (Marker A, margin)
+arrive with support `"contradicts"`, cite multiple sources, and
+are kept. M29 rises from 0.0 to 0.133 (kept claims now carry
+checkable units); M25 judge–fixture agreement 0.6, still weak as
+designed (fixture labels are vacuous on unit-free facts). The
+post-fix experiment is recorded separately
+(`report_postfix.json`, `calls_postfix.jsonl`,
+`replay_postfix.json` in `~/workspace/oi-haiku-proof/`); the
+original `report.json` and `calls.jsonl` are untouched.
+
+Local suite on the slice branch: 1258 tests (1251 on the main
+baseline plus 7 new — 5 K2 carve-out tests, 1 prompt test, 1
+repair-prompt test), FAILED with 9 failures and 8 errors — the
+same 17 `test_pdf_intake` failures as the baseline run on the
+same machine, verified by diffing the two failure-name sets;
+zero new failures. Live cost of the post-fix probe: 2 Haiku
+calls, 3,797 in / 3,303 out tokens, $0.002031. This is
+fictional-only engineering, draft and undeployed.
+
+Unproven: the Meta-only live proof (Skeptic and M-metrics over
+muse-spark-1.3) — still blocked by the Meta billing fix; Haiku
+verdicts prove the design, not spec compliance or the Meta
+integration.
+
 ## Connected patient preparation — 3 November 2026
 
 Draft [#288](https://github.com/OpenxIntelligence/open-intelligence/pull/288)

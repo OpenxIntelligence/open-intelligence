@@ -322,5 +322,17 @@ class HttpInvestigationTests(unittest.TestCase):
                 os.environ["META_API_KEY"] = saved
 
 
+class AttributionRulePromptTests(unittest.TestCase):
+    def test_build_prompt_contains_attribution_rule(self):
+        prompt = build_prompt("evidence-summary", "What does the source report?", [], [])
+        sentence = (
+            "Attribute each claim to its sources through the citations array only. "
+            "Do not write source version numbers in the claim text itself, neither "
+            '"Source version N" nor "version N"; the citation identifies the source.'
+        )
+        # The prompt joins lines with newlines; normalise whitespace first.
+        self.assertIn(sentence, " ".join(prompt.split()))
+
+
 if __name__ == '__main__':
     unittest.main()

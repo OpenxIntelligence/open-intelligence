@@ -748,5 +748,78 @@ class VerticalLeakageTests(unittest.TestCase):
         self.assertEqual(leaked, [])
 
 
+class K2DisagreementReportTests(unittest.TestCase):
+    """Pins the K2 contradicts-only disagreement carve-out. Existing K2
+    tests use support "context" via the claim() helper and are unaffected."""
+
+    DISAGREE_TEXT = (
+        "One source says Marker A was not tested in this specimen, "
+        "while another source says Marker A was reported."
+    )
+
+    def _claim(self, text, support, source_ids):
+        return {
+            "text": text,
+            "support": support,
+            "citations": [{"type": "source", "id": sid} for sid in source_ids],
+            "uncertainty": "moderate",
+            "limits": "Synthetic case only.",
+        }
+
+    def test_contradicts_disagreement_report_kept(self):
+        result = run_kchecks(
+            [self._claim(self.DISAGREE_TEXT, "contradicts", [1, 4])],
+            make_context())
+        self.assertEqual(len(result.kept), 1)
+        self.assertEqual(result.dropped, [])
+
+    def test_contradicts_single_value_still_drops(self):
+        result = run_kchecks(
+            [self._claim("Marker A was reported.", "contradicts", [1])],
+            make_context())
+        self.assertEqual(result.kept, [])
+        self.assertEqual(result.dropped[0]["reason"], "k2_slot_mismatch")
+        self.assertEqual(result.dropped[0]["detail"]["field"], "marker-a")
+
+    def test_supports_disagreement_still_drops(self):
+        result = run_kchecks(
+            [self._claim(self.DISAGREE_TEXT, "supports", [1, 4])],
+            make_context())
+        self.assertEqual(result.kept, [])
+        self.assertEqual(result.dropped[0]["reason"], "k2_slot_mismatch")
+        self.assertEqual(result.dropped[0]["detail"]["field"], "marker-a")
+
+    def test_contradicts_no_cited_facet_still_drops(self):
+        result = run_kchecks(
+            [self._claim("Marker A was not tested.", "contradicts", [2])],
+            make_context())
+        self.assertEqual(result.kept, [])
+        self.assertEqual(result.dropped[0]["reason"], "k2_no_cited_facet")
+        self.assertEqual(result.dropped[0]["detail"]["field"], "marker-a")
+
+    def test_contradicts_margin_disagreement_kept(self):
+        # Complete slot list from make_context, plus a v4 margin facet.
+        # make_context itself is not edited.
+        slots = list(make_context().derived_slots) + [
+            Slot(
+                subject="CASE-X",
+                field="margin",
+                value="reported",
+                source_version_id=4,
+                specimen="SPEC-A",
+                quote="The margin was reported.",
+            ),
+        ]
+        ctx = make_context(derived_slots=slots)
+        text = (
+            "One source says the margin cannot be assessed from this small "
+            "specimen, while another source says the margin was reported."
+        )
+        result = run_kchecks(
+            [self._claim(text, "contradicts", [1, 4])], ctx)
+        self.assertEqual(len(result.kept), 1)
+        self.assertEqual(result.dropped, [])
+
+
 if __name__ == '__main__':
     unittest.main()

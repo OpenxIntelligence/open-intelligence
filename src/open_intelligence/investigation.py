@@ -170,6 +170,11 @@ def build_prompt(template_id: str, question: str, assertions: list[dict],
         "listed above. Do not cite anything else. Do not recommend "
         "treatment, select therapy, dose, or diagnose."
     )
+    lines.append(
+        "Attribute each claim to its sources through the citations array only. "
+        "Do not write source version numbers in the claim text itself, neither "
+        '"Source version N" nor "version N"; the citation identifies the source.'
+    )
     return "\n".join(lines)
 
 
