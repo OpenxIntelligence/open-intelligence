@@ -107,6 +107,18 @@ def bind_authorized_h1_question_list(
         raise SemanticContractError("unknown_question_contract")
     if source_index.get("contract") != "oi.synthetic-original-sources/1":
         raise SemanticContractError("unknown_source_contract")
+    # Both projections must originate from the same canonical source-owner
+    # preparation/receipt, not from two separately fetched snapshots.
+    receipt = question_list.get("access_receipt_id")
+    if (type(receipt) is not str or re.fullmatch(r"ACCESS-[0-9A-F]{32}", receipt) is None
+            or source_index.get("access_receipt_id") != receipt):
+        raise SemanticContractError("snapshot_receipt_mismatch")
+    if (question_list.get("synthetic") is not True
+            or source_index.get("synthetic") is not True
+            or question_list.get("clinical_approval") is not False
+            or question_list.get("clinical_review_connected") is not False
+            or source_index.get("clinical_interpretation") is not False):
+        raise SemanticContractError("unsupported_owner_claim")
     questions = question_list.get("questions")
     sources = source_index.get("sources")
     if not isinstance(questions, list) or not isinstance(sources, list):
