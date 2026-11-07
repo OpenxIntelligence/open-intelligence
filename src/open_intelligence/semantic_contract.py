@@ -77,7 +77,7 @@ class SemanticRegistry:
             raise SemanticContractError("invalid_semantic_id")
 
     def validate_reference(self, ref: SemanticReference) -> None:
-        if (ref.concept_id, ref.concept_version) not in self.concepts:
+        if type(ref.concept_version) is not int or (ref.concept_id, ref.concept_version) not in self.concepts:
             raise SemanticContractError("unknown_concept_version")
         if any(not isinstance(value, str) or not value.strip() or value != value.strip()
                for value in (ref.owner, ref.record_id, ref.source_version_id)):
@@ -90,7 +90,7 @@ class SemanticRegistry:
     def validate_edge(self, relation_id: str, version: int, source: SemanticReference, target: SemanticReference) -> None:
         self.validate_reference(source)
         self.validate_reference(target)
-        relation = self.relationships.get((relation_id, version))
+        relation = self.relationships.get((relation_id, version)) if type(version) is int else None
         if relation is None:
             raise SemanticContractError("unknown_relationship_version")
         if source.concept_id != relation.source_concept or target.concept_id != relation.target_concept:
