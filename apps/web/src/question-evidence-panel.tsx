@@ -1,5 +1,6 @@
 import {useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client.js';
+import type {SavedLabQuestion} from './laboratory-question.js';
 import type {SourceQuestion} from './source-questions-view.js';
 import type {QuestionEvidenceRecord} from './question-evidence-view.js';
 import {safeFictionalEvidenceLink,validEvidenceQuery} from './question-evidence-view.js';
@@ -56,9 +57,10 @@ export function QuestionEvidenceRecovery({state,session,busy,showReadError=true}
 }
 
 /** Progressive inspection within the existing saved-question workspace. */
-export function QuestionEvidencePanel({question,state,session,busy}:{question:SourceQuestion;state:ViewState;session:RegistrySession;busy:boolean}){
+export function QuestionEvidencePanel({question,state,session,busy}:{question:SourceQuestion|SavedLabQuestion;state:ViewState;session:RegistrySession;busy:boolean}){
  const [query,setQuery]=useState('');
- const selected=state.evidenceQuestionId===question.question_id;
+ const laboratory='observation_reference' in question, family=laboratory?'laboratory':'text';
+ const selected=state.evidenceQuestionId===question.question_id&&(state.evidenceFamily??'text')===family;
  const links=selected&&state.evidenceLinks?.question_id===question.question_id?state.evidenceLinks:null;
  const search=selected&&!links&&state.evidenceSearch?.question_id===question.question_id?state.evidenceSearch:null;
  const unresolved=state.evidenceLinkPhase==='unknown';
@@ -67,21 +69,21 @@ export function QuestionEvidencePanel({question,state,session,busy}:{question:So
  const blocked=busy||writing||unresolved;
  const stale=question.source_context_state==='source_reassessment_required'||
   search?.source_context_state==='source_reassessment_required'||links?.source_context_state==='source_reassessment_required';
- const canSave=!blocked&&!stale&&state.worldPhase==='ready'&&canPrepareSourceBrief(question,state.worldModel);
+ const canSave=!blocked&&!stale&&state.worldPhase==='ready'&&(laboratory?state.worldModel?.snapshot_fingerprint===question.source_snapshot_sha256:canPrepareSourceBrief(question,state.worldModel));
  const panelId='evidence-'+question.question_id,queryId=panelId+'-query',hintId=panelId+'-hint';
- const ownRecovery=state.evidenceLinkIntent?.question_id===question.question_id;
+ const ownRecovery=state.evidenceLinkIntent?.question_id===question.question_id&&Boolean(state.evidenceLinkIntent.laboratoryAnchor)===laboratory;
  return <section className="question-evidence" data-testid="question-evidence-panel" aria-label="Question evidence citations">
   <button type="button" data-testid="metadata-evidence-open" aria-expanded={selected} aria-controls={panelId}
-   disabled={busy||writing||reading} onClick={()=>void session.loadQuestionEvidenceLinks(question.question_id)}>
+   disabled={busy||writing||reading} onClick={()=>void session.loadQuestionEvidenceLinks(question.question_id,family)}>
    {selected?'Refresh saved evidence citations':'Find fictional evidence for this question'}
   </button>
   {selected&&<div id={panelId} className="evidence-workspace" data-testid="evidence-workspace">
    <h4>Evidence citations for this question</h4>
    <p id={hintId}>Search an original fictional metadata catalog. Content is not appraised. No model runs or clinical approval is created.</p>
    {stale&&<p className="evidence-reassessment" role="note" data-testid="evidence-stale">
-    Source reassessment required. You can inspect citation history and search the catalog. Prepare a question from current source context before saving another link.
+    Source reassessment required. {laboratory?'You can inspect previously saved citations. Prepare a new question from the current laboratory report to search or link more.':'You can inspect citation history and search the catalog. Prepare a question from current source context before saving another link.'}
    </p>}
-   <form className="evidence-search" onSubmit={event=>{event.preventDefault();void session.searchQuestionEvidence(question.question_id,query);}}>
+   {!(laboratory&&stale)&&<form className="evidence-search" onSubmit={event=>{event.preventDefault();void session.searchQuestionEvidence(question.question_id,query,family);}}>
     <label htmlFor={queryId}>Your catalog search terms</label>
     <input id={queryId} data-testid="evidence-query" type="search" value={query} maxLength={200}
      autoComplete="off" spellCheck={false} disabled={blocked} aria-describedby={hintId}
@@ -90,7 +92,7 @@ export function QuestionEvidencePanel({question,state,session,busy}:{question:So
     <button type="submit" data-testid="evidence-search" disabled={blocked||reading||!validEvidenceQuery(query)}>
      {state.evidenceSearchPhase==='loading'?'Searching fictional metadata…':'Search fictional catalog'}
     </button>
-   </form>
+   </form>}
    {unresolved&&!ownRecovery&&<p role="note">Another citation save needs recovery. Resolve its exact intent before starting a new search or save.</p>}
    {state.evidenceSearchPhase!=='idle'&&<p role="status" aria-live="polite" data-testid="evidence-search-status"
     className={'status '+(state.evidenceSearchPhase==='error'?'error':'')}>{state.evidenceSearchMessage}</p>}
@@ -100,7 +102,7 @@ export function QuestionEvidencePanel({question,state,session,busy}:{question:So
      <CitationMetadata record={record}/>
      <p className="muted">Saving records a citation link only. It does not assert that this item supports the question or any clinical claim.</p>
      <button type="button" data-testid="evidence-save" disabled={!canSave}
-      onClick={()=>void session.saveQuestionEvidence(question.question_id,record.citation)}>Save this citation link</button>
+      onClick={()=>void session.saveQuestionEvidence(question.question_id,record.citation,family)}>Save this citation link</button>
     </details>)}
    </div>}
    <p role="status" aria-live="polite" data-testid="evidence-links-status"

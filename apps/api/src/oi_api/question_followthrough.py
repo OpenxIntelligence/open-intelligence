@@ -26,6 +26,7 @@ from open_intelligence.postgres_registry import PostgresPatientRegistry
 from .case_bindings import _case_id
 from .composer_preflight import PostgresSourceComposerPreflight, SHA256, SOURCE_SNAPSHOT_CONTRACT
 from .source_questions import PostgresSourceQuestions
+from .question_anchors import legacy_text_question_anchor
 from .sources import PostgresSourceVersions
 from .question_passages import QuestionPassages
 from .followthrough_contracts import ManualTaskDependency
@@ -122,7 +123,10 @@ def _timestamp(value: datetime) -> str:
 def _project_task(task: dict, history: list[dict], question: dict, evaluated_on: str,
                   manual_state: dict | None = None) -> dict:
     """Read-only lifecycle projection from the canonical question's freshness."""
-    if (not history or any(task[name] != question[name] for name in ANCHOR_FIELDS)
+    task_anchor = legacy_text_question_anchor(task)
+    question_anchor = legacy_text_question_anchor(question)
+    if (not history or task_anchor != question_anchor
+            or any(task[name] != question[name] for name in ANCHOR_FIELDS)
             or task["purpose"] != "operations"
             or question["source_context_state"] not in {
                 "current_unreviewed_question", "source_reassessment_required"}):

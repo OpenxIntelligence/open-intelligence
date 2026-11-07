@@ -47,17 +47,17 @@ function verifyLaboratoryOriginal(text:string,source:SourceVersion,expectedSubje
   if(!exact(bundle,['resourceType','type','entry'])||bundle.resourceType!=='Bundle'||
      bundle.type!=='collection'||!Array.isArray(bundle.entry)||
      bundle.entry.length<4||bundle.entry.length>19)throw Error('contract');
-  const resources=new Map<string,Record<string,unknown>>(),urls=new Set<string>();
+  const resources=new Map<string,Record<string,unknown>>(),bundleIds=new Map<string,string>();
   for(const entry of bundle.entry){
     if(!exact(entry,['fullUrl','resource'])||typeof entry.fullUrl!=='string'||
        !/^urn:uuid:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(entry.fullUrl)||
-       urls.has(entry.fullUrl)||entry.resource===null||typeof entry.resource!=='object'||Array.isArray(entry.resource))throw Error('contract');
+       bundleIds.has(entry.fullUrl)||entry.resource===null||typeof entry.resource!=='object'||Array.isArray(entry.resource))throw Error('contract');
     const item=entry.resource as Record<string,unknown>;
-    if(!['Patient','Specimen','Observation','DiagnosticReport'].includes(String(item.resourceType))||
+    if(typeof item.resourceType!=='string'||!['Patient','Specimen','Observation','DiagnosticReport'].includes(item.resourceType)||
        typeof item.id!=='string'||! /^[A-Za-z0-9.-]{1,64}$/.test(item.id))throw Error('contract');
-    const ref=String(item.resourceType)+'/'+item.id;
+    const ref=item.resourceType+'/'+item.id;
     if(resources.has(ref))throw Error('contract');
-    resources.set(ref,item);urls.add(entry.fullUrl);
+    resources.set(ref,item);bundleIds.set(entry.fullUrl,ref);
   }
   const ofKind=(kind:string)=>[...resources].filter(([ref])=>ref.startsWith(kind+'/'));
   const patients=ofKind('Patient'),specimens=ofKind('Specimen'),reports=ofKind('DiagnosticReport'),observations=ofKind('Observation');
@@ -65,23 +65,26 @@ function verifyLaboratoryOriginal(text:string,source:SourceVersion,expectedSubje
      specimens.length!==1||specimens[0][0]!=='Specimen/'+source.specimen_id||
      reports.length!==1||reports[0][0]!=='DiagnosticReport/'+source.document_id||
      observations.length<1||observations.length>16)throw Error('contract');
-  const refIs=(value:unknown,ref:string)=>exact(value,['reference'])&&value.reference===ref;
+  const resolveReference = (value: unknown): string => {
+    if (!exact(value, ['reference']) || typeof value.reference !== 'string') throw Error('contract');
+    return bundleIds.get(value.reference) ?? value.reference;
+  };
   const report=reports[0][1],specimen=specimens[0][1],specimenRef=specimens[0][0];
-  if(!refIs(specimen.subject,expectedSubject)||!refIs(report.subject,expectedSubject)||
+  if(resolveReference(specimen.subject)!==expectedSubject||resolveReference(report.subject)!==expectedSubject||
      report.status!=='final'||typeof report.effectiveDateTime!=='string'||
      report.effectiveDateTime.slice(0,10)!==source.event_date||typeof report.issued!=='string'||
      report.issued.slice(0,10)!==source.issued_at||!Array.isArray(report.specimen)||
-     report.specimen.length!==1||!refIs(report.specimen[0],specimenRef)||
+     report.specimen.length!==1||resolveReference(report.specimen[0])!==specimenRef||
      !Array.isArray(report.result)||report.result.length!==observations.length)throw Error('contract');
   const resultRefs=new Set<string>();
   for(const result of report.result){
-    if(!exact(result,['reference'])||typeof result.reference!=='string'||
-       !resources.has(result.reference)||!result.reference.startsWith('Observation/')||resultRefs.has(result.reference))throw Error('contract');
-    resultRefs.add(result.reference);
+    const ref = resolveReference(result);
+    if(!resources.has(ref)||!ref.startsWith('Observation/')||resultRefs.has(ref))throw Error('contract');
+    resultRefs.add(ref);
   }
   for(const [,observation] of observations){
-    if(observation.status!=='final'||!refIs(observation.subject,expectedSubject)||
-       !refIs(observation.specimen,specimenRef))throw Error('contract');
+    if(observation.status!=='final'||resolveReference(observation.subject)!==expectedSubject||
+       resolveReference(observation.specimen)!==specimenRef)throw Error('contract');
   }
 }
 export async function verifyOriginal(v:unknown,caseId:string,source:SourceVersion,expectedSubject?:string):Promise<OriginalSource>{

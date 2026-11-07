@@ -4,7 +4,7 @@ on:
     branches: [feat/h1-react-patient-entry-20261102, integration/h1-react-source-records-20261102, feat/h1-react-record-import-20261102]
   pull_request:
     # The API imports shared src; the browser harness imports tests/browser_journey.py.
-    paths: ['apps/web/**', 'apps/api/**', 'src/**', 'tests/**', 'tools/audit_ci_data_boundaries.py', 'tools/h1_demo.py', 'examples/synthetic/h1-demo-report.txt', 'examples/synthetic/demo-evidence.txt', '.github/workflows/h1-web.yml']
+    paths: ['apps/web/**', 'apps/api/**', 'src/**', 'tests/**', 'tools/audit_ci_data_boundaries.py', 'tools/verify_checkout.py', 'tools/h1_demo.py', 'examples/synthetic/h1-demo-report.txt', 'examples/synthetic/demo-evidence.txt', '.github/workflows/h1-web.yml']
 permissions:
   contents: read
 jobs:
@@ -34,6 +34,10 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Verify proposed source revision
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python tools/verify_checkout.py --expected-head "$EXPECTED_HEAD"
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'

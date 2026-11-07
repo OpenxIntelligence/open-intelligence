@@ -37,6 +37,7 @@ class CaseBindingsTests(unittest.TestCase):
         with self.engine.begin() as c:
             c.execute(text("DROP SCHEMA IF EXISTS investigation CASCADE"))
             c.execute(text("DROP SCHEMA IF EXISTS clinical_source CASCADE"))
+            c.execute(text("DROP SCHEMA IF EXISTS ehr CASCADE"))
             c.execute(text("DROP SCHEMA IF EXISTS coordination CASCADE"))
             c.execute(text("DROP SCHEMA IF EXISTS identity CASCADE"))
             c.execute(text("DROP TABLE IF EXISTS public.alembic_version"))
@@ -59,6 +60,7 @@ class CaseBindingsTests(unittest.TestCase):
         with self.engine.begin() as c:
             c.execute(text("DROP SCHEMA IF EXISTS investigation CASCADE"))
             c.execute(text("DROP SCHEMA IF EXISTS clinical_source CASCADE"))
+            c.execute(text("DROP SCHEMA IF EXISTS ehr CASCADE"))
             c.execute(text("DROP SCHEMA IF EXISTS coordination CASCADE"))
             c.execute(text("DROP SCHEMA IF EXISTS identity CASCADE"))
             c.execute(text("DROP TABLE IF EXISTS public.alembic_version"))

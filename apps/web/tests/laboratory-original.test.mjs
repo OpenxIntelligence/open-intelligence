@@ -31,6 +31,44 @@ test('laboratory original requires the active mapped subject and laboratory moda
  for(const mapped of [undefined,'Patient/OTHER','https://example.invalid/Patient/FICTIONAL-PATIENT-A'])await assert.rejects(()=>verifyOriginal(value,caseId,source,mapped));
  await assert.rejects(()=>verifyOriginal(value,caseId,{...source,kind:'pathology'},subject));
 });
+test('opens exact UUID-linked original bytes only for the mapped patient', async () => {
+  const b = fixture();
+  const [patient, specimenEntry, observation, report] = b.entry;
+  for (const entry of [specimenEntry, observation, report]) {
+    entry.resource.subject.reference = patient.fullUrl;
+  }
+  observation.resource.specimen.reference = specimenEntry.fullUrl;
+  report.resource.specimen[0].reference = specimenEntry.fullUrl;
+  report.resource.result[0].reference = observation.fullUrl;
+  b.entry.reverse();
+  const {source, value} = original(JSON.stringify(b, null, 2));
+  assert.equal((await verifyOriginal(value, caseId, source, subject)).original_text, value.original_text);
+  await assert.rejects(() => verifyOriginal(value, caseId, source, patient.fullUrl));
+  await assert.rejects(() => verifyOriginal(value, caseId, source, 'Patient/OTHER'));
+});
+test('rejects a report that uses two spellings for one result or points to a specimen', async () => {
+  const b = fixture();
+  const [, specimenEntry, observation, report] = b.entry;
+  const other = structuredClone(observation);
+  other.fullUrl = 'urn:uuid:00000000-0000-4000-8000-000000000009';
+  other.resource.id = 'FICTIONAL-OBS-B';
+  b.entry.push(other);
+  report.resource.result.push({reference: other.fullUrl});
+  const valid = original(JSON.stringify(b));
+  await verifyOriginal(valid.value, caseId, valid.source, subject);
+  for (const ref of [observation.fullUrl, specimenEntry.fullUrl,
+                     'urn:uuid:00000000-0000-4000-8000-000000000099']) {
+    report.resource.result[1].reference = ref;
+    const {source, value} = original(JSON.stringify(b));
+    await assert.rejects(() => verifyOriginal(value, caseId, source, subject));
+  }
+});
+test('requires a scalar resource type before mapping a bundle entry', async () => {
+  const b = fixture();
+  b.entry[2].resource.resourceType = ['Observation'];
+  const {source, value} = original(JSON.stringify(b));
+  await assert.rejects(() => verifyOriginal(value, caseId, source, subject));
+});
 test('tampered bytes, case, source version or review assertions cannot open an original',async()=>{
  const {source,value}=original();
  for(const bad of [{...value,original_text:value.original_text+' '},{...value,case_id:'CASE-OTHER'},

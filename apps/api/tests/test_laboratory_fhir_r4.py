@@ -182,6 +182,57 @@ class FHIRPreparationTests(unittest.TestCase):
         resource(b, "Observation")["specimen"]["reference"] = "https://clinical.example.test/Specimen/1"
         self.rejected(b)
 
+    def test_uuid_links_resolve_in_any_entry_order_and_preserve_original(self):
+        b = example()
+        patient, specimen, observation, report = b["entry"]
+        for entry in (specimen, observation, report):
+            entry["resource"]["subject"] = {"reference": patient["fullUrl"]}
+        observation["resource"]["specimen"] = {"reference": specimen["fullUrl"]}
+        report["resource"]["specimen"] = [{"reference": specimen["fullUrl"]}]
+        report["resource"]["result"] = [{"reference": observation["fullUrl"]}]
+        b["entry"].reverse()
+        parsed = self.prepared(b)
+        relative = self.prepared()
+        self.assertEqual(parsed.subject_reference, PATIENT)
+        self.assertEqual(parsed.specimen_reference, SPECIMEN)
+        self.assertEqual(parsed.report_reference, REPORT)
+        self.assertEqual(parsed.observations, relative.observations)
+        self.assertEqual(parsed.original_bytes, encode(b))
+        self.assertEqual(parsed.source_sha256, hashlib.sha256(encode(b)).hexdigest())
+        self.assertNotEqual(parsed.source_sha256, relative.source_sha256)
+        self.rejected(b, "Patient/OTHER-PATIENT")
+        self.rejected(b, patient["fullUrl"])
+
+    def test_mixed_reference_forms_cannot_substitute_or_duplicate_results(self):
+        b = example()
+        original = b["entry"][2]
+        second = deepcopy(original)
+        second["fullUrl"] = "urn:uuid:00000000-0000-4000-8000-000000000009"
+        second["resource"]["id"] = "FICTIONAL-OBS-B"
+        b["entry"].append(second)
+        results = resource(b, "DiagnosticReport")["result"]
+        results.append({"reference": second["fullUrl"]})
+        self.assertEqual(len(self.prepared(b).observations), 2)
+        for invalid in (original["fullUrl"], b["entry"][1]["fullUrl"],
+                        "urn:uuid:00000000-0000-4000-8000-000000000099"):
+            with self.subTest(invalid=invalid):
+                results[1]["reference"] = invalid
+                self.rejected(b)
+
+    def test_uuid_link_must_resolve_to_the_expected_resource_type(self):
+        for owner, field, target in (("Specimen", "subject", 2),
+                                     ("Observation", "specimen", 0),
+                                     ("DiagnosticReport", "subject", 1)):
+            with self.subTest(owner=owner):
+                b = example()
+                resource(b, owner)[field] = {"reference": b["entry"][target]["fullUrl"]}
+                self.rejected(b)
+
+    def test_resource_type_must_be_a_string_before_indexing(self):
+        b = example()
+        resource(b, "Observation")["resourceType"] = ["Observation"]
+        self.rejected(b)
+
     def test_multiple_observations_are_bounded_and_report_complete(self):
         b = example()
         obs = deepcopy(resource(b, "Observation"))
