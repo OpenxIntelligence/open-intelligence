@@ -20,7 +20,7 @@ patient/case/source; repeated setup and stop/resume retain its saved work.
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. The retained `0028_connected_product` migration joins the diagnostic source links with the retained
+the retained contributions. This candidate requires `0030_lab_amendment_reviews`. The retained `0028_connected_product` migration joins the diagnostic source links with the retained
 `0027_source_event_purpose` foundation from upstream #565 at `462e6c2`.
 The [upgrade contract](docs/implementation/SOURCE_EVENT_PURPOSE_REPAIR.md)
 covers fresh and published 0026 databases; older research-history adoption

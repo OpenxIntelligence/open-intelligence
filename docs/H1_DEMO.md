@@ -119,6 +119,30 @@ bytes in Records, including when a newer report is available. The application fl
 against that stale basis. A newly prepared question can anchor work on the
 amended report.
 
+## Have a second person verify an amended result
+
+Start or upgrade the same local fictional demo with
+`python tools/h1_demo.py up --fictional-only --with-reviewer`. This adds a
+separate reviewer credential scoped to the demo patient. The original patient,
+source versions and tasks are retained. Each later `up` renews the configured
+demo credentials for twelve hours.
+
+1. With the original demo credential, follow the laboratory-question and task
+   steps above. In Records select the [amended fictional report](../examples/synthetic/fictional-fhir-r4-lab-bundle-amended.json),
+   select the original report as its predecessor, and confirm import.
+2. Reopen the case and refresh **Follow-up work** in Investigations. Open the
+   amendment review on the original task. Check the specimen, LOINC code and
+   unit for each version. The supplied files report `4.20` and `5.80`,
+   respectively. Enter the reason for verification and send the request.
+3. In a separate browser tab, connect with the credential printed by
+   `python tools/h1_demo.py reviewer-credentials`. Open the same patient,
+   check their case mappings, then open **Review** and load the amendment
+   requests for `CASE-DEMO`. Select the request, compare both versions and
+   record a transcription check or a need for clarification, with a reason.
+4. As the requester, reopen the task comparison to read the reviewer’s response.
+   The response records what the second fictional actor checked. The earlier
+   task still points to its original report and retains its reassessment state.
+
 ## Verification boundary
 
 `apps/web/tools/demo_journey.py` exercises these exact fixtures through a real built browser and a separately owned Docker/PostgreSQL application, then checks repeated setup and persistence after stopping and resuming. It deletes only its own newly created disposable test project. The ordinary launcher never deletes volumes.

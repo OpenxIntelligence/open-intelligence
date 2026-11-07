@@ -1,3 +1,4 @@
+import {AmendmentInbox} from './laboratory-amendment-panel';
 import type {ReactNode} from 'react';
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import type {RegistrySession,ViewState} from './registry-client';
@@ -63,6 +64,7 @@ export function ReviewPanel({state,session,busy,patientAccess,onInvestigations,d
 
    <p className="record-scope"><strong>Patient:</strong> <code>{state.patient.patient_id}</code>
     {caseId&&<> · <strong>Case:</strong> <code data-testid="review-case-id">{caseId}</code></>}</p>
+   <AmendmentInbox state={state} session={session} busy={busy||changing} currentCase={caseId}/>
    {!caseId&&<div className="review-case-entry">
     <p>Check the available cases, then open the inbox you want to review.</p>
     <button type="button" data-testid="review-check-cases" disabled={busy||changing||state.reviewPhase==='loading'}

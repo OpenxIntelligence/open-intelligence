@@ -1,3 +1,4 @@
+import {AmendmentSession,emptyAmendment,type AmendmentState} from './laboratory-amendment-session.js';
 import {PermissionConsole,PermissionHttpError} from './patient-permissions.js';
 import {createEncounterChart, EncounterHttpError, type EncounterChart} from './encounter-client.js';
 import {readLaboratoryCitationReport} from './laboratory-citation-report.js';
@@ -79,6 +80,7 @@ export type ViewState = Readonly<EvidenceState & SourceImagesState & LaboratoryI
   reviewReturnMessage:string;reviewReturnIntent:ReviewReturnIntent|null;
   backgroundBrief:BackgroundBrief|null;
   sourceBrief:SourceBrief|null;briefPhase:'idle'|'loading'|'ready'|'error';briefMessage:string;
+  amendment:AmendmentState;
   followthrough:FollowthroughList|null;followthroughCaseId:string|null;
   followthroughDrafts:Readonly<Record<string,FollowthroughUnsentDraft>>;
   followthroughTransitionDrafts:Readonly<Record<string,FollowthroughUnsentTransition>>;
@@ -138,7 +140,7 @@ const emptyInvestigation=()=>({questionDraft:null,composerPreview:null,composerP
 const unconfirmedLabQuestion = {labQuestionWritePhase:'unknown',labQuestionWriteMessage:
   'The earlier save is unconfirmed. Retry its unchanged request after reopening this case.'} as const;
 
-const fresh = (): ViewState => Object.freeze({evidenceGeneration:0,...emptySuspension(),...emptyLabQuestions(),manualPassageDraftQuestionIds:Object.freeze([]),connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
+const fresh = (): ViewState => Object.freeze({amendment:emptyAmendment(),evidenceGeneration:0,...emptySuspension(),...emptyLabQuestions(),manualPassageDraftQuestionIds:Object.freeze([]),connected:false,phase:'disconnected',patient:null,created:null,message:'Connect a local synthetic credential to use the patient registry.',cases:null,sourceIndex:null,recordsPhase:'idle',recordMessage:'Open an authorized fictional patient in Overview first.',...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptyInvestigation(),...emptyReview(),...emptyFollowthrough(),...emptyEvidence(),...emptySourceImages()});
 const emptyRecords=()=>({...emptyIntake(),...emptyLaboratory(),...emptyWorld(),...emptySourceImages(),cases:null,sourceIndex:null,recordsPhase:'idle' as const,recordMessage:'Load the current authorized case mappings to inspect original source metadata.'});
 function exact(value: unknown, fields: string[]): value is Record<string,unknown> {
   return value !== null && typeof value==='object' && !Array.isArray(value) &&
@@ -397,7 +399,26 @@ export class RegistrySession {
   #inspectionQuestionId:string|null=null;
   #listeners=new Set<()=>void>(); #controllers=new Set<AbortController>(); #creating=false; #uploading=false;
   #evidenceSession:QuestionEvidenceSession;
+  readonly amendments:AmendmentSession;
   constructor(private readonly transport:Transport=(url,init)=>fetch(url,init)) {
+    this.amendments=new AmendmentSession(this.snapshot,amendment=>this.#publish({amendment}),async(scope,path,control,body)=>{
+      const credential=this.#scope,patientRead=this.#read;
+      const current=()=>credential===this.#scope&&patientRead===this.#read&&!control.signal.aborted&&
+        this.#state.patient?.patient_id===scope.patient_id&&this.#state.cases?.some(c=>c.case_id===scope.case_id&&c.status==='active');
+      if(!current())throw Error('Amendment scope changed');
+      const init=this.#init(control,body?JSON.stringify(body):undefined),list=path==='/followthrough';
+      if(list)init.headers={...init.headers,Accept:FOLLOWTHROUGH_V2_MEDIA+', application/json;q=0.9'};
+      this.#controllers.add(control);const timeout=setTimeout(()=>control.abort(),10000);
+      try{
+        const res=await this.transport('/v1/patients/'+encodeURIComponent(scope.patient_id)+'/cases/'+encodeURIComponent(scope.case_id)+path,init);
+        if(!current()){void res.body?.cancel().catch(()=>{});throw Error('Amendment scope changed');}
+        if(res.status===401){this.#httpError(401);throw Error('Access expired');}
+        if(res.status!==200&&res.status!==201){void res.body?.cancel().catch(()=>{});return {status:res.status,value:null};}
+        const value=await json(res,4194304,list?FOLLOWTHROUGH_V2_MEDIA:undefined);
+        if(!current())throw Error('Amendment scope changed');
+        return {status:res.status,value};
+      }finally{clearTimeout(timeout);this.#controllers.delete(control);}
+    });
     this.#evidenceSession=new QuestionEvidenceSession({snapshot:this.snapshot,
       publish:patch=>this.#publish(patch),scope:()=>[this.#scope,this.#read,this.#worldRead,this.#questionRead].join(':'),
       selectedQuestion:()=>this.#inspectionQuestionId,
@@ -423,6 +444,19 @@ export class RegistrySession {
   subscribe=(listener:()=>void):(()=>void)=>{this.#listeners.add(listener);return()=>this.#listeners.delete(listener);};
   #publish(patch:Partial<ViewState>){
     let next={...this.#state,...patch};
+    const amendment=this.#state.amendment,scope=amendment.scope;
+    if(!patch.amendment&&scope){
+      const lostScope=!next.connected||next.patient?.patient_id!==scope.patient_id||next.phase!=='ready'||
+        next.cases!==null&&!next.cases.some(c=>c.patient_id===scope.patient_id&&c.case_id===scope.case_id&&c.status==='active');
+      const denied=patch.recordsPhase==='error'&&next.cases===null||patch.worldPhase==='error'&&next.worldModel===null||
+        amendment.mode==='patient'&&patch.followthroughPhase==='error';
+      const otherCase=[patch.followthroughCaseId,patch.worldModel?.case_id,patch.sourceIndex?.case_id,patch.questionsCaseId,
+        patch.reviewQueue?.case_id].some(c=>c&&c!==scope.case_id);
+      if(lostScope||denied||otherCase)next.amendment=this.amendments.reset();
+      else if(patch.cases===null||patch.worldPhase==='loading'||patch.recordsPhase?.startsWith('loading')||
+              amendment.mode==='patient'&&patch.followthrough===null)
+        next.amendment=this.amendments.reset(scope.case_id);
+    }
     if(next.worldModel!==this.#state.worldModel||next.worldPhase!=='ready'||
        next.patient!==this.#state.patient||!next.connected||next.phase!=='ready'){
       this.#historyRead++;next={...next,...emptyHistory()};
@@ -579,6 +613,7 @@ export class RegistrySession {
       sourceQuoteMessage:'Select a saved question to inspect its source quotation and evidence gaps.'});
   };
   #clearPatientSessionData(preserveOtherManualIntents=false){
+    this.amendments.reset();
     this.#permissions?.clear();this.#permissions=null;
     this.#suspensionIntent=null;
     this.#questionRetryKeys.clear();

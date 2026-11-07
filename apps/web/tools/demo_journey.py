@@ -36,9 +36,15 @@ def main():
         with (Path(temporary) / 'chrome-stderr.log').open('w+') as chrome_log:
             try:
                 demo.up(directory, state)
+                initial_state = dict(state)
+                demo.main(['up', '--fictional-only', '--with-reviewer', '--state-dir', str(directory)])
+                state = demo.load_or_create(directory)
+                assert all(state[k] == v for k, v in initial_state.items()), 'Adding a reviewer must retain the original demo'
                 first = dict(state)
-                demo.up(directory, state)
-                assert state == first, 'Repeated setup must recover the same patient and source'
+                assert state['reviewer_token'] != state['token']
+                review_path = f"/v1/patients/{state['patient_id']}/cases/{demo.CASE}/laboratory-amendment-requests"
+                inbox = demo.request(review_path, state['reviewer_token'])
+                assert inbox['requests'] == [] and inbox['case_id'] == demo.CASE
                 web = subprocess.Popen(['npm', 'run', 'preview'], cwd=ROOT / 'apps/web',
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
                 from urllib.request import urlopen

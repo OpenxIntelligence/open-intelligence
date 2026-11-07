@@ -17,6 +17,7 @@ from alembic.util.exc import CommandError
 from oi_api.access import Principal, authentication_for_settings
 from oi_api.app import create_app
 from oi_api.config import Settings, ConfigurationError
+from oi_api.contracts import SCHEMA_REVISION
 from oi_api.migrate import migrate
 from oi_api.patient_permissions import GrantPermission, RevokePermission
 from oi_api.worker import run_once
@@ -188,7 +189,7 @@ class PermissionHTTPTests(SourceVersionFixture):
         with self.assertRaises(CommandError):
             migrate(self.admin, "downgrade", "0028_connected_product")
         with self.engine.connect() as c:
-            self.assertEqual(c.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), "0029_patient_access")
+            self.assertEqual(c.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), SCHEMA_REVISION)
 
     def test_suspension_does_not_prevent_removing_existing_permission(self):
         patient = self.seed()

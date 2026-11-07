@@ -96,6 +96,7 @@ class EHRLaboratoryUpgradeTests(SourceVersionFixture):
             # states are equivalent here; unexpected rows must still fail.
             tables.setdefault("identity.patient_access_grants", [])
             tables.setdefault("identity.patient_access_revocations", [])
+            tables.setdefault("investigation.laboratory_amendment_reviews", [])
             return tables, sequences
 
         patient, url, command, receipt = self.seed_citation()

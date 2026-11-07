@@ -61,6 +61,44 @@ class DemoSetupTests(unittest.TestCase):
             self.assertNotIn('case_binding_revoke', grant['actions'])
             self.assertNotIn('authored_evidence_withdraw', grant['actions'])
 
+    def test_independent_reviewer_is_opt_in_patient_scoped_and_retained_on_resume(self):
+        demo = self.module()
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp) / 'demo'
+            initial = demo.load_or_create(directory)
+            self.assertEqual(len(demo.access_document(initial, [])['credentials']), 1)
+            args = ['up', '--state-dir', str(directory), '--fictional-only', '--with-reviewer']
+            with patch.object(demo, 'up'):
+                demo.main(args)
+                state = demo.load_or_create(directory)
+                demo.main(args)
+            self.assertEqual(state, demo.load_or_create(directory))
+            self.assertEqual(initial['token'], state['token'])
+            self.assertNotEqual(state['token'], state['reviewer_token'])
+            patient = 'PAT-' + 'B' * 32
+            writer, reviewer = demo.access_document(state, [patient])['credentials']
+            self.assertNotEqual(writer['token_sha256'], reviewer['token_sha256'])
+            self.assertNotEqual(writer['actor'], reviewer['actor'])
+            self.assertEqual(reviewer['patient_ids'], [patient])
+            self.assertEqual(reviewer['organization'], writer['organization'])
+            self.assertIn('review_return', reviewer['actions'])
+            for action in ('patient_create', 'source_import', 'followthrough_create', 'followthrough_update'):
+                self.assertNotIn(action, reviewer['actions'])
+            self.assertNotIn(state['reviewer_token'], json.dumps(reviewer))
+            with patch('builtins.print') as output:
+                demo.main(['reviewer-credentials', '--state-dir', str(directory)])
+            self.assertIn(state['reviewer_token'], str(output.call_args_list))
+            self.assertNotIn(state['token'], str(output.call_args_list))
+
+    def test_duplicate_reviewer_credential_refuses_to_reopen_saved_demo(self):
+        demo = self.module()
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp) / 'demo'
+            state = demo.load_or_create(directory)
+            demo.write_json(directory / 'state.json', dict(state, reviewer_token=state['token']))
+            with self.assertRaises(ValueError):
+                demo.load_or_create(directory)
+
     def test_stop_never_removes_volumes_or_selects_another_project(self):
         demo = self.module()
         with tempfile.TemporaryDirectory() as temp:
