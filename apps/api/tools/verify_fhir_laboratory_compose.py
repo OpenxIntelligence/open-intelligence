@@ -130,7 +130,7 @@ def main():
               'sources',(SELECT COALESCE(json_agg(x ORDER BY x.document_id,x.version,x.source_id),'[]'::json) FROM (
                 SELECT source_id,case_id,document_id,version,sha256,encode(sha256(raw),'hex') raw_sha256,
                        octet_length(raw) byte_count,kind,event_date,issued_at,specimen_id,state,supersedes_id
-                  FROM clinical_source.source_versions WHERE case_id='CASE-FHIR-LAB') x),
+                  FROM clinical_source.source_versions WHERE case_id IN ('CASE-FHIR-LAB','CASE-FHIR-MULTI')) x),
               'fhir_sources',(SELECT COALESCE(json_agg(x ORDER BY x.source_id),'[]'::json)
                 FROM (SELECT * FROM clinical_source.fhir_laboratory_sources) x),
               'observations',(SELECT COALESCE(json_agg(x ORDER BY x.source_id,x.position),'[]'::json)
@@ -147,7 +147,7 @@ def main():
               'source_import_events',(SELECT COALESCE(json_agg(x ORDER BY x.id),'[]'::json)
                 FROM (SELECT * FROM identity.identity_domain_events
                        WHERE event_type='source.original.imported'
-                         AND metadata_json->>'case_id'='CASE-FHIR-LAB') x),
+                         AND metadata_json->>'case_id' IN ('CASE-FHIR-LAB','CASE-FHIR-MULTI')) x),
               'sequence_state',(SELECT COALESCE(json_agg(x ORDER BY x.schemaname,x.sequencename),'[]'::json)
                 FROM (SELECT schemaname,sequencename,start_value,min_value,max_value,
                              increment_by,cycle,cache_size,last_value FROM pg_sequences
@@ -163,9 +163,61 @@ def main():
               'citation_events',(SELECT COALESCE(json_agg(x ORDER BY x.id),'[]'::json)
                 FROM (SELECT * FROM identity.identity_domain_events
                        WHERE event_type='evidence.citation.linked') x),
+              'institution_identities',(SELECT COALESCE(json_agg(x ORDER BY x.identity_id),'[]'::json)
+                FROM coordination.case_source_identities x),
+              'institution_events',(SELECT COALESCE(json_agg(x ORDER BY x.id),'[]'::json)
+                FROM (SELECT * FROM identity.identity_domain_events WHERE event_type LIKE 'identity.institution_%') x),
               'bindings',(SELECT COALESCE(json_agg(x ORDER BY x.case_id),'[]'::json)
                 FROM (SELECT * FROM coordination.patient_case_bindings) x)
             )""", database)
+
+        def seed_institutions(patient_path):
+            case='CASE-FHIR-MULTI'; path=patient_path+'/cases/'+case
+            status,_=request(patient_path+'/case-bindings',{'synthetic':True,'case_id':case,
+                'source_organization':'ORG-MULTI-ONE','source_system':'SYS-MULTI',
+                'source_subject_ref':'FICTIONAL-PATIENT-A','review_ref':'REVIEW-MULTI-ONE'})
+            assert status==201
+            source_commands=[]
+            for number in ('ONE','TWO','THREE'):
+                identity=None
+                if number!='ONE':
+                    status,proposal=request(path+'/institution-identities',{'synthetic':True,
+                        'request_key':'PROPOSAL-'+number,'source_organization':'ORG-MULTI-'+number,
+                        'source_system':'SYS-MULTI','source_subject_ref':'FICTIONAL-PATIENT-A'})
+                    assert status==201 and proposal['identity']['status']=='quarantined'
+                    identity=proposal['identity']['identity_id']
+                    payload=body(FHIR_V1,'IMPORT-'+number)|{'identity_id':identity}
+                    assert request(path+'/laboratory/fhir-r4/sources',payload)[0]==404
+                    status,decision=request(path+'/institution-identities/'+identity+'/decision',{
+                        'synthetic':True,'decision':'link','review_ref':'REVIEW-'+number})
+                    assert status==200 and decision['identity']['status']=='active'
+                payload=body(FHIR_V1,'IMPORT-'+number)
+                if identity: payload['identity_id']=identity
+                status,source=request(path+'/laboratory/fhir-r4/sources',payload)
+                assert status==201
+                source_commands.append((payload,source))
+            status,proposal=request(path+'/institution-identities',{'synthetic':True,
+                'request_key':'PROPOSAL-AMBIGUOUS','source_organization':'ORG-MULTI-TWO',
+                'source_system':'SYS-MULTI','source_subject_ref':'FICTIONAL-WRONG-PATIENT'})
+            assert status==201
+            ambiguous=proposal['identity']['identity_id']
+            assert request(path+'/institution-identities/'+ambiguous+'/decision',{
+                'synthetic':True,'decision':'link','review_ref':'REVIEW-AMBIGUOUS'})[0]==409
+            return path,source_commands,ambiguous
+
+        def verify_institutions(path,commands,ambiguous):
+            status,listing=request(path+'/institution-identities')
+            assert status==200
+            assert len([row for row in listing['identities'] if row['status']=='active'])==3
+            assert next(row for row in listing['identities'] if row['identity_id']==ambiguous)['status']=='quarantined'
+            status,index=request(path+'/sources')
+            assert status==200 and len({row['document_id'] for row in index['sources']})==3
+            for payload,source in commands:
+                assert request(path+'/laboratory/fhir-r4/sources',payload)==(200,{**source,'duplicate':True})
+                status,original=request(path+'/sources/'+source['source_id'])
+                assert status==200 and original['original_text']==FHIR_V1
+                assert original['sha256']==hashlib.sha256(FHIR_V1.encode()).hexdigest()
+            assert request(path+'/laboratory/fhir-r4/sources',body(FHIR_V1,'AMBIGUOUS-IMPORT')|{'identity_id':ambiguous})[0]==404
 
         def body(raw, key, previous=None):
             value = {"synthetic":True,"request_key":key,"bundle_json":raw}
@@ -401,7 +453,17 @@ finally:
 
             withdraw_fixture_rights()
             verify_citation(second_cite, "current_unreviewed_question", restricted=True)
+            institutional=seed_institutions(patient_path)
+            verify_institutions(*institutional)
             before_restore=restore("oi_api_synthetic",RESTORED)
+            verify_institutions(*institutional)
+            Path('verification-api').mkdir(exist_ok=True)
+            Path('verification-api/institution-recovery.json').write_text(json.dumps({
+                'schema_revision':SCHEMA_REVISION,'case_id':'CASE-FHIR-MULTI',
+                'three_qualified_institutional_originals':True,'quarantined_match_preserved':True,
+                'restored_exact_retries':True,'restored_original_sha256':hashlib.sha256(FHIR_V1.encode()).hexdigest(),
+                'synthetic':True},indent=2)+'\n')
+            print('PASS INSTITUTION RECOVERY: three qualified institutions, original hashes, exact retries and ambiguous-match quarantine survive actual dump/restore.')
             verify_original(patient_path,first_id,FHIR_V1,1,"superseded")
             verify_original(patient_path,second_id,FHIR_V2,2,"current")
             verify_world(patient_path,second_id,"5.00",1)

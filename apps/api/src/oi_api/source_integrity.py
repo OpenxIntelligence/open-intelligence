@@ -163,6 +163,12 @@ def _instant(value: object) -> datetime:
     raise ValueError()
 
 
+def qualified_lab_document_id(organization: str, system: str, report: str) -> str:
+    """Namespace local report numbers; preserve the supplied reference in modality custody."""
+    from open_intelligence.patient_registry import _digest
+    return 'F-' + _digest({'organization': organization, 'system': system, 'report': report}).upper()[:32]
+
+
 def validate_fhir_laboratory_original(
         row: Mapping[str, object], metadata: Mapping[str, object],
         observations: Sequence[Mapping[str, object]], *,
@@ -190,7 +196,8 @@ def validate_fhir_laboratory_original(
             raise ValueError()
         report_id = prepared.report_reference.split("/", 1)[1]
         specimen_id = prepared.specimen_reference.split("/", 1)[1]
-        if (row["document_id"] != report_id or row["specimen_id"] != specimen_id
+        if (row["document_id"] not in (report_id, qualified_lab_document_id(
+                metadata["source_organization"], metadata["source_system"], prepared.report_reference)) or row["specimen_id"] != specimen_id
                 or type(row["event_date"]) is not date or type(row["issued_at"]) is not date
                 or row["event_date"].isoformat() != prepared.report_effective_at[:10]
                 or row["issued_at"].isoformat() != prepared.report_issued_at[:10]):

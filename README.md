@@ -15,7 +15,7 @@ patient/case/source; repeated setup and stop/resume retain its saved work.
 [Consolidation and acceptance #481](https://github.com/OpenxIntelligence/open-intelligence/pull/481)
 records the original integrated application and its acceptance results.
 The [convergence record](docs/engineering/H1_ACCEPTED_DEMO_CONVERGENCE.md) identifies
-the retained contributions. This revision requires `0021_lab_citation_freshness` for
+the retained contributions. This revision requires `0023_institution_identities` for
 [encounters and draft notes](apps/api/README.md#connected-encounter-and-note-service) and [laboratory questions and citations](docs/engineering/H1_LABORATORY_CITATIONS.md).
 The Python/SQLite application is retained as a separate reference implementation.
 

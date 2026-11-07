@@ -1398,6 +1398,10 @@ def patient_router(database: Database, authentication: Authentication, *, image_
     from .encounter_routes import register_encounter_routes
     register_encounter_routes(router, principal=principal, registry=registry, authorize=records_authorized,
                               refresh=final_question_authority, errors=errors)
+    from .institution_routes import register_institution_routes
+    register_institution_routes(router, principal=principal, registry=registry,
+        records_authorized=records_authorized, final_authority=final_question_authority, errors=errors)
+
     from .laboratory_fhir_routes import register_laboratory_fhir_routes
     register_laboratory_fhir_routes(
         router, principal=principal, registry=registry,

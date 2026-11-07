@@ -57,14 +57,20 @@ class PostgresLaboratoryFHIR:
             raise PatientRegistryError(field + " unavailable") from None
 
     def _binding_metadata(self, patient_id: str, case_id: str, organization: str,
-                          purpose: str) -> tuple[int, str, str, str]:
+                          purpose: str, identity_id: str | None = None) -> tuple[int, str, str, str]:
         revision = self.sources._binding(patient_id, case_id, organization, purpose)
-        row = self.registry._fetchone(
-            "SELECT source_organization,source_system,source_subject_ref "
-            "FROM coordination.patient_case_bindings "
-            "WHERE case_id=%s AND patient_id=%s AND status='active'",
-            (case_id, patient_id),
-        )
+        if identity_id is None:
+            # Preserve legacy default selection and import fingerprints.
+            row = self.registry._fetchone(
+                "SELECT source_organization,source_system,source_subject_ref "
+                "FROM coordination.patient_case_bindings WHERE case_id=%s AND patient_id=%s AND status='active'",
+                (case_id, patient_id))
+        else:
+            row = self.registry._fetchone(
+                "SELECT source_organization,source_system,source_subject_ref "
+                "FROM coordination.case_source_identities "
+                "WHERE case_id=%s AND identity_id=%s AND status='active'",
+                (case_id, identity_id))
         if row is None:
             raise PatientRegistryDenied("Source mapping unavailable")
         return revision, row[0], row[1], row[2]
@@ -88,7 +94,8 @@ class PostgresLaboratoryFHIR:
                       organization: str, actor: str, purpose: str, request_key: str,
                       expected_previous_source_id: str | None,
                       recheck_authority: Callable[[], None],
-                      prepare_response: Callable[[dict], PreparedResponse] | None = None
+                      prepare_response: Callable[[dict], PreparedResponse] | None = None,
+                      identity_id: str | None = None
                       ) -> dict | PreparedResponse:
         patient_id = _key(patient_id, "patient_id")
         case_id = _case_id(case_id)
@@ -107,14 +114,17 @@ class PostgresLaboratoryFHIR:
         specimen_id = self._specimen_id(prepared.specimen_reference)
         event_date = self._source_date(prepared.report_effective_at, "FHIR report effective date")
         issued_at = self._source_date(prepared.report_issued_at, "FHIR report issued date")
-        intent = _digest({
+        intent_fields = {
             "operation": "fhir_laboratory_import",
             "patient_id": patient_id, "case_id": case_id,
             "organization": organization, "actor": actor, "purpose": purpose,
             "source_sha256": prepared.source_sha256,
             "report_reference": prepared.report_reference,
             "expected_previous_source_id": expected_previous_source_id,
-        })
+        }
+        if identity_id is not None:
+            intent_fields['identity_id'] = identity_id
+        intent = _digest(intent_fields)
 
         def complete(result):
             value = prepare_response(result) if prepare_response is not None else result
@@ -123,7 +133,14 @@ class PostgresLaboratoryFHIR:
 
         with self.registry.transaction():
             _, source_org, source_system, source_subject = self._binding_metadata(
-                patient_id, case_id, organization, purpose)
+                patient_id, case_id, organization, purpose, identity_id)
+            if identity_id is not None:
+                primary = self.registry._fetchone(
+                    "SELECT primary_identity FROM coordination.case_source_identities WHERE identity_id=%s",
+                    (identity_id,))[0]
+                if not primary:
+                    from .source_integrity import qualified_lab_document_id
+                    document_id = qualified_lab_document_id(source_org, source_system, prepared.report_reference)
             if prepared.subject_reference != "Patient/" + source_subject:
                 raise PatientRegistryDenied("Mapped FHIR subject changed")
 

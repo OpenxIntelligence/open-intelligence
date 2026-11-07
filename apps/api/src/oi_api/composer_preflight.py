@@ -216,7 +216,10 @@ def prepare_laboratory_question(source_index: dict, laboratory_observations: lis
     anchor = selected[0]
     source = next(item for item in world["current_sources"] if item["source_id"] == source_id)
     if (anchor["specimen_reference"] != "Specimen/" + str(source["specimen_id"])
-            or anchor["report_reference"] != "DiagnosticReport/" + source["document_id"]):
+            or (not re.fullmatch(r"F-[A-F0-9]{32}", source["document_id"])
+                and anchor["report_reference"] != "DiagnosticReport/" + source["document_id"])
+            or anchor["document_id"] != source["document_id"]
+            or anchor["source_sha256"] != source["sha256"]):
         raise PatientRegistryError("Laboratory source relationships do not match canonical context")
     selected_source = {
         "anchor_kind": "fhir_observation", "source_id": source_id,

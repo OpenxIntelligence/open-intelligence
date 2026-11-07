@@ -1,3 +1,4 @@
+import {InstitutionIdentities} from './institution-identities-view';
 import {useEffect,useRef,useState,useSyncExternalStore} from 'react';
 import {prepareLaboratoryFile} from './laboratory-fhir';
 import type {LaboratoryFile} from './laboratory-fhir';
@@ -9,13 +10,14 @@ export function LaboratoryIntake({session,patientId,caseId,disabled=false}:{
 }){
   const state=useSyncExternalStore(session.subscribe,session.snapshot);
   const [file,setFile]=useState<LaboratoryFile|null>(null),[name,setName]=useState('');
+  const [identity,setIdentity]=useState<string|null>(null);
   const [confirmed,setConfirmed]=useState(false),[previous,setPrevious]=useState('');
   const [message,setMessage]=useState('Select a fictional JSON original. Selection does not upload it.');
   const generation=useRef(0),input=useRef<HTMLInputElement>(null);
   const scoped=state.laboratoryIntent?.patient_id===patientId&&state.laboratoryIntent?.case_id===caseId;
   const pending=scoped&&['sending','unknown'].includes(state.laboratoryPhase);
   const locked=disabled||pending;
-  useEffect(()=>{generation.current++;setFile(null);setName('');setConfirmed(false);setPrevious('');
+  useEffect(()=>{generation.current++;setFile(null);setName('');setConfirmed(false);setPrevious('');setIdentity(null);
     return()=>{generation.current++;};},[patientId,caseId]);
   async function select(candidate?:File){
     if(locked)return;
@@ -35,7 +37,9 @@ export function LaboratoryIntake({session,patientId,caseId,disabled=false}:{
     <p>Import an independently authored fictional FHIR R4 laboratory JSON file into this patient’s existing record.
       The supported format contains one patient, one specimen, one final report and 1–16 final observations.</p>
     <p className="small">Patient <code>{patientId}</code> · case <code>{caseId}</code>. Imported results stay unreviewed.</p>
-    <form onSubmit={event=>{event.preventDefault();if(file&&!locked)void session.importLaboratory(caseId,file.text,confirmed,previous||null);}}>
+    <InstitutionIdentities session={session} patientId={patientId} caseId={caseId} disabled={locked}
+      onSelect={id=>{setIdentity(id);setConfirmed(false);setPrevious('');}}/>
+    <form onSubmit={event=>{event.preventDefault();if(file&&!locked)void session.importLaboratory(caseId,file.text,confirmed,previous||null,identity);}}>
       <label htmlFor="laboratory-file">Fictional laboratory JSON (up to 64 KiB)</label>
       <input ref={input} id="laboratory-file" data-testid="laboratory-file" type="file" accept=".json,application/json"
         disabled={locked} onChange={event=>void select(event.target.files?.[0])}/>
@@ -61,7 +65,7 @@ export function LaboratoryIntake({session,patientId,caseId,disabled=false}:{
       </select>
       <p className="small">Select a predecessor only for a correction of that same report. Different specimens and time points remain separate records.</p>
       <label className="check"><input data-testid="laboratory-confirm" type="checkbox" checked={confirmed} disabled={!file||locked}
-        onChange={event=>setConfirmed(event.target.checked)}/>I confirm this is independently authored fictional data and I have inspected the original, case and report version.</label>
+        onChange={event=>setConfirmed(event.target.checked)}/>I confirm this is independently authored fictional data and I have inspected the original, case, selected institution and report version.</label>
       <div className="actions"><button data-testid="laboratory-import" className="primary" disabled={!file||!confirmed||locked}>
         {state.laboratoryPhase==='sending'?'Importing laboratory original…':'Import laboratory original'}</button>
         <button type="button" onClick={discard} disabled={locked}>Discard local laboratory selection</button></div>

@@ -70,6 +70,17 @@ class PostgresSourceVersions:
         if (row is None or row[0] != patient_id or row[1] != organization
                 or row[2] != "active" or row[3] != purpose):
             raise PatientRegistryDenied("Case/source mapping unavailable")
+        identities = self.registry._fetchone("SELECT to_regclass('coordination.case_source_identities')")[0]
+        if identities is not None:
+            missing = self.registry._fetchone(
+                "SELECT 1 FROM clinical_source.fhir_laboratory_sources f "
+                "JOIN clinical_source.source_versions s ON s.source_id=f.source_id "
+                "WHERE s.case_id=%s AND NOT EXISTS (SELECT 1 FROM coordination.case_source_identities i "
+                "WHERE i.case_id=s.case_id AND i.status='active' "
+                "AND i.source_organization=f.source_organization AND i.source_system=f.source_system "
+                "AND ('Patient/'||i.source_subject_ref)=f.subject_reference) LIMIT 1", (case_id,))
+            if missing:
+                raise PatientRegistryDenied("Institution identity requires reconciliation")
         return row[4]
 
     def _read_receipt(self, patient_id: str, case_id: str, *, actor: str, purpose: str,
