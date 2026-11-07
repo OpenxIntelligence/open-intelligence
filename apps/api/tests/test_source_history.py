@@ -2,23 +2,40 @@
 from datetime import datetime, timezone
 import hashlib
 import json
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 from urllib.parse import urlencode
 
 from sqlalchemy import text
 from oi_api.app import create_app
+from oi_api.config import Settings
+from oi_api.database import Database
 from oi_api.patients import SourceHistory
 from oi_api.sources import PostgresSourceVersions
 from oi_api.source_integrity import SourceIntegrityError
 from open_intelligence.patient_registry import PatientRegistryError
 from open_intelligence.postgres_registry import PostgresPatientRegistry
 from http_support import running_server
-from test_patients import TOKEN_A, TOKEN_B, request
+from test_patients import TOKEN_A, TOKEN_B, credential, request
 from test_source_versions import SourceVersionFixture, ORIGINAL, AMENDED
 
 
 class ReceiptCutoffTests(unittest.TestCase):
+    def test_invalid_http_cutoff_is_rejected_before_database_access(self):
+        with tempfile.TemporaryDirectory() as directory:
+            access = Path(directory) / 'access.json'
+            access.write_text(json.dumps({'version':'oi.synthetic-access/1', 'credentials':[
+                credential(TOKEN_A,patients=['PAT-FICTIONAL'],actions=['patient_read','source_read'])]}))
+            settings = Settings.from_env({'OI_API_ACCESS_FILE':str(access)})
+            with patch.object(Database,'registry_connection') as connection, running_server(create_app(settings)) as base:
+                for cutoff in ('2026-01-10','2026-01-10T00:00:00','9999-01-01T00:00:00Z'):
+                    path = '/v1/patients/PAT-FICTIONAL/cases/CASE-ALPHA/source-history?' + urlencode({'received_through':cutoff})
+                    status,body,_ = request(base,path,token=TOKEN_A)
+                    self.assertEqual((status,body),(422,{'detail':'Invalid receipt cutoff'}))
+                connection.assert_not_called()
+
     def test_explicit_timezone_and_microsecond_boundary(self):
         parse = PostgresSourceVersions.receipt_cutoff
         first = "2026-01-10T10:00:00.000001Z"

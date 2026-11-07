@@ -104,6 +104,18 @@ jobs:
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           raise SystemExit(0 if result.wasSuccessful() and result.testsRun == 6 and not result.skipped else 1)
           PYTEST
+      - name: Verify receipt-time history and current authority before the broad regression
+        run: |
+          python - <<'PYTEST'
+          import unittest
+          suite = unittest.defaultTestLoader.discover('apps/api/tests', pattern='test_source_history.py')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(0 if result.wasSuccessful() and result.testsRun == 5 and not result.skipped else 1)
+          PYTEST
+      - name: Verify source HTTP, fresh authority, source receipts and restored originals
+        env:
+          OI_SOURCE_ACCEPTANCE_FILE: verification-api/source-document-recovery.json
+        run: python apps/api/tools/verify_sources_compose.py
       - name: Verify governed encounter relay and process-death recovery
         run: |
           python - <<'PYTEST'
@@ -161,10 +173,6 @@ jobs:
         run: |
           python apps/api/tools/verify_registry_compose.py
           python apps/api/tools/verify_connected_chart_compose.py
-      - name: Verify source HTTP, fresh authority, source receipts and restored originals
-        env:
-          OI_SOURCE_ACCEPTANCE_FILE: verification-api/source-document-recovery.json
-        run: python apps/api/tools/verify_sources_compose.py
       - name: Verify native FHIR laboratory custody, amendments and recovery
         env:
           OI_LABORATORY_TASK_ACCEPTANCE_FILE: verification-api/laboratory-followthrough-recovery.json

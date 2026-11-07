@@ -237,7 +237,7 @@ def main():
                 assert cd.evaluate("document.querySelector('[data-testid=source-index]').textContent.includes('Amended fictional marker is reported negative.')")
                 assert cd.evaluate("document.querySelectorAll('[data-testid=source-statement]').length===1")
                 from source_history_journey import exercise as exercise_history
-                exercise_history(cd,original,amended,out)
+                exercise_history(cd,original,amended,out,credentials,write_grants)
                 from reading_convergence_journey import exercise as exercise_reading
                 assert cd.evaluate("Boolean(document.querySelector('[data-testid=reviewed-document-disclosure]')) && !document.querySelector('[data-testid=reviewed-document-disclosure]').open"), 'Reviewed originals start collapsed beside the structured import'
                 assert cd.evaluate("!document.querySelector('[data-testid=reviewed-file]').checkVisibility()"), 'Closed reviewed intake preserves the reading-first workspace'
