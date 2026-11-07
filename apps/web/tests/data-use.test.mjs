@@ -21,3 +21,11 @@ test('late restriction response is discarded after disconnect or same-patient re
   resolve(response(decision));await assert.rejects(read);
  }
 });
+test('authentication loss clears patient and credential while denied status grants do not',async()=>{
+ for(const status of [401,404]){
+  const s=await setup(async()=>new Response('{}',{status}));
+  await assert.rejects(s.readDataUse('operations',new AbortController().signal));
+  assert.equal(s.snapshot().connected,status!==401);
+  assert.equal(Boolean(s.snapshot().patient),status!==401);
+ }
+});

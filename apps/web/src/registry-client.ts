@@ -519,7 +519,11 @@ export class RegistrySession {
     const timeout=setTimeout(stop,10000);
     try{
       const response=await this.transport('/v1/patients/'+encodeURIComponent(patient.patient_id)+'/data-use/'+purpose,this.#init(control));
-      if(!current()||response.status!==200){void response.body?.cancel().catch(()=>{});throw Error('Data-use status unavailable');}
+      if(!current()||response.status!==200){
+        void response.body?.cancel().catch(()=>{});
+        if(current()&&response.status===401)this.#httpError(401);
+        throw Error('Data-use status unavailable');
+      }
       const value=await json(response,4096) as Record<string,unknown>;
       if(!current()||!value||Object.keys(value).length!==5||value.patient_id!==patient.patient_id||
         value.target_purpose!==purpose||value.consent_established!==false||
